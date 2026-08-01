@@ -1,3 +1,38 @@
+/* Catan client styles.
+ *
+ * Layout rules of the house:
+ *   - Every boxed region is a `.panel`: same background, border, padding and
+ *     heading treatment. Variable-length content goes in a `.panel-body`,
+ *     which scrolls inside the panel so the page never grows.
+ *   - The page scrolls vertically at most, never horizontally: every flex or
+ *     grid item that holds text gets `min-width: 0`.
+ *   - The board is the visual focus and is the only region that takes the
+ *     space left over.
+ */
+
+:root {
+    --page-bg: #2c3e50;
+    --surface: #34495e;
+    --panel-bg: #2c3e50;
+    --panel-border: #22313f;
+    --panel-rule: #3d566e;
+    --sunken: #1a252f;
+    --text: #ecf0f1;
+    --text-muted: #bdc3c7;
+    --text-faint: #95a5a6;
+    --accent: #e67e22;
+    --accent-dark: #d35400;
+    --info: #3498db;
+    --good: #27ae60;
+    --bad: #c0392b;
+    --focus: #f1c40f;
+    --gap: 0.75rem;
+    --radius: 6px;
+    /* One height for the whole table shell, so the lobby, the game screen and
+       the aside beside them all line up and all scroll internally. */
+    --table-height: clamp(30rem, calc(100vh - 10rem), 58rem);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -6,38 +41,145 @@
 
 body {
     font-family: Arial, sans-serif;
-    background-color: #2c3e50;
-    color: #ecf0f1;
+    background-color: var(--page-bg);
+    color: var(--text);
     min-height: 100vh;
+    padding: 1rem 0.5rem;
     display: flex;
     justify-content: center;
-    align-items: center;
+    /* margin:auto on the child rather than align-items:center - centring a
+       container taller than the viewport would put its top out of reach. */
+    align-items: flex-start;
 }
 
 .container {
+    margin: auto;
+    width: 100%;
+    max-width: 1400px;
+    min-width: 0;
     text-align: center;
-    background-color: #34495e;
-    padding: 2rem;
+    background-color: var(--surface);
+    padding: clamp(0.75rem, 1.6vw, 1.75rem);
     border-radius: 10px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    min-width: 300px;
+}
+
+/* Before anyone has joined there is nothing to say and nothing logged, so the
+   shell collapses to the join form. */
+.container:has(#join-screen:not(.hidden)) {
+    max-width: 26rem;
+}
+
+.container:has(#join-screen:not(.hidden)) .table {
+    display: none;
+}
+
+/* ------------------------------------------------------------ table shell */
+
+/* The lobby and the game screen swap inside .table-main; the aside beside
+   them - log, chat, trade - is shared, so chat works before a game starts. */
+.table {
+    display: flex;
+    align-items: stretch;
+    gap: var(--gap);
+    margin-top: 1rem;
+    min-width: 0;
+}
+
+.table-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-aside {
+    flex: none;
+    width: 19rem;
+    height: var(--table-height);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    min-width: 0;
+    min-height: 0;
+}
+
+/* Resources and the bank only mean anything once a game is running */
+.table:has(#game-screen.hidden) #info-panel {
+    display: none;
+}
+
+.app-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
 }
 
 h1 {
-    margin-bottom: 1.5rem;
-    color: #e67e22;
+    color: var(--accent);
 }
 
 h2 {
-    margin-bottom: 1rem;
     font-size: 1.2rem;
 }
 
-#join-screen {
+/* Keyboard users must be able to see where they are - never remove this */
+:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.panel {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    min-height: 0;
+    min-width: 0;
+    text-align: left;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.7rem;
 }
+
+.panel-title {
+    flex: none;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 0.45rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--panel-rule);
+}
+
+/* The one place variable-length content is allowed to overflow, and it
+   scrolls here rather than stretching the panel. */
+.panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #7f8c8d transparent;
+}
+
+.panel-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+    background-color: #7f8c8d;
+    border-radius: 4px;
+}
+
+/* ----------------------------------------------------------- form basics */
 
 input[type="text"] {
     padding: 0.8rem;
@@ -50,7 +192,7 @@ input[type="text"] {
 button {
     padding: 0.8rem 1.5rem;
     font-size: 1rem;
-    background-color: #e67e22;
+    background-color: var(--accent);
     color: white;
     border: none;
     border-radius: 5px;
@@ -59,7 +201,13 @@ button {
 }
 
 button:hover {
-    background-color: #d35400;
+    background-color: var(--accent-dark);
+}
+
+#join-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }
 
 .role-selection {
@@ -103,138 +251,342 @@ button:hover {
     cursor: pointer;
 }
 
-.role-selection input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
+/* ----------------------------------------------------------- lobby screen */
 
-#user-screen {
-    margin-top: 1rem;
+/* The lobby lives where the game screen will: same height, same internal
+   scrolling, so joining a game does not reflow the page around it. */
+.lobby {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    max-height: var(--table-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .user-lists {
-    display: flex;
-    gap: 2rem;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: var(--gap);
 }
 
-.player-list,
-.observer-list {
-    flex: 1;
-    min-width: 150px;
+.user-lists .panel-body {
+    max-height: 11rem;
 }
 
-.player-list ul,
-.observer-list ul {
+.user-list {
     list-style: none;
-    text-align: left;
 }
 
-.player-list li,
-.observer-list li {
-    padding: 0.5rem;
-    margin: 0.5rem 0;
-    background-color: #2c3e50;
-    border-radius: 3px;
+.user-list li {
+    padding: 0.4rem 0.5rem;
+    margin-bottom: 0.35rem;
+    background-color: var(--sunken);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
 }
 
-.player-list li.current-user,
-.observer-list li.current-user {
-    background-color: #e67e22;
+.user-list li.current-user {
+    background-color: var(--accent);
     font-weight: bold;
 }
 
-.player-list li.current-turn,
-.observer-list li.current-turn {
-    background-color: #27ae60;
+.user-list li.current-turn {
+    background-color: var(--good);
     font-weight: bold;
     border: 2px solid #2ecc71;
 }
 
-#game-screen {
-    display: flex;
-    gap: 1rem;
-    margin-top: 1rem;
-    width: 1140px;
-    height: 550px;
-}
-
-.game-sidebar {
-    width: 180px;
+.lobby-actions {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    flex-shrink: 0;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-.game-sidebar .player-list,
-.game-sidebar .observer-list {
-    flex: 1;
-    min-width: unset;
-    overflow-y: auto;
+.start-reason {
+    font-size: 0.8rem;
+    color: var(--text-faint);
+}
+
+/* Lobby house rules - sections and rows are built from the server catalogue */
+.rules-panel .panel-body {
+    max-height: min(26rem, 45vh);
+}
+
+.rules-locked-note {
+    flex: none;
+    font-size: 0.8rem;
+    color: #f39c12;
+    margin-bottom: 0.5rem;
+}
+
+.rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* One collapsible section per rule group. <details> rather than a scripted
+   toggle: it collapses, keyboards and screen readers for free. */
+.rule-group {
+    border: 1px solid var(--panel-rule);
+    border-radius: 5px;
+    background-color: rgba(0, 0, 0, 0.12);
+}
+
+.rule-group > summary {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    list-style: none;
+}
+
+.rule-group > summary::-webkit-details-marker {
+    display: none;
+}
+
+.rule-group > summary::before {
+    content: "▸";
+    color: var(--text-faint);
+    font-size: 0.8rem;
+}
+
+.rule-group[open] > summary::before {
+    content: "▾";
+}
+
+.rule-group-count {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: normal;
+    color: var(--text-faint);
+}
+
+.rule-group-hint {
+    padding: 0 0.6rem 0.4rem;
+    font-size: 0.72rem;
+    color: var(--text-faint);
+}
+
+.rule-group-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0 0.6rem 0.6rem;
+}
+
+.rule-row {
+    background-color: var(--sunken);
+    border-radius: 4px;
+    padding: 0.45rem 0.6rem;
+}
+
+.rule-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.rule-label {
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.rule-toggle {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.rule-number {
+    width: 60px;
+    padding: 0.2rem;
+    border: none;
+    border-radius: 3px;
+    background-color: var(--surface);
+    color: var(--text);
+    text-align: center;
+}
+
+.rule-toggle:disabled,
+.rule-number:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.rule-source {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    margin-top: 0.15rem;
+}
+
+.rule-summary {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+}
+
+/* Base-game numbers are the least interesting knob on the page */
+.rule-group[data-group="core"] .rule-summary,
+.rule-group[data-group="core"] .rule-source {
+    color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------ game screen */
+
+/* Two regions - the rail of standing information and the board. Only the
+   board grows. The aside is a sibling of this whole screen. */
+#game-screen {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr);
+    grid-template-areas: "rail main";
+    gap: var(--gap);
+    /* A definite height is what lets every panel scroll internally instead of
+       stretching the page. */
+    height: var(--table-height);
+    text-align: left;
+}
+
+.game-rail {
+    grid-area: rail;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    min-width: 0;
+    min-height: 0;
+}
+
+#players-panel {
+    flex: 2 1 0;
+}
+
+#dev-cards-panel {
+    flex: 3 1 0;
+}
+
+#active-rules-panel {
+    flex: 0 1 auto;
+    max-height: 9rem;
 }
 
 .game-main {
-    flex: 1;
+    grid-area: main;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: var(--gap);
+    /* Without this the board region refuses to shrink below its content and a
+       narrow window overflows the container instead of squeezing. */
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The camera in board-renderer.js sizes the drawing buffer from this box's
+   clientWidth/clientHeight, so the height here has to resolve to something
+   real - a zero-height track would render the board into nothing. It comes
+   from the grid track above, with min-height as the floor. */
+.game-board {
+    background-color: var(--sunken);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    min-height: 16rem;
+    position: relative;
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
+/* No max-width/max-height: the renderer sets the box explicitly from this
+   container, and a cap here would fight it. */
+#board-canvas {
+    display: block;
+    /* Without this a finger drag scrolls the page instead of reaching us */
+    touch-action: none;
+    cursor: grab;
+}
+
+#board-canvas.panning {
+    cursor: grabbing;
+}
+
+#board-canvas:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: -3px;
+}
+
+/* Placing a piece beats panning as the thing the cursor should describe */
+.game-board.placement-mode #board-canvas {
+    cursor: crosshair;
+}
+
+.board-controls {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.25rem;
 }
 
-.game-board {
-    flex: 1;
-    background-color: #1a252f;
-    border-radius: 5px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 300px;
-    overflow: auto;
+.board-controls button {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    background-color: rgba(44, 62, 80, 0.85);
+    border: 1px solid var(--panel-rule);
+    color: var(--text);
 }
 
-#board-canvas {
-    max-width: 100%;
-    max-height: 100%;
+.board-controls button:hover {
+    background-color: var(--surface);
 }
 
 .game-console {
-    padding: 0.8rem;
-    background-color: #2c3e50;
-    border-radius: 5px;
+    padding: 0.6rem;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem;
     flex-wrap: wrap;
 }
 
-#setup-indicator {
-    background-color: #f39c12;
+/* --------------------------------------------------------- console pieces */
+
+#setup-indicator,
+#robber-indicator,
+#free-roads-indicator {
     color: #fff;
-    padding: 0.5rem 1rem;
+    padding: 0.4rem 0.8rem;
     border-radius: 5px;
     font-weight: bold;
+    font-size: 0.85rem;
     display: flex;
     gap: 0.5rem;
     align-items: center;
 }
 
-#setup-indicator.hidden {
-    display: none;
+#setup-indicator {
+    background-color: #f39c12;
+}
+
+#robber-indicator {
+    background-color: var(--bad);
 }
 
 #free-roads-indicator {
-    background-color: #27ae60;
-    color: #fff;
-    padding: 0.5rem 1rem;
-    border-radius: 5px;
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-}
-
-#free-roads-indicator.hidden {
-    display: none;
+    background-color: var(--good);
 }
 
 #setup-player-name {
@@ -243,13 +595,13 @@ button:hover {
 
 .timer-container {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.4rem;
     align-items: center;
     flex-wrap: wrap;
 }
 
 .timer {
-    background-color: #27ae60;
+    background-color: var(--good);
     color: #fff;
     padding: 0.3rem 0.5rem;
     border-radius: 4px;
@@ -263,6 +615,33 @@ button:hover {
 
 .timer.danger {
     background-color: #e74c3c;
+}
+
+.dice-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dice-display {
+    display: flex;
+    gap: 0.3rem;
+    font-size: 1.5rem;
+    font-weight: bold;
+    min-width: 60px;
+    justify-content: center;
+}
+
+.dice-display .die {
+    background-color: white;
+    color: var(--page-bg);
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1rem;
 }
 
 #color-picker {
@@ -283,7 +662,7 @@ button:hover {
 #place-settlement-btn.active,
 #place-road-btn.active,
 #upgrade-city-btn.active {
-    background-color: #27ae60;
+    background-color: var(--good);
     border: 2px solid #2ecc71;
 }
 
@@ -292,201 +671,51 @@ button:hover {
     font-size: 0.85rem;
 }
 
-.dice-container {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.dice-display {
-    display: flex;
-    gap: 0.3rem;
-    font-size: 1.5rem;
-    font-weight: bold;
-    min-width: 60px;
-    justify-content: center;
-}
-
-.dice-display .die {
-    background-color: white;
-    color: #2c3e50;
-    width: 30px;
-    height: 30px;
-    border-radius: 5px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 1rem;
-}
-
-.resource-sidebar {
-    width: 250px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex-shrink: 0;
-    background-color: #2c3e50;
-    padding: 1rem;
-    border-radius: 5px;
-}
-
-/* Trade panel - 75% of sidebar */
-#trade-panel {
-    flex: 3;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Info section - 25% of sidebar (resources + bank) */
-#info-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    border-top: 1px solid #34495e;
-    padding-top: 0.5rem;
-}
-
-#player-resources-panel h2,
-#bank-panel h2 {
-    font-size: 0.75rem;
-    margin-bottom: 0.2rem;
-}
-
-#player-resources-panel .resource-display {
-    gap: 0.15rem;
-}
-
-#player-resources-panel .resource {
-    font-size: 0.9rem;
-    padding: 0.25rem 0.4rem;
-}
-
-#bank-panel .bank-display {
-    gap: 0.2rem;
-    font-size: 0.7rem;
-}
-
-#bank-panel .bank-resource {
-    font-size: 0.65rem;
-    padding: 0.1rem 0.2rem;
-}
-
-.resource-sidebar h2 {
-    font-size: 1rem;
-    margin-bottom: 0.5rem;
-    color: #ecf0f1;
-}
-
-.resource-sidebar .resource-display {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-}
-
-.resource-sidebar .resource {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
+/* Destructive: ends the match for the whole table */
+#end-game-btn {
+    padding: 0.4rem 0.6rem;
     font-size: 0.8rem;
-    padding: 0.2rem 0.4rem;
-    background-color: #1a252f;
-    border-radius: 3px;
+    background-color: var(--bad);
 }
 
-.resource-sidebar .res-wood { color: #27ae60; }
-.resource-sidebar .res-brick { color: #e74c3c; }
-.resource-sidebar .res-sheep { color: #9b59b6; }
-.resource-sidebar .res-wheat { color: #f1c40f; }
-.resource-sidebar .res-ore { color: #7f8c8d; }
-
-#bank-panel {
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #34495e;
+#end-game-btn:hover {
+    background-color: #e74c3c;
 }
 
-#bank-panel h2 {
-    font-size: 1rem;
-    margin-bottom: 0.5rem;
-    color: #ecf0f1;
-}
+/* ------------------------------------------------------- rail panel bodies */
 
-.bank-display {
+#dev-cards-panel .panel-body {
     display: flex;
-    flex-direction: row;
-    gap: 0.3rem;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.dev-deck-remaining {
+    color: var(--text-muted);
     font-size: 0.8rem;
-    justify-content: space-between;
-    flex-wrap: wrap;
 }
 
-.bank-display .bank-resource {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
-    padding: 0.2rem;
-    background-color: #1a252f;
-    border-radius: 3px;
-}
-
-.bank-display .bank-wood { color: #27ae60; }
-.bank-display .bank-brick { color: #e74c3c; }
-.bank-display .bank-sheep { color: #9b59b6; }
-.bank-display .bank-wheat { color: #f1c40f; }
-.bank-display .bank-ore { color: #7f8c8d; }
-
-#bank-panel h2 {
-    font-size: 0.85rem;
-    margin-bottom: 0.3rem;
-}
-
-#player-resources-panel h2 {
-    font-size: 0.85rem;
-    margin-top: 0.5rem;
-}
-
-/* Development Cards Panel */
-#dev-cards-panel {
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid #34495e;
-}
-
-#dev-cards-panel h2 {
-    font-size: 0.85rem;
-    margin-bottom: 0.3rem;
-}
-
-#dev-cards-panel button {
-    width: 100%;
+#buy-dev-card-btn {
     padding: 0.4rem;
-    margin-bottom: 0.3rem;
     font-size: 0.8rem;
-    background: #27ae60;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
+    background-color: var(--good);
 }
 
-#dev-cards-panel button:hover {
-    background: #2ecc71;
+#buy-dev-card-btn:hover {
+    background-color: #2ecc71;
 }
 
-#dev-cards-panel button:disabled {
-    background: #7f8c8d;
+#buy-dev-card-btn:disabled {
+    background-color: #7f8c8d;
     cursor: not-allowed;
 }
 
 .dev-card-btn {
     display: block;
     width: 100%;
-    padding: 0.6rem 0.5rem;
-    margin-bottom: 0.4rem;
-    font-size: 0.85rem;
+    padding: 0.5rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
     font-weight: bold;
     background: #95a5a6;
     color: white;
@@ -494,7 +723,7 @@ button:hover {
     border-radius: 5px;
     cursor: not-allowed;
     text-align: left;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
     opacity: 0.7;
 }
 
@@ -505,12 +734,12 @@ button:hover {
 
 .dev-card-btn.playable:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
 }
 
 .dev-card-btn.playable:active:not(:disabled) {
     transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .dev-card-btn:disabled {
@@ -520,45 +749,171 @@ button:hover {
 }
 
 .your-cards {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
     margin-bottom: 0.3rem;
 }
 
-.my-dev-cards .no-cards {
-    color: #95a5a6;
+.no-cards {
+    color: var(--text-faint);
     font-style: italic;
     font-size: 0.75rem;
 }
 
-/* Trade Panel */
-#trade-panel {
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #34495e;
+/* Read-only summary of the rules the running game uses */
+.active-rules {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.4;
 }
 
-#trade-panel h2 {
-    font-size: 1rem;
-    margin-bottom: 0.5rem;
+/* --------------------------------------------------- resources and bank */
+
+#info-panel {
+    flex: none;
+    gap: 0.5rem;
 }
 
-#trade-panel button {
-    width: 100%;
-    padding: 0.5rem;
-    margin-bottom: 0.5rem;
+#info-panel .panel-title {
+    font-size: 0.72rem;
+    margin-bottom: 0.3rem;
+    padding-bottom: 0.2rem;
+}
+
+.resource-display,
+.bank-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.resource-display .resource,
+.bank-display .bank-resource {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem 0.4rem;
+    background-color: var(--sunken);
+    border-radius: 3px;
     font-size: 0.85rem;
 }
 
-.trade-offers, .my-offers {
+.bank-display .bank-resource {
+    font-size: 0.7rem;
+}
+
+.resource-display .res-wood,
+.bank-display .bank-wood { color: var(--good); }
+.resource-display .res-brick,
+.bank-display .bank-brick { color: #e74c3c; }
+.resource-display .res-sheep,
+.bank-display .bank-sheep { color: #9b59b6; }
+.resource-display .res-wheat,
+.bank-display .bank-wheat { color: var(--focus); }
+.resource-display .res-ore,
+.bank-display .bank-ore { color: #7f8c8d; }
+
+/* ------------------------------------------------------- tabbed side panel */
+
+/* Log and trade in one box. Both are long lists that are only sometimes
+   looked at; side by side they cost a whole extra column. */
+.tabbed-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding-top: 0;
+}
+
+.tab-bar {
+    flex: none;
+    display: flex;
+    gap: 0.3rem;
+    margin: 0 -0.7rem 0.5rem;
+    padding: 0 0.4rem;
+    border-bottom: 1px solid var(--panel-rule);
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--text-muted);
+    background-color: transparent;
+    border-radius: 5px 5px 0 0;
+    border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.tab[aria-selected="true"] {
+    color: var(--text);
+    background-color: var(--surface);
+    border-bottom-color: var(--accent);
+}
+
+/* An offer that arrived while the log tab was showing */
+.tab-badge {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--accent);
+}
+
+.tab-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+/* --------------------------------------------------------------- trade */
+
+#propose-trade-btn {
+    flex: none;
+    width: 100%;
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    background-color: var(--info);
+}
+
+#propose-trade-btn:hover {
+    background-color: #2980b9;
+}
+
+.trade-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #7f8c8d transparent;
+}
+
+.trade-offers,
+.my-offers {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    max-height: 250px;
-    overflow-y: auto;
+}
+
+.trade-offers h4,
+.my-offers h4 {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0.4rem 0 0.1rem;
 }
 
 .trade-offer {
-    background-color: #1a252f;
+    background-color: var(--sunken);
     border-radius: 4px;
     padding: 0.4rem;
     font-size: 0.75rem;
@@ -578,8 +933,9 @@ button:hover {
 .trade-offer-resources {
     display: flex;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.4rem;
     margin-bottom: 0.3rem;
+    overflow-wrap: anywhere;
 }
 
 .trade-offer-resources .give {
@@ -587,13 +943,18 @@ button:hover {
 }
 
 .trade-offer-resources .want {
-    color: #27ae60;
+    color: var(--good);
 }
 
 .trade-offer-actions {
     display: flex;
-    gap: 0.3rem;
-    justify-content: flex-end;
+    gap: 0.25rem;
+    /* Wrapping rather than one squeezed row: a six-player game puts five
+       responder buttons in here and the panel is narrow. */
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0.2rem;
 }
 
 .trade-offer-actions button {
@@ -602,27 +963,17 @@ button:hover {
     width: auto;
 }
 
+/* Grey until this player has accepted, then the "yes" colour. */
 .trade-offer-actions button.accept-btn {
-    background-color: #27ae60;
+    background-color: var(--text-faint);
+}
+
+.trade-offer-actions button.accept-btn.is-accepted {
+    background-color: var(--good);
 }
 
 .trade-offer-actions button.decline-btn {
     background-color: #e74c3c;
-}
-
-.trade-offer-accepted {
-    display: flex;
-    gap: 0.3rem;
-    flex-wrap: wrap;
-    margin-top: 0.3rem;
-}
-
-.trade-offer-actions {
-    display: flex;
-    gap: 0.2rem;
-    flex-wrap: wrap;
-    margin-top: 0.2rem;
-    align-items: center;
 }
 
 .accept-players-row {
@@ -631,26 +982,210 @@ button:hover {
     flex-wrap: wrap;
 }
 
-.trade-offer-actions button {
-    padding: 0.15rem 0.3rem;
-    font-size: 0.6rem;
-}
-
 .accepted-player {
-    padding: 0.15rem 0.3rem;
+    padding: 0.2rem 0.35rem;
     border-radius: 3px;
-    font-size: 0.55rem;
+    font-size: 0.65rem;
     cursor: pointer;
     background-color: #7f8c8d;
     color: white;
     border: none;
 }
 
+/* Fallback for an accepted responder with no colour set; when the player has
+   one, the render paints it over this. */
+.accepted-player.is-accepted {
+    background-color: var(--good);
+}
+
 .accepted-player.selected {
     border: 1px solid white;
 }
 
-/* Trade Modal */
+/* ------------------------------------------------------ chat and event log */
+
+.chat-panel {
+    position: relative;
+}
+
+.log-entries {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #7f8c8d transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-right: 0.2rem;
+    font-size: 0.8rem;
+    line-height: 1.3;
+}
+
+.log-entry {
+    /* A long unbroken word (a pasted URL) must wrap, not widen the column */
+    overflow-wrap: anywhere;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    border-left: 3px solid #7f8c8d;
+    background-color: var(--surface);
+}
+
+.log-time {
+    color: var(--text-faint);
+    font-family: monospace;
+    font-size: 0.7rem;
+    margin-right: 0.3rem;
+}
+
+.log-player {
+    font-weight: bold;
+    margin-right: 0.3rem;
+}
+
+/* Chat reads as speech, system events as a muted running commentary */
+.log-chat {
+    background-color: #3d566e;
+    color: var(--text);
+}
+
+.log-system {
+    background-color: transparent;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.log-kind-chat { border-left-color: var(--info); }
+.log-kind-dice { border-left-color: var(--focus); }
+.log-kind-build { border-left-color: var(--good); }
+.log-kind-trade { border-left-color: #9b59b6; }
+.log-kind-robber { border-left-color: var(--bad); }
+.log-kind-dev_card { border-left-color: var(--accent); }
+.log-kind-turn { border-left-color: #16a085; }
+.log-kind-game { border-left-color: var(--text); }
+.log-kind-rules { border-left-color: #7f8c8d; }
+
+/* Offered instead of yanking the view down while someone reads history */
+.log-jump {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 3.4rem;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.75rem;
+    background-color: var(--info);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.log-jump:hover {
+    background-color: #2980b9;
+}
+
+.chat-form {
+    flex: none;
+    display: flex;
+    gap: 0.4rem;
+}
+
+.chat-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem;
+    font-size: 0.8rem;
+    border: none;
+    border-radius: 4px;
+}
+
+.chat-input:disabled {
+    background-color: #7f8c8d;
+}
+
+.chat-send {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.8rem;
+    background-color: var(--info);
+}
+
+.chat-send:hover {
+    background-color: #2980b9;
+}
+
+.chat-send:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+}
+
+/* ------------------------------------------------- notices and connection */
+
+/* Non-blocking notices - never covers the board or the action buttons */
+.notice-region {
+    position: fixed;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-width: min(360px, 90vw);
+    pointer-events: none;
+}
+
+.notice {
+    padding: 0.6rem 0.9rem;
+    border-radius: 5px;
+    color: #fff;
+    font-size: 0.9rem;
+    background-color: var(--surface);
+    border-left: 4px solid #7f8c8d;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.notice-error {
+    background-color: #7b241c;
+    border-left-color: #e74c3c;
+}
+
+.notice-success {
+    background-color: #145a32;
+    border-left-color: var(--good);
+}
+
+.connection-status {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 10px;
+    color: #fff;
+    background-color: #7f8c8d;
+}
+
+.connection-connected {
+    background-color: var(--good);
+}
+
+.connection-connecting {
+    background-color: #f39c12;
+}
+
+.connection-offline {
+    background-color: var(--bad);
+}
+
+.cdn-error {
+    background-color: #7b241c;
+    color: #fff;
+    padding: 0.8rem 1rem;
+    text-align: center;
+    font-weight: bold;
+}
+
+.cdn-error.hidden {
+    display: none;
+}
+
+/* ------------------------------------------------------------------ modals */
+
 .modal {
     display: none;
     position: fixed;
@@ -664,27 +1199,25 @@ button:hover {
     align-items: center;
 }
 
-.modal.show {
-    display: flex;
-}
-
 .modal-content {
-    background-color: #2c3e50;
+    background-color: var(--panel-bg);
     padding: 1.5rem;
     border-radius: 10px;
     width: 350px;
     max-width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .modal-content h2 {
     margin-bottom: 1rem;
-    color: #ecf0f1;
+    color: var(--text);
 }
 
 .modal-content h3 {
     font-size: 0.9rem;
     margin: 0.8rem 0 0.5rem;
-    color: #bdc3c7;
+    color: var(--text-muted);
 }
 
 .close {
@@ -692,11 +1225,11 @@ button:hover {
     font-size: 1.5rem;
     font-weight: bold;
     cursor: pointer;
-    color: #bdc3c7;
+    color: var(--text-muted);
 }
 
 .close:hover {
-    color: #ecf0f1;
+    color: var(--text);
 }
 
 .resource-selector {
@@ -711,6 +1244,24 @@ button:hover {
     align-items: center;
 }
 
+.resource-selector input {
+    width: 60px;
+    padding: 0.3rem;
+    border: none;
+    border-radius: 3px;
+    background-color: var(--surface);
+    color: var(--text);
+    text-align: center;
+}
+
+#submit-trade-btn,
+#submit-discard-btn,
+#confirm-invention-btn {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 0.8rem;
+}
+
 .victim-list {
     display: flex;
     flex-direction: column;
@@ -722,7 +1273,7 @@ button:hover {
     display: flex;
     align-items: center;
     padding: 0.8rem;
-    background-color: #34495e;
+    background-color: var(--surface);
     border-radius: 5px;
     cursor: pointer;
     transition: background-color 0.2s;
@@ -738,39 +1289,9 @@ button:hover {
     border-radius: 50%;
     margin-right: 0.8rem;
 }
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.3rem;
-    background-color: #1a252f;
-    border-radius: 4px;
-}
 
-.resource-selector input {
-    width: 60px;
-    padding: 0.3rem;
-    border: none;
-    border-radius: 3px;
-    background-color: #34495e;
-    color: #ecf0f1;
-    text-align: center;
-}
-
-#submit-trade-btn {
-    width: 100%;
-    margin-top: 1rem;
-    padding: 0.8rem;
-}
-
-#propose-trade-btn {
-    background-color: #3498db;
-}
-
-#propose-trade-btn:hover {
-    background-color: #2980b9;
-}
-
-/* Monopoly modal */
-.monopoly-info {
+.monopoly-info,
+.invention-info {
     margin-bottom: 1rem;
     font-size: 0.9rem;
 }
@@ -784,45 +1305,299 @@ button:hover {
 .monopoly-res-btn {
     padding: 0.8rem;
     font-size: 1rem;
-    background-color: #34495e;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.2s;
+    background-color: var(--surface);
 }
 
 .monopoly-res-btn:hover {
     background-color: #2980b9;
 }
 
-.resource-label {
-    font-size: 0.9rem;
-    color: #bdc3c7;
+/* -------------------------------------------------- cities & knights panels */
+
+/* These three panels are `.hidden` in the template and only ever unhidden by
+   the client when the running game has the expansion on, so none of this
+   applies to a base game. They are denser than the rest of the rail because
+   three improvement tracks and up to six knights have to fit beside the
+   board. */
+
+.ck-panel {
+    flex: none;
+    font-size: 0.75rem;
 }
 
-.resource-display {
+#improvements-panel {
+    max-height: 21rem;
+}
+
+#knights-panel {
+    max-height: 19rem;
+}
+
+/* Six panels no longer fit a fixed-height column, so the rail itself scrolls.
+   Harmless in the base game, where four panels share the height as before. */
+.game-rail {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+/* Only where the rail is a full-height column of its own: below this the rail
+   is a horizontal strip and the panels are sized by that media query. */
+@media (min-width: 1201px) {
+    #game-screen.ck-on {
+        grid-template-columns: 15rem minmax(0, 1fr);
+    }
+
+    #game-screen.ck-on .game-rail > .panel {
+        flex: none;
+    }
+
+    #game-screen.ck-on #players-panel {
+        max-height: 10rem;
+    }
+
+    #game-screen.ck-on #dev-cards-panel {
+        max-height: 12rem;
+    }
+}
+
+/* A short explanation under a control: a cost, a reason a button is off, or
+   what to tap next. */
+.ck-note {
+    color: var(--text-faint);
+    font-size: 0.68rem;
+    line-height: 1.35;
+    margin-top: 0.2rem;
+}
+
+.ck-note.danger {
+    color: #e74c3c;
+}
+
+/* ------------------------------------------------------- barbarian track */
+
+/* The expansion's clock. It only ever moves towards the island, so it is worth
+   shouting about in the last two steps. */
+.barbarian-track {
     display: flex;
+    gap: 0.15rem;
+    margin-bottom: 0.3rem;
+}
+
+.barbarian-pip {
+    flex: 1 1 0;
+    height: 0.55rem;
+    border-radius: 2px;
+    background-color: var(--sunken);
+    border: 1px solid var(--panel-rule);
+}
+
+.barbarian-pip.filled {
+    background-color: var(--good);
+    border-color: var(--good);
+}
+
+.barbarian-track.warning .barbarian-pip.filled {
+    background-color: #f39c12;
+    border-color: #f39c12;
+}
+
+.barbarian-track.danger .barbarian-pip.filled {
+    background-color: #e74c3c;
+    border-color: #e74c3c;
+}
+
+.barbarian-status {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.barbarian-status.warning {
+    color: #f39c12;
+    font-weight: bold;
+}
+
+.barbarian-status.danger {
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+/* ------------------------------------------------------ city improvements */
+
+.improvement-tracks {
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
-    font-size: 1.1rem;
 }
 
-.resource-display .resource {
+.improvement-row {
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--panel-rule);
+}
+
+.improvement-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.improvement-head {
     display: flex;
-    align-items: center;
-    gap: 0.2rem;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.3rem;
 }
 
-.resource-display .res-wood { color: #27ae60; }
-.resource-display .res-brick { color: #e74c3c; }
-.resource-display .res-sheep { color: #9b59b6; }
-.resource-display .res-wheat { color: #f1c40f; }
-.resource-display .res-ore { color: #7f8c8d; }
-
-/* Cursor when in placement mode */
-.game-board.placement-mode {
-    cursor: crosshair;
+.improvement-name {
+    font-weight: bold;
+    font-size: 0.78rem;
 }
+
+/* The rulebook's own colours for the three disciplines */
+.improvement-name.track-trade { color: #f1c40f; }
+.improvement-name.track-politics { color: #5dade2; }
+.improvement-name.track-science { color: #58d68d; }
+
+.improvement-level {
+    color: var(--text-faint);
+    font-size: 0.7rem;
+}
+
+.improvement-built {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    margin: 0.1rem 0 0.25rem;
+}
+
+.ck-badge {
+    display: inline-block;
+    font-size: 0.66rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    margin-bottom: 0.25rem;
+}
+
+.ck-badge.ability {
+    background-color: rgba(39, 174, 96, 0.25);
+    color: #7ee2a8;
+}
+
+.ck-badge.metropolis {
+    background-color: rgba(241, 196, 15, 0.2);
+    color: var(--focus);
+}
+
+.ck-buy {
+    width: 100%;
+    padding: 0.35rem;
+    font-size: 0.72rem;
+    text-align: left;
+}
+
+/* ------------------------------------------------------------- knights */
+
+#knights-panel .panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.ck-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.ck-action {
+    padding: 0.35rem 0.4rem;
+    font-size: 0.72rem;
+    text-align: left;
+}
+
+/* Same treatment as the settlement/road/city buttons: an armed mode means the
+   next tap on the board is that action. */
+.ck-action.active {
+    background-color: var(--good);
+    border: 2px solid #2ecc71;
+}
+
+.ck-buy:disabled,
+.ck-action:disabled,
+.ck-knight-action:disabled {
+    background-color: #7f8c8d;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.knight-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.knight-row {
+    padding: 0.3rem;
+    background-color: var(--sunken);
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+/* The knight picked as the origin of a move, waiting for its destination */
+.knight-row.selected {
+    border-color: var(--focus);
+}
+
+.knight-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.3rem;
+}
+
+.knight-rank {
+    font-size: 0.74rem;
+    font-weight: bold;
+}
+
+.knight-rank.rank-1 { color: var(--text-muted); }
+.knight-rank.rank-2 { color: #5dade2; }
+.knight-rank.rank-3 { color: var(--focus); }
+
+.knight-state {
+    font-size: 0.66rem;
+}
+
+.knight-state.active {
+    color: #7ee2a8;
+}
+
+.knight-state.idle {
+    color: var(--text-faint);
+}
+
+.knight-buttons {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.ck-knight-action {
+    flex: 1 1 0;
+    padding: 0.25rem;
+    font-size: 0.65rem;
+}
+
+/* ----------------------------------------------------------- commodities */
+
+/* Commodities share the resource row: they are spent, traded and discarded the
+   same way, and a box of their own implied they were not. */
+.resource-display .commodity {
+    border: 1px solid var(--panel-rule);
+}
+
+.resource-display .com-cloth { color: #f1c40f; }
+.resource-display .com-coin { color: #e6b0aa; }
+.resource-display .com-paper { color: #58d68d; }
+
+/* --------------------------------------------------------------- utilities */
 
 .hidden {
     display: none !important;
@@ -830,4 +1605,90 @@ button:hover {
 
 .modal.show {
     display: flex !important;
+}
+
+/* ------------------------------------------------------------ responsive */
+
+/* Two columns: the aside keeps its full-height column beside the board and the
+   rail becomes a strip of panels underneath it. Three columns of chrome around
+   a board is what stopped fitting here. */
+@media (max-width: 1200px) {
+    .table-aside {
+        width: 16rem;
+    }
+
+    #game-screen {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "main"
+            "rail";
+    }
+
+    .game-rail {
+        flex-direction: row;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+    }
+
+    .game-rail > .panel {
+        flex: 1 1 0;
+        min-width: 10rem;
+        max-height: 10rem;
+    }
+
+    #active-rules-panel {
+        max-height: 10rem;
+    }
+}
+
+/* One column: the page scrolls vertically, the board keeps a share of the
+   viewport, and every panel keeps a bounded height so nothing runs away. */
+@media (max-width: 900px) {
+    .table {
+        flex-direction: column;
+    }
+
+    .table-aside {
+        width: auto;
+        height: 26rem;
+    }
+
+    #game-screen {
+        height: auto;
+    }
+
+    .lobby {
+        max-height: none;
+    }
+
+    .game-board {
+        height: 50vh;
+        min-height: 14rem;
+    }
+
+    .game-rail {
+        flex-direction: column;
+        overflow-x: visible;
+    }
+
+    /* Id selectors, because the proportional `flex: 2 1 0` those panels carry
+       for the full-height column would collapse them to nothing in a stacked,
+       auto-height one. */
+    #players-panel,
+    #dev-cards-panel,
+    #active-rules-panel {
+        flex: none;
+        max-height: 14rem;
+    }
+}
+
+@media (max-width: 600px) {
+    .game-console {
+        justify-content: flex-start;
+    }
+
+    .container:has(#join-screen:not(.hidden)) {
+        max-width: none;
+    }
 }

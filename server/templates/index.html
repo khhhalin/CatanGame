@@ -7,9 +7,20 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    <!-- Single non-blocking surface for errors and notices -->
+    <div id="notice-region" class="notice-region" role="status" aria-live="polite"></div>
+
+    <div id="cdn-error" class="cdn-error hidden" role="alert">
+        Could not load the Socket.IO library, so the game cannot connect.
+        Check your network and reload the page.
+    </div>
+
     <div class="container">
-        <h1 id="game-title">Catan</h1>
-        
+        <header class="app-header">
+            <h1 id="game-title">Catan</h1>
+            <div id="connection-status" class="connection-status connection-connecting">Connecting…</div>
+        </header>
+
         <div id="join-screen">
             <div class="role-selection">
                 <label>
@@ -21,7 +32,11 @@
                     Observer
                 </label>
             </div>
-            <input type="text" id="username" placeholder="Enter your name" />
+            <!-- autocomplete off: the browser otherwise pre-fills the name
+                 last used on this origin, so a second window silently joins
+                 as the first player. -->
+            <input type="text" id="username" placeholder="Enter your name"
+                   autocomplete="off" />
             <div class="color-selection">
                 <label for="join-color-picker">Choose your color:</label>
                 <input type="color" id="join-color-picker" value="#3498db">
@@ -29,40 +44,121 @@
             <button id="join-btn">Join</button>
         </div>
 
-        <div id="user-screen" class="hidden">
+        <!-- Lobby and game share one shell: the left column swaps between the
+             two screens while the aside - the log, chat and trade box - stays
+             put. Chat has to work before a game starts, and there is exactly
+             one #chat-form / #log-entries in the document either way. -->
+        <div class="table">
+        <div class="table-main">
+
+        <div id="user-screen" class="lobby hidden">
             <div class="user-lists">
-                <div class="player-list">
-                    <h2>Players (<span id="player-count">0</span>/4)</h2>
-                    <ul id="players"></ul>
-                </div>
-                <div class="observer-list">
-                    <h2>Observers</h2>
-                    <ul id="observers"></ul>
-                </div>
+                <section class="panel">
+                    <h2 class="panel-title">Players (<span id="player-count">0</span>/4)</h2>
+                    <ul id="players" class="panel-body user-list"></ul>
+                </section>
+                <section class="panel">
+                    <h2 class="panel-title">Observers</h2>
+                    <ul id="observers" class="panel-body user-list"></ul>
+                </section>
             </div>
-            <button id="start-game-btn" class="hidden">Start Game</button>
+            <!-- Rows and their group sections are built from the server's rule
+                 catalogue, never here: a rule added server-side must appear
+                 with no template change. -->
+            <section id="rules-panel" class="panel rules-panel">
+                <h2 class="panel-title">House Rules</h2>
+                <p id="rules-locked-note" class="rules-locked-note hidden">
+                    A game is running - these are fixed until it ends.
+                </p>
+                <div id="rules-list" class="rules-list panel-body"></div>
+            </section>
+            <div class="lobby-actions">
+                <button id="start-game-btn" class="hidden">Start Game</button>
+                <p id="start-reason" class="start-reason hidden"></p>
+            </div>
         </div>
 
+        <!-- Two regions inside the game screen: a rail of standing information
+             and the board, which is the visual focus. The third region, the
+             aside, is a sibling of the whole screen so the lobby shares it.
+             The grid areas are re-arranged by media query, so nothing here
+             assumes a column count. -->
         <div id="game-screen" class="hidden">
-            <div class="game-sidebar">
-                <div class="player-list">
-                    <h2>Players</h2>
-                    <ul id="game-players"></ul>
-                </div>
-                <div id="dev-cards-panel">
-                    <h2>Development Cards</h2>
-                    <button id="buy-dev-card-btn">Buy Card</button>
-                    <div id="my-dev-cards"></div>
-                </div>
+            <div class="game-rail">
+                <section class="panel" id="players-panel">
+                    <h2 class="panel-title">Players</h2>
+                    <ul id="game-players" class="panel-body user-list"></ul>
+                </section>
+                <!-- Cities & Knights. Every panel below is hidden until a
+                     board payload says the rule is on, so a base game shows
+                     exactly what it always did. Nothing in here is populated
+                     from the template: the client fills the bodies from
+                     `board.cities_knights`. -->
+                <section class="panel hidden ck-panel" id="barbarian-panel">
+                    <h2 class="panel-title">Barbarians</h2>
+                    <div class="panel-body">
+                        <div id="barbarian-track" class="barbarian-track"
+                             role="img" aria-label="Barbarian ship position"></div>
+                        <div id="barbarian-status" class="barbarian-status"></div>
+                        <div id="barbarian-defense" class="ck-note"></div>
+                    </div>
+                </section>
+
+                <section class="panel hidden ck-panel" id="improvements-panel">
+                    <h2 class="panel-title">City Improvements</h2>
+                    <div id="improvement-tracks" class="panel-body improvement-tracks"></div>
+                </section>
+
+                <section class="panel hidden ck-panel" id="knights-panel">
+                    <h2 class="panel-title">Knights</h2>
+                    <div class="panel-body">
+                        <!-- Static so their listeners are registered once; the
+                             client only rewrites their labels and state. -->
+                        <div class="ck-actions">
+                            <button type="button" id="build-knight-btn" class="ck-action"></button>
+                            <button type="button" id="move-knight-btn" class="ck-action"></button>
+                            <button type="button" id="build-wall-btn" class="ck-action"></button>
+                        </div>
+                        <div id="knight-hint" class="ck-note"></div>
+                        <div id="knight-list" class="knight-list"></div>
+                    </div>
+                </section>
+
+                <section class="panel" id="dev-cards-panel">
+                    <h2 class="panel-title">Development Cards</h2>
+                    <div class="panel-body">
+                        <div id="dev-deck-remaining" class="dev-deck-remaining">Deck: 0 left</div>
+                        <button id="buy-dev-card-btn">Buy Card</button>
+                        <div id="my-dev-cards" class="my-dev-cards"></div>
+                    </div>
+                </section>
+                <section class="panel hidden" id="active-rules-panel">
+                    <h2 class="panel-title">House Rules</h2>
+                    <div id="active-rules" class="active-rules panel-body"></div>
+                </section>
             </div>
+
             <div class="game-main">
+                <!-- position: relative + overflow: hidden so the planned
+                     viewport-sized canvas can be laid over this box without
+                     the layout changing again. -->
                 <div class="game-board" id="game-board">
-                    <canvas id="board-canvas"></canvas>
+                    <canvas id="board-canvas" tabindex="0" role="img" aria-label="Catan board"></canvas>
+                    <!-- The canvas is keyboard-zoomable (+ - 0, arrows); these
+                         are the visible affordance for the same thing. -->
+                    <div class="board-controls">
+                        <button type="button" id="zoom-in-btn" aria-label="Zoom in" title="Zoom in">+</button>
+                        <button type="button" id="zoom-out-btn" aria-label="Zoom out" title="Zoom out">−</button>
+                        <button type="button" id="zoom-fit-btn" aria-label="Fit board to view" title="Fit board to view">⤢</button>
+                    </div>
                 </div>
                 <div class="game-console" id="game-console">
                     <div id="setup-indicator" class="hidden">
                         <span id="setup-player-name"></span>
                         <span id="setup-action-text"></span>
+                    </div>
+                    <div id="robber-indicator" class="hidden">
+                        <span id="robber-text">Move the robber: tap a hex on the board.</span>
                     </div>
                     <div id="free-roads-indicator" class="hidden">
                         <span id="free-roads-text">Free Roads: 2 remaining</span>
@@ -80,27 +176,78 @@
                     <button id="place-road-btn">Road</button>
                     <button id="upgrade-city-btn">City</button>
                     <button id="next-turn-btn">Next Turn</button>
+                    <button id="end-game-btn">End Game</button>
                 </div>
             </div>
-            <div class="resource-sidebar">
-                <div id="trade-panel">
-                    <h2>Trade</h2>
-                    <button id="propose-trade-btn">Propose Trade</button>
-                    <div id="trade-offers" class="trade-offers"></div>
-                    <div id="my-offers" class="my-offers"></div>
-                </div>
-                <div id="info-panel">
+
+        </div>
+
+        </div><!-- /.table-main -->
+
+            <aside class="table-aside">
+                <section class="panel" id="info-panel">
                     <div id="player-resources-panel">
-                        <h2>Your Resources</h2>
+                        <h2 class="panel-title">Your Resources</h2>
                         <div id="resource-display" class="resource-display"></div>
                     </div>
                     <div id="bank-panel">
-                        <h2>Bank</h2>
+                        <h2 class="panel-title">Bank</h2>
                         <div id="bank-display" class="bank-display"></div>
                     </div>
-                </div>
-            </div>
-        </div>
+                </section>
+
+                <!-- Log and trade share one box: both are long, variable-length
+                     lists and showing both at once is what forced a fourth
+                     column. Either tab flags itself when something arrives in
+                     it while the other one is showing - a chat message landing
+                     in a hidden tab with no indicator reads as "chat is
+                     broken". -->
+                <section class="panel tabbed-panel" id="side-tabs">
+                    <div class="tab-bar" role="tablist" aria-label="Side panels">
+                        <button type="button" class="tab" id="tab-log" role="tab"
+                                aria-controls="chat-panel" aria-selected="true">
+                            Game Log
+                            <span id="log-tab-badge" class="tab-badge hidden" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="tab" id="tab-trade" role="tab"
+                                aria-controls="trade-panel" aria-selected="false">
+                            Trade
+                            <span id="trade-tab-badge" class="tab-badge hidden" aria-hidden="true"></span>
+                        </button>
+                    </div>
+
+                    <!-- Chat and game log share one list: entries are
+                         interleaved in the order the server logged them, so the
+                         panel reads as a single history rather than two lists
+                         to correlate by eye. -->
+                    <div class="tab-panel chat-panel" id="chat-panel" role="tabpanel"
+                         aria-labelledby="tab-log">
+                        <div id="log-entries" class="log-entries" role="log"
+                             aria-live="polite" aria-relevant="additions"></div>
+                        <!-- Shown only when a new entry arrives while the player has
+                             scrolled up reading history; clicking it returns them. -->
+                        <button type="button" id="log-jump-btn" class="log-jump hidden">
+                            New messages ↓
+                        </button>
+                        <form id="chat-form" class="chat-form" autocomplete="off">
+                            <input type="text" id="chat-input" class="chat-input"
+                                   placeholder="Say something…" maxlength="300"
+                                   autocomplete="off" aria-label="Chat message">
+                            <button type="submit" id="chat-send-btn" class="chat-send">Send</button>
+                        </form>
+                    </div>
+
+                    <div class="tab-panel" id="trade-panel" role="tabpanel"
+                         aria-labelledby="tab-trade" hidden>
+                        <button id="propose-trade-btn">Propose Trade</button>
+                        <div class="trade-scroll">
+                            <div id="trade-offers" class="trade-offers"></div>
+                            <div id="my-offers" class="my-offers"></div>
+                        </div>
+                    </div>
+                </section>
+            </aside>
+        </div><!-- /.table -->
     </div>
 
     <!-- Trade Modal -->
@@ -189,10 +336,10 @@
             </div>
         </div>
     </div>
-        </div>
-    </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- A blocked CDN would otherwise leave a blank game with no explanation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"
+            onerror="document.getElementById('cdn-error').classList.remove('hidden')"></script>
     <script src="{{ url_for('static', filename='js/board-renderer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/client.js') }}"></script>
 </body>
