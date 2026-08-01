@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+
+# Runtime game state — written while playing, never source.
+# The static rule data lives in server/data/costs.json and IS committed.
+server/data/users.json
+server/data/game.json
+server/data/*.save.json
