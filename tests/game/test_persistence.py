@@ -1,0 +1,241 @@
+"""Saving and reloading a game.
+
+Until this existed, every server restart destroyed the game in progress.
+"""
+
+import json
+import random
+
+import pytest
+from game import cities_knights as ck
+from game import persistence
+from game.game import Game
+
+
+def a_game(rules=None, players=('Alice', 'Bob')):
+    return Game(list(players), [], rng=random.Random(11), rules=rules)
+
+
+def round_trip(game, tmp_path):
+    path = str(tmp_path / "game.json")
+    persistence.save(game, path)
+    return persistence.load(path)
+
+
+class TestBoardSurvives:
+    def test_hex_types_and_numbers_come_back(self, tmp_path):
+        game = a_game()
+        before = {k: (h.type, h.number) for k, h in game.hexes.items()}
+        after = round_trip(game, tmp_path)
+        assert {k: (h.type, h.number) for k, h in after.hexes.items()} == before
+
+    def test_ports_come_back(self, tmp_path):
+        game = a_game()
+        before = {k: v.port for k, v in game.vertices.items() if v.port}
+        after = round_trip(game, tmp_path)
+        assert {k: v.port for k, v in after.vertices.items() if v.port} == before
+        assert before, "the board should have ports at all"
+
+    def test_buildings_and_roads_come_back(self, tmp_path):
+        game = a_game()
+        vertex_key = next(iter(game.vertices))
+        edge_key = next(iter(game.edges))
+        game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+        game.edges[edge_key].road = {'player': 'Bob'}
+        game.get_player('Alice').cities.append(vertex_key)
+        game.get_player('Bob').roads.append(edge_key)
+
+        after = round_trip(game, tmp_path)
+
+        assert after.vertices[vertex_key].building == {'type': 'city', 'player': 'Alice'}
+        assert after.edges[edge_key].road == {'player': 'Bob'}
+        assert after.get_player('Alice').cities == [vertex_key]
+
+    def test_the_derived_graph_is_rebuilt_not_stored(self, tmp_path):
+        """Neighbours are regenerated, which is what keeps the file small."""
+        game = a_game()
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+        raw = json.loads(open(path).read())
+        assert 'neighbors' not in json.dumps(raw), "the graph must not be in the file"
+
+        after = persistence.load(path)
+        for edge in after.edges.values():
+            for vertex_key in edge.neighbors.get('vertices', []):
+                assert vertex_key in after.vertices
+
+
+class TestGameStateSurvives:
+    def test_hands_come_back(self, tmp_path):
+        game = a_game()
+        game.get_player('Alice').resources = {'wood': 3, 'ore': 1}
+        after = round_trip(game, tmp_path)
+        assert after.get_player('Alice').resources == {'wood': 3, 'ore': 1}
+
+    def test_the_bank_comes_back(self, tmp_path):
+        game = a_game()
+        game.bank.take('wood', 4)
+        after = round_trip(game, tmp_path)
+        assert after.bank.resources['wood'] == game.bank.resources['wood']
+
+    def test_the_dev_card_deck_comes_back(self, tmp_path):
+        game = a_game()
+        game.bank.draw_dev_card()
+        after = round_trip(game, tmp_path)
+        assert after.bank.dev_cards_deck == game.bank.dev_cards_deck
+
+    def test_turn_and_phase_come_back(self, tmp_path):
+        game = a_game()
+        game.start()
+        game.game_phase = "playing"
+        game.current_player_index = 1
+        game.turn_count = 7
+        game.has_rolled_dice = True
+
+        after = round_trip(game, tmp_path)
+
+        assert after.game_phase == "playing"
+        assert after.current_player_index == 1
+        assert after.turn_count == 7
+        assert after.has_rolled_dice is True
+
+    def test_robber_state_comes_back(self, tmp_path):
+        game = a_game()
+        hex_key = next(k for k, h in game.hexes.items() if h.type != 'ocean')
+        game.robber_hex = hex_key
+        game.must_move_robber = True
+        after = round_trip(game, tmp_path)
+        assert after.robber_hex == hex_key
+        assert after.must_move_robber is True
+
+    def test_special_cards_come_back(self, tmp_path):
+        game = a_game()
+        game.longest_road_holder = 'Alice'
+        game.largest_army_holder = 'Bob'
+        after = round_trip(game, tmp_path)
+        assert after.longest_road_holder == 'Alice'
+        assert after.largest_army_holder == 'Bob'
+
+    def test_a_pending_dev_card_effect_comes_back(self, tmp_path):
+        """Otherwise a restart mid-Invention silently eats the card."""
+        game = a_game()
+        game.pending_invention = 'Alice'
+        assert round_trip(game, tmp_path).pending_invention == 'Alice'
+
+
+class TestRulesSurvive:
+    def test_the_chosen_rules_come_back(self, tmp_path):
+        game = a_game({'friendly_robber': True, 'victory_target': 12})
+        after = round_trip(game, tmp_path)
+        assert after.rules['friendly_robber'] is True
+        assert after.victory_points_to_win == 12
+
+    def test_custom_piece_supplies_come_back(self, tmp_path):
+        game = a_game({'max_settlements': 8})
+        assert round_trip(game, tmp_path).MAX_SETTLEMENTS == 8
+
+
+class TestCitiesKnightsSurvives:
+    def test_improvements_come_back(self, tmp_path):
+        game = a_game({'cities_and_knights': True})
+        game.ck.improvements['Alice'][ck.TRADE] = 3
+        after = round_trip(game, tmp_path)
+        assert after.ck.level('Alice', ck.TRADE) == 3
+
+    def test_knights_come_back_with_their_state(self, tmp_path):
+        game = a_game({'cities_and_knights': True})
+        knight = ck.Knight('v1', ck.STRONG)
+        knight.active = True
+        knight.acted_this_turn = True
+        game.ck.knights['Alice'] = [knight]
+
+        after = round_trip(game, tmp_path)
+
+        restored = after.ck.knights['Alice'][0]
+        assert restored.vertex == 'v1'
+        assert restored.rank == ck.STRONG
+        assert restored.active is True
+        assert restored.acted_this_turn is True
+
+    def test_the_barbarian_track_comes_back(self, tmp_path):
+        game = a_game({'cities_and_knights': True})
+        game.ck.barbarian_position = 5
+        game.ck.barbarians_have_attacked = True
+        after = round_trip(game, tmp_path)
+        assert after.ck.barbarian_position == 5
+        assert after.ck.barbarians_have_attacked is True
+
+    def test_a_metropolis_comes_back(self, tmp_path):
+        game = a_game({'cities_and_knights': True})
+        game.ck.metropolis[ck.TRADE] = 'Alice'
+        game.ck.metropolis_vertex[ck.TRADE] = 'v9'
+        after = round_trip(game, tmp_path)
+        assert after.ck.metropolis[ck.TRADE] == 'Alice'
+        assert after.victory_points_for('Alice') >= 2
+
+    def test_commodities_come_back(self, tmp_path):
+        game = a_game({'cities_and_knights': True})
+        game.get_player('Alice').commodities = {'cloth': 2, 'coin': 1}
+        after = round_trip(game, tmp_path)
+        assert after.get_player('Alice').commodities == {'cloth': 2, 'coin': 1}
+
+    def test_the_base_game_stores_no_expansion_state(self, tmp_path):
+        game = a_game()
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+        assert json.loads(open(path).read())['cities_knights'] is None
+
+
+class TestFileHandling:
+    def test_loading_a_missing_file_is_not_an_error(self, tmp_path):
+        assert persistence.load(str(tmp_path / "nope.json")) is None
+
+    def test_the_save_is_human_readable(self, tmp_path):
+        """The point of a text file is that you can open it."""
+        game = a_game()
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+        text = open(path).read()
+        assert text.startswith('{')
+        assert '\n' in text, "indented, not one long line"
+        assert '"players"' in text
+
+    def test_an_outdated_save_is_refused(self, tmp_path):
+        path = tmp_path / "game.json"
+        path.write_text(json.dumps({'save_version': 999}))
+        with pytest.raises(ValueError, match="save version"):
+            persistence.load(str(path))
+
+    def test_a_corrupt_save_is_refused(self, tmp_path):
+        path = tmp_path / "game.json"
+        path.write_text("{not json")
+        with pytest.raises(json.JSONDecodeError):
+            persistence.load(str(path))
+
+    def test_a_save_failing_its_invariants_is_refused(self, tmp_path):
+        """A hand-edited or corrupt save is untrusted input like any other."""
+        game = a_game()
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+
+        data = json.loads(open(path).read())
+        data['players'][0]['resources'] = {'wood': -5}
+        open(path, 'w').write(json.dumps(data))
+
+        with pytest.raises(ValueError, match="invariants"):
+            persistence.load(path)
+
+    def test_saving_twice_leaves_no_temp_file(self, tmp_path):
+        game = a_game()
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+        persistence.save(game, path)
+        assert not (tmp_path / "game.json.tmp").exists()
+
+    def test_the_file_is_not_enormous(self, tmp_path):
+        """Storing the derived graph would balloon this."""
+        game = a_game()
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+        size = (tmp_path / "game.json").stat().st_size
+        assert size < 200_000, f"{size} bytes is too big for one board"
