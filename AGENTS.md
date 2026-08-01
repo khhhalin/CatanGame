@@ -11,29 +11,28 @@
 
 ### Python (Backend)
 ```bash
-# Install dependencies
+# Install dependencies (into a venv or the Nix shell, never system Python)
 pip install -r server/requirements.txt
 
-# Run the Flask server
+# Run the Flask server for local development
 python server/app.py
 
-# Run with debug mode
-FLASK_DEBUG=1 python server/app.py
-
-# Run a single test
-pytest server/tests/test_file.py::test_function_name -v
-pytest server/tests/ -k "test_name_pattern" -v
-
-# Run tests with coverage
-pytest server/tests/ --cov=server --cov-report=html
-pytest server/tests/ --cov=server --cov-report=term
+# Run in production (never the dev server — see coding-rules.md Part I)
+gunicorn -w 1 --threads 100 -b 0.0.0.0:5000 wsgi:app
 
 # Run all tests
-pytest server/tests/
+pytest
 
-# Lint Python code
-flake8 server/
-pylint server/
+# Run a single test
+pytest tests/game/test_rules.py::TestCosts::test_city_cost_matches_the_rulebook -v
+pytest tests/ -k "discard" -v
+
+# Run tests with coverage
+pytest --cov=server --cov-report=term
+
+# Lint and format
+ruff check server/ tests/
+ruff format server/ tests/
 ```
 
 ### JavaScript (Frontend)
@@ -143,7 +142,7 @@ CatanPro/
 │   ├── templates/          # HTML templates
 │   ├── data/               # Game data (JSON)
 │   ├── game/               # Game logic modules
-│   └── tests/              # Python tests (pytest)
+├── tests/                  # Python tests (pytest), mirrors server/
 ├── build.md                # Project specification
 └── AGENTS.md               # This file
 ```
@@ -152,11 +151,11 @@ CatanPro/
 
 ## Testing Guidelines
 - Use `pytest` as test framework
-- Place tests in `server/tests/` directory
+- Place tests in the top-level `tests/` directory, mirroring `server/`
 - Follow naming: `test_<module>_<function>.py`
 - Use fixtures for common test setup
 - Mock external dependencies
-- Run tests with coverage: `pytest server/tests/ --cov=server --cov-report=term`
+- Run tests with coverage: `pytest --cov=server --cov-report=term`
 
 ---
 
@@ -187,4 +186,20 @@ Document custom events when implementing:
 - Ensure all tests pass before submitting PRs
 - Frontend: vanilla JS in `server/static/js/`
 - Backend: Flask + SocketIO in `server/`
-- Use `eventlet` for production deployment
+- Run production under gunicorn with `async_mode="threading"`; eventlet is deprecated and no longer used
+
+---
+
+## Reference documents
+- `coding-rules.md` — architecture, security, and protocol rules. Read the
+  relevant Part before changing that layer.
+- `audit-report.md` — the compliance audit these rules produced, with current status.
+- `expansions.md` — pick-and-choose catalogue of official expansion rules.
+- `board-zoom-plan.md` — researched plan for board zoom/pan (not yet implemented).
+
+## Adding an optional rule
+`server/game/rules.py` is the single registry. Add an entry there (with an accurate
+`source` citing the rulebook) and it appears in the lobby automatically — the picker
+renders from the server's catalogue, so no front-end change is needed. Then read
+`game.rules['your_id']` wherever it applies, and add a test in
+`tests/game/test_rules_options.py`.
