@@ -1,12 +1,15 @@
-version: '3.8'
-
 services:
   catanpro:
     build: .
     ports:
       - "5000:5000"
     volumes:
+      # Runtime state lives outside the image so a rebuild does not reset it.
       - ./server/data:/app/data
     environment:
-      - FLASK_ENV=production
-      - FLASK_DEBUG=0
+      - CATAN_CONFIG=production
+      # Required. Generate with:
+      #   python -c 'import secrets; print(secrets.token_hex())'
+      # The server refuses to start in production without it.
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env or the environment}
+      - CATAN_DATA_DIR=/app/data

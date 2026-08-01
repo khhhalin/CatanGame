@@ -3,23 +3,22 @@
 pkgs.mkShell {
 
   packages = [
-    pkgs.python3
     (pkgs.python3.withPackages (ps: [
       ps.pip
       ps.flask
       ps.flask-socketio
+      ps.python-socketio
+      ps.simple-websocket
+      ps.gunicorn
+      # Dev tools, so `pytest` and `ruff` work in the shell without a venv.
+      ps.pytest
+      ps.ruff
     ]))
-    pkgs.stdenv.cc.cc.lib
-    pkgs.libz
-    pkgs.libevent
-    pkgs.openssl
   ];
 
-  LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
-    pkgs.stdenv.cc.cc.lib
-    pkgs.libz
-    pkgs.libevent
-    pkgs.openssl
-  ];
+  shellHook = ''
+    export CATAN_CONFIG=''${CATAN_CONFIG:-development}
+    echo "CatanPro dev shell — run: python server/app.py"
+  '';
 
 }

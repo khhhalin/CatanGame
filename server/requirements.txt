@@ -1,4 +1,10 @@
-flask>=3.0.0
-flask-socketio>=5.3.6
-python-socketio>=5.10.0
-eventlet>=0.34.0
+# Runtime dependencies, upper-bounded so a rebuild months from now installs the
+# same major versions. pyproject.toml is the source of truth; dev tools
+# (pytest, ruff, mypy) live there under the dev dependency group.
+flask>=3.0.0,<4
+flask-socketio>=5.3.6,<6
+python-socketio>=5.10.0,<6
+# Required by async_mode="threading" for real WebSocket transport. Without it
+# the server silently falls back to HTTP long-polling.
+simple-websocket>=1.0,<2
+gunicorn>=21.2,<24
