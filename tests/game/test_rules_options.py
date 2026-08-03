@@ -3,12 +3,13 @@
 import random
 
 import pytest
+from game import board as board_module
 from game import rules as rules_module
 from game.game import Game
 
 
-def make_game(rules=None, players=('Alice', 'Bob')):
-    return Game(list(players), [], rng=random.Random(4242), rules=rules)
+def make_game(rules=None, players=('Alice', 'Bob'), rng=None):
+    return Game(list(players), [], rng=rng or random.Random(4242), rules=rules)
 
 
 class TestRegistry:
@@ -294,3 +295,254 @@ class TestCoreKnobs:
         for rule in rules_module.catalogue():
             assert rule['group'] in (rules_module.CORE, rules_module.EXPANSION,
                                      rules_module.VARIANT), rule['id']
+
+
+class TestHarbourRates:
+    """The 3:1 and 2:1 defaults are pinned in test_harbours.py against a real
+    board; these cover a table moving them."""
+
+    def _settle_on_harbour(self, game, owner, port_type):
+        """Put a settlement on one end of a harbour of this type."""
+        for edge in game.edges.values():
+            if edge.port and edge.port['type'] == port_type:
+                game.get_player(owner).settlements = [edge.neighbors['vertices'][0]]
+                return edge.port
+        pytest.fail(f"no {port_type} harbour on this board")
+
+    def test_a_table_can_take_the_advantage_out_of_harbours(self):
+        game = make_game({'generic_harbour_rate': 4})
+        self._settle_on_harbour(game, 'Alice', 'generic')
+        assert game.best_trade_rate('Alice', {'wood': 4}) == 4
+
+    def test_a_matching_harbour_rate_applies_to_its_own_resource_only(self):
+        game = make_game({'special_harbour_rate': 1})
+        port = self._settle_on_harbour(game, 'Alice', 'resource')
+        other = 'wood' if port['resource'] != 'wood' else 'ore'
+        assert game.best_trade_rate('Alice', {port['resource']: 1}) == 1
+        assert game.best_trade_rate('Alice', {other: 4}) == 4
+
+    def test_a_generous_bank_still_beats_a_harbour(self):
+        game = make_game({'bank_trade_rate': 2})
+        self._settle_on_harbour(game, 'Alice', 'generic')
+        assert game.best_trade_rate('Alice', {'wood': 2}) == 2, "a harbour never makes it worse"
+
+
+class TestCityProduction:
+    def _lone_hex_corner(self, game):
+        """An intersection touching exactly one producing hex, and that hex."""
+        for vertex_key, vertex in game.vertices.items():
+            producing = [
+                game.hexes[key] for key in vertex.neighbors['hexes']
+                if game.hexes[key].number is not None and key != game.robber_hex
+            ]
+            if len(producing) == 1:
+                return vertex_key, producing[0]
+        pytest.fail("no coastal corner touching a single producing hex")
+
+    @pytest.mark.parametrize('amount', [2, 3])
+    def test_a_city_collects_what_the_rule_says(self, amount):
+        """2 is the rulebook; anything else has to actually be paid out."""
+        game = make_game({'city_production': amount})
+        vertex_key, hex_obj = self._lone_hex_corner(game)
+        game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+        game.get_player('Alice').cities.append(vertex_key)
+
+        game.distribute_resources(hex_obj.number)
+
+        assert game.get_player('Alice').resources[hex_obj.type] == amount
+
+    def test_a_settlement_still_collects_one(self):
+        game = make_game({'city_production': 4})
+        vertex_key, hex_obj = self._lone_hex_corner(game)
+        game.vertices[vertex_key].building = {'type': 'settlement', 'player': 'Alice'}
+        game.get_player('Alice').settlements.append(vertex_key)
+
+        game.distribute_resources(hex_obj.number)
+
+        assert game.get_player('Alice').resources[hex_obj.type] == 1
+
+
+class TestRobberFreeOpening:
+    """A 7 in the first rounds leaves the robber where it is; the discard does
+    not care."""
+
+    def _rolls_a_seven(self, rules):
+        from tests.conftest import ScriptedRandom
+
+        game = make_game(rules, rng=ScriptedRandom([3, 4]))
+        game.game_phase = "playing"
+        game.start_turn()
+        game.get_player('Alice').resources = {'wood': 9}
+        return game, game.roll_dice('Alice')
+
+    def test_off_by_default_the_robber_moves_at_once(self):
+        game, result = self._rolls_a_seven(None)
+        assert result['total'] == 7
+        assert game.must_move_robber is True
+
+    def test_the_grace_keeps_the_robber_off_the_board(self):
+        game, _ = self._rolls_a_seven({'robber_free_opening_rounds': 2})
+        assert game.must_move_robber is False
+
+    def test_the_discard_still_bites(self):
+        game, _ = self._rolls_a_seven({'robber_free_opening_rounds': 2})
+        assert game.players_needing_discard['Alice'] == 4
+
+    def test_the_grace_runs_out(self):
+        """Two rounds of a two-player game is four turns."""
+        game = make_game({'robber_free_opening_rounds': 2})
+        game.turn_count = 3
+        assert game.in_robber_free_opening()
+        game.turn_count = 4
+        assert not game.in_robber_free_opening()
+
+
+class TestVictoryPointCardsInHand:
+    def _one_card_short(self, game):
+        """Settlements worth one point less than the game needs."""
+        player = game.get_player('Alice')
+        player.settlements = [f"v{i}" for i in range(game.victory_points_to_win - 1)]
+        player.dev_cards['victory_point']['count'] = 1
+
+    def test_a_held_card_does_nothing_by_default(self):
+        game = make_game()
+        self._one_card_short(game)
+        assert game.claim_victory('Alice') is None
+
+    def test_a_held_card_wins_the_game_when_the_rule_is_on(self):
+        game = make_game({'victory_point_cards_count_in_hand': True})
+        self._one_card_short(game)
+        assert game.claim_victory('Alice') == 10
+
+    def test_playing_the_card_does_not_score_it_twice(self):
+        game = make_game({'victory_point_cards_count_in_hand': True})
+        player = game.get_player('Alice')
+        player.dev_cards['victory_point']['count'] = 1
+        assert game.victory_points_for('Alice') == 1
+
+        player.dev_cards['victory_point']['count'] = 0
+        player.victory_points = 1
+        assert game.victory_points_for('Alice') == 1
+
+
+class TestRedNumberSeparation:
+    def _adjacent_red_pairs(self, game):
+        return [
+            (key, neighbour)
+            for key, hex_obj in game.hexes.items()
+            if hex_obj.number in board_module.RED_NUMBERS
+            for neighbour in hex_obj.neighbors
+            if game.hexes[neighbour].number in board_module.RED_NUMBERS
+        ]
+
+    @pytest.mark.parametrize('seed', [1, 2, 3, 7, 4242])
+    def test_no_two_red_numbers_touch(self, seed):
+        game = make_game({'no_adjacent_red_numbers': True}, rng=random.Random(seed))
+        assert self._adjacent_red_pairs(game) == []
+
+    def test_the_box_still_holds_the_same_tokens(self):
+        """Separation swaps tokens between hexes; it must not invent any."""
+        game = make_game({'no_adjacent_red_numbers': True}, rng=random.Random(9))
+        numbers = sorted(
+            h.number for h in game.hexes.values()
+            if h.number is not None
+        )
+        assert numbers == list(board_module.NUMBER_TOKENS)
+
+    def test_the_desert_keeps_its_empty_face(self):
+        game = make_game({'no_adjacent_red_numbers': True}, rng=random.Random(9))
+        deserts = [h for h in game.hexes.values() if h.type == 'desert']
+        assert deserts and all(h.number is None for h in deserts)
+
+    def test_a_random_board_is_left_alone_unless_asked(self):
+        """The rule is off by default, and the boards that were legal before
+        must be identical."""
+        loose = make_game(rng=random.Random(1))
+        assert self._adjacent_red_pairs(loose), \
+            "seed 1 deals adjacent red numbers, which is what the rule fixes"
+
+
+class TestDependencies:
+    """A rule that cannot act on its own is refused, never quietly propped up."""
+
+    def test_a_coherent_set_has_no_problems(self):
+        assert rules_module.dependency_problems(
+            rules_module.preset_rules('cities_and_knights')
+        ) == []
+
+    def test_a_metropolis_needs_the_tracks_that_award_one(self):
+        problems = rules_module.dependency_problems(
+            rules_module.coerce({'metropolis': True})
+        )
+        assert problems == ['Metropolis needs City improvements']
+
+    def test_progress_cards_name_both_halves_they_need(self):
+        problems = rules_module.dependency_problems(
+            rules_module.coerce({'progress_cards': True})
+        )
+        assert problems == ['Progress cards needs Barbarian attacks and City improvements']
+
+    def test_nothing_is_switched_on_for_you(self):
+        chosen = rules_module.coerce({'metropolis': True})
+        assert chosen['city_improvements'] is False
+        assert chosen['commodities'] is False
+
+    def test_every_dependency_names_a_real_rule(self):
+        for rule_id, required in rules_module.DEPENDENCIES.items():
+            assert rule_id in rules_module.RULES_BY_ID
+            for other in required:
+                assert other in rules_module.RULES_BY_ID
+
+
+class TestPresets:
+    def test_a_preset_is_only_ever_individual_rules(self):
+        for preset in rules_module.presets():
+            for rule_id in preset['rules']:
+                assert rule_id in rules_module.RULES_BY_ID, \
+                    f"{preset['id']} sets {rule_id}, which is not a rule"
+
+    def test_every_preset_is_a_set_a_table_could_actually_start(self):
+        for preset in rules_module.presets():
+            chosen = rules_module.preset_rules(preset['id'])
+            assert rules_module.dependency_problems(chosen) == [], preset['id']
+
+    def test_the_cities_and_knights_preset_ticks_the_expansion(self):
+        chosen = rules_module.preset_rules('cities_and_knights')
+        on = {rule_id for rule_id, value in chosen.items()
+              if value is True and rules_module.RULES_BY_ID[rule_id]['group']
+              == rules_module.EXPANSION}
+        assert on == {'commodities', 'city_improvements', 'metropolis', 'knights',
+                      'barbarians', 'city_walls', 'progress_cards', 'setup_second_city'}
+
+    def test_the_military_preset_leaves_the_commodities_behind(self):
+        chosen = rules_module.preset_rules('knights_only')
+        assert chosen['knights'] is True
+        assert chosen['barbarians'] is True
+        assert chosen['commodities'] is False
+        assert chosen['city_improvements'] is False
+
+    def test_an_unknown_preset_is_none(self):
+        assert rules_module.preset_rules('seafarers') is None
+
+
+class TestLegacyModeFlag:
+    """Saves and clients written before the expansion was decomposed."""
+
+    def test_the_old_flag_becomes_the_rules_it_stood_for(self):
+        chosen = rules_module.coerce({'cities_and_knights': True})
+        assert chosen == rules_module.preset_rules('cities_and_knights')
+
+    def test_a_game_in_progress_keeps_the_thirteen_it_was_being_played_to(self):
+        assert make_game({'cities_and_knights': True}).victory_points_to_win == 13
+
+    def test_the_flag_itself_is_not_kept(self):
+        assert 'cities_and_knights' not in rules_module.coerce({'cities_and_knights': True})
+
+    def test_the_flag_switched_off_leaves_a_base_game(self):
+        chosen = rules_module.coerce({'cities_and_knights': False})
+        assert chosen == rules_module.defaults()
+
+    def test_an_old_game_still_has_its_knights(self):
+        game = make_game({'cities_and_knights': True})
+        assert game.ck is not None
+        assert game.rules['knights'] is True

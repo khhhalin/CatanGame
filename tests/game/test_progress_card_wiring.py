@@ -14,12 +14,13 @@ import pytest
 import state
 from extensions import socketio
 from game import cities_knights as ck_module
+from game import rules as rules_module
 from game.game import Game
 
 
 def ck_game(players=('Alice', 'Bob')):
     game = Game(list(players), [], rng=random.Random(7),
-                rules={'cities_and_knights': True})
+                rules=rules_module.preset_rules('cities_and_knights'))
     game.game_phase = 'playing'
     game.start_turn()
     return game
@@ -238,7 +239,7 @@ class TestOverTheWire:
         bob = socketio.test_client(socket_app)
         alice.emit('join', {'name': 'Alice', 'role': 'player'})
         bob.emit('join', {'name': 'Bob', 'role': 'player'})
-        alice.emit('set_rules', {'rules': {'cities_and_knights': True}})
+        alice.emit('set_rules', {'preset': 'cities_and_knights'})
         alice.emit('start_game')
 
         game = state.session().game

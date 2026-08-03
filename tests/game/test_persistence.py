@@ -9,6 +9,7 @@ import random
 import pytest
 from game import cities_knights as ck
 from game import persistence
+from game import rules as rules_module
 from game.game import Game
 
 
@@ -163,13 +164,13 @@ class TestRulesSurvive:
 
 class TestCitiesKnightsSurvives:
     def test_improvements_come_back(self, tmp_path):
-        game = a_game({'cities_and_knights': True})
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
         game.ck.improvements['Alice'][ck.TRADE] = 3
         after = round_trip(game, tmp_path)
         assert after.ck.level('Alice', ck.TRADE) == 3
 
     def test_knights_come_back_with_their_state(self, tmp_path):
-        game = a_game({'cities_and_knights': True})
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
         knight = ck.Knight('v1', ck.STRONG)
         knight.active = True
         knight.acted_this_turn = True
@@ -184,7 +185,7 @@ class TestCitiesKnightsSurvives:
         assert restored.acted_this_turn is True
 
     def test_the_barbarian_track_comes_back(self, tmp_path):
-        game = a_game({'cities_and_knights': True})
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
         game.ck.barbarian_position = 5
         game.ck.barbarians_have_attacked = True
         after = round_trip(game, tmp_path)
@@ -192,7 +193,7 @@ class TestCitiesKnightsSurvives:
         assert after.ck.barbarians_have_attacked is True
 
     def test_a_metropolis_comes_back(self, tmp_path):
-        game = a_game({'cities_and_knights': True})
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
         game.ck.metropolis[ck.TRADE] = 'Alice'
         game.ck.metropolis_vertex[ck.TRADE] = 'v9'
         after = round_trip(game, tmp_path)
@@ -200,7 +201,7 @@ class TestCitiesKnightsSurvives:
         assert after.victory_points_for('Alice') >= 2
 
     def test_commodities_come_back(self, tmp_path):
-        game = a_game({'cities_and_knights': True})
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
         game.get_player('Alice').commodities = {'cloth': 2, 'coin': 1}
         after = round_trip(game, tmp_path)
         assert after.get_player('Alice').commodities == {'cloth': 2, 'coin': 1}
@@ -210,6 +211,47 @@ class TestCitiesKnightsSurvives:
         path = str(tmp_path / "game.json")
         persistence.save(game, path)
         assert json.loads(open(path).read())['cities_knights'] is None
+
+
+class TestASaveFromBeforeTheDecomposition:
+    """A game saved while Cities & Knights was one boolean.
+
+    Dropping the unknown key would have taken the commodities, knights and
+    barbarians off a table part-way through a match, so the flag is translated
+    into the rules it stood for — including the 13-point target the old engine
+    forced on them, because that is the game they are playing.
+    """
+
+    def _legacy_save(self, tmp_path):
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
+        game.ck.barbarian_position = 4
+        game.get_player('Alice').commodities = {'cloth': 3}
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+
+        data = json.loads(open(path).read())
+        data['rules'] = {'cities_and_knights': True, 'victory_target': 13}
+        open(path, 'w').write(json.dumps(data))
+        return path
+
+    def test_the_expansion_is_still_being_played(self, tmp_path):
+        after = persistence.load(self._legacy_save(tmp_path))
+        assert after.rules['knights'] is True
+        assert after.rules['commodities'] is True
+        assert after.rules['city_improvements'] is True
+
+    def test_the_barbarians_are_still_where_they_were(self, tmp_path):
+        after = persistence.load(self._legacy_save(tmp_path))
+        assert after.ck is not None
+        assert after.ck.barbarian_position == 4
+
+    def test_the_game_is_still_played_to_thirteen(self, tmp_path):
+        after = persistence.load(self._legacy_save(tmp_path))
+        assert after.victory_points_to_win == 13
+
+    def test_the_dead_flag_is_not_carried_forward(self, tmp_path):
+        after = persistence.load(self._legacy_save(tmp_path))
+        assert 'cities_and_knights' not in after.rules
 
 
 class TestFileHandling:

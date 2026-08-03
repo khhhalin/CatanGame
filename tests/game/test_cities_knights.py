@@ -4,11 +4,12 @@ import random
 
 import pytest
 from game import cities_knights as ck
+from game import rules as rules_module
 from game.game import Game
 
 
 def ck_game(extra=None, players=('Alice', 'Bob')):
-    rules = {'cities_and_knights': True}
+    rules = rules_module.preset_rules('cities_and_knights')
     rules.update(extra or {})
     return Game(list(players), [], rng=random.Random(7), rules=rules)
 
@@ -27,19 +28,31 @@ def city_on(game, player_name, terrain):
     pytest.skip(f"no numbered {terrain} hex on this board")
 
 
-class TestModeToggle:
-    def test_off_by_default(self):
+class TestTheExpansionIsJustRules:
+    def test_none_of_it_is_on_by_default(self):
         assert Game(['A', 'B'], [], rng=random.Random(1)).ck is None
 
-    def test_on_when_selected(self):
+    def test_the_preset_ticks_all_of_it(self):
         assert ck_game().ck is not None
 
-    def test_target_is_thirteen(self):
+    def test_the_preset_suggests_thirteen_points(self):
         assert ck_game().victory_points_to_win == 13
 
-    def test_ck_target_overrides_the_lobby_number(self):
-        """C&K sets its own length; a stale lobby value must not shorten it."""
-        assert ck_game({'victory_target': 10}).victory_points_to_win == 13
+    def test_the_lobby_number_wins_over_the_preset(self):
+        """Reported: "10 vp needed setting got overridden".
+
+        The expansion used to hard-assign 13 whatever the table had agreed on.
+        A preset may propose a length; only the table sets one.
+        """
+        assert ck_game({'victory_target': 10}).victory_points_to_win == 10
+
+    def test_knights_can_be_taken_without_commodities(self):
+        """The whole point of decomposing it: half the expansion is a choice."""
+        game = Game(['A', 'B'], [], rng=random.Random(1),
+                    rules={'knights': True, 'barbarians': True, 'city_walls': True})
+        assert game.ck is not None
+        assert game.rules['commodities'] is False
+        assert game.rules['city_improvements'] is False
 
 
 class TestCommodities:

@@ -9,13 +9,14 @@ permanently unable to comply.
 import random
 
 import pytest
+from game import rules as rules_module
 from game.game import Game
 from game.validation import InvalidPayload, clean_card_counts
 
 
 def ck_game(players=('Alice', 'Bob')):
     return Game(list(players), [], rng=random.Random(7),
-                rules={'cities_and_knights': True})
+                rules=rules_module.preset_rules('cities_and_knights'))
 
 
 @pytest.fixture

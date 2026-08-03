@@ -17,7 +17,7 @@ def ck_clients(socket_app):
     bob = socketio.test_client(socket_app)
     alice.emit('join', {'name': 'Alice', 'role': 'player'})
     bob.emit('join', {'name': 'Bob', 'role': 'player'})
-    alice.emit('set_rules', {'rules': {'cities_and_knights': True}})
+    alice.emit('set_rules', {'preset': 'cities_and_knights'})
     alice.emit('start_game')
 
     game = state.session().game

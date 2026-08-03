@@ -3,11 +3,12 @@
 import random
 
 from game import persistence
+from game import rules as rules_module
 from game.game import Game
 
 
 def _ck_game():
-    game = Game(['Alice', 'Bob'], [], {}, rules={'cities_and_knights': True},
+    game = Game(['Alice', 'Bob'], [], {}, rules=rules_module.preset_rules('cities_and_knights'),
                 rng=random.Random(11))
     game.start()
     return game
