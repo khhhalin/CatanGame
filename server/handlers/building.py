@@ -87,6 +87,9 @@ def handle_place_road(data):
     log_event('build', f"{name} built a road", player=name)
 
     bump_and_broadcast()
+    # A road wins through Longest Road, which is worth 2 points. Every other
+    # placement announced its win; this one left the table to notice.
+    announce_victory(name)
 
 @socketio.on('upgrade_city')
 def handle_upgrade_city(data):
