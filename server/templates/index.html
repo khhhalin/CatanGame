@@ -341,6 +341,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"
             onerror="document.getElementById('cdn-error').classList.remove('hidden')"></script>
     <script src="{{ url_for('static', filename='js/board-renderer.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/client.js') }}"></script>
+    <!-- The client is ES modules with main.js as the only entry point. Module
+         scripts are deferred, so the two classic scripts above have already run
+         and both `io` and `window.BoardRenderer` exist by the time it starts. -->
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
