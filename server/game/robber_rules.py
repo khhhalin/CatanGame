@@ -93,6 +93,83 @@ class RobberRules:
 
         return {'success': True, 'error': ''}
 
+    def auto_resolve_robber(self, player_name: str = None) -> dict:
+        """Finish an abandoned robber move on the current player's behalf.
+
+        The turn watchdog calls this when the round timer expires with the
+        robber still pending. Resolving beats skipping: every build, trade and
+        turn advance is gated on `must_move_robber`, so an unmoved robber does
+        not merely delay the table, it freezes it — and leaving the flag set
+        means the absent player's next click moves the robber during someone
+        else's turn and ends *that* turn instead.
+
+        Returns {'player', 'hex', 'victim', 'stolen'} describing what was done.
+        """
+        acting = player_name or self.players[self.current_player_index].name
+        outcome = {'player': acting, 'hex': None, 'victim': None, 'stolen': None}
+
+        if self.must_move_robber:
+            target = self._auto_robber_hex()
+            if target is None:
+                # No land hex is legal (Friendly Robber with no desert). Nothing
+                # can be resolved, so release the block rather than stall.
+                self.must_move_robber = False
+            elif self.move_robber(acting, target)['success']:
+                outcome['hex'] = target
+
+        if self.must_choose_victim:
+            if self.robber_victims:
+                victim = self.rng.choice(self.robber_victims)
+                result = self.steal_from_victim(acting, victim)
+                if result['success']:
+                    outcome['victim'] = victim
+                    outcome['stolen'] = result['stolen']
+            else:
+                self.must_choose_victim = False
+
+        return outcome
+
+    def auto_discard(self, player_name: str) -> dict:
+        """Discard at random for a player who let their timer run out.
+
+        Which cards go is chosen by the server, not the player: the alternative
+        is a table that waits forever on someone who has closed their laptop.
+        """
+        if player_name not in self.players_needing_discard:
+            return {}
+
+        player = self.get_player(player_name)
+        if player is None:
+            return {}
+
+        hand = []
+        for card_type, count in list(player.resources.items()) + list(player.commodities.items()):
+            hand.extend([card_type] * count)
+
+        required = min(self.players_needing_discard[player_name], len(hand))
+        chosen = {}
+        for card_type in self.rng.sample(hand, required):
+            chosen[card_type] = chosen.get(card_type, 0) + 1
+
+        # The required amount is derived from the hand size, so it can only fall
+        # short if the hand shrank underneath us; take what is there and clear
+        # the obligation either way.
+        if not self.discard_resources(player_name, chosen):
+            self.players_needing_discard.pop(player_name, None)
+            return {}
+        return chosen
+
+    def _auto_robber_hex(self) -> str | None:
+        """Where the robber goes when nobody picked. Never back where it sits."""
+        candidates = [
+            key
+            for key, hex_obj in self.hexes.items()
+            if hex_obj.type != 'ocean' and key != self.robber_hex and self.robber_is_allowed(key)
+        ]
+        if candidates:
+            return self.rng.choice(candidates)
+        return self.friendly_robber_fallback()
+
     def robber_is_allowed(self, hex_key: str) -> bool:
         """Whether the robber may be moved onto this hex.
 

@@ -191,6 +191,45 @@ def handle_refresh_board(data=None):
     emit('board_updated', {'board': session.game.get_board_data(viewer=viewer_for())})
 
 
+def _resolve_on_timeout():
+    """Settle the discards and the robber the round timer left hanging.
+
+    Caller holds session.lock. Afterwards nothing is pending, so the turn ends
+    through the ordinary path and a late `move_robber` is refused rather than
+    landing on the next player's turn.
+    """
+    game = state.session().game
+
+    for player_name in list(game.players_needing_discard):
+        discarded = game.auto_discard(player_name)
+        logger.info("discard timer expired, discarding %s for %s", discarded, player_name)
+        log_event(
+            'trade',
+            f"{player_name} ran out of time and discarded {sum(discarded.values())} cards",
+            player=player_name,
+        )
+        socketio.emit('discard_completed', {'player': player_name})
+
+    if not (game.must_move_robber or game.must_choose_victim):
+        return
+
+    outcome = game.auto_resolve_robber()
+    logger.info("robber timer expired, resolved automatically: %s", outcome)
+    if outcome['hex']:
+        log_event(
+            'robber',
+            f"{outcome['player']} ran out of time, so the robber was moved for them",
+            player=outcome['player'],
+        )
+    if outcome['victim']:
+        # Same secrecy as a hand-picked steal: the table sees that it happened.
+        log_event(
+            'robber',
+            f"{outcome['player']} stole a card from {outcome['victim']}",
+            player=outcome['player'],
+        )
+
+
 def _turn_watchdog():
     """Expire turns server-side.
 
@@ -209,10 +248,18 @@ def _turn_watchdog():
                     continue
                 if session.game.game_phase == "setup":
                     continue
-                if session.game.must_move_robber or session.game.must_choose_victim:
-                    continue
-                if session.game.players_needing_discard:
-                    continue
+                # An unfinished robber or discard used to park the watchdog
+                # here for good: those flags block every other action, so the
+                # turn could never end and the table stopped. Give the player
+                # the rest of their round, then settle it for them.
+                if (
+                    session.game.must_move_robber
+                    or session.game.must_choose_victim
+                    or session.game.players_needing_discard
+                ):
+                    if not session.game.is_round_expired():
+                        continue
+                    _resolve_on_timeout()
 
                 current_player = session.game.players[session.game.current_player_index]
 
