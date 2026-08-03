@@ -397,6 +397,43 @@ class TestRobberFreeOpening:
         assert not game.in_robber_free_opening()
 
 
+class TestDiceDeck:
+    """Production numbers dealt from a deck of all 36 dice combinations."""
+
+    def _roll_many(self, game, times):
+        totals = []
+        for _ in range(times):
+            game.has_rolled_dice = False
+            game.must_move_robber = False
+            totals.append(game.roll_dice('Alice')['total'])
+        return totals
+
+    def _playing(self, rules):
+        game = make_game(rules, players=('Alice', 'Bob'))
+        game.game_phase = "playing"
+        game.start_turn()
+        return game
+
+    def test_a_full_deck_is_the_exact_dice_distribution(self):
+        game = self._playing({'dice_deck': True})
+        totals = self._roll_many(game, 36)
+        assert sorted(totals) == sorted(
+            first + second for first in range(1, 7) for second in range(1, 7)
+        )
+
+    def test_the_deck_is_reshuffled_rather_than_exhausted(self):
+        game = self._playing({'dice_deck': True})
+        totals = self._roll_many(game, 72)
+        assert len(totals) == 72
+        assert totals.count(7) == 12, "two passes, six sevens each"
+
+    def test_two_dice_are_not_a_deck(self):
+        """Off, 36 rolls are chance and the deck stays empty."""
+        game = self._playing(None)
+        self._roll_many(game, 36)
+        assert game.dice_deck == []
+
+
 class TestVictoryPointCardsInHand:
     def _one_card_short(self, game):
         """Settlements worth one point less than the game needs."""

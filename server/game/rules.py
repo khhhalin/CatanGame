@@ -236,6 +236,17 @@ RULES += [
           "end the game, without being played and without being shown to "
           "anybody first. Off — how this server has always scored — a card "
           "does nothing until its owner plays it face up."),
+    _bool("dice_deck", "Even production (dice deck)", False,
+          "Traders & Barbarians, Catan Event Cards; expansions.md 767, 772 "
+          "(\"a perfect distribution of production numbers ... play through "
+          "all 36 event cards ... and simply reshuffle\")",
+          "Production numbers come off a shuffled deck of all 36 dice "
+          "combinations instead of two dice, and the deck is reshuffled once "
+          "it runs out. Over a full deck every number comes up exactly as "
+          "often as the odds say. This is the production half of the Event "
+          "Cards variant only — the events printed on the cards are not part "
+          "of it.",
+          group=VARIANT),
     _bool("no_adjacent_red_numbers", "Keep 6s and 8s apart", False,
           "Base game rulebook, variable setup; expansions.md 1509–1510",
           "The rulebook's fix-up for a randomly dealt board: no two red "

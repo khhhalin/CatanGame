@@ -130,6 +130,9 @@ def serialize(game: Game) -> dict:
         'longest_road_length': game.longest_road_length,
         'harbormaster_holder': game.harbormaster_holder,
         'harbor_points': game.harbor_points,
+        # What is left of the dice deck: reshuffling it on every restart would
+        # hand the table a fresh 36 and undo the evening-out they chose.
+        'dice_deck': [list(pair) for pair in game.dice_deck],
         'bank': game.bank.resources,
         'dev_cards_deck': game.bank.dev_cards_deck,
         # Board: only what was decided, not the derived graph.
@@ -248,6 +251,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'player_settlements'):
         if field in data:
             setattr(game, field, data[field])
+
+    game.dice_deck = [tuple(pair) for pair in data.get('dice_deck', [])]
 
     game.bank.resources = dict(data.get('bank', game.bank.resources))
     game.bank.dev_cards_deck = dict(data.get('dev_cards_deck', game.bank.dev_cards_deck))

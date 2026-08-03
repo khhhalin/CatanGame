@@ -161,6 +161,16 @@ class TestRulesSurvive:
         game = a_game({'max_settlements': 8})
         assert round_trip(game, tmp_path).MAX_SETTLEMENTS == 8
 
+    def test_the_dice_deck_is_not_reshuffled_by_a_restart(self, tmp_path):
+        """A restart that dealt a fresh 36 would undo the evening-out."""
+        game = a_game({'dice_deck': True})
+        game.game_phase = "playing"
+        game.start_turn()
+        game.roll_dice(game.players[game.current_player_index].name)
+        assert len(game.dice_deck) == 35
+
+        assert round_trip(game, tmp_path).dice_deck == game.dice_deck
+
 
 class TestCitiesKnightsSurvives:
     def test_improvements_come_back(self, tmp_path):

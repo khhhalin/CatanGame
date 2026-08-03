@@ -150,6 +150,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             )
             for player in self.players:
                 self.ck.register(player.name)
+        # What is left of the shuffled dice deck, when the table plays with
+        # one. Empty means the next roll deals a fresh 36.
+        self.dice_deck = []
+
         self.turn_start_time = None  # timestamp when turn started
         self.dice_rolled_time = None  # timestamp when dice was rolled
         self.has_rolled_dice = False  # whether player has rolled in current turn
@@ -853,11 +857,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         if self.has_rolled_dice:
             return refused('ALREADY_ROLLED', 'You have already rolled this turn')
 
-        # Rolled through the game's own generator so a test can script the
-        # sequence and so production uses a source that cannot be reconstructed
-        # from observed outcomes.
-        dice1 = self.rng.randint(1, 6)
-        dice2 = self.rng.randint(1, 6)
+        dice1, dice2 = self.next_dice()
         total = dice1 + dice2
 
         self.set_dice_rolled()
@@ -891,6 +891,24 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             'event': event,
             'discards': dict(self.players_needing_discard),
         }
+
+    def next_dice(self) -> tuple:
+        """The two faces this roll produces.
+
+        Rolled through the game's own generator so a test can script the
+        sequence and so production uses a source that cannot be reconstructed
+        from observed outcomes. With the dice deck in play the faces are dealt
+        instead: every one of the 36 combinations comes out once before any of
+        them comes out twice, which is what evens the production out.
+        """
+        if not self.rules['dice_deck']:
+            return self.rng.randint(1, 6), self.rng.randint(1, 6)
+
+        if not self.dice_deck:
+            self.dice_deck = [(first, second)
+                              for first in range(1, 7) for second in range(1, 7)]
+            self.rng.shuffle(self.dice_deck)
+        return tuple(self.dice_deck.pop())
 
     def in_robber_free_opening(self) -> bool:
         """Whether a 7 rolled now leaves the robber where it is.
