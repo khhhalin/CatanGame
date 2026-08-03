@@ -256,7 +256,16 @@ def deserialize(data: dict, config=None) -> Game:
         player.settlements = list(saved.get('settlements', []))
         player.cities = list(saved.get('cities', []))
         player.roads = _edges_on_board(game, saved.get('roads', []))
-        player.ships = _edges_on_board(game, saved.get('ships', []))
+        # Only the sides that actually took the ship back. A save reloaded by a
+        # table that has since turned ships off drops them from the board, and
+        # an owner still listing them would count them against the piece limit
+        # and hand the browser pieces there is nothing to draw.
+        player.ships = [
+            edge_key
+            for edge_key in _edges_on_board(game, saved.get('ships', []))
+            if game.edges[edge_key].ship
+            and game.edges[edge_key].ship.get('player') == player.name
+        ]
         player.victory_points = saved.get('victory_points', 0)
         player.knights_played = saved.get('knights_played', 0)
 

@@ -99,3 +99,6 @@ def test_a_ship_saved_onto_a_side_this_board_lacks_is_dropped(sailed_game):
 
     restored = persistence.deserialize(data)
     assert not any(edge.ship for edge in restored.edges.values())
+    # The owner's list is what the piece limit counts and what the browser is
+    # handed, so a ship dropped from the board has to be dropped from it too.
+    assert restored.get_player('Alice').ships == []
