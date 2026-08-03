@@ -234,6 +234,30 @@ class TestClickAsksRatherThanPlaces:
             ["BUTTON", "Cancel placement"],
         ], names
 
+    def test_clicking_elsewhere_moves_the_selection_rather_than_committing(self, table):
+        player = actor(table)
+        before = building_count(player)
+        first = player.page.evaluate(
+            "() => document.getElementById('placement-confirm').getBoundingClientRect().x"
+        )
+
+        other = next(
+            key for key in legal_setup_vertices(player.board())
+            if key != chosen["vertex"] and first_clickable(player, 'vertex', [key]) == key
+        )
+        click_vertex(player, other)
+        settle_frames(player)
+
+        assert building_count(player) == before, "a second click committed the first"
+        moved = player.page.evaluate(
+            "() => document.getElementById('placement-confirm').getBoundingClientRect().x"
+        )
+        assert moved != first, "the selection did not follow the second click"
+
+        # Put the question back on the target the rest of these tests use
+        click_vertex(player, chosen["vertex"])
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=3000)
+
     def test_the_confirmation_moves_neither_the_canvas_nor_the_camera(self, table):
         """The bug this guards: an in-flow control resizes the board, the camera
         re-fits, and the click that raised it now points somewhere else."""
