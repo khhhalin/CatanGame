@@ -186,3 +186,20 @@ class TestBlocking:
         assert sea_game.get_player('Alice').resources.get(
             sea_game.hexes[producing].type
         ) == 1
+
+
+class TestTheKnightCard:
+    def test_a_knight_may_send_the_pirate_instead_of_the_robber(self):
+        """expansions.md 90: the choice a knight card offers is either piece."""
+        game = seafarers_game()
+        alice = game.get_player('Alice')
+        alice.dev_cards['knight'] = {'count': 1, 'purchase_turn': -1}
+        robber_was = game.robber_hex
+
+        assert game.play_dev_card('Alice', 'knight')['must_move_robber'] is True
+        sea_hex = next(
+            key for key, hex_obj in sorted(game.hexes.items()) if hex_obj.type == 'ocean'
+        )
+        assert game.move_pirate('Alice', sea_hex)['success']
+        assert game.pirate_hex == sea_hex
+        assert game.robber_hex == robber_was
