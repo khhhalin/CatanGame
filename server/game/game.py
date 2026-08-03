@@ -1171,16 +1171,23 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if not self.rules['longest_road_card'] and not self.rules['longest_trade_route']:
             return
 
-        max_length = 0
-        longest_holder = None
-
         for player in self.players:
-            length = self.calculate_longest_road(player.name)
-            self.longest_road_length[player.name] = length
+            self.longest_road_length[player.name] = self.calculate_longest_road(player.name)
 
-            if length > max_length:
-                max_length = length
-                longest_holder = player.name
+        max_length = max(
+            (self.longest_road_length[player.name] for player in self.players), default=0
+        )
+        # A tie leaves the card where it is: only a route strictly longer than
+        # the holder's takes it off them. Seating order decided it before, so
+        # the player earlier in the turn order took the two points off the
+        # player who had earned them.
+        if self.longest_road_length.get(self.longest_road_holder, 0) == max_length:
+            longest_holder = self.longest_road_holder
+        else:
+            longest_holder = next(
+                player.name for player in self.players
+                if self.longest_road_length[player.name] == max_length
+            )
 
         # Nobody holds the card below the minimum (5 in the base game). That
         # includes the current holder: an opponent's settlement can break their

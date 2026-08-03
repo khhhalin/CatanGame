@@ -135,6 +135,27 @@ class TestTheCardItself:
 
         assert game.longest_road_holder == 'Alice'
 
+    def test_drawing_level_does_not_take_the_card_off_its_holder(self, sea_game):
+        """expansions.md 84: "all other Longest Road rules from basic Catan
+        apply", and those leave the card with whoever holds it when an opponent
+        only matches them.
+
+        Bob earns it at sea; Alice then matches him by land. She sits ahead of
+        him in the turn order, which is what used to hand her the two points.
+        """
+        junction = coastal_vertex(sea_game, with_inland_edge=True)
+        ship_edges, _ship_vertices = ship_path(sea_game, junction, 5)
+        build_ships_along(sea_game, 'Bob', ship_edges)
+        sea_game.update_longest_road()
+        assert sea_game.longest_road_holder == 'Bob'
+
+        road_edges, _road_vertices = road_path(sea_game, junction, 5)
+        build_roads_along(sea_game, 'Alice', road_edges)
+        sea_game.update_longest_road()
+
+        assert sea_game.longest_road_length == {'Alice': 5, 'Bob': 5}
+        assert sea_game.longest_road_holder == 'Bob'
+
     def test_moving_a_ship_keeps_a_route_that_is_still_as_long(self, sea_game):
         """expansions.md 83. The move here swaps the last ship for another side
         leaving the same intersection, so the route never shortens."""
