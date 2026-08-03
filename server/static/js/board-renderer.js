@@ -968,17 +968,6 @@ function sizeCanvas(canvas, ctx, cssWidth, cssHeight) {
  */
 const camera = { scale: 1, x: 0, y: 0 };
 
-// Two board keys can describe the same physical target - an edge is named
-// from either of the hexes it separates - so the same click is at distance
-// zero from both, and which one wins is decided by the last bit of the
-// floating-point round trip through client coordinates. That makes the choice
-// re-roll whenever the camera scale changes, which is every time the board box
-// changes size. Requiring a later candidate to be *meaningfully* closer pins
-// the winner to the first key in layout order, which is the order the server
-// sent. Genuinely distinct targets are half a hex apart, so nothing else here
-// can notice this number.
-const TIE_EPSILON = 1e-6;
-
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
 const EDGE_MARGIN = 80;      // how far the board may be pushed off-screen
@@ -1520,7 +1509,7 @@ function findNearestVertex(boardData, clickX, clickY) {
         
         const dist = Math.sqrt(Math.pow(clickX - adjX, 2) + Math.pow(clickY - adjY, 2));
 
-        if (dist < radius && dist < nearestDist - TIE_EPSILON) {
+        if (dist < radius && dist < nearestDist) {
             nearestDist = dist;
             nearestKey = key;
         }
@@ -1558,7 +1547,7 @@ function findNearestHex(boardData, clickX, clickY) {
         
         const dist = Math.sqrt(Math.pow(clickX - adjX, 2) + Math.pow(clickY - adjY, 2));
 
-        if (dist < radius && dist < nearestDist - TIE_EPSILON) {
+        if (dist < radius && dist < nearestDist) {
             nearestDist = dist;
             nearestKey = key;
         }
@@ -1602,7 +1591,7 @@ function findNearestEdge(boardData, clickX, clickY) {
             edge.x2, edge.y2
         );
         
-        if (dist < radius && dist < nearestDist - TIE_EPSILON) {
+        if (dist < radius && dist < nearestDist) {
             nearestDist = dist;
             nearestKey = key;
         }

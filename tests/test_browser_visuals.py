@@ -119,6 +119,40 @@ PUT_BUILDING = """
 }
 """
 
+# Aim at the exact middle of every edge in turn and ask the hit-tester what it
+# hit. Round-tripped through client coordinates on purpose: that trip is where
+# the floating-point noise that used to decide a tie comes from.
+RESOLVE_EVERY_EDGE = """
+factor => {
+    const canvas = document.getElementById('board-canvas');
+    const board = window.__catanDebug.getBoard();
+    window.BoardRenderer.fitToView();
+    if (factor !== 1) {
+        window.BoardRenderer.zoomAt(factor, canvas.clientWidth / 2, canvas.clientHeight / 2);
+    }
+    window.BoardRenderer.render(board, 'board-canvas', null, null);
+
+    const layout = window.BoardRenderer.computeLayout(board);
+    const wrong = [];
+    for (const key in layout.edgePositions) {
+        const pos = layout.edgePositions[key];
+        const client = window.BoardRenderer.boardToClient(
+            canvas, pos.centerX + layout.offsetX, pos.centerY + layout.offsetY
+        );
+        const point = window.BoardRenderer.clientToBoard(canvas, client.x, client.y);
+        const hit = window.BoardRenderer.findNearestEdge(board, point.x, point.y);
+        if (hit !== key) {
+            wrong.push(`${key} resolved to ${hit}`);
+        }
+    }
+
+    // These fixtures are shared, so hand the camera back the way it was found.
+    window.BoardRenderer.fitToView();
+    window.BoardRenderer.render(board, 'board-canvas', null, null);
+    return wrong;
+}
+"""
+
 # The bounding box of everything painted, against the middle of the canvas.
 INK_BOUNDS = """
 () => {
@@ -323,6 +357,30 @@ class TestTheLargeMapIsCentred:
         bounds = default_board.page.evaluate(INK_BOUNDS)
         ink_x = (bounds["minX"] + bounds["maxX"]) / 2
         assert abs(ink_x - bounds["width"] / 2) <= 6, f"off-centre horizontally: {bounds}"
+
+
+class TestEveryEdgeHitTestsToItself:
+    """Regression: a road landed on the edge next to the one that was clicked.
+
+    Two board keys used to name one physical hex side, so a click sat at
+    distance zero from both and which one won re-rolled with the camera scale.
+    The renderer papered over it with a tie-breaking epsilon in findNearest*;
+    the board now holds one Edge per side, so the epsilon is gone and this is
+    what says it may stay gone.
+    """
+
+    def _misses(self, player, factor):
+        return player.page.evaluate(RESOLVE_EVERY_EDGE, factor)
+
+    def test_at_the_fitted_scale(self, default_board):
+        assert self._misses(default_board, 1) == []
+
+    def test_and_when_zoomed_in(self, default_board):
+        """The old failure was scale-dependent, so one scale proves nothing."""
+        assert self._misses(default_board, 2.2) == []
+
+    def test_and_on_the_large_map(self, large_board):
+        assert self._misses(large_board, 1) == []
 
 
 class TestTerrainFollowsTheTheme:
