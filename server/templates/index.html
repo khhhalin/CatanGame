@@ -21,7 +21,12 @@
          it cannot participate in the board box's layout. -->
     <div id="placement-announce" class="visually-hidden" role="status" aria-live="polite"></div>
 
-    <div id="cdn-error" class="cdn-error hidden" role="alert">
+    <!-- Still live, despite the name: the vendored socket.io tag at the foot of
+         this file raises it from `onerror`, and net.js raises it again if `io`
+         is missing for any other reason. The `cdn-error` id is kept only
+         because it is the handle both of those already reach for; nothing has
+         loaded from a CDN here since the library was vendored. -->
+    <div id="cdn-error" class="script-error hidden" role="alert">
         Could not load the Socket.IO library, so the game cannot connect.
         Reload the page.
     </div>

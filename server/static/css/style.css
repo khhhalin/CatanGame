@@ -1659,7 +1659,10 @@ button:disabled {
     background-color: var(--bad);
 }
 
-.cdn-error {
+/* Socket.IO failing to load at all. Named for the failure rather than for a
+   CDN: the library is vendored into our own static tree and has not come from
+   a third party for some time. */
+.script-error {
     background-color: var(--bad-soft);
     color: var(--text);
     border-bottom: 3px solid var(--bad);
@@ -1668,7 +1671,7 @@ button:disabled {
     font-weight: bold;
 }
 
-.cdn-error.hidden {
+.script-error.hidden {
     display: none;
 }
 

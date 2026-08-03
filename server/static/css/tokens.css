@@ -110,11 +110,15 @@
     --focus: #0b57d0;
     --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus) 45%, transparent);
 
-    /* Resource identity. Used as a 4px edge or a chip fill behind
-       --on-resource, never as a text colour on the page background. */
+    /* Resource identity, used two ways and answerable to both: as text on a
+       panel surface (the resource and bank rows) and as the harbour badge fill
+       the canvas paints --on-resource onto. Every value here clears 4.5:1 on
+       --surface-2 *and* 4.5:1 against --on-resource; the two pull in opposite
+       directions, so neither may be changed without re-checking the other.
+       --res-sheep was 4.43:1 as text, a WCAG AA failure. */
     --res-wood: #2f6b3a;
     --res-brick: #a4502a;
-    --res-sheep: #5c7d26;
+    --res-sheep: #597925;
     --res-wheat: #8a6800;
     --res-ore: #4d5b6b;
     --on-resource: #ffffff;
@@ -187,8 +191,12 @@
         --focus: #ffd54a;
         --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus) 55%, transparent);
 
-        --res-wood: #4e9a5f;
-        --res-brick: #d4784a;
+        /* Both were AA failures as panel text: 3.58:1 and 3.85:1 on
+           --surface-2. Lightening also widens the gap to --on-resource, so the
+           harbour badge the canvas paints gained contrast rather than losing
+           it. See the light block for the constraint both ends must satisfy. */
+        --res-wood: #62af73;
+        --res-brick: #da8c65;
         --res-sheep: #9ec24f;
         --res-wheat: #e0b04a;
         --res-ore: #93a7bd;
@@ -249,8 +257,8 @@
     --focus: #ffd54a;
     --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus) 55%, transparent);
 
-    --res-wood: #4e9a5f;
-    --res-brick: #d4784a;
+    --res-wood: #62af73;
+    --res-brick: #da8c65;
     --res-sheep: #9ec24f;
     --res-wheat: #e0b04a;
     --res-ore: #93a7bd;

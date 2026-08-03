@@ -4,7 +4,7 @@
 
 import { ckEnabled, isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
-import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, gameTitle, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
+import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
 import { displayError } from './notices.js';
 import { repositionPopover } from './popovers.js';
 import { emitGame } from './socket.js';
@@ -366,14 +366,81 @@ export function renderTurnIndicator() {
 }
 
 /**
- * Get contrasting text color (black or white) based on background color
+ * Convert `#rrggbb` to [r, g, b], or null if it is not a hex colour.
+ *
+ * Player colours reach us from an `<input type="color">`, so they are always
+ * this form in practice - but they arrive over the wire from another client,
+ * and a caller must not have to trust that.
+ *
+ * @param {string} hexColor - A `#rrggbb` colour
+ * @returns {number[]|null} - Channels 0-255, or null
+ */
+function parseHexColor(hexColor) {
+    const match = /^#([0-9a-f]{6})$/i.exec(String(hexColor).trim());
+    if (!match) {
+        return null;
+    }
+    const value = parseInt(match[1], 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+/**
+ * WCAG relative luminance of an [r, g, b] triple.
+ *
+ * @param {number[]} rgb - Channels 0-255
+ * @returns {number} - Luminance 0-1
+ */
+function relativeLuminance(rgb) {
+    const [r, g, b] = rgb.map(channel => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * WCAG contrast ratio between two [r, g, b] triples, 1 to 21.
+ *
+ * @param {number[]} first - Channels 0-255
+ * @param {number[]} second - Channels 0-255
+ * @returns {number} - Ratio, order-independent
+ */
+function contrastRatio(first, second) {
+    const light = Math.max(relativeLuminance(first), relativeLuminance(second));
+    const dark = Math.min(relativeLuminance(first), relativeLuminance(second));
+    return (light + 0.05) / (dark + 0.05);
+}
+
+/**
+ * Black or white for text on `hexColor` - whichever a player can actually read.
+ *
+ * This used to threshold a YIQ brightness average at 0.5 and offer a navy
+ * (#2c3e50) as its dark option. Both halves were wrong. YIQ approximates
+ * perceived brightness, not WCAG contrast, so the threshold landed on the wrong
+ * side for saturated hues; and the navy throws away four points of ratio for no
+ * reason, because nothing is more readable on a light fill than black. Together
+ * they put white on #e74c3c at 3.82:1 and the navy on #3498db at 3.48:1 - two
+ * of the four shipped player colours failing AA on the scoreboard row and the
+ * build buttons.
+ *
+ * Measuring both candidates and taking the winner is exact rather than
+ * approximate, and it is the only approach that holds when the colour is
+ * arbitrary: these come from a colour picker, so no palette audit can cover
+ * them.
+ *
+ * @param {string} hexColor - Background colour, `#rrggbb`
+ * @returns {string} - `#000000` or `#ffffff`
  */
 function getContrastColor(hexColor) {
-    const r = parseInt(hexColor.slice(1, 3), 16);
-    const g = parseInt(hexColor.slice(3, 5), 16);
-    const b = parseInt(hexColor.slice(5, 7), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.5 ? '#2c3e50' : '#ffffff';
+    const rgb = parseHexColor(hexColor);
+    // White on an unreadable colour is no worse than the old behaviour, and a
+    // malformed colour must not throw inside a render pass.
+    if (!rgb) {
+        return '#ffffff';
+    }
+    const onBlack = contrastRatio(rgb, [0, 0, 0]);
+    const onWhite = contrastRatio(rgb, [255, 255, 255]);
+    return onBlack >= onWhite ? '#000000' : '#ffffff';
 }
 
 /**
@@ -619,8 +686,8 @@ function handlePlayDevCard(cardType) {
         return;
     }
 
-    // TODO: Implement card-specific logic
-    console.log('Playing development card:', cardType);
+    // No card-specific branching here by design: what a card does is the
+    // server's ruling, and the client only names which one was played.
     emitGame('play_dev_card', { name: viewState.identity.name, card_type: cardType });
 }
 
@@ -728,13 +795,15 @@ export function updateGameUI(boardData) {
         // Get current player info
         const currentPlayerName = boardData.current_player || '';
         
-        // Find player color
-        const player = boardData.players?.find(p => p.name === currentPlayerName);
-        const playerColor = player?.color || '#e74c3c';
-        
+        // The name inherits --on-status from the pill rather than wearing the
+        // player's own colour. That colour is player-picked and the pill is a
+        // saturated amber (--warn), which put the pair at 2.06:1 light and
+        // 1.65:1 dark - the worst contrast on the screen, on the one line that
+        // says whose turn it is during setup. Nothing readable can be promised
+        // when both sides are fixed and one of them is arbitrary.
         setupPlayerName.textContent = currentPlayerName;
-        setupPlayerName.style.color = playerColor;
-        
+
+
         const actionText = setupAction === 'road' ? 'placing road' : 'placing settlement';
         setupActionText.textContent = actionText;
     } else {
@@ -906,7 +975,14 @@ export function updateConsoleVisibility() {
 }
 
 /**
- * Update button colors and title based on current user
+ * Paint the available actions in the current user's colour.
+ *
+ * The colour is only ever used as a *fill*, with getContrastColor picking the
+ * ink. It used to tint the page heading as text too, which is the one thing an
+ * arbitrary player colour cannot safely do: #3498db on --bg is 2.78:1, below
+ * even the large-text threshold, and there is no ink to choose because the
+ * player's colour *is* the foreground. Identity is carried by the scoreboard
+ * row and the pieces on the board, both of which are fills.
  */
 export function updateButtonColors() {
     const buttons = [rollDiceBtn, placeSettlementBtn, placeRoadBtn, upgradeCityBtn, nextTurnBtn];
@@ -926,11 +1002,6 @@ export function updateButtonColors() {
             btn.style.color = '';
         }
     });
-
-    // Update title color
-    if (gameTitle) {
-        gameTitle.style.color = playerColor;
-    }
 }
 
 // Whether the single-candidate answer has already gone. Reset by updateGameUI

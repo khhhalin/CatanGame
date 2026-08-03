@@ -54,12 +54,20 @@ CONTRAST_EPSILON = 0.05
 
 AUDIT_CONTRAST = """
 () => {
+    // Two serialisations, not one. `color-mix()` comes back from both Chromium
+    // and Firefox as `color(srgb 1 1 1 / 0.88)` - channels 0-1, not 0-255 - and
+    // reading those as bytes turns the translucent white behind the zoom
+    // buttons into rgb(1, 1, 1), i.e. black. That reported the board controls
+    // at 1.25:1 when they are actually fine, which is the failure mode that
+    // makes an audit worth ignoring.
     const parseColor = (value) => {
-        const match = String(value).match(/[\\d.]+/g);
+        const text = String(value);
+        const match = text.match(/[\\d.]+/g);
         if (!match || match.length < 3) {
             return null;
         }
-        const [r, g, b] = match.map(Number);
+        const scale = text.startsWith('color(') ? 255 : 1;
+        const [r, g, b] = match.map(part => Number(part) * scale);
         const alpha = match.length > 3 ? Number(match[3]) : 1;
         return { r, g, b, a: alpha };
     };
