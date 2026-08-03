@@ -564,6 +564,7 @@ class TestBaseGameFits:
         assert player.page.is_visible("#log-entries"), "opening Trade hid the log"
         assert player.page.is_visible("#chat-input"), "opening Trade hid chat"
         assert player.page.is_visible("#propose-trade-btn")
+        shot(player, "base-trade-panel")
         player.page.click("#tab-log")
         player.page.wait_for_function(
             "() => document.getElementById('trade-panel').classList.contains('hidden')",
