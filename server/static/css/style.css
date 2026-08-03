@@ -1,36 +1,35 @@
 /* Catan client styles.
  *
- * Layout rules of the house:
+ * Colour, spacing, radii, type and motion all come from tokens.css. Nothing
+ * here declares a literal colour; if a shade is missing, add a semantic token
+ * to all three theme blocks in tokens.css rather than inlining it here.
+ *
+ * Layout rules of the house (ui-bank "Shell A - rail / board / aside"):
  *   - Every boxed region is a `.panel`: same background, border, padding and
  *     heading treatment. Variable-length content goes in a `.panel-body`,
  *     which scrolls inside the panel so the page never grows.
- *   - The page scrolls vertically at most, never horizontally: every flex or
- *     grid item that holds text gets `min-width: 0`.
- *   - The board is the visual focus and is the only region that takes the
- *     space left over.
+ *   - The page itself never scrolls at the game size. Every variable-length
+ *     list scrolls inside its own panel.
+ *   - The page never scrolls horizontally: every flex or grid item that holds
+ *     text gets `min-width: 0`.
+ *   - The board is the only greedy track in its column, in both axes. It is
+ *     therefore exactly as large as the space left over, and there is no band
+ *     under it that could be blank.
  */
 
 :root {
-    --page-bg: #2c3e50;
-    --surface: #34495e;
-    --panel-bg: #2c3e50;
-    --panel-border: #22313f;
-    --panel-rule: #3d566e;
-    --sunken: #1a252f;
-    --text: #ecf0f1;
-    --text-muted: #bdc3c7;
-    --text-faint: #95a5a6;
-    --accent: #e67e22;
-    --accent-dark: #d35400;
-    --info: #3498db;
-    --good: #27ae60;
-    --bad: #c0392b;
-    --focus: #f1c40f;
-    --gap: 0.75rem;
-    --radius: 6px;
-    /* One height for the whole table shell, so the lobby, the game screen and
-       the aside beside them all line up and all scroll internally. */
-    --table-height: clamp(30rem, calc(100vh - 10rem), 58rem);
+    /* Aliases onto tokens.css, so the older selectors below read the same
+       palette as anything adopted from the bank - and follow the theme. */
+    --page-bg: var(--bg);
+    --surface: var(--surface-2);
+    --panel-bg: var(--surface-1);
+    --panel-border: var(--border);
+    --panel-rule: var(--border);
+    --sunken: var(--bg-sunken);
+    --accent-dark: var(--accent-hover);
+    --gap: var(--space-3);
+    --radius: var(--radius-md);
+    --muted-fill: var(--surface-3);
 }
 
 * {
@@ -39,35 +38,38 @@
     box-sizing: border-box;
 }
 
+/* The shell is viewport-locked: `100dvh` rather than `100vh` so mobile browser
+   chrome cannot hide the console at the bottom of the board. */
 body {
-    font-family: Arial, sans-serif;
+    font-family: var(--font-ui);
+    font-size: var(--text-md);
     background-color: var(--page-bg);
     color: var(--text);
-    min-height: 100vh;
-    padding: 1rem 0.5rem;
-    display: flex;
-    justify-content: center;
-    /* margin:auto on the child rather than align-items:center - centring a
-       container taller than the viewport would put its top out of reach. */
-    align-items: flex-start;
+    height: 100dvh;
+    overflow: hidden;
+    padding: 0;
+    display: block;
 }
 
 .container {
-    margin: auto;
+    height: 100%;
     width: 100%;
-    max-width: 1400px;
     min-width: 0;
-    text-align: center;
-    background-color: var(--surface);
-    padding: clamp(0.75rem, 1.6vw, 1.75rem);
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    text-align: left;
+    background-color: var(--page-bg);
+    padding: var(--space-3);
+    gap: var(--space-2);
 }
 
 /* Before anyone has joined there is nothing to say and nothing logged, so the
-   shell collapses to the join form. */
+   shell collapses to a centred join card. */
 .container:has(#join-screen:not(.hidden)) {
-    max-width: 26rem;
+    place-content: center;
+    grid-template-rows: auto auto;
+    justify-items: center;
+    text-align: center;
 }
 
 .container:has(#join-screen:not(.hidden)) .table {
@@ -77,13 +79,16 @@ body {
 /* ------------------------------------------------------------ table shell */
 
 /* The lobby and the game screen swap inside .table-main; the aside beside
-   them - log, chat, trade - is shared, so chat works before a game starts. */
+   them - log, chat, trade - is shared, so chat works before a game starts.
+   `min-height: 0` is load-bearing on every one of these: without it the row
+   sizes to its content and the PAGE scrolls instead of the panels. */
 .table {
     display: flex;
     align-items: stretch;
     gap: var(--gap);
-    margin-top: 1rem;
     min-width: 0;
+    min-height: 0;
+    height: 100%;
 }
 
 .table-main {
@@ -96,8 +101,7 @@ body {
 
 .table-aside {
     flex: none;
-    width: 19rem;
-    height: var(--table-height);
+    width: var(--panel-aside);
     display: flex;
     flex-direction: column;
     gap: var(--gap);
@@ -110,20 +114,34 @@ body {
     display: none;
 }
 
+/* A compact bar, not a hero. Every row the header takes is a row the board
+   does not get, and the title is the least useful thing on the page. */
 .app-header {
     display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 0 var(--space-1);
+}
+
+.container:has(#join-screen:not(.hidden)) .app-header {
     flex-direction: column;
     align-items: center;
-    gap: 0.4rem;
-    margin-bottom: 1rem;
 }
 
 h1 {
     color: var(--accent);
+    font-size: var(--text-xl);
+    letter-spacing: 0.02em;
+}
+
+.container:has(#join-screen:not(.hidden)) h1 {
+    font-size: var(--text-2xl);
 }
 
 h2 {
-    font-size: 1.2rem;
+    font-size: var(--text-lg);
 }
 
 /* Keyboard users must be able to see where they are - never remove this */
@@ -143,18 +161,19 @@ h2 {
     background-color: var(--panel-bg);
     border: 1px solid var(--panel-border);
     border-radius: var(--radius);
-    padding: 0.6rem 0.7rem;
+    box-shadow: var(--shadow-1);
+    padding: var(--space-2) var(--space-3);
 }
 
 .panel-title {
     flex: none;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
-    margin-bottom: 0.45rem;
-    padding-bottom: 0.3rem;
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-1);
     border-bottom: 1px solid var(--panel-rule);
 }
 
@@ -167,7 +186,7 @@ h2 {
     overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: #7f8c8d transparent;
+    scrollbar-color: var(--border-strong) transparent;
 }
 
 .panel-body::-webkit-scrollbar {
@@ -175,29 +194,37 @@ h2 {
 }
 
 .panel-body::-webkit-scrollbar-thumb {
-    background-color: #7f8c8d;
-    border-radius: 4px;
+    background-color: var(--border-strong);
+    border-radius: var(--radius-sm);
 }
 
 /* ----------------------------------------------------------- form basics */
 
 input[type="text"] {
-    padding: 0.8rem;
-    font-size: 1rem;
-    border: none;
-    border-radius: 5px;
+    padding: var(--space-3);
+    font-size: var(--text-md);
+    font-family: inherit;
+    background-color: var(--surface-1);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     width: 100%;
 }
 
+/* Every button reserves the 2px border its armed state paints, so arming a
+   build mode changes a colour and nothing else. Growing a console button by
+   4px rewraps the console, which resizes the board box, which moves the
+   camera - under a click the player has already started. */
 button {
-    padding: 0.8rem 1.5rem;
-    font-size: 1rem;
+    padding: calc(var(--space-3) - 2px) calc(var(--space-5) - 2px);
+    font-size: var(--text-md);
+    font-family: inherit;
     background-color: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 5px;
+    color: var(--on-accent);
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: background-color 0.3s;
+    transition: background-color var(--dur-med) var(--ease);
 }
 
 button:hover {
@@ -207,7 +234,14 @@ button:hover {
 #join-screen {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-4);
+    width: 100%;
+    max-width: 26rem;
+    background-color: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    padding: var(--space-5);
 }
 
 .role-selection {
@@ -259,7 +293,8 @@ button:hover {
     display: flex;
     flex-direction: column;
     gap: var(--gap);
-    max-height: var(--table-height);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -295,7 +330,7 @@ button:hover {
 .user-list li.current-turn {
     background-color: var(--good);
     font-weight: bold;
-    border: 2px solid #2ecc71;
+    border: 2px solid var(--good);
 }
 
 .lobby-actions {
@@ -318,7 +353,7 @@ button:hover {
 .rules-locked-note {
     flex: none;
     font-size: 0.8rem;
-    color: #f39c12;
+    color: var(--warn);
     margin-bottom: 0.5rem;
 }
 
@@ -333,7 +368,7 @@ button:hover {
 .rule-group {
     border: 1px solid var(--panel-rule);
     border-radius: 5px;
-    background-color: rgba(0, 0, 0, 0.12);
+    background-color: var(--surface-2);
 }
 
 .rule-group > summary {
@@ -417,9 +452,12 @@ button:hover {
     text-align: center;
 }
 
+/* A locked rule is muted, not faded: `opacity` would take the number in the
+   stepper below AA. The lock itself is stated in #rules-locked-note. */
 .rule-toggle:disabled,
 .rule-number:disabled {
-    opacity: 0.5;
+    filter: grayscale(1);
+    color: var(--text-faint);
     cursor: not-allowed;
 }
 
@@ -447,12 +485,15 @@ button:hover {
    board grows. The aside is a sibling of this whole screen. */
 #game-screen {
     display: grid;
-    grid-template-columns: 13rem minmax(0, 1fr);
+    grid-template-columns: var(--panel-rail) minmax(0, 1fr);
     grid-template-areas: "rail main";
     gap: var(--gap);
-    /* A definite height is what lets every panel scroll internally instead of
-       stretching the page. */
-    height: var(--table-height);
+    /* Fills the shell row rather than naming a height. The old
+       `--table-height: clamp(30rem, 100vh - 10rem, 58rem)` guessed at what
+       was left over; with `min-height: 0` up the chain and `100dvh` on the
+       body, the height falls out of the layout instead. */
+    flex: 1 1 auto;
+    min-height: 0;
     text-align: left;
 }
 
@@ -465,48 +506,62 @@ button:hover {
     min-height: 0;
 }
 
-#players-panel {
-    flex: 2 1 0;
-}
-
-#dev-cards-panel {
-    flex: 3 1 0;
+/* Content-sized, never given a flex ratio. A four-player roster sitting in a
+   track sized for six leaves a hole INSIDE the panel, which reads as a
+   rendering bug; the rail is one scroll column instead, so the slack falls
+   outside the panels where it is just background. */
+#players-panel,
+#dev-cards-panel,
+#active-rules-panel {
+    flex: none;
 }
 
 #active-rules-panel {
-    flex: 0 1 auto;
     max-height: 9rem;
 }
 
+/* The stage: board over console, and the board is the ONLY greedy track. */
 .game-main {
     grid-area: main;
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(var(--shell-min-board), 1fr) auto;
     gap: var(--gap);
-    /* Without this the board region refuses to shrink below its content and a
-       narrow window overflows the container instead of squeezing. */
+    /* Without this the rows size to content and the page scrolls instead of
+       the board taking the leftover height. */
     min-width: 0;
     min-height: 0;
 }
 
-/* The camera in board-renderer.js sizes the drawing buffer from this box's
-   clientWidth/clientHeight, so the height here has to resolve to something
-   real - a zero-height track would render the board into nothing. It comes
-   from the grid track above, with min-height as the floor. */
+/* The box has a real height and it clips. The canvas below is taken out of
+   flow inside it, so nothing in here can impose a size on the layout. */
 .game-board {
     background-color: var(--sunken);
     border: 1px solid var(--panel-border);
     border-radius: var(--radius);
-    min-height: 16rem;
     position: relative;
     overflow: hidden;
+    min-height: 0;
     overscroll-behavior: contain;
 }
 
-/* No max-width/max-height: the renderer sets the box explicitly from this
-   container, and a cap here would fight it. */
+/* Out of flow. A <canvas> with no width/height attributes is 300x150 and is a
+   replaced element: left in flow it contributes that aspect to the layout,
+   gets letterboxed inside whatever box it is given, and the difference is the
+   dead band under the board. Absolutely positioned it cannot contribute
+   anything, and board-renderer.js derives the drawing buffer from the box
+   rather than the other way round.
+
+   The 100% here is only what applies before the first render;
+   board-renderer.js then pins the box to whole CSS pixels so the buffer and
+   the box cannot disagree. Both are needed - `inset: 0` alone would inherit
+   the container's fractional height. */
 #board-canvas {
     display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     /* Without this a finger drag scrolls the page instead of reaching us */
     touch-action: none;
     cursor: grab;
@@ -528,57 +583,84 @@ button:hover {
 
 .board-controls {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: var(--z-board-overlay);
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
 }
 
 .board-controls button {
     width: 2rem;
     height: 2rem;
     padding: 0;
-    font-size: 1rem;
+    font-size: var(--text-md);
     line-height: 1;
-    background-color: rgba(44, 62, 80, 0.85);
-    border: 1px solid var(--panel-rule);
+    background-color: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    border: 1px solid var(--border-strong);
     color: var(--text);
 }
 
 .board-controls button:hover {
-    background-color: var(--surface);
+    background-color: var(--surface-2);
+}
+
+/* Mid-turn indicators, overlaid rather than stacked above the board. They
+   float over the canvas so appearing and disappearing never changes the board
+   box, and `pointer-events: none` keeps taps reaching the board underneath -
+   an overlay that swallowed clicks would make the top row of hexes
+   unreachable exactly when the robber has to be moved. */
+.board-status {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    right: 3rem;
+    z-index: var(--z-board-overlay);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    pointer-events: none;
 }
 
 .game-console {
-    padding: 0.6rem;
+    padding: var(--space-2);
     background-color: var(--panel-bg);
     border: 1px solid var(--panel-border);
     border-radius: var(--radius);
+    box-shadow: var(--shadow-1);
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-wrap: wrap;
 }
 
 /* --------------------------------------------------------- console pieces */
 
+/* Groups wrap as units, so the console stays one row for as long as it can. */
+.console-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
 #setup-indicator,
 #robber-indicator,
 #free-roads-indicator {
-    color: #fff;
-    padding: 0.4rem 0.8rem;
-    border-radius: 5px;
+    color: var(--on-status);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
     font-weight: bold;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     align-items: center;
+    box-shadow: var(--shadow-2);
 }
 
 #setup-indicator {
-    background-color: #f39c12;
+    background-color: var(--warn);
 }
 
 #robber-indicator {
@@ -595,91 +677,107 @@ button:hover {
 
 .timer-container {
     display: flex;
-    gap: 0.4rem;
+    gap: var(--space-1);
     align-items: center;
     flex-wrap: wrap;
 }
 
 .timer {
     background-color: var(--good);
-    color: #fff;
-    padding: 0.3rem 0.5rem;
-    border-radius: 4px;
+    color: var(--on-status);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
     font-weight: bold;
-    font-size: 0.7rem;
+    font-size: var(--text-2xs);
+    font-variant-numeric: tabular-nums;
 }
 
 .timer.warning {
-    background-color: #f39c12;
+    background-color: var(--warn);
 }
 
 .timer.danger {
-    background-color: #e74c3c;
+    background-color: var(--bad);
 }
 
 .dice-container {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
 }
 
 .dice-display {
     display: flex;
-    gap: 0.3rem;
-    font-size: 1.5rem;
+    gap: var(--space-1);
     font-weight: bold;
     min-width: 60px;
     justify-content: center;
 }
 
 .dice-display .die {
-    background-color: white;
-    color: var(--page-bg);
+    background-color: var(--surface-1);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
     width: 30px;
     height: 30px;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 1rem;
+    font-size: var(--text-md);
+    font-variant-numeric: tabular-nums;
 }
 
 #color-picker {
     width: 40px;
-    height: 35px;
-    border: none;
-    border-radius: 5px;
+    height: 34px;
+    padding: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     cursor: pointer;
 }
 
 #place-settlement-btn,
 #place-road-btn,
 #upgrade-city-btn {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.8rem;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-sm);
 }
 
+/* Armed. Border *colour* and an outer glow only - both are free of layout.
+   panels.js paints these buttons' background inline with the player's colour,
+   so the ring is the whole signal and it must not be a width change: the 2px
+   border is reserved transparent on every button precisely so arming a mode
+   cannot rewrap the console, resize the board box and move the camera under a
+   click the player has already begun. */
 #place-settlement-btn.active,
 #place-road-btn.active,
 #upgrade-city-btn.active {
-    background-color: var(--good);
-    border: 2px solid #2ecc71;
+    border-color: var(--focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 45%, transparent);
+}
+
+#roll-dice-btn {
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-md);
 }
 
 #next-turn-btn {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
 }
 
 /* Destructive: ends the match for the whole table */
 #end-game-btn {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.8rem;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-sm);
     background-color: var(--bad);
+    color: var(--on-status);
 }
 
 #end-game-btn:hover {
-    background-color: #e74c3c;
+    background-color: color-mix(in srgb, var(--bad) 80%, var(--text));
 }
 
 /* ------------------------------------------------------- rail panel bodies */
@@ -702,50 +800,56 @@ button:hover {
 }
 
 #buy-dev-card-btn:hover {
-    background-color: #2ecc71;
+    background-color: var(--good);
 }
 
 #buy-dev-card-btn:disabled {
-    background-color: #7f8c8d;
+    background-color: var(--muted-fill);
+    color: var(--text-faint);
     cursor: not-allowed;
 }
 
 .dev-card-btn {
     display: block;
     width: 100%;
-    padding: 0.5rem;
-    margin-bottom: 0.35rem;
-    font-size: 0.8rem;
+    padding: var(--space-2);
+    margin-bottom: var(--space-1);
+    font-size: var(--text-sm);
     font-weight: bold;
-    background: #95a5a6;
-    color: white;
-    border: none;
-    border-radius: 5px;
+    /* A card that is merely dimmed produces a support question every game, so
+       "not playable" is a muted surface and a muted label - not opacity, which
+       fades the text below AA along with the box. */
+    background: var(--surface-2);
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     cursor: not-allowed;
     text-align: left;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    opacity: 0.7;
+    transition: transform var(--dur-med) var(--ease), box-shadow var(--dur-med) var(--ease);
 }
 
 .dev-card-btn.playable {
     cursor: pointer;
-    opacity: 1;
+    background: var(--surface-3);
+    color: var(--text);
+    border-color: var(--accent);
 }
 
 .dev-card-btn.playable:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-2);
 }
 
 .dev-card-btn.playable:active:not(:disabled) {
     transform: translateY(0);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-1);
 }
 
 .dev-card-btn:disabled {
-    background: #95a5a6;
+    background: var(--surface-2);
+    color: var(--text-faint);
+    border-color: var(--border);
     cursor: not-allowed;
-    opacity: 0.6;
 }
 
 .your-cards {
@@ -791,27 +895,32 @@ button:hover {
 .bank-display .bank-resource {
     display: flex;
     align-items: center;
-    gap: 0.2rem;
-    padding: 0.2rem 0.4rem;
-    background-color: var(--sunken);
-    border-radius: 3px;
-    font-size: 0.85rem;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background-color: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
 }
 
 .bank-display .bank-resource {
-    font-size: 0.7rem;
+    font-size: var(--text-2xs);
 }
 
+/* Resource identity is its own ramp (--res-*), separate from status colours:
+   these carry text on a panel surface and are darkened to hit AA, which is
+   exactly wrong for the large terrain fills the canvas paints. */
 .resource-display .res-wood,
-.bank-display .bank-wood { color: var(--good); }
+.bank-display .bank-wood { color: var(--res-wood); }
 .resource-display .res-brick,
-.bank-display .bank-brick { color: #e74c3c; }
+.bank-display .bank-brick { color: var(--res-brick); }
 .resource-display .res-sheep,
-.bank-display .bank-sheep { color: #9b59b6; }
+.bank-display .bank-sheep { color: var(--res-sheep); }
 .resource-display .res-wheat,
-.bank-display .bank-wheat { color: var(--focus); }
+.bank-display .bank-wheat { color: var(--res-wheat); }
 .resource-display .res-ore,
-.bank-display .bank-ore { color: #7f8c8d; }
+.bank-display .bank-ore { color: var(--res-ore); }
 
 /* ------------------------------------------------------- tabbed side panel */
 
@@ -846,7 +955,7 @@ button:hover {
 }
 
 .tab:hover {
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: var(--surface-3);
 }
 
 .tab[aria-selected="true"] {
@@ -886,7 +995,7 @@ button:hover {
 }
 
 #propose-trade-btn:hover {
-    background-color: #2980b9;
+    background-color: color-mix(in srgb, var(--info) 82%, var(--text));
 }
 
 .trade-scroll {
@@ -895,7 +1004,7 @@ button:hover {
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: #7f8c8d transparent;
+    scrollbar-color: var(--border-strong) transparent;
 }
 
 .trade-offers,
@@ -939,7 +1048,7 @@ button:hover {
 }
 
 .trade-offer-resources .give {
-    color: #e74c3c;
+    color: var(--bad);
 }
 
 .trade-offer-resources .want {
@@ -973,7 +1082,7 @@ button:hover {
 }
 
 .trade-offer-actions button.decline-btn {
-    background-color: #e74c3c;
+    background-color: var(--bad);
 }
 
 .accept-players-row {
@@ -987,8 +1096,8 @@ button:hover {
     border-radius: 3px;
     font-size: 0.65rem;
     cursor: pointer;
-    background-color: #7f8c8d;
-    color: white;
+    background-color: var(--muted-fill);
+    color: var(--text);
     border: none;
 }
 
@@ -999,7 +1108,7 @@ button:hover {
 }
 
 .accepted-player.selected {
-    border: 1px solid white;
+    border: 1px solid var(--text);
 }
 
 /* ------------------------------------------------------ chat and event log */
@@ -1015,22 +1124,33 @@ button:hover {
     overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: #7f8c8d transparent;
+    scrollbar-color: var(--border-strong) transparent;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    padding-right: 0.2rem;
-    font-size: 0.8rem;
-    line-height: 1.3;
+    gap: var(--space-1);
+    padding-right: var(--space-1);
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+    /* Chromium's scroll anchoring fights a manual autoscroll on a list that
+       grows at the bottom. */
+    overflow-anchor: none;
+}
+
+/* Pins a short history to the bottom of the panel instead of leaving a hole
+   under it. Deliberately not `justify-content: flex-end`, which makes the top
+   of an overflowing list unreachable in every browser. */
+.log-entries > :first-child {
+    margin-top: auto;
 }
 
 .log-entry {
     /* A long unbroken word (a pasted URL) must wrap, not widen the column */
     overflow-wrap: anywhere;
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
-    border-left: 3px solid #7f8c8d;
-    background-color: var(--surface);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--border-strong);
+    background-color: var(--surface-2);
+    flex: none;
 }
 
 .log-time {
@@ -1047,7 +1167,7 @@ button:hover {
 
 /* Chat reads as speech, system events as a muted running commentary */
 .log-chat {
-    background-color: #3d566e;
+    background-color: var(--surface-3);
     color: var(--text);
 }
 
@@ -1060,27 +1180,29 @@ button:hover {
 .log-kind-chat { border-left-color: var(--info); }
 .log-kind-dice { border-left-color: var(--focus); }
 .log-kind-build { border-left-color: var(--good); }
-.log-kind-trade { border-left-color: #9b59b6; }
+.log-kind-trade { border-left-color: var(--com-cloth); }
 .log-kind-robber { border-left-color: var(--bad); }
 .log-kind-dev_card { border-left-color: var(--accent); }
-.log-kind-turn { border-left-color: #16a085; }
+.log-kind-turn { border-left-color: var(--com-paper); }
 .log-kind-game { border-left-color: var(--text); }
-.log-kind-rules { border-left-color: #7f8c8d; }
+.log-kind-rules { border-left-color: var(--border-strong); }
 
-/* Offered instead of yanking the view down while someone reads history */
+/* Offered instead of yanking the view down while someone reads history. A
+   full-width strip above the input, not a floating pill: a pill positioned
+   inside the scroll region rides down with the content and ends up covering
+   the very message it is advertising. */
 .log-jump {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 3.4rem;
-    padding: 0.25rem 0.7rem;
-    font-size: 0.75rem;
+    flex: none;
+    width: 100%;
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-xs);
     background-color: var(--info);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    color: var(--on-accent);
+    box-shadow: var(--shadow-1);
 }
 
 .log-jump:hover {
-    background-color: #2980b9;
+    background-color: color-mix(in srgb, var(--info) 82%, var(--text));
 }
 
 .chat-form {
@@ -1099,7 +1221,8 @@ button:hover {
 }
 
 .chat-input:disabled {
-    background-color: #7f8c8d;
+    background-color: var(--muted-fill);
+    color: var(--text-faint);
 }
 
 .chat-send {
@@ -1109,11 +1232,12 @@ button:hover {
 }
 
 .chat-send:hover {
-    background-color: #2980b9;
+    background-color: color-mix(in srgb, var(--info) 82%, var(--text));
 }
 
 .chat-send:disabled {
-    background-color: #7f8c8d;
+    background-color: var(--muted-fill);
+    color: var(--text-faint);
     cursor: not-allowed;
 }
 
@@ -1134,30 +1258,36 @@ button:hover {
 
 .notice {
     padding: 0.6rem 0.9rem;
-    border-radius: 5px;
-    color: #fff;
-    font-size: 0.9rem;
-    background-color: var(--surface);
-    border-left: 4px solid #7f8c8d;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    font-size: var(--text-md);
+    background-color: var(--surface-1);
+    border-left: 4px solid var(--border-strong);
+    box-shadow: var(--shadow-2);
 }
 
 .notice-error {
-    background-color: #7b241c;
-    border-left-color: #e74c3c;
+    background-color: var(--bad-soft);
+    border-left-color: var(--bad);
 }
 
 .notice-success {
-    background-color: #145a32;
+    background-color: var(--good-soft);
     border-left-color: var(--good);
 }
 
 .connection-status {
     font-size: 0.8rem;
     padding: 0.2rem 0.6rem;
-    border-radius: 10px;
-    color: #fff;
-    background-color: #7f8c8d;
+    border-radius: var(--radius-pill);
+    color: var(--text);
+    background-color: var(--surface-3);
+}
+
+.connection-connected,
+.connection-connecting,
+.connection-offline {
+    color: var(--on-status);
 }
 
 .connection-connected {
@@ -1165,7 +1295,7 @@ button:hover {
 }
 
 .connection-connecting {
-    background-color: #f39c12;
+    background-color: var(--warn);
 }
 
 .connection-offline {
@@ -1173,9 +1303,10 @@ button:hover {
 }
 
 .cdn-error {
-    background-color: #7b241c;
-    color: #fff;
-    padding: 0.8rem 1rem;
+    background-color: var(--bad-soft);
+    color: var(--text);
+    border-bottom: 3px solid var(--bad);
+    padding: var(--space-3) var(--space-4);
     text-align: center;
     font-weight: bold;
 }
@@ -1194,7 +1325,8 @@ button:hover {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(2px);
     justify-content: center;
     align-items: center;
 }
@@ -1280,7 +1412,7 @@ button:hover {
 }
 
 .victim-item:hover {
-    background-color: #3d566e;
+    background-color: var(--surface-3);
 }
 
 .victim-color {
@@ -1309,7 +1441,7 @@ button:hover {
 }
 
 .monopoly-res-btn:hover {
-    background-color: #2980b9;
+    background-color: color-mix(in srgb, var(--info) 82%, var(--text));
 }
 
 /* -------------------------------------------------- cities & knights panels */
@@ -1370,7 +1502,7 @@ button:hover {
 }
 
 .ck-note.danger {
-    color: #e74c3c;
+    color: var(--bad);
 }
 
 /* ------------------------------------------------------- barbarian track */
@@ -1397,13 +1529,13 @@ button:hover {
 }
 
 .barbarian-track.warning .barbarian-pip.filled {
-    background-color: #f39c12;
-    border-color: #f39c12;
+    background-color: var(--warn);
+    border-color: var(--warn);
 }
 
 .barbarian-track.danger .barbarian-pip.filled {
-    background-color: #e74c3c;
-    border-color: #e74c3c;
+    background-color: var(--bad);
+    border-color: var(--bad);
 }
 
 .barbarian-status {
@@ -1412,12 +1544,12 @@ button:hover {
 }
 
 .barbarian-status.warning {
-    color: #f39c12;
+    color: var(--warn);
     font-weight: bold;
 }
 
 .barbarian-status.danger {
-    color: #e74c3c;
+    color: var(--bad);
     font-weight: bold;
 }
 
@@ -1451,10 +1583,11 @@ button:hover {
     font-size: 0.78rem;
 }
 
-/* The rulebook's own colours for the three disciplines */
-.improvement-name.track-trade { color: #f1c40f; }
-.improvement-name.track-politics { color: #5dade2; }
-.improvement-name.track-science { color: #58d68d; }
+/* The rulebook's own colours for the three disciplines, on the commodity
+   ramp each track is actually paid for in. */
+.improvement-name.track-trade { color: var(--com-cloth); }
+.improvement-name.track-politics { color: var(--com-coin); }
+.improvement-name.track-science { color: var(--com-paper); }
 
 .improvement-level {
     color: var(--text-faint);
@@ -1476,12 +1609,12 @@ button:hover {
 }
 
 .ck-badge.ability {
-    background-color: rgba(39, 174, 96, 0.25);
-    color: #7ee2a8;
+    background-color: var(--good-soft);
+    color: var(--good);
 }
 
 .ck-badge.metropolis {
-    background-color: rgba(241, 196, 15, 0.2);
+    background-color: var(--warn-soft);
     color: var(--focus);
 }
 
@@ -1512,19 +1645,24 @@ button:hover {
     text-align: left;
 }
 
-/* Same treatment as the settlement/road/city buttons: an armed mode means the
-   next tap on the board is that action. */
+/* Same treatment as the settlement/road/city buttons, and for the same
+   reason: colour and a glow, never a border width, so arming cannot reflow
+   anything. */
 .ck-action.active {
     background-color: var(--good);
-    border: 2px solid #2ecc71;
+    color: var(--on-status);
+    border-color: var(--focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 45%, transparent);
 }
 
 .ck-buy:disabled,
 .ck-action:disabled,
 .ck-knight-action:disabled {
-    background-color: #7f8c8d;
+    background-color: var(--muted-fill);
+    /* Never `opacity` for a disabled state: it fades the label with the box
+       and takes it below AA every time. Mute the specific tokens instead. */
+    color: var(--text-faint);
     cursor: not-allowed;
-    opacity: 0.7;
 }
 
 .knight-list {
@@ -1558,7 +1696,7 @@ button:hover {
 }
 
 .knight-rank.rank-1 { color: var(--text-muted); }
-.knight-rank.rank-2 { color: #5dade2; }
+.knight-rank.rank-2 { color: var(--info); }
 .knight-rank.rank-3 { color: var(--focus); }
 
 .knight-state {
@@ -1566,7 +1704,7 @@ button:hover {
 }
 
 .knight-state.active {
-    color: #7ee2a8;
+    color: var(--good);
 }
 
 .knight-state.idle {
@@ -1593,9 +1731,9 @@ button:hover {
     border: 1px solid var(--panel-rule);
 }
 
-.resource-display .com-cloth { color: #f1c40f; }
-.resource-display .com-coin { color: #e6b0aa; }
-.resource-display .com-paper { color: #58d68d; }
+.resource-display .com-cloth { color: var(--com-cloth); }
+.resource-display .com-coin { color: var(--com-coin); }
+.resource-display .com-paper { color: var(--com-paper); }
 
 /* --------------------------------------------------------------- utilities */
 
@@ -1613,8 +1751,8 @@ button:hover {
    rail becomes a strip of panels underneath it. Three columns of chrome around
    a board is what stopped fitting here. */
 @media (max-width: 1200px) {
-    .table-aside {
-        width: 16rem;
+    :root {
+        --panel-aside: 16rem;
     }
 
     #game-screen {
@@ -1642,11 +1780,40 @@ button:hover {
     }
 }
 
-/* One column: the page scrolls vertically, the board keeps a share of the
-   viewport, and every panel keeps a bounded height so nothing runs away. */
+/* The console's trailing groups stop being pushed apart before they are forced
+   onto a second row: a group landing left-aligned under the others is the
+   least tidy thing on the page, and every row costs the board its height. */
+@media (max-width: 1400px) {
+    .game-console {
+        row-gap: var(--space-1);
+    }
+
+    #next-turn-btn {
+        /* "Waiting for Kalina..." is much wider than "Next Turn"; without a
+           floor the console rewraps on every turn change, which resizes the
+           board box mid-game. */
+        min-width: 11rem;
+    }
+}
+
+/* One column. The page is allowed to scroll here and only here - the board
+   keeps a fixed share of the viewport and every panel keeps a bounded height,
+   so nothing runs away. No control is dropped; they move. */
 @media (max-width: 900px) {
+    body {
+        height: auto;
+        min-height: 100dvh;
+        overflow: auto;
+    }
+
+    .container {
+        height: auto;
+        grid-template-rows: auto auto;
+    }
+
     .table {
         flex-direction: column;
+        height: auto;
     }
 
     .table-aside {
@@ -1655,15 +1822,18 @@ button:hover {
     }
 
     #game-screen {
-        height: auto;
+        min-height: 0;
     }
 
     .lobby {
-        max-height: none;
+        overflow-y: visible;
+    }
+
+    .game-main {
+        grid-template-rows: 50dvh auto;
     }
 
     .game-board {
-        height: 50vh;
         min-height: 14rem;
     }
 
@@ -1672,13 +1842,7 @@ button:hover {
         overflow-x: visible;
     }
 
-    /* Id selectors, because the proportional `flex: 2 1 0` those panels carry
-       for the full-height column would collapse them to nothing in a stacked,
-       auto-height one. */
-    #players-panel,
-    #dev-cards-panel,
-    #active-rules-panel {
-        flex: none;
+    .game-rail > .panel {
         max-height: 14rem;
     }
 }

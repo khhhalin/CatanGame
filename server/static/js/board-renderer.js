@@ -386,11 +386,14 @@ function sizeCanvas(canvas, ctx, cssWidth, cssHeight) {
         canvas.width = bufferWidth;
         canvas.height = bufferHeight;
     }
-    // The canvas now fills its container and the camera decides what is shown,
-    // so the box is set explicitly in both axes. Previously the buffer was the
-    // size of the whole board and CSS shrank it, which bitmap-downscaled the
-    // board and put an unbounded buffer one big map away from Safari's
-    // ~16.7M pixel area cap.
+    // The canvas is `position: absolute; inset: 0` in CSS, which is what keeps
+    // its 300x150 intrinsic size out of the layout. The box is still pinned
+    // here, in whole CSS pixels, because `inset: 0` resolves against a
+    // fractional container (a 540.625px-tall grid track is normal) while the
+    // buffer can only be an integer. clientToBoard divides by
+    // canvas.width / rect.width, so a box of 540.625 under a 541 buffer puts a
+    // 0.07% stretch between what is drawn and what is hit-tested - which is
+    // enough to make a click pick the wrong one of two coincident edges.
     canvas.style.width = `${cssWidth}px`;
     canvas.style.height = `${cssHeight}px`;
 
@@ -408,6 +411,17 @@ function sizeCanvas(canvas, ctx, cssWidth, cssHeight) {
  */
 const camera = { scale: 1, x: 0, y: 0 };
 
+// Two board keys can describe the same physical target - an edge is named
+// from either of the hexes it separates - so the same click is at distance
+// zero from both, and which one wins is decided by the last bit of the
+// floating-point round trip through client coordinates. That makes the choice
+// re-roll whenever the camera scale changes, which is every time the board box
+// changes size. Requiring a later candidate to be *meaningfully* closer pins
+// the winner to the first key in layout order, which is the order the server
+// sent. Genuinely distinct targets are half a hex apart, so nothing else here
+// can notice this number.
+const TIE_EPSILON = 1e-6;
+
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
 const EDGE_MARGIN = 80;      // how far the board may be pushed off-screen
@@ -415,7 +429,10 @@ const EDGE_MARGIN = 80;      // how far the board may be pushed off-screen
 // Viewport size in CSS pixels, refreshed every render.
 let viewWidth = 0;
 let viewHeight = 0;
+let lastViewWidth = 0;
+let lastViewHeight = 0;
 let cameraFramed = false;    // has the camera been fitted to a board yet?
+let cameraAdjusted = false;  // has a player zoomed or panned it themselves?
 
 function clampScale(scale) {
     return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
@@ -458,6 +475,8 @@ function fitToView() {
     camera.x = (viewWidth - lastLayout.width * camera.scale) / 2;
     camera.y = (viewHeight - lastLayout.height * camera.scale) / 2;
     cameraFramed = true;
+    // "Fit" hands the camera back to the layout: a later resize may re-fit it.
+    cameraAdjusted = false;
 }
 
 /**
@@ -476,6 +495,7 @@ function zoomAt(factor, cssX, cssY) {
     camera.x = cssX - (cssX - camera.x) * (next / camera.scale);
     camera.y = cssY - (cssY - camera.y) * (next / camera.scale);
     camera.scale = next;
+    cameraAdjusted = true;
     clampCamera();
     return true;
 }
@@ -486,6 +506,7 @@ function zoomAt(factor, cssX, cssY) {
 function panBy(dxCss, dyCss) {
     camera.x += dxCss;
     camera.y += dyCss;
+    cameraAdjusted = true;
     clampCamera();
 }
 
@@ -564,8 +585,16 @@ function renderBoard(boardData, canvasId, highlightNumber = null) {
 
     sizeCanvas(canvas, ctx, viewWidth, viewHeight);
 
-    // First board, or a board that outgrew the view: frame it.
-    if (!cameraFramed) {
+    // First board, or a viewport that changed shape under a camera nobody has
+    // touched: frame it. Without the second case the board is framed once, on
+    // whatever box existed before the console had finished wrapping, and stays
+    // clipped for the rest of the game. A camera the player has zoomed or
+    // panned is theirs and is only ever clamped.
+    const viewChanged = viewWidth !== lastViewWidth || viewHeight !== lastViewHeight;
+    lastViewWidth = viewWidth;
+    lastViewHeight = viewHeight;
+
+    if (!cameraFramed || (viewChanged && !cameraAdjusted)) {
         fitToView();
     } else {
         clampCamera();
@@ -714,7 +743,7 @@ function findNearestVertex(boardData, clickX, clickY) {
 
     let nearestKey = null;
     let nearestDist = Infinity;
-    
+
     for (const key in vertexPositions) {
         const pos = vertexPositions[key];
         // Adjust for canvas offset
@@ -722,8 +751,8 @@ function findNearestVertex(boardData, clickX, clickY) {
         const adjY = pos.y + offsetY;
         
         const dist = Math.sqrt(Math.pow(clickX - adjX, 2) + Math.pow(clickY - adjY, 2));
-        
-        if (dist < radius && dist < nearestDist) {
+
+        if (dist < radius && dist < nearestDist - TIE_EPSILON) {
             nearestDist = dist;
             nearestKey = key;
         }
@@ -760,8 +789,8 @@ function findNearestHex(boardData, clickX, clickY) {
         const adjY = pos.y + offsetY;
         
         const dist = Math.sqrt(Math.pow(clickX - adjX, 2) + Math.pow(clickY - adjY, 2));
-        
-        if (dist < radius && dist < nearestDist) {
+
+        if (dist < radius && dist < nearestDist - TIE_EPSILON) {
             nearestDist = dist;
             nearestKey = key;
         }
@@ -805,12 +834,12 @@ function findNearestEdge(boardData, clickX, clickY) {
             edge.x2, edge.y2
         );
         
-        if (dist < radius && dist < nearestDist) {
+        if (dist < radius && dist < nearestDist - TIE_EPSILON) {
             nearestDist = dist;
             nearestKey = key;
         }
     }
-    
+
     return nearestKey;
 }
 
@@ -852,6 +881,14 @@ function attachCameraControls(canvas, onChange) {
     }
     canvas.dataset.cameraBound = 'true';
     requestRedraw = onChange || (() => {});
+
+    // The drawing buffer is derived from the box, so the box is what has to be
+    // watched. A window `resize` listener misses every reason this box changes
+    // without the window doing so - a panel appearing, the console wrapping,
+    // the rail widening for Cities & Knights.
+    if (window.ResizeObserver && canvas.parentElement) {
+        new ResizeObserver(() => requestRedraw()).observe(canvas.parentElement);
+    }
 
     // passive: false or preventDefault is a no-op and the *page* zooms instead
     canvas.addEventListener('wheel', (event) => {

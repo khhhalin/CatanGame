@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catan - User Connection</title>
+    <!-- Tokens first: style.css reads colour, spacing, radii and motion from
+         it and declares no literal of its own. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -144,6 +147,24 @@
                      the layout changing again. -->
                 <div class="game-board" id="game-board">
                     <canvas id="board-canvas" tabindex="0" role="img" aria-label="Catan board"></canvas>
+                    <!-- Mid-turn indicators overlay the board rather than
+                         taking a row above it. Anything that appears when a 7
+                         is rolled and changes the board box forces the drawing
+                         buffer to be reallocated and the camera to shift under
+                         a click that is already in flight. `pointer-events:
+                         none` on the strip keeps taps reaching the canvas. -->
+                    <div class="board-status">
+                        <div id="setup-indicator" class="hidden">
+                            <span id="setup-player-name"></span>
+                            <span id="setup-action-text"></span>
+                        </div>
+                        <div id="robber-indicator" class="hidden">
+                            <span id="robber-text">Move the robber: tap a hex on the board.</span>
+                        </div>
+                        <div id="free-roads-indicator" class="hidden">
+                            <span id="free-roads-text">Free Roads: 2 remaining</span>
+                        </div>
+                    </div>
                     <!-- The canvas is keyboard-zoomable (+ - 0, arrows); these
                          are the visible affordance for the same thing. -->
                     <div class="board-controls">
@@ -153,16 +174,6 @@
                     </div>
                 </div>
                 <div class="game-console" id="game-console">
-                    <div id="setup-indicator" class="hidden">
-                        <span id="setup-player-name"></span>
-                        <span id="setup-action-text"></span>
-                    </div>
-                    <div id="robber-indicator" class="hidden">
-                        <span id="robber-text">Move the robber: tap a hex on the board.</span>
-                    </div>
-                    <div id="free-roads-indicator" class="hidden">
-                        <span id="free-roads-text">Free Roads: 2 remaining</span>
-                    </div>
                     <div class="timer-container">
                         <div id="dice-timer" class="timer">Dice: 15s</div>
                         <div id="round-timer" class="timer">Round: 120s</div>
@@ -171,12 +182,20 @@
                         <button id="roll-dice-btn">Roll Dice</button>
                         <div id="dice-display" class="dice-display"></div>
                     </div>
-                    <input type="color" id="color-picker" title="Choose your color">
-                    <button id="place-settlement-btn">Settlement</button>
-                    <button id="place-road-btn">Road</button>
-                    <button id="upgrade-city-btn">City</button>
-                    <button id="next-turn-btn">Next Turn</button>
-                    <button id="end-game-btn">End Game</button>
+                    <!-- Grouped so the row wraps between groups instead of
+                         mid-group: a build button landing on its own second
+                         row is what made the console two rows tall at 1366,
+                         and every row it grows is a row the board loses. -->
+                    <div class="console-group build-group">
+                        <input type="color" id="color-picker" title="Choose your color">
+                        <button id="place-settlement-btn">Settlement</button>
+                        <button id="place-road-btn">Road</button>
+                        <button id="upgrade-city-btn">City</button>
+                    </div>
+                    <div class="console-group turn-group">
+                        <button id="next-turn-btn">Next Turn</button>
+                        <button id="end-game-btn">End Game</button>
+                    </div>
                 </div>
             </div>
 
