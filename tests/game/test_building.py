@@ -456,3 +456,52 @@ class TestWinning:
 
         assert playing_game.claim_victory(name) == playing_game.victory_points_to_win
         assert playing_game.game_state == 'finished'
+
+
+def give_road_chain(game, player_name, length):
+    """Lay a connected chain of roads; returns the vertices it runs through."""
+    current = a_vertex(game)
+    path = [current]
+    for _ in range(length):
+        edge_key = next(
+            key
+            for key in game.vertices[current].neighbors['edges']
+            if game.edges[key].road is None
+            and all(v not in path for v in game.edges[key].neighbors['vertices'] if v != current)
+        )
+        give_road(game, player_name, edge_key)
+        current = next(v for v in game.edges[edge_key].neighbors['vertices'] if v != current)
+        path.append(current)
+    return path
+
+
+class TestLongestRoad:
+    def test_the_card_goes_to_the_first_player_to_reach_the_minimum(self, playing_game):
+        name = acting(playing_game)
+        give_road_chain(playing_game, name, playing_game.rules['longest_road_minimum'])
+
+        playing_game.update_longest_road()
+
+        assert playing_game.longest_road_holder == name
+
+    def test_the_card_is_surrendered_when_the_road_is_broken(self, playing_game):
+        """A leader who drops below the minimum has to give the card up.
+
+        update_longest_road only reassigned the holder inside a
+        `max_length >= minimum` guard, so once an opponent's settlement split
+        the leader's road, the guard failed and the two points stayed with a
+        player who no longer had a long road at all.
+        """
+        name = acting(playing_game)
+        opponent = other_player(playing_game, name)
+        minimum = playing_game.rules['longest_road_minimum']
+        path = give_road_chain(playing_game, name, minimum)
+        playing_game.update_longest_road()
+        assert playing_game.longest_road_holder == name
+
+        # An opponent's settlement in the middle cuts the chain in two.
+        give_building(playing_game, opponent, path[2])
+        playing_game.update_longest_road()
+
+        assert playing_game.longest_road_length[name] < minimum
+        assert playing_game.longest_road_holder is None

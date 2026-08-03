@@ -987,16 +987,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                 max_length = length
                 longest_holder = player.name
 
-        # Only update once someone reaches the minimum (5 in the base game)
-        if max_length >= self.rules['longest_road_minimum']:
-            if self.longest_road_holder != longest_holder:
-                old_holder = self.longest_road_holder
-                self.longest_road_holder = longest_holder
-                if longest_holder:
-                    logger.debug(
-                        "Longest Road! %s now has %s roads (took from %s)",
-                        longest_holder, max_length, old_holder
-                    )
+        # Nobody holds the card below the minimum (5 in the base game). That
+        # includes the current holder: an opponent's settlement can break their
+        # road, and the card has to go back rather than stay with a player whose
+        # longest road no longer qualifies.
+        if max_length < self.rules['longest_road_minimum']:
+            longest_holder = None
+
+        if self.longest_road_holder != longest_holder:
+            old_holder = self.longest_road_holder
+            self.longest_road_holder = longest_holder
+            logger.debug(
+                "Longest Road! %s now has %s roads (took from %s)",
+                longest_holder, max_length, old_holder
+            )
 
     def update_largest_army(self):
         """Update largest army holder after playing knight."""
