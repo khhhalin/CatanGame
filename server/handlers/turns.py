@@ -118,10 +118,28 @@ def handle_roll_dice(data):
 
 def _announce_event_die(event):
     """Report the C&K event die outcome. Caller holds session.lock."""
+    # Sent on every roll, not only on an attack: the barbarian track moves on
+    # the roll and the client should not have to wait for a turn boundary — or
+    # diff a whole board snapshot — to notice.
+    socketio.emit('event_die', {
+        'face': event['face'],
+        'red_die': event['red_die'],
+        'barbarian': event['barbarian'],
+        'position': event['position'],
+        'track_length': ck_module.BARBARIAN_TRACK_LENGTH,
+        'arrived': event['arrived'],
+        # Who drew is public; which card they drew is not.
+        'drew': sorted(event.get('draws') or {}),
+    })
+
     if not event['barbarian']:
-        # A city gate. Progress card draws are not wired up yet, so record it
-        # for the client and move on rather than silently doing nothing.
         log_event('dice', f"City gate: {event['face']} (red die {event['red_die']})")
+        for player_name in sorted(event.get('draws') or {}):
+            log_event(
+                'dice',
+                f"{player_name} drew a {event['face']} progress card",
+                player=player_name,
+            )
         return
 
     if not event['arrived']:
@@ -151,6 +169,12 @@ def _announce_event_die(event):
                 f"The barbarians are beaten off by {defenders} "
                 f"(knights {result['defence']} vs {result['attack']} cities)",
             )
+            for player_name in sorted(result.get('draws') or {}):
+                log_event(
+                    'game',
+                    f"{player_name} drew a progress card for the joint defence",
+                    player=player_name,
+                )
     else:
         losers = ', '.join(result['pillaged']) or 'nobody'
         log_event(

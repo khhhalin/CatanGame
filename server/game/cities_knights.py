@@ -9,6 +9,8 @@ The Game owns a `CitiesKnights` instance only when the rule is on, so every
 C&K code path is behind one `if game.ck` check.
 """
 
+from game import progress_cards
+
 COMMODITY_TYPES = ("cloth", "coin", "paper")
 
 # Which terrain upgrades to a commodity when a *city* produces. Fields and hills
@@ -73,6 +75,11 @@ EVENT_FACES = [
 CITY_WALL_COST = {"brick": 2}
 CITY_WALL_HAND_BONUS = 2
 MAX_CITY_WALLS = 3
+
+# Progress cards replace development cards entirely. Four in hand is the limit
+# in the standard three-to-four-player game; cards worth a victory point are
+# revealed on sight and never occupy a slot.
+PROGRESS_HAND_LIMIT = 4
 
 KNIGHT_BUILD_COST = {"sheep": 1, "ore": 1}
 KNIGHT_ACTIVATE_COST = {"wheat": 1}
@@ -142,11 +149,42 @@ class CitiesKnights:
         # player -> Defender of Catan cards earned (1 VP each)
         self.defender_cards = {}
 
+        # deck name -> remaining card ids. Built on first draw rather than in
+        # __init__ so the shuffle can use the game's own seeded RNG, which is
+        # what makes a draw order reproducible from the seed.
+        self.progress_decks = {}
+        # player -> progress card ids held
+        self.progress_hands = {}
+
     def register(self, player_name: str):
         self.improvements.setdefault(player_name, {TRADE: 0, POLITICS: 0, SCIENCE: 0})
         self.knights.setdefault(player_name, [])
         self.city_walls.setdefault(player_name, 0)
         self.defender_cards.setdefault(player_name, 0)
+        self.progress_hands.setdefault(player_name, [])
+
+    # --- Progress cards ----------------------------------------------------
+
+    def deck(self, deck_name: str, rng) -> list:
+        self.progress_decks.setdefault(deck_name, progress_cards.build_deck(deck_name, rng))
+        return self.progress_decks[deck_name]
+
+    def hand_of(self, player_name: str) -> list:
+        return self.progress_hands.setdefault(player_name, [])
+
+    def hand_is_full(self, player_name: str) -> bool:
+        return len(self.hand_of(player_name)) >= PROGRESS_HAND_LIMIT
+
+    def draw_progress_card(self, deck_name: str, rng) -> str | None:
+        """Take the top card of a deck, or None once it is exhausted."""
+        deck = self.deck(deck_name, rng)
+        if not deck:
+            return None
+        return deck.pop()
+
+    def return_progress_card(self, deck_name: str, card_id: str):
+        """Put a card back underneath the deck it came from."""
+        self.progress_decks.setdefault(deck_name, []).insert(0, card_id)
 
     # --- City improvements -------------------------------------------------
 
@@ -269,9 +307,27 @@ class CitiesKnights:
         return self.city_walls.get(player_name, 0) * CITY_WALL_HAND_BONUS
 
     def to_dict(self, viewer: str = None) -> dict:
-        """Serialize for the client. Nothing here is hidden information —
-        improvements, knights and the barbarian track are all public."""
+        """Serialize for the client.
+
+        Improvements, knights and the barbarian track are all public. Progress
+        card *hands* are not: only the count goes to the table, and only the
+        viewer's own cards are named.
+        """
         return {
+            "progress_hand": list(self.hand_of(viewer)) if viewer in self.progress_hands else [],
+            "progress_hand_counts": {
+                name: len(cards) for name, cards in self.progress_hands.items()
+            },
+            "progress_cards": {
+                card["id"]: {
+                    "name": card["name"],
+                    "deck": card["deck"],
+                    "summary": card["summary"],
+                    "timing": card["timing"],
+                    "needs_target": card["needs_target"],
+                }
+                for card in progress_cards.PROGRESS_CARDS
+            },
             "improvements": self.improvements,
             "knights": {
                 name: [k.to_dict() for k in knights] for name, knights in self.knights.items()

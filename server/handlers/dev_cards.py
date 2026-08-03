@@ -24,6 +24,19 @@ from handlers.phases import blocked_by_phase
 logger = logging.getLogger(__name__)
 
 
+def _dev_cards_disabled(game) -> bool:
+    """Whether this game uses development cards at all.
+
+    Cities & Knights replaces them outright with progress cards, which are
+    drawn on a city gate rather than bought (expansions.md 303, 427). Leaving
+    the deck buyable let a C&K table play two card systems at once.
+    """
+    if game.ck is None:
+        return False
+    reject('WRONG_MODE', 'Cities & Knights uses progress cards, not development cards')
+    return True
+
+
 @socketio.on('buy_dev_card')
 def handle_buy_dev_card(data):
     session = state.session()
@@ -37,7 +50,7 @@ def handle_buy_dev_card(data):
     except InvalidPayload:
         return
 
-    if blocked_by_phase(name):
+    if _dev_cards_disabled(session.game) or blocked_by_phase(name):
         return
 
     result = session.game.buy_dev_card(name)
@@ -65,7 +78,7 @@ def handle_play_dev_card(data):
         reject(exc.code, exc.message)
         return
 
-    if blocked_by_phase(name):
+    if _dev_cards_disabled(session.game) or blocked_by_phase(name):
         return
 
     result = session.game.play_dev_card(name, card_type)
