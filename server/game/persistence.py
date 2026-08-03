@@ -93,6 +93,10 @@ def _ck_state(ck) -> dict | None:
         'defender_cards': ck.defender_cards,
         'last_event': ck.last_event,
         'last_red_die': ck.last_red_die,
+        # Without these a restart mid-game silently voids every progress card
+        # in every hand, and reshuffles decks players have already drawn from.
+        'progress_decks': ck.progress_decks,
+        'progress_hands': ck.progress_hands,
     }
 
 
@@ -259,6 +263,8 @@ def deserialize(data: dict, config=None) -> Game:
         game.ck.barbarian_position = saved_ck.get('barbarian_position', 0)
         game.ck.barbarians_have_attacked = saved_ck.get('barbarians_have_attacked', False)
         game.ck.defender_cards = saved_ck.get('defender_cards', {})
+        game.ck.progress_decks = saved_ck.get('progress_decks', {})
+        game.ck.progress_hands = saved_ck.get('progress_hands', {})
         game.ck.last_event = saved_ck.get('last_event')
         game.ck.last_red_die = saved_ck.get('last_red_die')
         game.ck.knights = {}
