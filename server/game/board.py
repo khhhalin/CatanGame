@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 # every other number twice. A 7 is the robber's roll and never sits on a hex.
 NUMBER_TOKENS = (2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12)
 
+# The 9 harbour pieces in the base-game box: 4 generic 3:1 harbours and one 2:1
+# harbour per resource, since the almanac allows "only 1 special harbor for each
+# type of resource".
+PORT_TYPES = ('generic', 'generic', 'generic', 'generic',
+              'wood', 'brick', 'sheep', 'wheat', 'ore')
+
 
 class BoardBuilder:
     """Everything that turns a radius into a populated board."""
@@ -396,66 +402,112 @@ class BoardBuilder:
                     ):
                         vertex_obj.neighbors["vertices"].append(connected_vertex_key)
 
+    def _coastal_edges_in_order(self) -> list:
+        """The coastal edges, walked as a ring around the island.
+
+        A coastal edge is a hex side with land on one side and open sea on the
+        other, which shows up as its two intersections having exactly one land
+        hex in common. Asking the edge for its own adjacent hexes will not do
+        it: an inland path is represented by two Edge objects, one belonging to
+        each of the hexes it separates, and each of those knows only its own.
+        """
+        coastal = []
+        for edge_key in sorted(self.edges):
+            ends = self.edges[edge_key].neighbors["vertices"]
+            if len(ends) != 2:
+                continue
+            shared = set(self.vertices[ends[0]].neighbors["hexes"]).intersection(
+                self.vertices[ends[1]].neighbors["hexes"]
+            )
+            if len(shared) == 1:
+                coastal.append(edge_key)
+
+        if not coastal:
+            return []
+
+        edges_at_vertex = {}
+        for edge_key in coastal:
+            for vertex_key in self.edges[edge_key].neighbors["vertices"]:
+                edges_at_vertex.setdefault(vertex_key, []).append(edge_key)
+
+        # Walk from one coastal edge to the next through the intersection they
+        # share. Sorted starting point and sorted candidates, for the same
+        # reason the rest of generation sorts: set order varies between
+        # processes, and the harbours would land somewhere else every run.
+        ring = [coastal[0]]
+        visited = set(ring)
+        behind = min(self.edges[ring[0]].neighbors["vertices"])
+        while True:
+            ahead = next(
+                vertex_key
+                for vertex_key in self.edges[ring[-1]].neighbors["vertices"]
+                if vertex_key != behind
+            )
+            unvisited = sorted(
+                edge_key for edge_key in edges_at_vertex[ahead] if edge_key not in visited
+            )
+            if not unvisited:
+                break
+            ring.append(unvisited[0])
+            visited.add(unvisited[0])
+            behind = ahead
+
+        if len(ring) != len(coastal):
+            logger.warning(
+                f"coastline is not a single ring: walked {len(ring)} of {len(coastal)} edges"
+            )
+        return ring
+
     def _assign_ports(self):
-        """Assign ports to 9 vertices on the edge of the map (evenly distributed)."""
+        """Hang the harbours off coastal edges, spaced around the island.
 
-        # Find all edge vertices - vertices that don't have 3 adjacent hexes
-        edge_vertices = []
-        for vertex_key, vertex_obj in self.vertices.items():
-            hex_neighbors = vertex_obj.neighbors.get("hexes", [])
-            if len(hex_neighbors) < 3:
-                edge_vertices.append(vertex_key)
+        A harbour belongs to a hex *side*, not a point: the rulebook draws each
+        one on the sea frame with two lines reaching the two intersections at
+        the ends of one coastal side, and a settlement on either of them
+        controls it. This used to pick nine single vertices by angle around the
+        centre, so a harbour served one intersection instead of two and did not
+        sit on a coastal side at all.
 
-        edge_vertices = list(set(edge_vertices))
+        `edge.port` is the geometry; `vertex.port` is kept populated on both
+        ends because the trade rules, the save file and the renderer all read
+        it there.
+        """
+        coast = self._coastal_edges_in_order()
+        port_types = list(PORT_TYPES)
+        if len(coast) < 2 * len(port_types):
+            logger.warning(
+                f"coastline of {len(coast)} edges is too short for "
+                f"{len(port_types)} harbours that do not touch"
+            )
+            port_types = port_types[: len(coast) // 2]
+        if not port_types:
+            return
 
-        if len(edge_vertices) < 9:
-            logger.debug(f"Warning: Only {len(edge_vertices)} edge vertices found")
-            port_vertices = edge_vertices[:9] if edge_vertices else []
-        else:
-            # Sort edge vertices by angle to distribute evenly around the board
-            def get_vertex_angle(vertex_key):
-                """Get approximate angle for sorting vertices."""
-                coords = self._parse_key(vertex_key)
-                x, y, z = coords
-                # Use atan2 to get angle from center
-                # Project 3D coord to 2D
-                px = x + 0.5 * z
-                py = 0.866 * z  # sqrt(3)/2
-                import math
-
-                return math.atan2(py, px)
-
-            # Sort by angle
-            edge_vertices.sort(key=get_vertex_angle)
-
-            # Select 9 evenly spaced vertices
-            step = len(edge_vertices) / 9
-            port_vertices = [edge_vertices[int(i * step)] for i in range(9)]
-
-        self.rng.shuffle(port_vertices)
-
-        # Port types: 4 generic (3:1), 5 resource-specific (2:1)
-        port_types = ["generic"] * 4 + ["wood", "brick", "sheep", "wheat", "ore"]
         self.rng.shuffle(port_types)
+        # Where the run of harbours starts is the only thing chance decides
+        # about their placement; the spacing below is fixed.
+        rotation = self.rng.randrange(len(coast))
 
-        # Assign ports to vertices
-        for i, vertex_key in enumerate(port_vertices):
-            if vertex_key in self.vertices:
-                vertex_obj = self.vertices[vertex_key]
-                resource_type = port_types[i]
+        for index, port_type in enumerate(port_types):
+            # Evenly spaced around the ring, because real harbours never share
+            # an intersection: at this spacing consecutive harbours always
+            # leave at least one coastal edge between them.
+            position = (rotation + round(index * len(coast) / len(port_types))) % len(coast)
+            edge_obj = self.edges[coast[position]]
 
-                if resource_type == "generic":
-                    vertex_obj.port = {"type": "generic"}
-                else:
-                    vertex_obj.port = {"type": "resource", "resource": resource_type}
+            if port_type == "generic":
+                port = {"type": "generic"}
+            else:
+                port = {"type": "resource", "resource": port_type}
 
-        # Count ports for debug
-        generic_count = sum(
-            1 for v in self.vertices.values() if v.port and v.port.get("type") == "generic"
-        )
-        resource_count = sum(
-            1 for v in self.vertices.values() if v.port and v.port.get("type") == "resource"
-        )
+            edge_obj.port = port
+            for vertex_key in edge_obj.neighbors["vertices"]:
+                # A copy per vertex: one shared dict would let a mutation of a
+                # single intersection silently change the whole harbour.
+                self.vertices[vertex_key].port = dict(port)
+
         logger.debug(
-            f"Ports assigned: {generic_count} generic (3:1), {resource_count} resource (2:1)"
+            f"Harbours assigned: {sum(1 for t in port_types if t == 'generic')} generic (3:1), "
+            f"{sum(1 for t in port_types if t != 'generic')} resource (2:1) "
+            f"on {len(coast)} coastal edges"
         )

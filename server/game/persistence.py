@@ -104,6 +104,10 @@ def serialize(game: Game) -> dict:
         'dev_cards_deck': game.bank.dev_cards_deck,
         # Board: only what was decided, not the derived graph.
         'hexes': {k: {'type': h.type, 'number': h.number} for k, h in game.hexes.items()},
+        # Harbours twice over: `edge_ports` is the geometry, `ports` the two
+        # intersections each one serves. Both are written so a save from before
+        # harbours moved onto edges still restores the ports it recorded.
+        'edge_ports': {k: e.port for k, e in game.edges.items() if e.port},
         'ports': {k: v.port for k, v in game.vertices.items() if v.port},
         'buildings': {k: v.building for k, v in game.vertices.items() if v.building},
         'roads_on_edges': {k: e.road for k, e in game.edges.items() if e.road},
@@ -160,6 +164,14 @@ def deserialize(data: dict, config=None) -> Game:
     for key, port in data.get('ports', {}).items():
         if key in game.vertices:
             game.vertices[key].port = port
+    for edge in game.edges.values():
+        edge.port = None
+    # Older saves predate harbours on edges and carry vertex ports only. They
+    # still load: the vertices above are what the trade rules read, so such a
+    # game keeps the harbours it was played with.
+    for key, port in data.get('edge_ports', {}).items():
+        if key in game.edges:
+            game.edges[key].port = port
     for key, building in data.get('buildings', {}).items():
         if key in game.vertices:
             game.vertices[key].building = building

@@ -609,7 +609,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
         edges = {}
         for key, edge_obj in self.edges.items():
-            edges[key] = {'road': edge_obj.road, 'neighbors': edge_obj.neighbors}
+            edge_data = {'road': edge_obj.road, 'neighbors': edge_obj.neighbors}
+            # A harbour belongs to this coastal edge; both of its intersections
+            # also carry it, which is where the renderer still reads it from.
+            if edge_obj.port:
+                edge_data['port'] = edge_obj.port
+            edges[key] = edge_data
 
         # Clean up expired trades
         self.trade_manager.cleanup_expired()

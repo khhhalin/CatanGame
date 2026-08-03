@@ -176,4 +176,5 @@ def test_ocean_tiles_carry_no_buildable_intersections(fresh_game):
     ocean_keys = {k for k, h in fresh_game.hexes.items() if h.type == 'ocean'}
     for vertex in fresh_game.vertices.values():
         assert not ocean_keys.intersection(vertex.neighbors.get('hexes', []))
-    assert sum(1 for v in fresh_game.vertices.values() if v.port) == 9
+    # Two intersections per harbour: 9 harbours, 18 vertices carrying one.
+    assert sum(1 for v in fresh_game.vertices.values() if v.port) == 18

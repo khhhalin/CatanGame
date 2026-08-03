@@ -89,6 +89,10 @@ class Edge:
         key (str): Unique identifier in "x,y,z" cube coordinate format.
                    Note: Edges have exactly one coordinate divisible by 3.
         road (dict or None): Contains {"player": player_name} if occupied.
+        port (dict or None): The harbour on this coastal edge, if any. A
+                             harbour belongs to a hex side and serves both of
+                             the intersections at its ends, which carry a copy
+                             of this in their own `port`.
         neighbors (dict): Dictionary with keys:
             - "hexes": List of 2 adjacent hex keys
             - "edges": List of adjacent edge keys
@@ -104,6 +108,7 @@ class Edge:
         """
         self.key = key
         self.road = None  # {"player": name}
+        self.port = None  # {"type": "generic"/"resource", "resource": type}
         self.neighbors = {
             "hexes": [],      # 2 adjacent hex keys
             "edges": [],      # Adjacent edge keys
