@@ -14,25 +14,201 @@ function createOfflineSocket() {
 const socketAvailable = typeof io === 'function';
 const socket = socketAvailable ? io() : createOfflineSocket();
 
-// Game state variables
-let currentUser = null;
-// Lobby size and the minimum needed to start, both from the server so the
-// button can say what is missing rather than silently disappearing.
-let lobbyPlayerCount = 0;
-let minPlayersToStart = 2;
-let currentRole = null;
-let currentColor = null;
-let gameStarted = false;
-let currentPlayer = null;
-// 'settlement', 'road', 'city', or - with Cities & Knights on - 'knight',
-// 'knight_move' and 'city_wall'. All of them mean the same thing: the next tap
-// on the board is an intent, not a pan.
-let selectedBuilding = null;
-// First half of a knight move. A move is two taps, so the origin has to
-// survive between them.
-let knightMoveFrom = null;
-let mustMoveRobber = false;  // true when player must move robber after rolling 7
-let hasRolledDice = false;
+// ------------------------------------------------------------- client state
+//
+// One object, in two halves.
+//
+// `server` is the last thing the server said, kept verbatim. Every question the
+// server already answers - whose turn it is, whether the dice are up, whether
+// the robber or a discard is pending, whether a game is running at all - is
+// asked of that half at read time, through the helpers below. Mirroring those
+// answers into local flags is what shipped a wedged lobby: a `game_state`
+// snapshot that meant "no game is running" was read as "a game started", and
+// nothing ever put the flag back.
+//
+// The rest is genuinely local. Which build button is armed, which knight was
+// tapped first, how far the log has been read: the server has no opinion on
+// any of it, and no payload can correct it.
+const viewState = {
+    server: {
+        // The board payload. Null is what "no game is running" means.
+        board: null,
+        // Who the server seats, and how many it takes to start.
+        roster: { players: [], observers: [], minPlayers: 2 },
+        // The lobby rule set, exactly as the server last broadcast it. The
+        // client never writes to `selected` itself - a change is emitted and
+        // re-read from the `rules_changed` reply, so every table member sees
+        // the same thing.
+        rules: { catalogue: [], selected: {}, locked: false }
+    },
+
+    // What this tab asked to join as. The name is what the player typed; the
+    // role and colour are a request, and the roster above is the answer.
+    identity: { name: null, requestedRole: null, color: null },
+
+    // 'settlement', 'road', 'city', or - with Cities & Knights on - 'knight',
+    // 'knight_move' and 'city_wall'. All of them mean the same thing: the next
+    // tap on the board is an intent, not a pan.
+    selectedBuilding: null,
+
+    // First half of a knight move. A move is two taps, so the origin has to
+    // survive between them.
+    knightMoveFrom: null,
+
+    // The gesture in progress on the board, used to tell a tap from a pan.
+    pointerDown: null,
+
+    // `game_won` is a one-shot notice that no later payload repeats, so the
+    // win has to be latched to stop the turn countdown.
+    winnerAnnounced: false,
+
+    // Render loop state - socket handlers set state and mark dirty, never draw.
+    render: { dirty: false, highlightNumber: null },
+
+    // `highestId` is what a reconnecting client asks to catch up from, and it
+    // is also how a duplicate entry is recognised and dropped.
+    log: { highestId: 0 },
+
+    // Rebuilding the rule rows destroys focus and the caret, so they are only
+    // rebuilt when the catalogue's shape changes.
+    renderedRulesSignature: '',
+
+    // Countdown display only - the server owns turn expiry.
+    timers: { diceSeconds: 15, roundSeconds: 120, updatedAt: Date.now(), handle: null },
+
+    // The once-per-second trade offer countdown.
+    tradeTimerHandle: null
+};
+
+// ------------------------------------------------ questions the server answers
+//
+// Each of these reads the stored payload afresh. None of their results may be
+// cached in anything that outlives one function call: a cache is a mirror, and
+// a mirror is what this section exists to make unnecessary.
+
+/**
+ * The board exactly as the server last sent it, or null when no game is on.
+ */
+function getBoard() {
+    return viewState.server.board;
+}
+
+/**
+ * Whether there is a game to interact with.
+ * A board payload exists for exactly as long as one does - the lobby snapshot
+ * and `game_ended` both clear it - and a declared winner ends interaction too.
+ */
+function isGameRunning() {
+    return viewState.server.board !== null && !viewState.winnerAnnounced;
+}
+
+/**
+ * 'setup' or 'playing', defaulting to 'playing' the way the payload does.
+ */
+function getGamePhase() {
+    return viewState.server.board?.game_phase || 'playing';
+}
+
+/**
+ * Whose turn the server says it is, or null.
+ */
+function getCurrentPlayer() {
+    return viewState.server.board?.current_player || null;
+}
+
+/**
+ * Whether the seat this tab is playing is the one on turn.
+ */
+function isMyTurn() {
+    const me = viewState.identity.name;
+    return me !== null && me === getCurrentPlayer();
+}
+
+/**
+ * Whether the dice are already up this turn.
+ */
+function hasRolledDice() {
+    return viewState.server.board?.has_rolled_dice === true;
+}
+
+/**
+ * Whether a 7 has left the robber waiting to be placed.
+ */
+function mustMoveRobber() {
+    return viewState.server.board?.must_move_robber === true;
+}
+
+/**
+ * Whether the robber's new hex still needs a victim picked.
+ */
+function mustChooseVictim() {
+    return viewState.server.board?.must_choose_victim === true;
+}
+
+/**
+ * Who the robber's hex exposes, as the server worked it out.
+ */
+function getRobberVictims() {
+    return viewState.server.board?.robber_victims || [];
+}
+
+/**
+ * How many cards this player owes the bank, or 0.
+ */
+function getDiscardAmount() {
+    return viewState.server.board?.players_needing_discard?.[viewState.identity.name] || 0;
+}
+
+/**
+ * The role the server has this player in.
+ * Falls back to what the join box asked for until a roster has arrived - a
+ * seat is the server's to grant, not the client's to assume.
+ */
+function getRole() {
+    const roster = viewState.server.roster;
+    const me = viewState.identity.name;
+    if (roster.players.includes(me)) {
+        return 'player';
+    }
+    if (roster.observers.includes(me)) {
+        return 'observer';
+    }
+    return viewState.identity.requestedRole;
+}
+
+/**
+ * Record the roster the server just broadcast.
+ * The lobby sends user objects and a running game sends bare names, so both
+ * shapes are flattened to names here rather than at every read.
+ *
+ * @param {Array} players - Player names, or user objects carrying `name`
+ * @param {Array} observers - The same, for observers
+ * @param {number} [minPlayers] - Minimum needed to start, when the payload says
+ */
+function setRoster(players, observers, minPlayers) {
+    const nameOf = (entry) => (typeof entry === 'string' ? entry : entry?.name);
+    viewState.server.roster.players = (players || []).map(nameOf);
+    viewState.server.roster.observers = (observers || []).map(nameOf);
+    if (typeof minPlayers === 'number') {
+        viewState.server.roster.minPlayers = minPlayers;
+    }
+}
+
+/**
+ * Fold a partial server message into the stored snapshot.
+ *
+ * `turn_changed` and `choose_victim` settle facts a moment before the board
+ * broadcast that repeats them. Writing them here rather than into a parallel
+ * flag keeps one answer to every server-owned question, and the next full board
+ * payload replaces the object wholesale.
+ *
+ * @param {object} facts - Board fields the message settled
+ */
+function applyBoardFacts(facts) {
+    if (viewState.server.board) {
+        Object.assign(viewState.server.board, facts);
+    }
+}
 
 // DOM elements
 const gameTitle = document.getElementById('game-title');
@@ -132,37 +308,6 @@ const chatSendBtn = document.getElementById('chat-send-btn');
 const turnSound = new Audio('/static/audio/turn.wav');
 turnSound.preload = 'auto';
 
-// Timer tracking
-let lastDiceTime = 15;
-let lastRoundTime = 120;
-let lastUpdateTime = Date.now();
-let diceTimerInterval = null;
-
-// Store current board data for click handling
-let currentBoardData = null;
-
-// The lobby rule set, exactly as the server last broadcast it. The client
-// never writes to `selected` itself - a change is emitted and re-read from
-// the `rules_changed` reply, so every table member sees the same thing.
-let rulesCatalogue = [];
-let rulesSelected = {};
-let rulesLocked = false;
-let renderedRulesSignature = '';
-
-// Discard and victim selection state
-let mustDiscard = false;
-let discardAmount = 0;
-let mustChooseVictim = false;
-let robberVictims = [];
-
-// Render loop state - socket handlers set state and mark dirty, never draw
-let renderDirty = false;
-let highlightNumber = null;
-
-// Event log state. `highestLogId` is what a reconnecting client asks to catch
-// up from, and it is also how a duplicate entry is recognised and dropped.
-let highestLogId = 0;
-
 const NOTICE_TIMEOUT_MS = 6000;
 
 /**
@@ -227,7 +372,7 @@ function emitGame(event, payload) {
  * Mark the board as needing a redraw on the next animation frame.
  */
 function markDirty() {
-    renderDirty = true;
+    viewState.render.dirty = true;
 }
 
 /**
@@ -236,7 +381,7 @@ function markDirty() {
  * @param {number|null} number - Dice total to highlight, or null to clear
  */
 function setHighlight(number) {
-    highlightNumber = number;
+    viewState.render.highlightNumber = number;
     markDirty();
 }
 
@@ -244,11 +389,11 @@ function setHighlight(number) {
  * The single render loop for the lifetime of the page.
  */
 function frame() {
-    if (renderDirty) {
-        renderDirty = false;
+    if (viewState.render.dirty) {
+        viewState.render.dirty = false;
         try {
-            if (currentBoardData && window.BoardRenderer) {
-                window.BoardRenderer.render(currentBoardData, 'board-canvas', highlightNumber);
+            if (getBoard() && window.BoardRenderer) {
+                window.BoardRenderer.render(getBoard(), 'board-canvas', viewState.render.highlightNumber);
                 updateBoardLabel();
             }
         } catch (error) {
@@ -266,11 +411,11 @@ requestAnimationFrame(frame);
  * Keep the canvas accessible name in step with what is drawn.
  */
 function updateBoardLabel() {
-    if (!boardCanvas || !currentBoardData) {
+    if (!boardCanvas || !getBoard()) {
         return;
     }
-    const phase = currentBoardData.game_phase || 'playing';
-    const turnHolder = currentBoardData.current_player || 'nobody';
+    const phase = getBoard().game_phase || 'playing';
+    const turnHolder = getBoard().current_player || 'nobody';
     boardCanvas.setAttribute('aria-label',
         `Catan board, ${phase} phase. Current turn: ${turnHolder}.`);
 }
@@ -288,9 +433,9 @@ function join(takeover = false) {
     const role = document.querySelector('input[name="role"]:checked').value;
     const color = joinColorPicker.value;
 
-    currentUser = name;
-    currentRole = role;
-    currentColor = color;
+    viewState.identity.name = name;
+    viewState.identity.requestedRole = role;
+    viewState.identity.color = color;
 
     if (socket.connected) {
         socket.emit('join', { name: name, role: role, color: color, takeover: takeover });
@@ -317,7 +462,7 @@ function handleNameTaken(message) {
     const name = usernameInput.value.trim();
 
     // Back to the join screen until this is resolved.
-    currentUser = null;
+    viewState.identity.name = null;
     userScreen.classList.add('hidden');
     joinScreen.classList.remove('hidden');
 
@@ -348,11 +493,11 @@ startGameBtn.addEventListener('click', () => {
  * Handle Next Turn button click
  */
 nextTurnBtn.addEventListener('click', () => {
-    if (!hasRolledDice) {
+    if (!hasRolledDice()) {
         displayError('You must roll the dice before advancing to the next turn!');
         return;
     }
-    emitGame('next_turn', { name: currentUser });
+    emitGame('next_turn', { name: viewState.identity.name });
 });
 
 /**
@@ -371,15 +516,15 @@ endGameBtn.addEventListener('click', () => {
  * Handle Roll Dice button click
  */
 rollDiceBtn.addEventListener('click', () => {
-    emitGame('roll_dice', { name: currentUser });
+    emitGame('roll_dice', { name: viewState.identity.name });
 });
 
 /**
  * Handle color picker change - emit set_color event
  */
 colorPicker.addEventListener('change', () => {
-    currentColor = colorPicker.value;
-    emitGame('set_color', { name: currentUser, color: colorPicker.value });
+    viewState.identity.color = colorPicker.value;
+    emitGame('set_color', { name: viewState.identity.name, color: colorPicker.value });
 });
 
 /**
@@ -387,18 +532,18 @@ colorPicker.addEventListener('change', () => {
  */
 placeSettlementBtn.addEventListener('click', () => {
     // Don't allow manual toggle during setup phase
-    if (currentBoardData?.game_phase === 'setup') {
+    if (getGamePhase() === 'setup') {
         return;
     }
     
-    if (selectedBuilding === 'settlement') {
+    if (viewState.selectedBuilding === 'settlement') {
         // Deselect
-        selectedBuilding = null;
+        viewState.selectedBuilding = null;
         placeSettlementBtn.classList.remove('active');
         gameBoard.classList.remove('placement-mode');
     } else {
         // Select settlement
-        selectedBuilding = 'settlement';
+        viewState.selectedBuilding = 'settlement';
         placeSettlementBtn.classList.add('active');
         placeRoadBtn.classList.remove('active');
         upgradeCityBtn.classList.remove('active');
@@ -413,18 +558,18 @@ placeSettlementBtn.addEventListener('click', () => {
  */
 placeRoadBtn.addEventListener('click', () => {
     // Don't allow manual toggle during setup phase
-    if (currentBoardData?.game_phase === 'setup') {
+    if (getGamePhase() === 'setup') {
         return;
     }
     
-    if (selectedBuilding === 'road') {
+    if (viewState.selectedBuilding === 'road') {
         // Deselect
-        selectedBuilding = null;
+        viewState.selectedBuilding = null;
         placeRoadBtn.classList.remove('active');
         gameBoard.classList.remove('placement-mode');
     } else {
         // Select road
-        selectedBuilding = 'road';
+        viewState.selectedBuilding = 'road';
         placeRoadBtn.classList.add('active');
         placeSettlementBtn.classList.remove('active');
         upgradeCityBtn.classList.remove('active');
@@ -439,18 +584,18 @@ placeRoadBtn.addEventListener('click', () => {
  */
 upgradeCityBtn.addEventListener('click', () => {
     // Don't allow during setup phase
-    if (currentBoardData?.game_phase === 'setup') {
+    if (getGamePhase() === 'setup') {
         return;
     }
     
-    if (selectedBuilding === 'city') {
+    if (viewState.selectedBuilding === 'city') {
         // Deselect
-        selectedBuilding = null;
+        viewState.selectedBuilding = null;
         upgradeCityBtn.classList.remove('active');
         gameBoard.classList.remove('placement-mode');
     } else {
         // Select city upgrade
-        selectedBuilding = 'city';
+        viewState.selectedBuilding = 'city';
         upgradeCityBtn.classList.add('active');
         placeSettlementBtn.classList.remove('active');
         placeRoadBtn.classList.remove('active');
@@ -464,32 +609,31 @@ upgradeCityBtn.addEventListener('click', () => {
  * Handle Buy Development Card button click
  */
 buyDevCardBtn.addEventListener('click', () => {
-    if (!currentBoardData) {
+    if (!getBoard()) {
         return;
     }
     
-    if (currentBoardData.game_phase === 'setup') {
+    if (getGamePhase() === 'setup') {
         displayError('Cannot buy development cards during setup');
         return;
     }
     
-    if (mustMoveRobber) {
+    if (mustMoveRobber()) {
         displayError('You must move the robber first');
         return;
     }
     
-    if (currentUser !== currentPlayer) {
+    if (!isMyTurn()) {
         displayError('It is not your turn');
         return;
     }
     
-    emitGame('buy_dev_card', { name: currentUser });
+    emitGame('buy_dev_card', { name: viewState.identity.name });
 });
 
 // Pointer tracking for the board - a tap places, a drag does not
 const TAP_MOVE_LIMIT_PX = 10;
 const TAP_TIME_LIMIT_MS = 700;
-let pointerDownState = null;
 
 /**
  * Handle a tap on the board - place building at tapped position
@@ -497,7 +641,7 @@ let pointerDownState = null;
  * @param {PointerEvent} event - The pointerup event that ended the tap
  */
 function handleBoardTap(event) {
-    if (!currentBoardData) {
+    if (!getBoard()) {
         return;
     }
 
@@ -509,64 +653,64 @@ function handleBoardTap(event) {
 
     const position = window.BoardRenderer.clientToBoard(boardCanvas, event.clientX, event.clientY);
 
-    // Handle robber movement when mustMoveRobber is true
-    if (mustMoveRobber && currentUser === currentPlayer) {
-        const hexKey = window.BoardRenderer.findNearestHex(currentBoardData, position.x, position.y);
+    // Handle robber movement while the robber is still pending
+    if (mustMoveRobber() && isMyTurn()) {
+        const hexKey = window.BoardRenderer.findNearestHex(getBoard(), position.x, position.y);
         if (hexKey) {
             console.log('Moving robber to:', hexKey);
             emitGame('move_robber', {
-                name: currentUser,
+                name: viewState.identity.name,
                 hex: hexKey
             });
         }
         return;
     }
 
-    if (!selectedBuilding || currentUser !== currentPlayer) {
+    if (!viewState.selectedBuilding || !isMyTurn()) {
         return;
     }
 
     // During setup phase, ensure selected building matches setup_action
-    if (currentBoardData?.game_phase === 'setup') {
-        const setupAction = currentBoardData.setup_action || 'settlement';
-        if (selectedBuilding !== setupAction) {
+    if (getGamePhase() === 'setup') {
+        const setupAction = getBoard().setup_action || 'settlement';
+        if (viewState.selectedBuilding !== setupAction) {
             return;
         }
     }
 
-    if (selectedBuilding === 'settlement') {
+    if (viewState.selectedBuilding === 'settlement') {
         // Find nearest vertex
-        const vertexKey = window.BoardRenderer.findNearestVertex(currentBoardData, position.x, position.y);
+        const vertexKey = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
         if (vertexKey) {
             console.log('Placing settlement at:', vertexKey);
             emitGame('place_settlement', {
-                name: currentUser,
+                name: viewState.identity.name,
                 vertex: vertexKey
             });
         }
-    } else if (selectedBuilding === 'road') {
+    } else if (viewState.selectedBuilding === 'road') {
         // Find nearest edge
-        const edgeKey = window.BoardRenderer.findNearestEdge(currentBoardData, position.x, position.y);
+        const edgeKey = window.BoardRenderer.findNearestEdge(getBoard(), position.x, position.y);
         if (edgeKey) {
             console.log('Placing road at:', edgeKey);
             emitGame('place_road', {
-                name: currentUser,
+                name: viewState.identity.name,
                 edge: edgeKey
             });
         }
-    } else if (selectedBuilding === 'city') {
+    } else if (viewState.selectedBuilding === 'city') {
         // Find nearest vertex to upgrade to city
-        const vertexKey = window.BoardRenderer.findNearestVertex(currentBoardData, position.x, position.y);
+        const vertexKey = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
         if (vertexKey) {
             console.log('Upgrading to city at:', vertexKey);
             emitGame('upgrade_city', {
-                name: currentUser,
+                name: viewState.identity.name,
                 vertex: vertexKey
             });
         }
-    } else if (selectedBuilding === 'knight' || selectedBuilding === 'city_wall'
-               || selectedBuilding === 'knight_move') {
-        const vertexKey = window.BoardRenderer.findNearestVertex(currentBoardData, position.x, position.y);
+    } else if (viewState.selectedBuilding === 'knight' || viewState.selectedBuilding === 'city_wall'
+               || viewState.selectedBuilding === 'knight_move') {
+        const vertexKey = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
         if (vertexKey) {
             handleCkVertexTap(vertexKey);
         }
@@ -584,37 +728,37 @@ function handleCkVertexTap(vertexKey) {
     // The panels are hidden in a base game, but a stale armed mode must not
     // survive into one either
     if (!ckEnabled()) {
-        selectedBuilding = null;
+        viewState.selectedBuilding = null;
         return;
     }
 
-    if (selectedBuilding === 'knight') {
-        emitGame('build_knight', { name: currentUser, vertex: vertexKey });
+    if (viewState.selectedBuilding === 'knight') {
+        emitGame('build_knight', { name: viewState.identity.name, vertex: vertexKey });
         return;
     }
 
-    if (selectedBuilding === 'city_wall') {
-        emitGame('build_city_wall', { name: currentUser, vertex: vertexKey });
+    if (viewState.selectedBuilding === 'city_wall') {
+        emitGame('build_city_wall', { name: viewState.identity.name, vertex: vertexKey });
         return;
     }
 
-    if (!knightMoveFrom) {
-        knightMoveFrom = vertexKey;
+    if (!viewState.knightMoveFrom) {
+        viewState.knightMoveFrom = vertexKey;
         renderCitiesKnights();
         return;
     }
 
     emitGame('move_knight', {
-        name: currentUser,
-        from_vertex: knightMoveFrom,
+        name: viewState.identity.name,
+        from_vertex: viewState.knightMoveFrom,
         to_vertex: vertexKey
     });
-    knightMoveFrom = null;
+    viewState.knightMoveFrom = null;
     renderCitiesKnights();
 }
 
 boardCanvas.addEventListener('pointerdown', (event) => {
-    pointerDownState = {
+    viewState.pointerDown = {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
@@ -625,14 +769,14 @@ boardCanvas.addEventListener('pointerdown', (event) => {
 });
 
 boardCanvas.addEventListener('pointerup', (event) => {
-    if (!pointerDownState || pointerDownState.pointerId !== event.pointerId) {
+    if (!viewState.pointerDown || viewState.pointerDown.pointerId !== event.pointerId) {
         return;
     }
 
-    const movedX = Math.abs(event.clientX - pointerDownState.x);
-    const movedY = Math.abs(event.clientY - pointerDownState.y);
-    const elapsed = Date.now() - pointerDownState.time;
-    pointerDownState = null;
+    const movedX = Math.abs(event.clientX - viewState.pointerDown.x);
+    const movedY = Math.abs(event.clientY - viewState.pointerDown.y);
+    const elapsed = Date.now() - viewState.pointerDown.time;
+    viewState.pointerDown = null;
 
     if (movedX <= TAP_MOVE_LIMIT_PX && movedY <= TAP_MOVE_LIMIT_PX && elapsed <= TAP_TIME_LIMIT_MS) {
         handleBoardTap(event);
@@ -640,7 +784,7 @@ boardCanvas.addEventListener('pointerup', (event) => {
 });
 
 boardCanvas.addEventListener('pointercancel', () => {
-    pointerDownState = null;
+    viewState.pointerDown = null;
 });
 
 // Zoom and pan. Registered after the tap listeners above on purpose: the
@@ -673,7 +817,7 @@ document.getElementById('zoom-fit-btn')?.addEventListener('click', () => {
 function updateStartButton() {
     // Hiding the button outright made "why can I not start?" unanswerable.
     // Show it whenever a game is not running and say what is missing instead.
-    if (gameStarted) {
+    if (isGameRunning()) {
         startGameBtn.classList.add('hidden');
         return;
     }
@@ -681,10 +825,10 @@ function updateStartButton() {
     startGameBtn.classList.remove('hidden');
 
     let reason = '';
-    if (currentRole !== 'player') {
+    if (getRole() !== 'player') {
         reason = 'Observers cannot start the game - rejoin as a player.';
-    } else if (lobbyPlayerCount < minPlayersToStart) {
-        reason = `Waiting for players (${lobbyPlayerCount}/${minPlayersToStart}).`;
+    } else if (viewState.server.roster.players.length < viewState.server.roster.minPlayers) {
+        reason = `Waiting for players (${viewState.server.roster.players.length}/${viewState.server.roster.minPlayers}).`;
     }
 
     startGameBtn.disabled = Boolean(reason);
@@ -697,25 +841,19 @@ function updateStartButton() {
 
 /**
  * Drop back to the lobby after a game ends.
- * Everything game_started/game_state set has to be cleared: a leftover flag or
- * a running timer would otherwise apply to a game that no longer exists. The
- * player keeps their seat, so currentUser and currentRole are left alone.
+ * Dropping the board payload is most of the reset: whose turn it is, whether
+ * the dice are up, and whether a robber move or a discard is pending are all
+ * read back out of it. A running timer would otherwise apply to a game that no
+ * longer exists. The player keeps their seat, so the identity is left alone.
  */
 function returnToLobby() {
-    gameStarted = false;
-    currentPlayer = null;
-    currentBoardData = null;
-    hasRolledDice = false;
-    mustMoveRobber = false;
-    mustChooseVictim = false;
-    robberVictims = [];
-    mustDiscard = false;
-    discardAmount = 0;
-    selectedBuilding = null;
+    viewState.server.board = null;
+    viewState.winnerAnnounced = false;
+    viewState.selectedBuilding = null;
 
-    if (diceTimerInterval) {
-        clearInterval(diceTimerInterval);
-        diceTimerInterval = null;
+    if (viewState.timers.handle) {
+        clearInterval(viewState.timers.handle);
+        viewState.timers.handle = null;
     }
 
     setHighlight(null);
@@ -730,7 +868,7 @@ function returnToLobby() {
     gameBoard.classList.remove('placement-mode');
     robberIndicator?.classList.add('hidden');
     activeRulesPanel?.classList.add('hidden');
-    knightMoveFrom = null;
+    viewState.knightMoveFrom = null;
     renderCitiesKnights();
     diceDisplay.innerHTML = '';
     rollDiceBtn.disabled = false;
@@ -742,34 +880,25 @@ function returnToLobby() {
 }
 
 /**
- * Render user list in lobby
+ * Render the lobby roster from the list the server last broadcast.
  */
-function renderUserList(data) {
+function renderUserList() {
+    const roster = viewState.server.roster;
     playerList.innerHTML = '';
     observerList.innerHTML = '';
-    playerCount.textContent = data.players.length;
-    lobbyPlayerCount = data.players.length;
-    if (typeof data.min_players === 'number') {
-        minPlayersToStart = data.min_players;
-    }
+    playerCount.textContent = roster.players.length;
 
-    data.players.forEach(user => {
+    const appendName = (list, name) => {
         const li = document.createElement('li');
-        li.textContent = user.name;
-        if (user.name === currentUser) {
+        li.textContent = name;
+        if (name === viewState.identity.name) {
             li.classList.add('current-user');
         }
-        playerList.appendChild(li);
-    });
+        list.appendChild(li);
+    };
 
-    data.observers.forEach(user => {
-        const li = document.createElement('li');
-        li.textContent = user.name;
-        if (user.name === currentUser) {
-            li.classList.add('current-user');
-        }
-        observerList.appendChild(li);
-    });
+    roster.players.forEach(name => appendName(playerList, name));
+    roster.observers.forEach(name => appendName(observerList, name));
 }
 
 // The sections the lobby splits the catalogue into, in display order, keyed by
@@ -914,13 +1043,13 @@ function applyRuleValue(rule) {
         return;
     }
 
-    input.disabled = rulesLocked;
+    input.disabled = viewState.server.rules.locked;
 
     if (input === document.activeElement) {
         return;
     }
 
-    const value = rulesSelected[rule.id] ?? rule.default;
+    const value = viewState.server.rules.selected[rule.id] ?? rule.default;
     if (rule.type === 'int') {
         input.value = value;
     } else {
@@ -940,26 +1069,26 @@ function renderRulesPanel() {
 
     // The group is part of the signature: a rule that moves section has to
     // rebuild the DOM, exactly like one that changes type.
-    const signature = rulesCatalogue
+    const signature = viewState.server.rules.catalogue
         .map(rule => `${rule.id}:${rule.type}:${ruleGroupId(rule)}`)
         .join('|');
-    if (signature !== renderedRulesSignature) {
+    if (signature !== viewState.renderedRulesSignature) {
         const fragment = document.createDocumentFragment();
         RULE_GROUPS.forEach(group => {
-            const rules = rulesCatalogue.filter(rule => ruleGroupId(rule) === group.id);
+            const rules = viewState.server.rules.catalogue.filter(rule => ruleGroupId(rule) === group.id);
             if (rules.length > 0) {
                 fragment.appendChild(buildRuleGroup(group, rules));
             }
         });
         rulesList.innerHTML = '';
         rulesList.appendChild(fragment);
-        renderedRulesSignature = signature;
+        viewState.renderedRulesSignature = signature;
     }
 
-    rulesCatalogue.forEach(applyRuleValue);
+    viewState.server.rules.catalogue.forEach(applyRuleValue);
 
     if (rulesLockedNote) {
-        rulesLockedNote.classList.toggle('hidden', !rulesLocked);
+        rulesLockedNote.classList.toggle('hidden', !viewState.server.rules.locked);
     }
 }
 
@@ -969,21 +1098,21 @@ function renderRulesPanel() {
  * answer is what gets rendered.
  */
 function sendRules() {
-    if (rulesLocked) {
+    if (viewState.server.rules.locked) {
         return;
     }
 
     const chosen = {};
-    rulesCatalogue.forEach(rule => {
+    viewState.server.rules.catalogue.forEach(rule => {
         const input = rulesList.querySelector(`[data-rule-id="${rule.id}"]`);
         if (!input) {
-            chosen[rule.id] = rulesSelected[rule.id] ?? rule.default;
+            chosen[rule.id] = viewState.server.rules.selected[rule.id] ?? rule.default;
             return;
         }
 
         if (rule.type === 'int') {
             const parsed = parseInt(input.value, 10);
-            const fallback = rulesSelected[rule.id] ?? rule.default;
+            const fallback = viewState.server.rules.selected[rule.id] ?? rule.default;
             chosen[rule.id] = Number.isNaN(parsed)
                 ? fallback
                 : Math.max(rule.minimum, Math.min(rule.maximum, parsed));
@@ -1009,7 +1138,7 @@ if (rulesList) {
     // The focused control is skipped while rendering, so re-sync it on leave
     rulesList.addEventListener('focusout', (event) => {
         const input = event.target.closest('[data-rule-id]');
-        const rule = rulesCatalogue.find(entry => entry.id === input?.dataset.ruleId);
+        const rule = viewState.server.rules.catalogue.find(entry => entry.id === input?.dataset.ruleId);
         if (rule) {
             applyRuleValue(rule);
         }
@@ -1025,14 +1154,14 @@ function renderActiveRules() {
         return;
     }
 
-    const active = currentBoardData?.rules;
-    if (!active || rulesCatalogue.length === 0) {
+    const active = getBoard()?.rules;
+    if (!active || viewState.server.rules.catalogue.length === 0) {
         activeRulesPanel.classList.add('hidden');
         return;
     }
 
     const parts = [];
-    rulesCatalogue.forEach(rule => {
+    viewState.server.rules.catalogue.forEach(rule => {
         const value = active[rule.id];
         if (value === undefined || value === rule.default) {
             return;
@@ -1058,21 +1187,21 @@ function renderGameSidebar(data) {
     const players = data.players.map(p => typeof p === 'string' ? p : p.name);
 
     // Get longest road and largest army data from board
-    const longestRoadHolder = currentBoardData?.longest_road_holder || null;
-    const largestArmyHolder = currentBoardData?.largest_army_holder || null;
-    const longestRoadLengths = currentBoardData?.longest_road_length || {};
-    const knightsPlayed = currentBoardData?.knights_played || {};
+    const longestRoadHolder = getBoard()?.longest_road_holder || null;
+    const largestArmyHolder = getBoard()?.largest_army_holder || null;
+    const longestRoadLengths = getBoard()?.longest_road_length || {};
+    const knightsPlayed = getBoard()?.knights_played || {};
 
     // Harbour points only exist when the table switched the rule on
-    const harbormasterOn = currentBoardData?.rules?.harbormaster === true;
-    const harbormasterHolder = currentBoardData?.harbormaster_holder || null;
-    const harborPoints = currentBoardData?.harbor_points || {};
+    const harbormasterOn = getBoard()?.rules?.harbormaster === true;
+    const harbormasterHolder = getBoard()?.harbormaster_holder || null;
+    const harborPoints = getBoard()?.harbor_points || {};
 
     players.forEach(name => {
         const li = document.createElement('li');
         
         // Get player data for points
-        const playerData = currentBoardData?.players?.find(p => p.name === name);
+        const playerData = getBoard()?.players?.find(p => p.name === name);
         const points = playerData?.victory_points || 0;
         
         // Get road length and knights played
@@ -1108,7 +1237,7 @@ function renderGameSidebar(data) {
         }
         
         // Highlight current player with border
-        if (name === currentPlayer) {
+        if (name === getCurrentPlayer()) {
             li.classList.add('current-turn');
             li.style.border = '3px solid white';
             li.style.boxShadow = '0 0 10px rgba(255,255,255,0.5)';
@@ -1137,15 +1266,15 @@ function getContrastColor(hexColor) {
  * @returns {object|null} - Own player entry, or null (e.g. for observers)
  */
 function findMyPlayer() {
-    const players = currentBoardData?.players || [];
-    return players.find(p => p.is_you) || players.find(p => p.name === currentUser) || null;
+    const players = getBoard()?.players || [];
+    return players.find(p => p.is_you) || players.find(p => p.name === viewState.identity.name) || null;
 }
 
 /**
  * Render resource panel - shows current user's resources
  */
 function renderResourcePanel() {
-    if (!currentBoardData || !currentBoardData.players) {
+    if (!getBoard() || !getBoard().players) {
         return;
     }
 
@@ -1197,11 +1326,11 @@ function renderResourcePanel() {
  * Render bank panel - shows bank resources as percentage
  */
 function renderBank() {
-    if (!currentBoardData || !currentBoardData.bank) {
+    if (!getBoard() || !getBoard().bank) {
         return;
     }
     
-    const bank = currentBoardData.bank;
+    const bank = getBoard().bank;
     const resourceIcons = {
         wood: '🌲',
         brick: '🧱',
@@ -1232,7 +1361,7 @@ function renderBank() {
  * Render development cards panel - shows as buttons with conditional styling
  */
 function renderDevCards() {
-    if (!currentBoardData) {
+    if (!getBoard()) {
         return;
     }
     
@@ -1260,9 +1389,7 @@ function renderDevCards() {
         victory_point: 'victory_point'
     };
     
-    const isMyTurn = currentUser === currentPlayer;
-    const hasRolledDice = currentBoardData.has_rolled_dice === true;
-    const currentTurn = currentBoardData.turn_count !== undefined ? currentBoardData.turn_count : 0;
+    const currentTurn = getBoard().turn_count !== undefined ? getBoard().turn_count : 0;
     const playerColor = player.color || '#3498db';
     
     let cardsHtml = '<div class="your-cards">Your Cards:</div>';
@@ -1275,8 +1402,8 @@ function renderDevCards() {
             if (cardData.count > 0) {
                 // Knight can be played without rolling dice (just needs turn delay)
                 const needsDice = cardType !== 'knight';
-                const cardCanPlay = isMyTurn && 
-                    (!needsDice || hasRolledDice) &&
+                const cardCanPlay = isMyTurn() && 
+                    (!needsDice || hasRolledDice()) &&
                     (cardData.purchase_turn === null || currentTurn - cardData.purchase_turn >= 1);
                 
                 const disabled = cardCanPlay ? '' : 'disabled';
@@ -1299,7 +1426,7 @@ function renderDevDeckRemaining() {
     if (!devDeckRemaining) {
         return;
     }
-    const remaining = currentBoardData?.dev_cards_remaining ?? 0;
+    const remaining = getBoard()?.dev_cards_remaining ?? 0;
     devDeckRemaining.textContent = `Deck: ${remaining} left`;
 }
 
@@ -1316,21 +1443,21 @@ myDevCardsDiv.addEventListener('click', (event) => {
  * Handle playing a development card
  */
 function handlePlayDevCard(cardType) {
-    if (!currentBoardData) {
+    if (!getBoard()) {
         return;
     }
     
-    if (currentBoardData.game_phase === 'setup') {
+    if (getGamePhase() === 'setup') {
         displayError('Cannot play development cards during setup');
         return;
     }
     
-    if (mustMoveRobber) {
+    if (mustMoveRobber()) {
         displayError('You must move the robber first');
         return;
     }
     
-    if (currentUser !== currentPlayer) {
+    if (!isMyTurn()) {
         displayError('It is not your turn');
         return;
     }
@@ -1344,7 +1471,7 @@ function handlePlayDevCard(cardType) {
 
     // TODO: Implement card-specific logic
     console.log('Playing development card:', cardType);
-    emitGame('play_dev_card', { name: currentUser, card_type: cardType });
+    emitGame('play_dev_card', { name: viewState.identity.name, card_type: cardType });
 }
 
 // --------------------------------------------------------- Cities & Knights
@@ -1382,8 +1509,8 @@ const CK_MODES = ['knight', 'knight_move', 'city_wall'];
  * Whether the running game has Cities & Knights and has sent its state.
  */
 function ckEnabled() {
-    return currentBoardData?.rules?.cities_and_knights === true
-        && Boolean(currentBoardData?.cities_knights);
+    return getBoard()?.rules?.cities_and_knights === true
+        && Boolean(getBoard()?.cities_knights);
 }
 
 /**
@@ -1437,10 +1564,10 @@ function shortfallReason(held, cost) {
  * @returns {string} - Empty when the player may act
  */
 function ckTurnBlockReason() {
-    if (currentBoardData?.game_phase === 'setup') {
+    if (getGamePhase() === 'setup') {
         return 'Not during setup';
     }
-    if (currentUser !== currentPlayer) {
+    if (!isMyTurn()) {
         return 'Not your turn';
     }
     return '';
@@ -1457,13 +1584,13 @@ function toggleCkMode(mode) {
     if (!ckEnabled()) {
         return;
     }
-    selectedBuilding = selectedBuilding === mode ? null : mode;
-    knightMoveFrom = null;
+    viewState.selectedBuilding = viewState.selectedBuilding === mode ? null : mode;
+    viewState.knightMoveFrom = null;
 
     [placeSettlementBtn, placeRoadBtn, upgradeCityBtn].forEach(button => {
         button.classList.remove('active');
     });
-    gameBoard.classList.toggle('placement-mode', Boolean(selectedBuilding));
+    gameBoard.classList.toggle('placement-mode', Boolean(viewState.selectedBuilding));
 
     syncCkModeButtons();
     renderCitiesKnights();
@@ -1478,12 +1605,12 @@ function syncCkModeButtons() {
     if (!buildKnightBtn || !moveKnightBtn || !buildWallBtn) {
         return;
     }
-    buildKnightBtn.classList.toggle('active', selectedBuilding === 'knight');
-    moveKnightBtn.classList.toggle('active', selectedBuilding === 'knight_move');
-    buildWallBtn.classList.toggle('active', selectedBuilding === 'city_wall');
+    buildKnightBtn.classList.toggle('active', viewState.selectedBuilding === 'knight');
+    moveKnightBtn.classList.toggle('active', viewState.selectedBuilding === 'knight_move');
+    buildWallBtn.classList.toggle('active', viewState.selectedBuilding === 'city_wall');
 
-    if (selectedBuilding !== 'knight_move') {
-        knightMoveFrom = null;
+    if (viewState.selectedBuilding !== 'knight_move') {
+        viewState.knightMoveFrom = null;
     }
 }
 
@@ -1506,7 +1633,7 @@ function renderCitiesKnights() {
     knightsPanel?.classList.toggle('hidden', !enabled || !player);
 
     if (!enabled) {
-        knightMoveFrom = null;
+        viewState.knightMoveFrom = null;
         return;
     }
 
@@ -1529,7 +1656,7 @@ function renderBarbarianTrack() {
         return;
     }
 
-    const ck = currentBoardData.cities_knights;
+    const ck = getBoard().cities_knights;
     const length = ck.barbarian_track_length || 7;
     const position = Math.max(0, Math.min(length, ck.barbarian_position || 0));
     const stepsLeft = length - position;
@@ -1556,7 +1683,7 @@ function renderBarbarianTrack() {
 
     // Defence is the whole table's active knights against every city on the
     // board, so it is worth stating even on someone else's turn.
-    const players = currentBoardData.players || [];
+    const players = getBoard().players || [];
     const strength = Object.values(ck.knights || {}).reduce((total, knights) => (
         total + (knights || []).reduce((sum, knight) => sum + (knight.active ? knight.rank : 0), 0)
     ), 0);
@@ -1570,7 +1697,7 @@ function renderBarbarianTrack() {
         notes.push('the robber stays put until the first attack');
     }
     // Worth 1 victory point each and invisible everywhere else in the UI
-    const defenderCards = ck.defender_cards?.[currentUser] || 0;
+    const defenderCards = ck.defender_cards?.[viewState.identity.name] || 0;
     if (defenderCards > 0) {
         notes.push(`🛡️ ${defenderCards} Defender of Catan`);
     }
@@ -1590,7 +1717,7 @@ function renderImprovements(player) {
         return;
     }
 
-    const ck = currentBoardData.cities_knights;
+    const ck = getBoard().cities_knights;
     const tracks = ck.tracks || {};
     const levels = ck.improvements?.[player.name] || {};
     const commodities = player.commodities || {};
@@ -1702,7 +1829,7 @@ function renderKnights(player) {
         return;
     }
 
-    const ck = currentBoardData.cities_knights;
+    const ck = getBoard().cities_knights;
     const knights = ck.knights?.[player.name] || [];
     const resources = player.resources || {};
     const walls = ck.city_walls?.[player.name] || 0;
@@ -1747,7 +1874,7 @@ function renderKnights(player) {
 
     if (knightHint) {
         knightHint.textContent = ckModeHint();
-        knightHint.classList.toggle('hidden', !isCkMode(selectedBuilding));
+        knightHint.classList.toggle('hidden', !isCkMode(viewState.selectedBuilding));
     }
 
     const fragment = document.createDocumentFragment();
@@ -1761,7 +1888,7 @@ function renderKnights(player) {
 
     knights.forEach(knight => {
         const row = document.createElement('div');
-        row.className = knight.vertex === knightMoveFrom ? 'knight-row selected' : 'knight-row';
+        row.className = knight.vertex === viewState.knightMoveFrom ? 'knight-row selected' : 'knight-row';
 
         const title = document.createElement('div');
         title.className = 'knight-title';
@@ -1848,14 +1975,14 @@ function buildKnightActionButton(action, vertex, label, reason) {
  * What the player is expected to tap next, for the armed mode.
  */
 function ckModeHint() {
-    if (selectedBuilding === 'knight') {
+    if (viewState.selectedBuilding === 'knight') {
         return 'Tap a vacant intersection touching one of your roads.';
     }
-    if (selectedBuilding === 'city_wall') {
+    if (viewState.selectedBuilding === 'city_wall') {
         return 'Tap one of your cities.';
     }
-    if (selectedBuilding === 'knight_move') {
-        return knightMoveFrom
+    if (viewState.selectedBuilding === 'knight_move') {
+        return viewState.knightMoveFrom
             ? 'Now tap the intersection to move it to.'
             : 'Tap the knight you want to move.';
     }
@@ -1869,7 +1996,7 @@ improvementTracks?.addEventListener('click', (event) => {
     if (!button || button.disabled) {
         return;
     }
-    emitGame('buy_improvement', { name: currentUser, track: button.dataset.track });
+    emitGame('buy_improvement', { name: viewState.identity.name, track: button.dataset.track });
 });
 
 knightList?.addEventListener('click', (event) => {
@@ -1880,12 +2007,27 @@ knightList?.addEventListener('click', (event) => {
     const eventName = button.dataset.knightAction === 'promote'
         ? 'promote_knight'
         : 'activate_knight';
-    emitGame(eventName, { name: currentUser, vertex: button.dataset.vertex });
+    emitGame(eventName, { name: viewState.identity.name, vertex: button.dataset.vertex });
 });
 
 buildKnightBtn?.addEventListener('click', () => toggleCkMode('knight'));
 moveKnightBtn?.addEventListener('click', () => toggleCkMode('knight_move'));
 buildWallBtn?.addEventListener('click', () => toggleCkMode('city_wall'));
+
+/**
+ * Open the discard dialog for a fresh discard.
+ * The inputs are zeroed here and nowhere else, so a board update that arrives
+ * while the dialog is open cannot reset what has been typed into it.
+ *
+ * @param {number} amount - Cards the server says this player owes the bank
+ */
+function openDiscardModal(amount) {
+    discardAmountSpan.textContent = amount;
+    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(resource => {
+        document.getElementById(`discard-${resource}`).value = 0;
+    });
+    discardModal.classList.add('show');
+}
 
 /**
  * Update game UI based on phase (setup vs playing)
@@ -1906,42 +2048,26 @@ function updateGameUI(boardData) {
     
     const gamePhase = boardData.game_phase || 'playing';
     
-    // Update currentPlayer variable from board data
-    if (boardData.current_player) {
-        currentPlayer = boardData.current_player;
-    }
-    
-    // Update mustMoveRobber flag
-    mustMoveRobber = boardData.must_move_robber || false;
-    mustChooseVictim = boardData.must_choose_victim || false;
-    robberVictims = boardData.robber_victims || [];
-    
-    // Handle victim modal from board data
-    if (mustChooseVictim && currentUser === currentPlayer) {
+    // Whose turn it is, whether the robber is pending and who owes the bank
+    // cards are all read back out of this same payload where they are needed,
+    // so nothing is copied out of it here.
+    if (mustChooseVictim() && isMyTurn()) {
         renderVictimList();
         victimModal.classList.add('show');
     }
-    
-    // Update discard state from board data
-    const playersNeedingDiscard = boardData.players_needing_discard || {};
-    if (playersNeedingDiscard[currentUser] !== undefined && !mustDiscard) {
-        mustDiscard = true;
-        discardAmount = playersNeedingDiscard[currentUser];
-        discardAmountSpan.textContent = discardAmount;
-        
-        document.getElementById('discard-wood').value = 0;
-        document.getElementById('discard-brick').value = 0;
-        document.getElementById('discard-sheep').value = 0;
-        document.getElementById('discard-wheat').value = 0;
-        document.getElementById('discard-ore').value = 0;
-        
-        discardModal.classList.add('show');
+
+    // The dialog's own visibility is the record of whether it has already been
+    // opened for this discard - reopening it on every board update would wipe
+    // the numbers the player is halfway through typing.
+    const owedCards = getDiscardAmount();
+    if (owedCards > 0 && !discardModal.classList.contains('show')) {
+        openDiscardModal(owedCards);
     }
     
     // If must move robber, show a persistent hint - this runs on every board
     // update while the flag is set, so it must not be a popup
     if (robberIndicator) {
-        if (mustMoveRobber && currentUser === currentPlayer) {
+        if (mustMoveRobber() && isMyTurn()) {
             robberIndicator.classList.remove('hidden');
         } else {
             robberIndicator.classList.add('hidden');
@@ -1950,7 +2076,7 @@ function updateGameUI(boardData) {
     
     // Update free roads indicator
     const freeRoadsRemaining = boardData.free_roads_remaining || 0;
-    if (freeRoadsRemaining > 0 && currentUser === currentPlayer) {
+    if (freeRoadsRemaining > 0 && isMyTurn()) {
         freeRoadsIndicator.classList.remove('hidden');
         freeRoadsText.textContent = `Free Roads: ${freeRoadsRemaining} remaining`;
     } else {
@@ -1960,11 +2086,10 @@ function updateGameUI(boardData) {
     if (gamePhase === 'setup') {
         // During setup, auto-select building type based on setup_action
         const setupAction = boardData.setup_action || 'settlement';
-        const isMyTurn = currentUser === currentPlayer;
         
-        if (isMyTurn) {
+        if (isMyTurn()) {
             // Auto-select the required building type
-            selectedBuilding = setupAction;
+            viewState.selectedBuilding = setupAction;
             gameBoard.classList.add('placement-mode');
             
             // Update button states
@@ -1979,7 +2104,7 @@ function updateGameUI(boardData) {
             }
         } else {
             // Not my turn - clear selection
-            selectedBuilding = null;
+            viewState.selectedBuilding = null;
             gameBoard.classList.remove('placement-mode');
             placeSettlementBtn.classList.remove('active');
             placeRoadBtn.classList.remove('active');
@@ -2006,8 +2131,8 @@ function updateGameUI(boardData) {
         // A Cities & Knights mode is left armed: a knight move takes two taps
         // and someone else's trade landing between them would otherwise disarm
         // the board halfway through it.
-        if (!isCkMode(selectedBuilding)) {
-            selectedBuilding = null;
+        if (!isCkMode(viewState.selectedBuilding)) {
+            viewState.selectedBuilding = null;
             gameBoard.classList.remove('placement-mode');
         }
         placeSettlementBtn.classList.remove('active');
@@ -2023,10 +2148,8 @@ function updateGameUI(boardData) {
     // `game_started` and `turn_changed`; the setup-to-playing transition fires
     // neither, so the first player to act after setup could never roll and the
     // game simply stopped.
-    const myTurnNow = currentUser === currentPlayer;
-    const alreadyRolled = boardData.has_rolled_dice === true;
-    rollDiceBtn.disabled = gamePhase === 'setup' || !myTurnNow || alreadyRolled;
-    if (!alreadyRolled) {
+    rollDiceBtn.disabled = gamePhase === 'setup' || !isMyTurn() || hasRolledDice();
+    if (!hasRolledDice()) {
         rollDiceBtn.textContent = 'Roll Dice';
     }
 
@@ -2132,18 +2255,18 @@ function buildTradeActionButton(action, offerId, label) {
  * Render trade offers panel
  */
 function renderTradeOffers() {
-    if (!currentBoardData || !currentBoardData.trades) {
+    if (!getBoard() || !getBoard().trades) {
         tradeOffersDiv.replaceChildren();
         myOffersDiv.replaceChildren();
         updateTradeTabBadge(0);
         return;
     }
 
-    const activeTrades = currentBoardData.trades.active || [];
-    const allPlayers = currentBoardData.players || [];
+    const activeTrades = getBoard().trades.active || [];
+    const allPlayers = getBoard().players || [];
 
     // Active offers (other players' offers - responder view)
-    const otherOffers = activeTrades.filter(t => t.proposer !== currentUser);
+    const otherOffers = activeTrades.filter(t => t.proposer !== viewState.identity.name);
     const offersFragment = document.createDocumentFragment();
 
     if (otherOffers.length > 0) {
@@ -2153,7 +2276,7 @@ function renderTradeOffers() {
 
         for (const offer of otherOffers) {
             const accepted = offer.accepted_by || {};
-            const hasAcceptedMe = accepted[currentUser] === true;
+            const hasAcceptedMe = accepted[viewState.identity.name] === true;
 
             // For the responder the sides are mirrored: the proposer's wanted
             // resources are what this player would hand over.
@@ -2188,7 +2311,7 @@ function renderTradeOffers() {
     tradeOffersDiv.replaceChildren(offersFragment);
 
     // My offers (own offers - proposer view)
-    const myOfferList = currentBoardData.trades.my_offers?.[currentUser] || [];
+    const myOfferList = getBoard().trades.my_offers?.[viewState.identity.name] || [];
     const myOffersFragment = document.createDocumentFragment();
 
     if (myOfferList.length > 0) {
@@ -2212,7 +2335,7 @@ function renderTradeOffers() {
             actions.className = 'trade-offer-actions';
 
             for (const player of allPlayers) {
-                if (player.name === currentUser) continue;
+                if (player.name === viewState.identity.name) continue;
                 const hasAccepted = accepted[player.name] === true;
                 const button = buildTradeActionButton('complete', offer.id, player.name);
                 button.classList.add('accepted-player');
@@ -2276,7 +2399,7 @@ myOffersDiv?.addEventListener('click', handleTradeAction);
  * Update trade offer timers
  */
 function updateTradeTimers() {
-    if (!currentBoardData) {
+    if (!getBoard()) {
         return;
     }
 
@@ -2312,18 +2435,16 @@ function updateTradeTimers() {
     }
 }
 
-let tradeTimerHandle = null;
-
 /**
  * Start the once-per-second countdown. Idempotent: a second call keeps the
  * interval already running rather than stacking a second one, which would
  * double the `refresh_board` emits an expiring offer produces.
  */
 function startTradeTimers() {
-    if (tradeTimerHandle !== null) {
+    if (viewState.tradeTimerHandle !== null) {
         return;
     }
-    tradeTimerHandle = setInterval(updateTradeTimers, 1000);
+    viewState.tradeTimerHandle = setInterval(updateTradeTimers, 1000);
 }
 
 startTradeTimers();
@@ -2332,7 +2453,7 @@ startTradeTimers();
  * Show trade modal
  */
 function showTradeModal() {
-    if (!currentUser || currentUser !== currentPlayer) {
+    if (!isMyTurn()) {
         displayError('You can only propose trades on your turn');
         return;
     }
@@ -2373,7 +2494,7 @@ function submitTrade() {
     }
     
     emitGame('propose_trade', {
-        name: currentUser,
+        name: viewState.identity.name,
         offered: offered,
         wanted: wanted
     });
@@ -2386,7 +2507,7 @@ function submitTrade() {
  */
 function acceptTrade(offerId) {
     emitGame('accept_trade', {
-        name: currentUser,
+        name: viewState.identity.name,
         offer_id: offerId
     });
 }
@@ -2396,7 +2517,7 @@ function acceptTrade(offerId) {
  */
 function declineTrade(offerId) {
     emitGame('decline_trade', {
-        name: currentUser,
+        name: viewState.identity.name,
         offer_id: offerId
     });
 }
@@ -2442,7 +2563,7 @@ function confirmInvention() {
     }
     
     emitGame('use_invention', {
-        name: currentUser,
+        name: viewState.identity.name,
         resources: selected
     });
     
@@ -2470,7 +2591,7 @@ function hideMonopolyModal() {
  */
 function confirmMonopoly(resourceType) {
     emitGame('use_monopoly', {
-        name: currentUser,
+        name: viewState.identity.name,
         resource_type: resourceType
     });
     
@@ -2482,7 +2603,7 @@ function confirmMonopoly(resourceType) {
  */
 function cancelTrade(offerId) {
     emitGame('cancel_trade', {
-        name: currentUser,
+        name: viewState.identity.name,
         offer_id: offerId
     });
 }
@@ -2492,7 +2613,7 @@ function cancelTrade(offerId) {
  */
 function completeTrade(offerId, responder) {
     emitGame('complete_trade', {
-        name: currentUser,
+        name: viewState.identity.name,
         offer_id: offerId,
         selected_responder: responder
     });
@@ -2533,15 +2654,15 @@ function updateConsoleVisibility() {
     updateButtonColors();
     
     // Show/hide trade button based on turn
-    if (currentRole !== 'observer' && currentUser === currentPlayer) {
+    if (getRole() !== 'observer' && isMyTurn()) {
         proposeTradeBtn.style.display = 'inline-block';
     } else {
         proposeTradeBtn.style.display = 'none';
     }
     
-    if (currentRole === 'observer') {
+    if (getRole() === 'observer') {
         gameConsole.classList.add('hidden');
-    } else if (currentUser === currentPlayer) {
+    } else if (isMyTurn()) {
         gameConsole.classList.remove('hidden');
         nextTurnBtn.disabled = false;
         nextTurnBtn.textContent = `Next Turn`;
@@ -2552,7 +2673,7 @@ function updateConsoleVisibility() {
     } else {
         gameConsole.classList.remove('hidden');
         nextTurnBtn.disabled = true;
-        nextTurnBtn.textContent = `Waiting for ${currentPlayer}...`;
+        nextTurnBtn.textContent = `Waiting for ${getCurrentPlayer()}...`;
         colorPicker.style.display = 'inline-block';
         placeSettlementBtn.style.display = 'inline-block';
         placeRoadBtn.style.display = 'inline-block';
@@ -2560,7 +2681,7 @@ function updateConsoleVisibility() {
     }
     
     // Reset building selection when turn changes
-    selectedBuilding = null;
+    viewState.selectedBuilding = null;
     placeSettlementBtn.classList.remove('active');
     placeRoadBtn.classList.remove('active');
     upgradeCityBtn.classList.remove('active');
@@ -2573,14 +2694,13 @@ function updateConsoleVisibility() {
  */
 function updateButtonColors() {
     const buttons = [rollDiceBtn, placeSettlementBtn, placeRoadBtn, upgradeCityBtn, nextTurnBtn];
-    const currentUserData = currentBoardData?.players?.find(p => p.name === currentUser);
+    const currentUserData = getBoard()?.players?.find(p => p.name === viewState.identity.name);
     const playerColor = currentUserData?.color || '#e67e22';
     const textColor = getContrastColor(playerColor);
     
     // Use player's color only when it's their turn, otherwise use default
-    const isMyTurn = currentUser === currentPlayer;
-    const activeColor = isMyTurn ? playerColor : '#7f8c8d';
-    const activeTextColor = isMyTurn ? textColor : '#ffffff';
+    const activeColor = isMyTurn() ? playerColor : '#7f8c8d';
+    const activeTextColor = isMyTurn() ? textColor : '#ffffff';
     
     buttons.forEach(btn => {
         btn.style.backgroundColor = activeColor;
@@ -2603,13 +2723,13 @@ function updateTimers(boardData) {
     if (boardData.game_phase === 'setup') {
         diceTimerEl.textContent = 'Dice: -';
         roundTimerEl.textContent = 'Round: -';
-        if (diceTimerInterval) clearInterval(diceTimerInterval);
+        if (viewState.timers.handle) clearInterval(viewState.timers.handle);
         return;
     }
     
-    lastDiceTime = boardData.dice_roll_time || 15;
-    lastRoundTime = boardData.round_time || 120;
-    lastUpdateTime = Date.now();
+    viewState.timers.diceSeconds = boardData.dice_roll_time || 15;
+    viewState.timers.roundSeconds = boardData.round_time || 120;
+    viewState.timers.updatedAt = Date.now();
     const hasRolled = boardData.has_rolled_dice;
     
     // Dice timer - only show if hasn't rolled yet
@@ -2617,42 +2737,42 @@ function updateTimers(boardData) {
         diceTimerEl.textContent = 'Dice: -';
         diceTimerEl.className = 'timer';
     } else {
-        diceTimerEl.textContent = `Dice: ${lastDiceTime}s`;
-        diceTimerEl.className = 'timer' + (lastDiceTime <= 5 ? ' danger' : lastDiceTime <= 10 ? ' warning' : '');
+        diceTimerEl.textContent = `Dice: ${viewState.timers.diceSeconds}s`;
+        diceTimerEl.className = 'timer' + (viewState.timers.diceSeconds <= 5 ? ' danger' : viewState.timers.diceSeconds <= 10 ? ' warning' : '');
     }
     
     // Round timer - only show after dice rolled
     if (hasRolled) {
-        roundTimerEl.textContent = `Round: ${lastRoundTime}s`;
-        roundTimerEl.className = 'timer' + (lastRoundTime <= 30 ? ' danger' : lastRoundTime <= 60 ? ' warning' : '');
+        roundTimerEl.textContent = `Round: ${viewState.timers.roundSeconds}s`;
+        roundTimerEl.className = 'timer' + (viewState.timers.roundSeconds <= 30 ? ' danger' : viewState.timers.roundSeconds <= 60 ? ' warning' : '');
     } else {
         roundTimerEl.textContent = 'Round: -';
         roundTimerEl.className = 'timer';
     }
     
     // Start timer interval if it's player's turn and playing phase
-    if (boardData.game_phase === 'playing' && currentPlayer === currentUser) {
+    if (boardData.game_phase === 'playing' && isMyTurn()) {
         startTimerInterval();
     } else {
-        if (diceTimerInterval) clearInterval(diceTimerInterval);
+        if (viewState.timers.handle) clearInterval(viewState.timers.handle);
     }
 }
 
 function startTimerInterval() {
-    if (diceTimerInterval) clearInterval(diceTimerInterval);
+    if (viewState.timers.handle) clearInterval(viewState.timers.handle);
     
-    diceTimerInterval = setInterval(() => {
-        if (!gameStarted || currentPlayer !== currentUser || currentBoardData?.game_phase === 'setup') {
-            clearInterval(diceTimerInterval);
+    viewState.timers.handle = setInterval(() => {
+        if (!isGameRunning() || !isMyTurn() || getGamePhase() === 'setup') {
+            clearInterval(viewState.timers.handle);
             return;
         }
         
-        const elapsed = Math.floor((Date.now() - lastUpdateTime) / 1000);
+        const elapsed = Math.floor((Date.now() - viewState.timers.updatedAt) / 1000);
         
         // Calculate current times
-        const currentDiceTime = Math.max(0, lastDiceTime - elapsed);
-        const currentRoundTime = Math.max(0, lastRoundTime - elapsed);
-        const hasRolled = currentBoardData?.has_rolled_dice;
+        const currentDiceTime = Math.max(0, viewState.timers.diceSeconds - elapsed);
+        const currentRoundTime = Math.max(0, viewState.timers.roundSeconds - elapsed);
+        const hasRolled = getBoard()?.has_rolled_dice;
 
         // Display only: the server owns turn expiry. A client-side auto-emit
         // here would play the turn from a backgrounded tab.
@@ -2800,10 +2920,10 @@ function appendLogEntries(entries) {
             console.warn('Ignoring malformed log entry:', entry);
             continue;
         }
-        if (entry.id <= highestLogId) {
+        if (entry.id <= viewState.log.highestId) {
             continue;
         }
-        highestLogId = entry.id;
+        viewState.log.highestId = entry.id;
         fragment.appendChild(buildLogEntryNode(entry));
         appended += 1;
     }
@@ -2839,7 +2959,7 @@ function requestLogCatchUp() {
     if (!socket.connected) {
         return;
     }
-    socket.emit('request_log', { after_id: highestLogId });
+    socket.emit('request_log', { after_id: viewState.log.highestId });
 }
 
 /**
@@ -2849,7 +2969,7 @@ function requestLogCatchUp() {
  */
 function checkLogGap(data) {
     const lastId = data?.log_last_id ?? data?.board?.log_last_id;
-    if (Number.isInteger(lastId) && lastId > highestLogId) {
+    if (Number.isInteger(lastId) && lastId > viewState.log.highestId) {
         requestLogCatchUp();
     }
 }
@@ -2993,35 +3113,35 @@ socket.on('rules_changed', (data) => {
         return;
     }
 
-    rulesCatalogue = data.catalogue;
-    rulesSelected = data.selected || {};
-    rulesLocked = data.locked === true;
+    viewState.server.rules.catalogue = data.catalogue;
+    viewState.server.rules.selected = data.selected || {};
+    viewState.server.rules.locked = data.locked === true;
     renderRulesPanel();
     renderActiveRules();
 });
 
 socket.on('user_list', (data) => {
-    renderUserList(data);
+    setRoster(data.players, data.observers, data.min_players);
+    renderUserList();
     updateStartButton();
 });
 
 socket.on('game_started', (data) => {
-    gameStarted = true;
-    currentPlayer = data.current_player;
-    currentRole = 'player';
-    hasRolledDice = false;
+    // The board payload is what every later question is answered from, so it
+    // goes in before anything renders. The roster decides whether this tab is
+    // playing or watching - the server seats people, the client does not.
+    viewState.server.board = data.board;
+    viewState.winnerAnnounced = false;
+    setRoster(data.players, data.observers);
     userScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
-    
-    // Store board data first so renderGameSidebar can access player colors
-    currentBoardData = data.board;
     setHighlight(null);
 
     renderGameSidebar({ players: data.board.players });
     updateConsoleVisibility();
     
     // Set color picker to current user's color
-    const currentPlayerData = data.board?.players?.find(p => p.name === currentUser);
+    const currentPlayerData = data.board?.players?.find(p => p.name === viewState.identity.name);
     if (currentPlayerData?.color) {
         colorPicker.value = currentPlayerData.color;
     }
@@ -3042,7 +3162,7 @@ socket.on('game_started', (data) => {
     updateTimers(data.board);
     
     // Enable dice button for the first player
-    if (currentPlayer === currentUser) {
+    if (isMyTurn()) {
         rollDiceBtn.disabled = false;
         rollDiceBtn.textContent = 'Roll Dice';
         diceDisplay.innerHTML = '';
@@ -3065,33 +3185,28 @@ socket.on('game_started', (data) => {
 socket.on('game_state', (data) => {
     // The server answers every join with a snapshot, including "no game is
     // running" so a client that reconnects in the lobby is not left blank.
-    // Without this guard that snapshot flipped gameStarted to true and then
-    // threw on the missing players list, which left the lobby wedged with the
-    // Start Game button hidden.
+    // That snapshot used to be read as "a game started", because a local flag
+    // was set from the arrival of the message rather than from what it said,
+    // and nothing ever put it back - the lobby stayed wedged with the Start
+    // Game button hidden. There is no such flag to get wrong now: no board
+    // payload is what "no game" means.
     if (!data.in_game) {
-        gameStarted = false;
-        currentPlayer = null;
-        currentBoardData = null;
+        viewState.server.board = null;
+        viewState.winnerAnnounced = false;
         gameScreen.classList.add('hidden');
         userScreen.classList.remove('hidden');
         updateStartButton();
         return;
     }
 
-    gameStarted = true;
-    currentPlayer = data.current_player;
-    if (data.players.includes(currentUser)) {
-        currentRole = 'player';
-    } else {
-        currentRole = 'observer';
-    }
+    viewState.server.board = data.board;
+    viewState.winnerAnnounced = false;
+    setRoster(data.players, data.observers);
     userScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     renderGameSidebar({ players: data.players });
     updateConsoleVisibility();
-    
-    // Store board data and render
-    currentBoardData = data.board;
+
     if (data.board) {
         setHighlight(null);
         renderResourcePanel();
@@ -3102,7 +3217,7 @@ socket.on('game_state', (data) => {
     }
 
     // Set color picker to current user's color
-    const currentPlayerData = data.board?.players?.find(p => p.name === currentUser);
+    const currentPlayerData = data.board?.players?.find(p => p.name === viewState.identity.name);
     if (currentPlayerData?.color) {
         colorPicker.value = currentPlayerData.color;
     }
@@ -3115,33 +3230,37 @@ socket.on('game_state', (data) => {
 });
 
 socket.on('turn_changed', (data) => {
-    const wasMyTurn = currentPlayer === currentUser;
-    currentPlayer = data.current_player;
+    const wasMyTurn = isMyTurn();
+    // This lands a fraction of a second before the board broadcast that
+    // repeats the same two facts. Folding them into the stored payload keeps
+    // one answer to "whose turn is it" instead of opening a second one.
+    applyBoardFacts({
+        current_player: data.current_player,
+        has_rolled_dice: data.has_rolled_dice === true
+    });
+    setRoster(data.players, data.observers);
     renderGameSidebar({ players: data.players });
     updateConsoleVisibility();
     renderResourcePanel();
     // Whose turn it is decides what every Cities & Knights button says
     renderCitiesKnights();
     console.log('Turn changed. Current player:', data.current_player);
-    hasRolledDice = false;
-    
+
     // Update timers from server data
     if (data.dice_roll_time !== undefined) {
-        lastDiceTime = data.dice_roll_time;
-        lastRoundTime = data.round_time;
-        lastUpdateTime = Date.now();
-        currentBoardData = currentBoardData || {};
-        currentBoardData.has_rolled_dice = data.has_rolled_dice;
+        viewState.timers.diceSeconds = data.dice_roll_time;
+        viewState.timers.roundSeconds = data.round_time;
+        viewState.timers.updatedAt = Date.now();
         startTimerInterval();
     }
     
     // Play sound if it's now my turn
-    if (currentPlayer === currentUser && !wasMyTurn) {
+    if (isMyTurn() && !wasMyTurn) {
         turnSound.play().catch(e => console.log('Could not play sound:', e));
     }
     
     // Enable dice button for the current player
-    if (currentPlayer === currentUser) {
+    if (isMyTurn()) {
         rollDiceBtn.disabled = false;
         rollDiceBtn.textContent = 'Roll Dice';
         diceDisplay.innerHTML = '';
@@ -3150,12 +3269,12 @@ socket.on('turn_changed', (data) => {
 
 socket.on('player_color_changed', (data) => {
     console.log(`Player ${data.name} changed color to ${data.color}`);
-    if (data.name === currentUser) {
+    if (data.name === viewState.identity.name) {
         colorPicker.value = data.color;
     }
-    // Update player color in currentBoardData before re-rendering
-    if (currentBoardData && currentBoardData.players) {
-        for (const player of currentBoardData.players) {
+    // Update the player's colour in the stored board before re-rendering
+    if (getBoard() && getBoard().players) {
+        for (const player of getBoard().players) {
             if (player.name === data.name) {
                 player.color = data.color;
                 break;
@@ -3166,8 +3285,8 @@ socket.on('player_color_changed', (data) => {
     markDirty();
     // Update buttons and sidebar with new color
     updateButtonColors();
-    if (currentPlayer) {
-        renderGameSidebar({ players: currentBoardData?.players?.map(p => p.name) || [] });
+    if (getCurrentPlayer()) {
+        renderGameSidebar({ players: getBoard()?.players?.map(p => p.name) || [] });
     }
 });
 
@@ -3176,7 +3295,6 @@ socket.on('dice_rolled', (data) => {
     diceDisplay.innerHTML = `<span class="die">${data.dice1}</span><span class="die">${data.dice2}</span>`;
     rollDiceBtn.disabled = true;
     rollDiceBtn.textContent = `Rolled: ${data.total}`;
-    hasRolledDice = true;
     
     // Highlight hexes matching the rolled number
     setHighlight(data.total);
@@ -3187,7 +3305,7 @@ socket.on('dice_rolled', (data) => {
 
 socket.on('board_updated', (data) => {
     console.log('Board updated');
-    currentBoardData = data.board;
+    viewState.server.board = data.board;
     setHighlight(data.highlight || null);
     renderResourcePanel();
     renderBank();
@@ -3212,10 +3330,10 @@ socket.on('dev_card_bought', (data) => {
 
 socket.on('dev_card_played', (data) => {
     console.log('Development card played:', data);
-    if (data.card_type === 'invention' && data.needs_resources && data.player === currentUser) {
+    if (data.card_type === 'invention' && data.needs_resources && data.player === viewState.identity.name) {
         showInventionModal();
     }
-    if (data.card_type === 'monopoly' && data.needs_resource && data.player === currentUser) {
+    if (data.card_type === 'monopoly' && data.needs_resource && data.player === viewState.identity.name) {
         showMonopolyModal();
     }
 });
@@ -3223,8 +3341,9 @@ socket.on('dev_card_played', (data) => {
 socket.on('game_won', (data) => {
     console.log('Game won:', data);
     showNotice(`🎉 GAME OVER! ${data.player} wins with ${data.victory_points} victory points!`, 'success', true);
-    // Optionally disable game interactions
-    gameStarted = false;
+    // A one-shot notice that no later payload repeats, so the win is latched
+    // here - it is what stops the turn countdown.
+    viewState.winnerAnnounced = true;
 });
 
 socket.on('game_ended', (data) => {
@@ -3236,8 +3355,8 @@ socket.on('game_ended', (data) => {
 
 socket.on('trade_proposed', (data) => {
     console.log('Trade proposed:', data.offer);
-    if (currentBoardData && currentBoardData.trades) {
-        currentBoardData.trades.active.push(data.offer);
+    if (getBoard() && getBoard().trades) {
+        getBoard().trades.active.push(data.offer);
     }
     renderTradeOffers();
 });
@@ -3264,40 +3383,28 @@ socket.on('trade_completed', (data) => {
 
 socket.on('discard_required', (data) => {
     console.log('Discard required:', data);
-    if (data.player === currentUser) {
-        mustDiscard = true;
-        discardAmount = data.amount;
-        discardAmountSpan.textContent = discardAmount;
-        
-        // Reset discard inputs
-        document.getElementById('discard-wood').value = 0;
-        document.getElementById('discard-brick').value = 0;
-        document.getElementById('discard-sheep').value = 0;
-        document.getElementById('discard-wheat').value = 0;
-        document.getElementById('discard-ore').value = 0;
-        
-        discardModal.classList.add('show');
+    if (data.player === viewState.identity.name) {
+        openDiscardModal(data.amount);
     }
 });
 
 socket.on('discard_completed', (data) => {
     console.log('Discard completed:', data);
-    if (data.player === currentUser) {
-        mustDiscard = false;
-        discardAmount = 0;
+    if (data.player === viewState.identity.name) {
         discardModal.classList.remove('show');
     }
 });
 
 socket.on('choose_victim', (data) => {
     console.log('Choose victim event received:', data);
-    console.log('currentUser:', currentUser, 'currentPlayer:', currentPlayer);
-    
-    if (currentUser === currentPlayer) {
-        mustChooseVictim = true;
-        robberVictims = data.victims || [];
-        console.log('Should show modal now, victims:', robberVictims);
-        
+
+    if (isMyTurn()) {
+        // Sent immediately before the board broadcast carrying the same two
+        // fields, so fold it in rather than keeping a second copy.
+        applyBoardFacts({
+            must_choose_victim: true,
+            robber_victims: data.victims || []
+        });
         renderVictimList();
         victimModal.classList.remove('hidden');
         victimModal.classList.add('show');
@@ -3308,7 +3415,7 @@ socket.on('choose_victim', (data) => {
 
 socket.on('resource_stolen', (data) => {
     console.log('Resource stolen:', data);
-    if (data.victim === currentUser) {
+    if (data.victim === viewState.identity.name) {
         showNotice(`Player ${data.player} stole 1 ${data.resource} from you!`, 'info');
     } else {
         logToGameConsole(`Player ${data.player} stole 1 ${data.resource} from ${data.victim}`);
@@ -3318,9 +3425,9 @@ socket.on('resource_stolen', (data) => {
 function renderVictimList() {
     victimList.innerHTML = '';
     
-    const players = currentBoardData?.players || [];
+    const players = getBoard()?.players || [];
     
-    robberVictims.forEach(victimName => {
+    getRobberVictims().forEach(victimName => {
         const player = players.find(p => p.name === victimName);
         const color = player?.color || '#cccccc';
         
@@ -3346,9 +3453,8 @@ victimList.addEventListener('click', (event) => {
     if (!item) {
         return;
     }
-    emitGame('choose_robber_victim', { name: currentUser, victim: item.dataset.victim });
+    emitGame('choose_robber_victim', { name: viewState.identity.name, victim: item.dataset.victim });
     victimModal.classList.remove('show');
-    mustChooseVictim = false;
 });
 
 submitDiscardBtn.addEventListener('click', () => {
@@ -3362,12 +3468,12 @@ submitDiscardBtn.addEventListener('click', () => {
     
     const total = resources.wood + resources.brick + resources.sheep + resources.wheat + resources.ore;
     
-    if (total !== discardAmount) {
-        displayError(`You must discard exactly ${discardAmount} cards`);
+    if (total !== getDiscardAmount()) {
+        displayError(`You must discard exactly ${getDiscardAmount()} cards`);
         return;
     }
     
-    emitGame('discard_resources', { name: currentUser, resources: resources });
+    emitGame('discard_resources', { name: viewState.identity.name, resources: resources });
 });
 
 socket.on('event_logged', (data) => {
@@ -3417,12 +3523,12 @@ function setConnectionStatus(state, label) {
 socket.on('connect', () => {
     setConnectionStatus('connected', 'Connected');
     updateChatAvailability();
-    if (currentUser) {
+    if (viewState.identity.name) {
         // Re-join on every reconnect - the server replies with a full snapshot.
         // takeover: true because this IS the same player reclaiming their own
         // seat; the server may still be holding the dropped socket's binding.
         socket.emit('join', {
-            name: currentUser, role: currentRole, color: currentColor, takeover: true
+            name: viewState.identity.name, role: getRole(), color: viewState.identity.color, takeover: true
         });
         socket.emit('request_rules');
         // After the rejoin, so the socket is back in the lobby by the time the
@@ -3485,9 +3591,9 @@ if (!socketAvailable) {
 // than reproducing it from a sequence of clicks, and the browser playthrough
 // tests need to know which vertices are legal before they can click one.
 window.__catanDebug = {
-    getBoard: () => currentBoardData,
-    getUser: () => currentUser,
-    getRole: () => currentRole,
-    getCurrentPlayer: () => currentPlayer,
-    isGameStarted: () => gameStarted,
+    getBoard,
+    getUser: () => viewState.identity.name,
+    getRole,
+    getCurrentPlayer,
+    isGameStarted: isGameRunning
 };
