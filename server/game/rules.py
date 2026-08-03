@@ -11,6 +11,9 @@ the answer has to point at a rulebook.
 
 BOOL = "bool"
 INT = "int"
+# One of a fixed set of ids, listed in the rule's "options" so the lobby can
+# render the choice without knowing what any of them mean.
+CHOICE = "choice"
 
 # Groups let the lobby section the picker. "core" knobs change base-game
 # numbers that are normally fixed; "expansion" turns on a whole rule set;
@@ -21,6 +24,49 @@ VARIANT = "variant"
 
 
 RULES = [
+    {
+        "id": "board_layout",
+        "group": CORE,
+        "type": CHOICE,
+        "default": "random",
+        "options": [
+            {
+                "id": "random",
+                "name": "Random",
+                "summary": (
+                    "The variable board: 19 terrain hexes, tokens and harbours "
+                    "shuffled into place. A different island every game."
+                ),
+            },
+            {
+                "id": "beginner",
+                "name": "Beginner",
+                "summary": (
+                    "The printed starting map for beginners — the same terrain "
+                    "and the same numbers every game, so a table can compare "
+                    "two games on one board."
+                ),
+            },
+            {
+                "id": "large",
+                "name": "Large (5–6 players)",
+                "summary": (
+                    "The extension's island: 30 terrain hexes, 28 number "
+                    "tokens and 11 harbours. Room for five or six."
+                ),
+            },
+        ],
+        "name": "Map",
+        "source": (
+            "Base game rulebook, Illustration A (beginner); "
+            "Catan 5–6 Player Extension rulebook (large)"
+        ),
+        "summary": (
+            "Which island to play on. The random board is the standard game; "
+            "the beginner map is the one printed in the rulebook; the large "
+            "map is the 5–6 player extension board."
+        ),
+    },
     {
         "id": "cities_and_knights",
         "group": EXPANSION,
@@ -189,6 +235,9 @@ def coerce(raw: dict) -> dict:
 
         if rule["type"] == BOOL:
             chosen[rule_id] = bool(value)
+        elif rule["type"] == CHOICE:
+            if value in {option["id"] for option in rule["options"]}:
+                chosen[rule_id] = value
         elif rule["type"] == INT:
             if isinstance(value, bool) or not isinstance(value, int):
                 continue

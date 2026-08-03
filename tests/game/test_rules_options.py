@@ -23,9 +23,14 @@ class TestRegistry:
         for rule in rules_module.catalogue():
             assert rule['id'] and rule['name'] and rule['summary']
             assert rule['source'], f"{rule['id']} must cite a rulebook"
-            assert rule['type'] in (rules_module.BOOL, rules_module.INT)
+            assert rule['type'] in (rules_module.BOOL, rules_module.INT, rules_module.CHOICE)
             if rule['type'] == rules_module.INT:
                 assert rule['minimum'] <= rule['default'] <= rule['maximum']
+            if rule['type'] == rules_module.CHOICE:
+                options = rule['options']
+                assert all(option['id'] and option['name'] and option['summary']
+                           for option in options)
+                assert rule['default'] in {option['id'] for option in options}
 
     def test_unknown_rule_ids_are_ignored(self):
         chosen = rules_module.coerce({'not_a_rule': True, 'friendly_robber': True})

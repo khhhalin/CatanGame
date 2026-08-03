@@ -36,6 +36,32 @@ class TestBoardSurvives:
         assert {k: v.port for k, v in after.vertices.items() if v.port} == before
         assert before, "the board should have ports at all"
 
+    def test_harbours_come_back_on_their_edges(self, tmp_path):
+        game = a_game()
+        before = {k: e.port for k, e in game.edges.items() if e.port}
+        after = round_trip(game, tmp_path)
+        assert {k: e.port for k, e in after.edges.items() if e.port} == before
+        assert len(before) == 9
+
+    def test_a_save_from_before_harbours_moved_to_edges_still_loads(self, tmp_path):
+        """Such a save carries vertex ports only, and those are what the trade
+        rules read, so the game resumes with the harbours it was played with."""
+        game = a_game()
+        data = persistence.serialize(game)
+        vertex_ports = data.pop('edge_ports') and data['ports']
+
+        restored = persistence.deserialize(data)
+        assert {k: v.port for k, v in restored.vertices.items() if v.port} == vertex_ports
+        assert not any(e.port for e in restored.edges.values())
+
+    def test_a_bigger_map_comes_back_whole(self, tmp_path):
+        game = a_game(rules={'board_layout': 'large'})
+        before = {k: (h.type, h.number) for k, h in game.hexes.items()}
+        after = round_trip(game, tmp_path)
+        assert {k: (h.type, h.number) for k, h in after.hexes.items()} == before
+        assert after.rules['board_layout'] == 'large'
+        assert sum(1 for e in after.edges.values() if e.port) == 11
+
     def test_buildings_and_roads_come_back(self, tmp_path):
         game = a_game()
         vertex_key = next(iter(game.vertices))

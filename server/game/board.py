@@ -3,9 +3,13 @@
 Split out of `game.py` so the rules engine is readable on its own: this is the
 cube-coordinate maths from hex.md plus the one-time layout of hexes, vertices,
 edges and ports. It is a mixin rather than free functions because every method
-here reads the board configuration off the Game (`hex_radius`, `rng`, and the
-dicts it fills in), and threading all of that through parameters would obscure
-the geometry, which is the hard part.
+here reads the board configuration off the Game (the chosen layout, `rng`, and
+the dicts it fills in), and threading all of that through parameters would
+obscure the geometry, which is the hard part.
+
+A layout in `LAYOUTS` is one selectable map: which tiles the island is made of,
+what is in the box for a board that size, and whether any of it is printed
+rather than shuffled.
 """
 
 import logging
@@ -24,9 +28,109 @@ NUMBER_TOKENS = (2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12)
 PORT_TYPES = ('generic', 'generic', 'generic', 'generic',
               'wood', 'brick', 'sheep', 'wheat', 'ore')
 
+# The 19 base-game terrain hexes.
+RESOURCE_TYPES = (
+    ('wood',) * 4 + ('wheat',) * 4 + ('sheep',) * 4
+    + ('brick',) * 3 + ('ore',) * 3 + ('desert',)
+)
+
+# The 5–6 player game plays on both boxes at once: the base game's 19 terrain
+# hexes plus the extension's 11 (1 desert, 2 fields, 2 forest, 2 pasture,
+# 2 mountains, 2 hills), for 30 land hexes and 2 deserts.
+LARGE_RESOURCE_TYPES = (
+    ('wood',) * 6 + ('wheat',) * 6 + ('sheep',) * 6
+    + ('brick',) * 5 + ('ore',) * 5 + ('desert',) * 2
+)
+
+# The extension's own 28 tokens replace the base game's 18: 2 and 12 twice
+# each, every other number three times. 28 tokens for 30 hexes less 2 deserts.
+LARGE_NUMBER_TOKENS = (
+    (2,) * 2 + (12,) * 2
+    + tuple(number for number in (3, 4, 5, 6, 8, 9, 10, 11) for _ in range(3))
+)
+
+# 11 harbours: the base game's 9 plus the extension's two frame pieces, which
+# are one more generic 3:1 and a second 2:1 wool harbour.
+LARGE_PORT_TYPES = PORT_TYPES + ('generic', 'sheep')
+
+
+def _hexagon(radius: int) -> tuple:
+    """The land tiles of a regular hexagonal island, in cube coordinates.
+
+    Rows first, left to right within a row, which is the order a printed map
+    is read in.
+    """
+    coords = []
+    for row in range(-radius, radius + 1):
+        first = max(-radius, -radius - row)
+        last = min(radius, radius - row)
+        for column in range(first, last + 1):
+            coords.append((3 * column, -3 * (column + row), 3 * row))
+    return tuple(coords)
+
+
+def _island_rows(rows: tuple) -> tuple:
+    """Land tiles listed row by row as (row, leftmost column, width)."""
+    coords = []
+    for row, first_column, width in rows:
+        for column in range(first_column, first_column + width):
+            coords.append((3 * column, -3 * (column + row), 3 * row))
+    return tuple(coords)
+
+
+# The 5–6 player island is not a regular hexagon — its rows run 3-4-5-6-5-4-3 —
+# so it is spelled out row by row. A row of 6 forces the whole island half a
+# tile off centre horizontally; there is no arrangement of these rows that is
+# both this shape and centred.
+LARGE_ISLAND = _island_rows((
+    (-3, 0, 3), (-2, -1, 4), (-1, -2, 5), (0, -3, 6), (1, -3, 5), (2, -3, 4), (3, -3, 3),
+))
+
+# The starting map for beginners, read off Illustration A on page 3 of the
+# rulebook: five rows of 3, 4, 5, 4 and 3 terrain hexes, top row first.
+BEGINNER_ISLAND = (
+    ('ore', 10), ('sheep', 2), ('wood', 9),
+    ('wheat', 12), ('brick', 6), ('sheep', 4), ('brick', 10),
+    ('wheat', 9), ('wood', 11), ('desert', None), ('wood', 3), ('ore', 8),
+    ('wood', 8), ('ore', 3), ('wheat', 4), ('sheep', 5),
+    ('brick', 5), ('wheat', 6), ('sheep', 11),
+)
+
+# One entry per selectable map. `island` is the printed tile-by-tile map for a
+# fixed layout and None when the tiles are shuffled; `fixed` also freezes where
+# the harbours sit, so the same map comes back every game.
+LAYOUTS = {
+    'random': {
+        'hexes': _hexagon(2),
+        'resources': RESOURCE_TYPES,
+        'numbers': NUMBER_TOKENS,
+        'ports': PORT_TYPES,
+        'island': None,
+        'fixed': False,
+    },
+    'beginner': {
+        'hexes': _hexagon(2),
+        'resources': RESOURCE_TYPES,
+        'numbers': NUMBER_TOKENS,
+        'ports': PORT_TYPES,
+        'island': BEGINNER_ISLAND,
+        'fixed': True,
+    },
+    'large': {
+        'hexes': LARGE_ISLAND,
+        'resources': LARGE_RESOURCE_TYPES,
+        'numbers': LARGE_NUMBER_TOKENS,
+        'ports': LARGE_PORT_TYPES,
+        'island': None,
+        'fixed': False,
+    },
+}
+
+DEFAULT_LAYOUT = 'random'
+
 
 class BoardBuilder:
-    """Everything that turns a radius into a populated board."""
+    """Everything that turns a layout into a populated board."""
 
     HEX_DIRECTIONS = [
         (3, -3, 0),  # Right
@@ -80,100 +184,44 @@ class BoardBuilder:
         parts = key.split(',')
         return int(parts[0]), int(parts[1]), int(parts[2])
 
-    def _is_valid_hex(self, x: int, y: int, z: int) -> bool:
-        """
-        Check if coordinates represent a valid hex within the board.
-
-        A hex is valid if:
-        1. x + y + z = 0 (cube coordinate invariant)
-        2. All coordinates are divisible by 3 (hex classification rule)
-        3. The hex is within the land radius
-
-        Args:
-            x, y, z: Cube coordinates
-
-        Returns:
-            True if valid land hex, False otherwise
-        """
-        # Check cube coordinate invariant
-        if x + y + z != 0:
-            return False
-
-        # Check hex classification (all divisible by 3)
-        if x % 3 != 0 or y % 3 != 0 or z % 3 != 0:
-            return False
-
-        # Check if within land radius (using max coordinate as distance metric)
-        max_coord = max(abs(x // 3), abs(y // 3), abs(z // 3))
-        return max_coord <= self.hex_radius
-
-    def _is_ocean(self, x: int, y: int, z: int) -> bool:
-        """
-        Check if coordinates represent an ocean tile.
-
-        Ocean tiles are within edge_radius but outside hex_radius.
-
-        A tile is a tile whatever it is made of, so an ocean hex is classified
-        by the *hex* rule (all three coordinates divisible by 3), not the edge
-        rule. Requiring exactly one divisible coordinate meant no coordinate the
-        generation loop visits could ever be ocean, and the board came out as
-        19 land hexes with no water at all.
-
-        Args:
-            x, y, z: Cube coordinates
-
-        Returns:
-            True if ocean tile, False otherwise
-        """
-        if x + y + z != 0:
-            return False
-
-        if x % 3 != 0 or y % 3 != 0 or z % 3 != 0:
-            return False
-
-        # The ring (or rings) between the land and the edge of the map.
-        distance = max(abs(x // 3), abs(y // 3), abs(z // 3))
-        return self.hex_radius < distance <= self.edge_radius
-
     def _generate_board(self):
         """
         Generate the complete Catan board.
 
         This method:
-        1. Creates all hexes within hex_radius (land) and edge_radius (ocean)
-        2. Generates all vertices and edges for each hex
+        1. Creates the island of the chosen layout, and the sea around it
+        2. Generates all vertices and edges for each land hex
         3. Builds neighbor relationships algebraically
-        4. Assigns resource types and numbers randomly
+        4. Lays out terrain, number tokens and harbours
         """
-        # Step 1: Generate all hex keys
-        land_hex_keys = set()
-        ocean_hex_keys = set()
+        self.board_layout = LAYOUTS.get(self.rules.get('board_layout'), LAYOUTS[DEFAULT_LAYOUT])
+        island = self.board_layout['hexes']
 
-        # Generate all possible coordinates within edge_radius
-        # We iterate through a cube and filter based on our rules
-        r = self.edge_radius * 3
-        for x in range(-r, r + 1, 3):
-            for y in range(-r, r + 1, 3):
-                z = -x - y
-                if -r <= z <= r:
-                    if self._is_valid_hex(x, y, z):
-                        land_hex_keys.add(self._hex_key(x, y, z))
-                    elif self._is_ocean(x, y, z):
-                        ocean_hex_keys.add(self._hex_key(x, y, z))
+        land_hex_keys = {self._hex_key(*coords) for coords in island}
+
+        # The sea is whatever touches the island. Derived from adjacency rather
+        # than from a radius, because a layout can be any shape: the 5–6 player
+        # island is not a hexagon, so no radius describes it.
+        ocean_hex_keys = set()
+        for x, y, z in island:
+            for dx, dy, dz in self.HEX_DIRECTIONS:
+                neighbor_key = self._hex_key(x + dx, y + dy, z + dz)
+                if neighbor_key not in land_hex_keys:
+                    ocean_hex_keys.add(neighbor_key)
 
         # Step 2: Create hex objects with resource types and numbers
-        self._create_hexes(land_hex_keys | ocean_hex_keys)
+        self._create_hexes(land_hex_keys, ocean_hex_keys)
 
         # Step 3: Generate vertices and edges from the land only. The ocean ring
         # is scenery: giving it intersections would let a player settle on the
-        # water and would rob the coastline vertices of the "fewer than three
-        # hexes" signature the harbours are placed from.
+        # water and would rob the coastline of the signature the harbours are
+        # placed from.
         self._generate_vertices_and_edges(land_hex_keys)
 
         # Step 4: Build all neighbor relationships
         self._build_neighbor_relationships(land_hex_keys)
 
-        # Step 5: Assign ports to edge vertices
+        # Step 5: Hang the harbours off the coast
         self._assign_ports()
 
         logger.debug("\n=== Board Generated ===")
@@ -188,71 +236,60 @@ class BoardBuilder:
         logger.debug(f"Hex distribution: {hex_types}")
         logger.debug("=======================\n")
 
-    def _create_hexes(self, hex_keys: set):
+    def _create_hexes(self, land_hex_keys: set, ocean_hex_keys: set):
         """
-        Create Hex objects with random resource types and numbers.
+        Create Hex objects, with the terrain and number tokens of the layout.
 
-        Standard Catan distribution (19 hexes):
-        - 4 Wood, 4 Wheat, 4 Sheep, 3 Brick, 3 Ore, 1 Desert
+        A fixed layout is a printed map and is laid out tile by tile in the
+        order the rulebook shows; otherwise the box is shuffled.
 
         Args:
-            hex_keys: Set of all hex coordinate keys
+            land_hex_keys: The island's hexes
+            ocean_hex_keys: The sea around it, which carries no terrain
         """
-        # Define resource types and their counts (standard Catan).
-        # These must total exactly 19 — the number of land hexes. A list of 20
-        # meant one tile's resource was silently dropped, and which one varied
-        # per run, so no two boards had the same resource mix.
-        resource_types = (
-            ["wood"] * 4
-            + ["wheat"] * 4
-            + ["sheep"] * 4
-            + ["brick"] * 3
-            + ["ore"] * 3
-            + ["desert"] * 1
+        layout = self.board_layout
+
+        if layout['island']:
+            placed = list(layout['island'])
+        else:
+            resource_types = list(layout['resources'])
+            number_tokens = list(layout['numbers'])
+            self.rng.shuffle(resource_types)
+            self.rng.shuffle(number_tokens)
+            placed = [
+                (hex_type, None if hex_type == 'desert' else number_tokens.pop())
+                for hex_type in resource_types
+            ]
+
+        # The counts are what the box holds, and a mismatch is a silent, varying
+        # board rather than a crash: a resource list one entry too long used to
+        # drop a different tile's terrain on every run.
+        assert len(placed) == len(land_hex_keys), (
+            f"{len(placed)} tiles for {len(land_hex_keys)} land hexes"
         )
-        assert len(resource_types) == 19, "resource distribution must match the 19 land hexes"
-
-        # Shuffle for random placement
-        self.rng.shuffle(resource_types)
-
-        # The 18 number tokens in the box: 2 and 12 once each, everything else
-        # twice, and no 7. The old list weighted the pool by dice probability
-        # (5 sixes, 5 eights, 1 two) and held 30 tokens for 18 slots, so 12 were
-        # left unused in the stack and the tokens that did get dealt ran hot —
-        # around three 6s and three 8s on an average board, and often no 2 or 12
-        # at all. The pips printed on a token already encode the odds; the *set*
-        # does not.
-        number_tokens = list(NUMBER_TOKENS)
-        assert len(number_tokens) == len(resource_types) - resource_types.count("desert"), (
+        assert sorted(hex_type for hex_type, _ in placed) == sorted(layout['resources']), (
+            "terrain must match the layout's distribution"
+        )
+        assert sorted(n for _, n in placed if n is not None) == sorted(layout['numbers']), (
             "one token per numbered land hex; the desert takes none"
         )
-        self.rng.shuffle(number_tokens)
-        number_tokens_stack = list(number_tokens)  # Copy for popping
+
+        terrain = dict(
+            zip(
+                (self._hex_key(*coords) for coords in layout['hexes']),
+                placed,
+                strict=True,
+            )
+        )
 
         # Sorted, not raw set order: iterating a set of strings gives an order
-        # that varies between processes, so the same seed would otherwise still
-        # produce a different board each run.
-        for key in sorted(hex_keys):
-            x, y, z = self._parse_key(key)
+        # that varies between processes, so the robber would start on a
+        # different desert from run to run.
+        for key in sorted(land_hex_keys | ocean_hex_keys):
+            hex_type, number = terrain.get(key, ("ocean", None))
+            self.hexes[key] = Hex(key, hex_type, number)
 
-            # Determine if ocean or land
-            if self._is_ocean(x, y, z):
-                hex_type = "ocean"
-                number = None
-            else:
-                # Assign resource type
-                hex_type = resource_types.pop() if resource_types else "wheat"
-
-                # Desert gets no number
-                if hex_type == "desert":
-                    number = None
-                else:
-                    number = number_tokens_stack.pop() if number_tokens_stack else None
-
-            hex_obj = Hex(key, hex_type, number)
-            self.hexes[key] = hex_obj
-
-            # Place robber on desert tile
+            # Place robber on the first desert tile
             if hex_type == "desert" and self.robber_hex is None:
                 self.robber_hex = key
 
@@ -471,9 +508,14 @@ class BoardBuilder:
         `edge.port` is the geometry; `vertex.port` is kept populated on both
         ends because the trade rules, the save file and the renderer all read
         it there.
+
+        For a fixed layout the harbours are fixed too, but note the caveat:
+        the harbour *types* in Illustration A are unreadable at the resolution
+        of the published rulebook scan, so which harbour sits where on the
+        beginner map is ours. Their number and 4/5 split are the rulebook's.
         """
         coast = self._coastal_edges_in_order()
-        port_types = list(PORT_TYPES)
+        port_types = list(self.board_layout['ports'])
         if len(coast) < 2 * len(port_types):
             logger.warning(
                 f"coastline of {len(coast)} edges is too short for "
@@ -483,10 +525,14 @@ class BoardBuilder:
         if not port_types:
             return
 
-        self.rng.shuffle(port_types)
-        # Where the run of harbours starts is the only thing chance decides
-        # about their placement; the spacing below is fixed.
-        rotation = self.rng.randrange(len(coast))
+        # A printed map has its harbours printed too, so a fixed layout keeps
+        # the order below and starts at the same place on the coast every game.
+        rotation = 0
+        if not self.board_layout['fixed']:
+            self.rng.shuffle(port_types)
+            # Where the run of harbours starts is the only thing chance decides
+            # about their placement; the spacing below is fixed.
+            rotation = self.rng.randrange(len(coast))
 
         for index, port_type in enumerate(port_types):
             # Evenly spaced around the ring, because real harbours never share

@@ -30,8 +30,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         observers (list): List of observer names.
         current_player_index (int): Index of current player in players list.
         game_state (str): "waiting" or "started".
-        hex_radius (int): Radius for land hexes (2 = standard 19-hex Catan).
-        edge_radius (int): Radius for ocean tiles (3 = one ring around land).
+        board_layout (dict): The selected map from `board.LAYOUTS` — which
+                             tiles the island is made of and what the box holds
+                             for a board that size.
         hexes (dict): Map of hex key -> Hex object.
         vertices (dict): Map of vertex key -> Vertex object.
         edges (dict): Map of edge key -> Edge object.
@@ -106,12 +107,6 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         # player_name -> settlement vertex keys, in placement order (the
         # second one grants the starting resources)
         self.player_settlements = {}
-
-        # Board configuration
-        # hex_radius=2 gives us 19 land hexes (standard Catan)
-        # edge_radius=3 adds one ring of ocean tiles around the land
-        self.hex_radius = 2
-        self.edge_radius = 3
 
         # Robber
         self.robber_hex = None  # Hex key where robber is located
