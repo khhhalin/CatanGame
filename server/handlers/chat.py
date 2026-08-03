@@ -8,6 +8,7 @@ from flask_socketio import emit
 from game.event_log import sanitize_chat
 from game.validation import RESOURCE_TYPES
 from state import (
+    bump_and_broadcast,
     end_game_locked,
     event_log,
     log_event,
@@ -55,6 +56,7 @@ def _run_command(command, name):
             reject('INVALID_TARGET', 'You are not a player in this game')
             return
         player.resources[resource] = player.resources.get(resource, 0) + count
+        bump_and_broadcast()
         log_event('chat', f'/add {count} {resource}', player=name)
         emit('command_result', {'message': f'Added {count} {resource}'})
     else:
