@@ -8,7 +8,7 @@ hands, and the pending-choice flags the socket handlers drive the UI from.
 import logging
 
 from game.results import refused
-from game.validation import RESOURCE_TYPES
+from game.validation import CARD_TYPES, COMMODITY_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,12 @@ class RobberRules:
         return {'success': True, 'error': '', 'stolen': stolen}
 
     def discard(self, player_name: str, resources: dict) -> dict:
-        """Hand back half a hand that was over the limit when a 7 came up."""
+        """Hand back half a hand that was over the limit when a 7 came up.
+
+        `resources` may name commodities as well: they count toward the limit
+        that forced the discard, so refusing them would leave a player who is
+        over the limit on cloth, coin and paper unable to comply at all.
+        """
         if player_name not in self.players_needing_discard:
             return refused('WRONG_PHASE', 'You do not need to discard')
 
@@ -146,11 +151,13 @@ class RobberRules:
             logger.debug(f"Players needing to discard: {self.players_needing_discard}")
 
     def discard_resources(self, player_name: str, resources: dict) -> bool:
-        """Process resource discard from a player.
+        """Process a resource and commodity discard from a player.
 
         Args:
             player_name: Name of player discarding
-            resources: Dict of resource_type -> count to discard
+            resources: Dict of card_type -> count to discard. Commodities are
+                accepted alongside resources because they count toward the
+                hand limit that triggered the discard.
 
         Returns:
             bool: True if discard was successful
@@ -162,12 +169,12 @@ class RobberRules:
         if not player:
             return False
 
-        # Caller is expected to have run this through validation.clean_resource_counts,
+        # Caller is expected to have run this through validation.clean_card_counts,
         # but re-check here so the engine is safe to call directly from a test or
         # a future handler: a negative count would pass the `current < count`
         # check below and then *add* cards when subtracted.
-        for resource_type, count in resources.items():
-            if resource_type not in RESOURCE_TYPES:
+        for card_type, count in resources.items():
+            if card_type not in CARD_TYPES:
                 return False
             if isinstance(count, bool) or not isinstance(count, int) or count < 0:
                 return False
@@ -178,14 +185,19 @@ class RobberRules:
         if discard_total != required:
             return False
 
-        for resource_type, count in resources.items():
-            current = player.resources.get(resource_type, 0)
-            if current < count:
+        for card_type, count in resources.items():
+            hand = player.commodities if card_type in COMMODITY_TYPES else player.resources
+            if hand.get(card_type, 0) < count:
                 return False
 
-        for resource_type, count in resources.items():
-            player.resources[resource_type] = player.resources.get(resource_type, 0) - count
-            self.bank.return_resources(resource_type, count)
+        for card_type, count in resources.items():
+            if card_type in COMMODITY_TYPES:
+                player.commodities[card_type] = player.commodities.get(card_type, 0) - count
+                # The bank tracks the five resources only; C&K's commodity
+                # supply is unlimited, so a discarded commodity just leaves play.
+                continue
+            player.resources[card_type] = player.resources.get(card_type, 0) - count
+            self.bank.return_resources(card_type, count)
 
         del self.players_needing_discard[player_name]
         logger.debug(f"Player {player_name} discarded {resources}")

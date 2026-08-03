@@ -7,6 +7,14 @@ blocklists so a field nobody thought about is rejected instead of accepted.
 
 RESOURCE_TYPES = ("wood", "brick", "sheep", "wheat", "ore")
 
+# Cities & Knights commodities. Kept here rather than imported from
+# `game.cities_knights` so this module stays free of game-state imports.
+COMMODITY_TYPES = ("cloth", "coin", "paper")
+
+# What a player can be made to hand over on a 7: commodities count toward the
+# hand limit, so they have to be expressible in a discard.
+CARD_TYPES = RESOURCE_TYPES + COMMODITY_TYPES
+
 DEV_CARD_TYPES = ("knight", "two_roads", "invention", "monopoly", "victory_point")
 
 
@@ -54,24 +62,38 @@ def require_choice(value, field: str, allowed) -> str:
     return value
 
 
-def clean_resource_counts(raw, field: str = "resources", total_max: int = 100) -> dict:
-    """Validate a {resource_type: count} mapping from a client.
+def _clean_counts(raw, field: str, allowed, total_max: int) -> dict:
+    """Validate a {card_type: count} mapping from a client.
 
     Negative counts are the specific danger here: a negative count passes a
-    naive `held < count` check and then *adds* resources when subtracted, so
-    every value must be a non-negative int and every key a known resource.
+    naive `held < count` check and then *adds* cards when subtracted, so every
+    value must be a non-negative int and every key one of `allowed`.
     Zero-valued entries are dropped so callers never see them.
     """
     if not isinstance(raw, dict):
         raise InvalidPayload("INVALID_PAYLOAD", f"{field} must be an object")
 
     cleaned = {}
-    for resource_type, count in raw.items():
-        require_choice(resource_type, f"{field} key", RESOURCE_TYPES)
-        count = require_int(count, f"{field}[{resource_type}]", minimum=0, maximum=total_max)
+    for card_type, count in raw.items():
+        require_choice(card_type, f"{field} key", allowed)
+        count = require_int(count, f"{field}[{card_type}]", minimum=0, maximum=total_max)
         if count > 0:
-            cleaned[resource_type] = count
+            cleaned[card_type] = count
 
     if sum(cleaned.values()) > total_max:
         raise InvalidPayload("INVALID_PAYLOAD", f"{field} totals more than {total_max} cards")
     return cleaned
+
+
+def clean_resource_counts(raw, field: str = "resources", total_max: int = 100) -> dict:
+    """Validate a {resource_type: count} mapping — the five resources only."""
+    return _clean_counts(raw, field, RESOURCE_TYPES, total_max)
+
+
+def clean_card_counts(raw, field: str = "cards", total_max: int = 100) -> dict:
+    """Validate a {card_type: count} mapping over resources *and* commodities.
+
+    Used by the discard on a 7: commodities count toward the hand limit, so a
+    player over the limit has to be able to hand them back.
+    """
+    return _clean_counts(raw, field, CARD_TYPES, total_max)

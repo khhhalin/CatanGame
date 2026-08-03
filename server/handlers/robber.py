@@ -7,7 +7,7 @@ from extensions import socketio
 from flask_socketio import emit
 from game.validation import (
     InvalidPayload,
-    clean_resource_counts,
+    clean_card_counts,
     require_str,
 )
 from state import (
@@ -56,7 +56,9 @@ def handle_discard_resources(data):
 
     try:
         name = require_str(data.get('name'), 'name')
-        resources = clean_resource_counts(data.get('resources'))
+        # Commodities count toward the limit a 7 enforces, so the discard has
+        # to be able to name them too.
+        resources = clean_card_counts(data.get('resources'))
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
         return
