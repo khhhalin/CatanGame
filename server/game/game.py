@@ -361,7 +361,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         return True
 
     def _road_connects(self, player_name: str, edge_key: str) -> bool:
-        """Whether a road at this edge would touch the player's own network."""
+        """Whether a road at this edge would touch the player's own network.
+
+        A player's network is their roads *and* their buildings: the rulebook
+        lets a road start at one of your own settlements or cities, and looking
+        only for an adjacent road refused that placement outright.
+        """
         edge = self.edges.get(edge_key)
         if edge is None:
             return False
@@ -369,6 +374,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             vertex = self.vertices.get(vertex_key)
             if vertex is None:
                 continue
+            if vertex.building and vertex.building.get('player') == player_name:
+                return True
             for connected_key in vertex.neighbors.get('edges', []):
                 if connected_key == edge_key:
                     continue

@@ -270,6 +270,43 @@ class TestRoadConnectivity:
         assert playing_game.build_road(name, second)['success']
         assert second in playing_game.get_player(name).roads
 
+    def test_a_road_out_of_your_own_settlement_is_allowed(self, playing_game, rich):
+        """The rulebook's other connection: a settlement, not just a road.
+
+        _road_connects only looked for an adjacent road, so a player whose
+        settlement had lost its last road — or who was placing out of a
+        building the engine had not linked a road to — was refused a placement
+        the rules allow. A browser playthrough hit the same refusal.
+        """
+        name = acting(playing_game)
+        rich(playing_game, name)
+        vertex_key = a_vertex(playing_game)
+        give_building(playing_game, name, vertex_key)
+
+        edge_key = playing_game.vertices[vertex_key].neighbors['edges'][0]
+
+        assert playing_game.build_road(name, edge_key)['success']
+
+    def test_a_road_out_of_your_own_city_is_allowed(self, playing_game, rich):
+        name = acting(playing_game)
+        rich(playing_game, name)
+        vertex_key = a_vertex(playing_game)
+        give_building(playing_game, name, vertex_key, 'city')
+
+        edge_key = playing_game.vertices[vertex_key].neighbors['edges'][0]
+
+        assert playing_game.build_road(name, edge_key)['success']
+
+    def test_an_opponents_settlement_does_not_extend_your_network(self, playing_game, rich):
+        name = acting(playing_game)
+        rich(playing_game, name)
+        vertex_key = a_vertex(playing_game)
+        give_building(playing_game, other_player(playing_game, name), vertex_key)
+
+        edge_key = playing_game.vertices[vertex_key].neighbors['edges'][0]
+
+        assert playing_game.build_road(name, edge_key)['code'] == 'INVALID_PLACEMENT'
+
     def test_an_opponents_road_does_not_extend_your_network(self, playing_game, rich):
         name = acting(playing_game)
         rich(playing_game, name)
