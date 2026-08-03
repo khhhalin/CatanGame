@@ -2,12 +2,23 @@
 // player's own hand, the bank, development cards, and the two dialogs a roll
 // of seven opens.
 
-import { ckEnabled, isCkMode, syncCkModeButtons } from './cities-knights.js';
-import { COMMODITY_ICONS, COMMODITY_TYPES } from './constants.js';
-import { bankDisplay, buyDevCardBtn, colorPicker, devDeckRemaining, discardAmountSpan, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, gameTitle, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, upgradeCityBtn, victimList, victimModal } from './dom.js';
+import { ckEnabled, isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
+import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
+import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, gameTitle, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
 import { displayError } from './notices.js';
+import { repositionPopover } from './popovers.js';
 import { emitGame } from './socket.js';
 import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVictims, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
+
+// Mirrors server/data/costs.json. Duplicated here only to grey a button out and
+// say why before the round trip - the server checks all of it again and the
+// board is drawn from its answer, never from this.
+const BUILD_COSTS = {
+    settlement: { wood: 1, brick: 1, wheat: 1, sheep: 1 },
+    road: { wood: 1, brick: 1 },
+    city: { wheat: 2, ore: 3 },
+    dev_card: { wheat: 1, sheep: 1, ore: 1 }
+};
 
 /**
  * Handle Next Turn button click
@@ -187,10 +198,8 @@ export function renderGameSidebar(data) {
         const armyIndicator = name === largestArmyHolder ? ' 🛡️' : '';
 
         // Same treatment as longest road / largest army, but only when on
-        const harborIndicator = name === harbormasterHolder ? ' ⚓' : '';
-        const harborSegment = harbormasterOn
-            ? ` Hb:${harborPoints[name] || 0}${harborIndicator}`
-            : '';
+        const harborIndicator = harbormasterOn && name === harbormasterHolder ? ' ⚓' : '';
+        const harborSegment = harbormasterOn ? ` · Hb ${harborPoints[name] || 0}` : '';
 
         // Hands are hidden: the server sends counts only, for every player
         const resourceCount = playerData?.resource_count ?? 0;
@@ -202,23 +211,158 @@ export function renderGameSidebar(data) {
             ? `, 🧺${playerData?.commodity_count ?? 0} com`
             : '';
 
-        li.textContent = `${name} (${points} pts) | Rd:${roadLength}${roadIndicator} Kn:${knights}${armyIndicator}${harborSegment} | 🎴${resourceCount} cards${commoditySegment}, 📜${devCardCount} dev`;
-        
+        // Two lines rather than one long one: the name and the score are what
+        // the eye goes to, and burying them in a run of abbreviations is what
+        // made this list unreadable at rail width. Built rather than
+        // interpolated - a player named with markup would otherwise be parsed
+        // as HTML on everyone else's scoreboard.
+        const head = document.createElement('div');
+        head.className = 'score-head';
+
+        const who = document.createElement('span');
+        who.className = 'score-name';
+        who.textContent = `${name}${roadIndicator}${armyIndicator}${harborIndicator}`;
+
+        const score = document.createElement('span');
+        score.className = 'score-points';
+        score.textContent = `${points} pts`;
+
+        head.appendChild(who);
+        head.appendChild(score);
+
+        const meta = document.createElement('div');
+        meta.className = 'score-meta';
+        meta.textContent = `Rd ${roadLength} · Kn ${knights}${harborSegment}`
+            + ` · 🎴${resourceCount}${commoditySegment} · 📜${devCardCount}`;
+
+        li.appendChild(head);
+        li.appendChild(meta);
+
         // Color each player with their own color
         if (playerData?.color) {
             li.style.backgroundColor = playerData.color;
             li.style.color = getContrastColor(playerData.color);
         }
-        
-        // Highlight current player with border
+
+        // Whose turn it is, as a ring rather than a border: a border width that
+        // appears and disappears would resize the panel under the rest of the
+        // rail on every turn change.
         if (name === getCurrentPlayer()) {
             li.classList.add('current-turn');
-            li.style.border = '3px solid white';
-            li.style.boxShadow = '0 0 10px rgba(255,255,255,0.5)';
         }
-        
+
         gamePlayersList.appendChild(li);
     });
+
+    renderAwardSummary();
+    renderTurnIndicator();
+}
+
+/**
+ * Who currently holds each bonus, and on what.
+ *
+ * Longest Road and the Harbormaster were in the payload and nowhere on screen:
+ * a player could take either one off someone without either of them being told.
+ * Stated here in full - holder and the number that decides it - rather than as
+ * a badge beside a name, because the interesting question is usually "who is
+ * about to take it", which needs the runners-up too.
+ */
+function renderAwardSummary() {
+    if (!awardSummary) {
+        return;
+    }
+
+    const board = getBoard();
+    if (!board) {
+        awardSummary.textContent = '';
+        return;
+    }
+
+    const roadLengths = board.longest_road_length || {};
+    const knights = board.knights_played || {};
+    const harborPoints = board.harbor_points || {};
+
+    // The number that would take the bonus, whoever is holding it now
+    const best = (scores) => Math.max(0, ...Object.values(scores).map(Number));
+
+    const rows = [
+        {
+            icon: '👑',
+            name: 'Longest Road',
+            holder: board.longest_road_holder,
+            value: board.longest_road_holder
+                ? `${roadLengths[board.longest_road_holder] || 0} roads`
+                : `best ${best(roadLengths)}, needs 5`
+        },
+        {
+            icon: '🛡️',
+            name: 'Largest Army',
+            holder: board.largest_army_holder,
+            value: board.largest_army_holder
+                ? `${knights[board.largest_army_holder] || 0} knights`
+                : `best ${best(knights)}, needs 3`
+        }
+    ];
+
+    // Only when the table switched the rule on: an award nobody is playing for
+    // is noise on a panel that must stay short enough never to scroll.
+    if (board.rules?.harbormaster === true) {
+        rows.push({
+            icon: '⚓',
+            name: 'Harbormaster',
+            holder: board.harbormaster_holder,
+            value: board.harbormaster_holder
+                ? `${harborPoints[board.harbormaster_holder] || 0} harbour pts`
+                : `best ${best(harborPoints)}, needs 3`
+        });
+    }
+
+    const fragment = document.createDocumentFragment();
+    rows.forEach(row => {
+        const line = document.createElement('div');
+        line.className = row.holder ? 'award-row held' : 'award-row';
+
+        const label = document.createElement('span');
+        label.className = 'award-name';
+        label.textContent = `${row.icon} ${row.name}`;
+
+        // Built rather than interpolated: a player named with markup would
+        // otherwise be parsed as HTML on everyone else's scoreboard.
+        const holder = document.createElement('span');
+        holder.className = 'award-holder';
+        holder.textContent = row.holder
+            ? `${row.holder} · ${row.value}`
+            : `unclaimed · ${row.value}`;
+
+        line.appendChild(label);
+        line.appendChild(holder);
+        fragment.appendChild(line);
+    });
+
+    awardSummary.innerHTML = '';
+    awardSummary.appendChild(fragment);
+}
+
+/**
+ * Say whose turn it is in words, in the console beside the actions it gates.
+ * "Waiting for Kalina…" on the Next Turn button was the only statement of it,
+ * and it is the wrong place to look for the answer to "can I do anything".
+ */
+export function renderTurnIndicator() {
+    if (!turnIndicator) {
+        return;
+    }
+    const current = getCurrentPlayer();
+    if (!current) {
+        turnIndicator.textContent = '—';
+        turnIndicator.className = 'turn-indicator';
+        return;
+    }
+    const setup = getGamePhase() === 'setup' ? ' · setup' : '';
+    turnIndicator.textContent = isMyTurn()
+        ? `Your turn${setup}`
+        : `${current}'s turn${setup}`;
+    turnIndicator.className = isMyTurn() ? 'turn-indicator mine' : 'turn-indicator';
 }
 
 /**
@@ -321,14 +465,26 @@ export function renderBank() {
     };
     
     const RESOURCE_LIMIT = 19;
-    
+
     let html = '';
     for (const [type, count] of Object.entries(bank)) {
         const percentage = Math.round((count / RESOURCE_LIMIT) * 100 / 25) * 25;
         html += `<div class="bank-resource bank-${type}">${resourceIcons[type]}${percentage}%</div>`;
     }
-    
+
     bankDisplay.innerHTML = html;
+
+    // The one number worth reading without opening the panel: whether anything
+    // has actually run out, because that is what changes what a trade is worth.
+    if (bankChipValue) {
+        const empty = Object.entries(bank)
+            .filter(([, count]) => count === 0)
+            .map(([type]) => RESOURCE_ICONS[type] || type);
+        const total = Object.values(bank).reduce((sum, count) => sum + count, 0);
+        bankChipValue.textContent = empty.length > 0
+            ? `${total} cards · out: ${empty.join('')}`
+            : `${total} cards`;
+    }
 }
 
 /**
@@ -344,6 +500,7 @@ export function renderDevCards() {
     const player = findMyPlayer();
     if (!player || !player.dev_cards) {
         myDevCardsDiv.innerHTML = '<div class="no-cards">No development cards</div>';
+        renderDevCardsChip(0);
         return;
     }
 
@@ -390,6 +547,25 @@ export function renderDevCards() {
     }
     
     myDevCardsDiv.innerHTML = cardsHtml;
+
+    renderDevCardsChip(
+        Object.values(player.dev_cards).reduce((total, card) => total + card.count, 0)
+    );
+}
+
+/**
+ * The folded summary: how many cards this player holds, and how many are left
+ * to buy. Both are things a player checks constantly and neither is worth a
+ * panel of its own.
+ *
+ * @param {number} held - Cards in this player's own hand
+ */
+function renderDevCardsChip(held) {
+    if (!devCardsChipValue) {
+        return;
+    }
+    const remaining = getBoard()?.dev_cards_remaining ?? 0;
+    devCardsChipValue.textContent = `📜 ${held} held · ${remaining} in deck`;
 }
 
 /**
@@ -486,8 +662,9 @@ export function updateGameUI(boardData) {
     // cards are all read back out of this same payload where they are needed,
     // so nothing is copied out of it here.
     if (mustChooseVictim() && isMyTurn()) {
-        renderVictimList();
-        victimModal.classList.add('show');
+        offerVictimChoice();
+    } else {
+        autoVictimSent = false;
     }
 
     // The dialog's own visibility is the record of whether it has already been
@@ -587,16 +764,105 @@ export function updateGameUI(boardData) {
         rollDiceBtn.textContent = 'Roll Dice';
     }
 
+    updateAffordability();
+    renderTurnIndicator();
     syncCkModeButtons();
+
+    // A payload can change how tall an open popover's contents are; it is
+    // pinned in viewport coordinates, so it has to be re-pinned rather than
+    // left hanging off the bottom of the screen.
+    repositionPopover();
+}
+
+/**
+ * Why an action cannot be taken right now, in one sentence, or ''.
+ *
+ * Every action in the client answers this question the same way and then greys
+ * itself out with the answer in its `title`. The tester's complaint was that
+ * half of them let you click and then showed an error instead - two different
+ * languages for the same fact, and the clickable half wasted a round trip to
+ * be told something the client already knew.
+ *
+ * @param {string} kind - Key into BUILD_COSTS
+ * @returns {string} - Empty when the action is available
+ */
+function buildBlockReason(kind) {
+    if (!getBoard()) {
+        return 'No game is running';
+    }
+    if (getGamePhase() === 'setup') {
+        return 'Not during setup';
+    }
+    if (!isMyTurn()) {
+        return `It is ${getCurrentPlayer()}'s turn`;
+    }
+    if (mustMoveRobber()) {
+        return 'You must move the robber first';
+    }
+    if (getDiscardAmount() > 0) {
+        return 'You must discard first';
+    }
+    return shortfallReason(findMyPlayer()?.resources, BUILD_COSTS[kind]);
+}
+
+/**
+ * Grey out every action the player cannot take, with the reason on hover.
+ *
+ * The setup phase is the one exception: the server dictates what goes down
+ * next, `updateGameUI` arms the matching button for the player, and the pieces
+ * are free - so a disabled build button there would be a lie.
+ */
+function updateAffordability() {
+    const inSetup = getGamePhase() === 'setup';
+
+    const gate = (button, kind, hint) => {
+        if (!button) {
+            return;
+        }
+        if (inSetup) {
+            button.disabled = false;
+            button.title = hint;
+            return;
+        }
+        const reason = buildBlockReason(kind);
+        button.disabled = Boolean(reason);
+        button.title = reason || hint;
+    };
+
+    gate(placeSettlementBtn, 'settlement', 'Then tap an intersection on the board');
+    gate(placeRoadBtn, 'road', 'Then tap an edge on the board');
+    // A free road from Two Roads is paid for already, so the cost check has to
+    // stand down for as long as the server says one is owed.
+    if (!inSetup && (getBoard()?.free_roads_remaining || 0) > 0 && isMyTurn()) {
+        placeRoadBtn.disabled = false;
+        placeRoadBtn.title = 'Free road - then tap an edge on the board';
+    }
+    gate(upgradeCityBtn, 'city', 'Then tap one of your own settlements');
+    gate(buyDevCardBtn, 'dev_card', `Costs ${formatBuildCost(BUILD_COSTS.dev_card)}`);
+}
+
+/**
+ * Render a cost as "1🌾 1🐑 1🪨", the way the Cities & Knights buttons do.
+ *
+ * @param {object} cost - {resource: amount}
+ * @returns {string}
+ */
+function formatBuildCost(cost) {
+    return Object.entries(cost)
+        .map(([resource, amount]) => `${amount}${RESOURCE_ICONS[resource] || resource}`)
+        .join(' ');
 }
 
 /**
  * Update console visibility and button states based on current turn
  */
 export function updateConsoleVisibility() {
-    // Update button colors based on current player
+    // Affordability first: updateButtonColors only paints a button it finds
+    // enabled, so the disabled flags have to be settled before it runs.
+    updateAffordability();
     updateButtonColors();
-    
+    renderTurnIndicator();
+
     // Show/hide trade button based on turn
     if (getRole() !== 'observer' && isMyTurn()) {
         proposeTradeBtn.style.display = 'inline-block';
@@ -640,21 +906,62 @@ export function updateButtonColors() {
     const buttons = [rollDiceBtn, placeSettlementBtn, placeRoadBtn, upgradeCityBtn, nextTurnBtn];
     const currentUserData = getBoard()?.players?.find(p => p.name === viewState.identity.name);
     const playerColor = currentUserData?.color || '#e67e22';
-    const textColor = getContrastColor(playerColor);
-    
-    // Use player's color only when it's their turn, otherwise use default
-    const activeColor = isMyTurn() ? playerColor : '#7f8c8d';
-    const activeTextColor = isMyTurn() ? textColor : '#ffffff';
-    
+
+    // Only an *available* action wears the player's colour. Anything else has
+    // its inline paint removed so the stylesheet's disabled treatment applies:
+    // the old code inlined #7f8c8d with white text, which is 2.9:1 and fails
+    // AA, and an inline colour beats every rule a theme can write.
     buttons.forEach(btn => {
-        btn.style.backgroundColor = activeColor;
-        btn.style.color = activeTextColor;
+        if (isMyTurn() && !btn.disabled) {
+            btn.style.backgroundColor = playerColor;
+            btn.style.color = getContrastColor(playerColor);
+        } else {
+            btn.style.backgroundColor = '';
+            btn.style.color = '';
+        }
     });
-    
+
     // Update title color
     if (gameTitle) {
         gameTitle.style.color = playerColor;
     }
+}
+
+// Whether the single-candidate answer has already gone. Reset by updateGameUI
+// as soon as the server says nothing is pending.
+let autoVictimSent = false;
+
+/**
+ * Ask who to rob - but only when there is actually a question.
+ *
+ * A dialog offering one button is not a choice, it is a click the player has to
+ * make to carry on. With a single candidate the answer is settled here and the
+ * modal never opens.
+ */
+export function offerVictimChoice() {
+    const victims = getRobberVictims();
+
+    if (victims.length === 1) {
+        // This runs on every board payload while the flag is up, and the flag
+        // stays up until the server has answered, so the send is latched. It is
+        // cleared again the moment nothing is pending.
+        if (!autoVictimSent) {
+            autoVictimSent = true;
+            emitGame('choose_robber_victim', { name: viewState.identity.name, victim: victims[0] });
+        }
+        victimModal.classList.remove('show');
+        return;
+    }
+
+    if (victims.length === 0) {
+        // Nothing to steal. The dialog has no way to close itself, so opening
+        // it would strand the turn.
+        victimModal.classList.remove('show');
+        return;
+    }
+
+    renderVictimList();
+    victimModal.classList.add('show');
 }
 
 export function renderVictimList() {

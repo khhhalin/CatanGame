@@ -1,5 +1,5 @@
-import { COMMODITY_ICONS, RESOURCE_ICONS } from './constants.js';
-import { barbarianDefense, barbarianPanel, barbarianStatus, barbarianTrack, buildKnightBtn, buildWallBtn, gameBoard, gameScreen, improvementTracks, improvementsPanel, knightHint, knightList, knightsPanel, moveKnightBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
+import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
+import { barbarianChipValue, barbarianDefense, barbarianPanel, barbarianStatus, barbarianTrack, buildKnightBtn, buildWallBtn, devCardsPanel, gameBoard, gameScreen, improvementTracks, improvementsChipValue, improvementsPanel, knightHint, knightList, knightsChipValue, knightsPanel, moveKnightBtn, placeRoadBtn, placeSettlementBtn, progressCardsChipValue, progressCardsPanel, progressHandDiv, upgradeCityBtn } from './dom.js';
 import { findMyPlayer } from './panels.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, viewState } from './state.js';
@@ -32,11 +32,14 @@ export function handleCkVertexTap(vertexKey) {
 
     if (viewState.selectedBuilding === 'knight') {
         emitGame('build_knight', { name: viewState.identity.name, vertex: vertexKey });
+        expectPlacement('knight', () => Boolean(myKnightAt(vertexKey)));
         return;
     }
 
     if (viewState.selectedBuilding === 'city_wall') {
+        const before = myWallCount();
         emitGame('build_city_wall', { name: viewState.identity.name, vertex: vertexKey });
+        expectPlacement('city_wall', () => myWallCount() > before);
         return;
     }
 
@@ -46,13 +49,75 @@ export function handleCkVertexTap(vertexKey) {
         return;
     }
 
+    const origin = viewState.knightMoveFrom;
     emitGame('move_knight', {
         name: viewState.identity.name,
-        from_vertex: viewState.knightMoveFrom,
+        from_vertex: origin,
         to_vertex: vertexKey
     });
     viewState.knightMoveFrom = null;
+    expectPlacement('knight_move', () => !myKnightAt(origin));
     renderCitiesKnights();
+}
+
+// ------------------------------------------------------- disarming a mode
+//
+// A build mode is deliberately left armed across board updates: a knight move
+// takes two taps and someone else's trade landing between them must not disarm
+// the board halfway through. The cost of that rule was the tester's bug - once
+// a knight was actually placed the board stayed in knight-placement mode, and
+// the next tap anywhere tried to build another one.
+//
+// So the mode survives every payload except the one that shows the placement it
+// was armed for has landed. `settled` is that test, evaluated against the board
+// the server has just sent.
+
+let pendingCkPlacement = null;
+
+/**
+ * Remember what the tap just sent was meant to achieve.
+ *
+ * @param {string} mode - The armed mode, so a re-arm mid-flight is not undone
+ * @param {Function} settled - Reads the current board; true once it has landed
+ */
+function expectPlacement(mode, settled) {
+    pendingCkPlacement = { mode, settled };
+}
+
+/**
+ * Drop the armed mode once the server's board shows the placement happened.
+ * A refusal never gets here: the server rejects without broadcasting a board,
+ * so the mode stays armed and the player can simply aim again.
+ */
+function clearSettledPlacement() {
+    if (!pendingCkPlacement) {
+        return;
+    }
+    // Re-arming a different mode before the answer came back replaces the
+    // intent; honouring the old one would disarm the new one.
+    if (viewState.selectedBuilding !== pendingCkPlacement.mode) {
+        pendingCkPlacement = null;
+        return;
+    }
+    if (!pendingCkPlacement.settled()) {
+        return;
+    }
+    pendingCkPlacement = null;
+    viewState.selectedBuilding = null;
+    viewState.knightMoveFrom = null;
+    gameBoard.classList.remove('placement-mode');
+}
+
+/**
+ * This player's knight standing on a vertex, if any.
+ */
+function myKnightAt(vertexKey) {
+    const mine = getBoard()?.cities_knights?.knights?.[viewState.identity.name] || [];
+    return mine.find(knight => knight.vertex === vertexKey) || null;
+}
+
+function myWallCount() {
+    return getBoard()?.cities_knights?.city_walls?.[viewState.identity.name] || 0;
 }
 
 const TRACK_ORDER = ['trade', 'politics', 'science'];
@@ -73,11 +138,26 @@ const MIGHTY_RANK = 3;
 const CK_MODES = ['knight', 'knight_move', 'city_wall'];
 
 /**
- * Whether the running game has Cities & Knights and has sent its state.
+ * Whether one Cities & Knights rule is in play in the running game.
+ *
+ * The expansion used to be a single `cities_and_knights` flag; it is eight
+ * separate rules now, and a table may take the knights without the improvement
+ * tracks. So every panel below asks about its own rule rather than about "the
+ * expansion", and reading the old flag would have hidden all of them for good.
+ *
+ * @param {string} ruleId - One of the expansion's rule ids
+ */
+export function ckRule(ruleId) {
+    return getBoard()?.rules?.[ruleId] === true;
+}
+
+/**
+ * Whether the running game keeps expansion state at all - the improvement
+ * tracks, knights, walls, barbarian ship and progress decks. The server builds
+ * that object when any rule needs it, so its presence is the honest test.
  */
 export function ckEnabled() {
-    return getBoard()?.rules?.cities_and_knights === true
-        && Boolean(getBoard()?.cities_knights);
+    return Boolean(getBoard()?.cities_knights);
 }
 
 /**
@@ -111,10 +191,13 @@ function canAfford(held, cost) {
 
 /**
  * Name the first resource a player is short of, for a disabled button's reason.
+ * Exported because every action in the client - build, upgrade, buy a card,
+ * improve a city - greys out with a reason rather than failing on click, and
+ * they must all word it the same way.
  *
  * @returns {string} - Empty when the cost is covered
  */
-function shortfallReason(held, cost) {
+export function shortfallReason(held, cost) {
     for (const [resource, amount] of Object.entries(cost)) {
         const have = held?.[resource] || 0;
         if (have < amount) {
@@ -190,25 +273,51 @@ export function renderCitiesKnights() {
     const enabled = ckEnabled();
     const player = enabled ? findMyPlayer() : null;
 
-    // Three more panels do not fit the rail's base-game width
     gameScreen.classList.toggle('ck-on', enabled);
 
-    barbarianPanel?.classList.toggle('hidden', !enabled);
+    // Each fold answers to its own rule: a table can take the knights and the
+    // barbarians without the improvement tracks, and a fold for a rule nobody
+    // picked is a line of the rail spent on nothing.
+    //
+    // Progress cards replace the development card deck outright - the server
+    // refuses `buy_dev_card` when they are in play - so exactly one of the two
+    // card folds is ever on screen.
+    const progress = enabled && ckRule('progress_cards');
+    devCardsPanel?.classList.toggle('hidden', progress);
+    progressCardsPanel?.classList.toggle('hidden', !progress || !player);
+
     // The barbarian clock is public and matters to a spectator too; the other
-    // two panels are one player's own board and have nothing to say without one.
-    improvementsPanel?.classList.toggle('hidden', !enabled || !player);
-    knightsPanel?.classList.toggle('hidden', !enabled || !player);
+    // two folds are one player's own board and have nothing to say without one.
+    barbarianPanel?.classList.toggle('hidden', !enabled || !ckRule('barbarians'));
+    improvementsPanel?.classList.toggle(
+        'hidden', !enabled || !player || !ckRule('city_improvements')
+    );
+    knightsPanel?.classList.toggle(
+        'hidden', !enabled || !player || !(ckRule('knights') || ckRule('city_walls'))
+    );
 
     if (!enabled) {
         viewState.knightMoveFrom = null;
+        pendingCkPlacement = null;
         return;
     }
 
-    renderBarbarianTrack();
+    // Before anything renders: it decides whether a mode is still armed, and
+    // every button below is drawn from that.
+    clearSettledPlacement();
+
+    if (ckRule('barbarians')) {
+        renderBarbarianTrack();
+    }
 
     if (player) {
-        renderImprovements(player);
+        if (ckRule('city_improvements')) {
+            renderImprovements(player);
+        }
         renderKnights(player);
+        if (ckRule('progress_cards')) {
+            renderProgressHand(player);
+        }
     }
     syncCkModeButtons();
 }
@@ -270,6 +379,16 @@ function renderBarbarianTrack() {
     }
     barbarianDefense.className = strength < cities ? 'ck-note danger' : 'ck-note';
     barbarianDefense.textContent = notes.join(' · ');
+
+    // The folded line. The ship's position is the expansion's clock and the
+    // knights-versus-cities comparison is the only thing anyone can do about
+    // it, so both are on the chip and neither needs the panel opened.
+    if (barbarianChipValue) {
+        barbarianChipValue.textContent = `🚢 ${position}/${length} · ⚔️${strength} vs 🏛️${cities}`;
+        barbarianChipValue.className = strength < cities
+            ? 'fold-value danger'
+            : `fold-value ${urgency}`;
+    }
 }
 
 /**
@@ -383,6 +502,15 @@ function renderImprovements(player) {
 
     improvementTracks.innerHTML = '';
     improvementTracks.appendChild(fragment);
+
+    // "Trade 0/5 · Politics 0/5 · Science 0/5" - the whole panel in one line,
+    // which is all it is most of the time.
+    if (improvementsChipValue) {
+        improvementsChipValue.textContent = TRACK_ORDER
+            .filter(track => tracks[track])
+            .map(track => `${TRACK_LABELS[track]} ${levels[track] || 0}/${MAX_IMPROVEMENT_LEVEL}`)
+            .join(' · ');
+    }
 }
 
 /**
@@ -406,7 +534,7 @@ function renderKnights(player) {
     const rankCount = (rank) => knights.filter(knight => knight.rank === rank).length;
 
     // Build
-    let buildReason = turnBlock;
+    let buildReason = ckRule('knights') ? turnBlock : 'Knights are not one of this table\'s rules';
     if (!buildReason && rankCount(1) >= MAX_KNIGHTS_PER_RANK) {
         buildReason = 'No basic knight pieces left';
     }
@@ -418,7 +546,7 @@ function renderKnights(player) {
     buildKnightBtn.title = buildReason || 'Then tap a vacant intersection on one of your roads';
 
     // Move
-    let moveReason = turnBlock;
+    let moveReason = ckRule('knights') ? turnBlock : 'Knights are not one of this table\'s rules';
     if (!moveReason && !knights.some(knight => knight.can_act)) {
         moveReason = 'No knight can act this turn';
     }
@@ -427,7 +555,9 @@ function renderKnights(player) {
     moveKnightBtn.title = moveReason || 'Tap the knight, then where it should go';
 
     // City wall
-    let wallReason = turnBlock;
+    let wallReason = ckRule('city_walls')
+        ? turnBlock
+        : 'City walls are not one of this table\'s rules';
     if (!wallReason && walls >= MAX_CITY_WALLS) {
         wallReason = `All ${MAX_CITY_WALLS} walls are built`;
     }
@@ -514,6 +644,159 @@ function renderKnights(player) {
 
     knightList.innerHTML = '';
     knightList.appendChild(fragment);
+
+    // How many knights this player has, how many of them can still do anything
+    // this turn, and how many walls are up.
+    if (knightsChipValue) {
+        const ready = knights.filter(knight => knight.active && knight.can_act).length;
+        knightsChipValue.textContent =
+            `⚔️ ${knights.length} · ${ready} ready · 🧱 ${walls}/${MAX_CITY_WALLS}`;
+    }
+}
+
+// ---------------------------------------------------------- progress cards
+//
+// Cities & Knights replaces the development card deck with three progress card
+// decks, drawn when the event die shows a city gate. The board payload carries
+// this viewer's own hand by id, everyone else's as a count, plus the catalogue
+// that names and describes each card - so nothing about a card is duplicated
+// here.
+//
+// A card's `needs_target` says what the player must supply before the server
+// can resolve it. Three of those are a choice from a short list and are offered
+// inline; the rest need a target picked off the board, which has no flow yet,
+// so those cards say so instead of failing on click.
+
+const TARGET_CHOICES = {
+    resource: ['wood', 'brick', 'sheep', 'wheat', 'ore'],
+    commodity: COMMODITY_TYPES,
+    improvement: TRACK_ORDER
+};
+
+// Targets that would have to be picked on the board. There is no flow for
+// naming one yet, so a card needing one is shown and explained, not offered.
+const BOARD_TARGETS = ['vertex', 'hex', 'road', 'knight', 'two_number_tokens', 'player', 'dice'];
+
+const DECK_ICONS = { science: '🟢', trade: '🟡', politics: '🔵' };
+
+/**
+ * The player's own progress cards, with what each one does and whether it can
+ * be played right now.
+ *
+ * @param {object} player - Own player entry from the board payload
+ */
+function renderProgressHand(player) {
+    if (!progressHandDiv) {
+        return;
+    }
+
+    const ck = getBoard().cities_knights;
+    const hand = ck.progress_hand || [];
+    const catalogue = ck.progress_cards || {};
+    const turnBlock = ckTurnBlockReason();
+    const rolled = getBoard().has_rolled_dice === true;
+
+    if (progressCardsChipValue) {
+        const held = ck.progress_hand_counts?.[player.name] ?? hand.length;
+        progressCardsChipValue.textContent = `🎴 ${held} held`;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    if (hand.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'no-cards';
+        empty.textContent = 'No progress cards. They are drawn on a city gate.';
+        fragment.appendChild(empty);
+    }
+
+    hand.forEach(cardId => {
+        const card = catalogue[cardId];
+        if (!card) {
+            return;
+        }
+        fragment.appendChild(buildProgressCardRow(cardId, card, turnBlock, rolled));
+    });
+
+    progressHandDiv.innerHTML = '';
+    progressHandDiv.appendChild(fragment);
+}
+
+/**
+ * One card: what it is, what it does, and how to play it.
+ *
+ * @param {string} cardId - Card id, which is what `play_progress_card` takes
+ * @param {object} card - Catalogue entry from the board payload
+ * @param {string} turnBlock - Why no action is possible at all, or ''
+ * @param {boolean} rolled - Whether the dice are already up this turn
+ * @returns {HTMLElement}
+ */
+function buildProgressCardRow(cardId, card, turnBlock, rolled) {
+    const row = document.createElement('div');
+    row.className = 'progress-card';
+
+    const title = document.createElement('div');
+    title.className = 'progress-card-title';
+    title.textContent = `${DECK_ICONS[card.deck] || ''} ${card.name}`;
+    row.appendChild(title);
+
+    const summary = document.createElement('div');
+    summary.className = 'ck-note';
+    summary.textContent = card.summary;
+    row.appendChild(summary);
+
+    // The two timings the engine enforces: a "before the roll" card is dead for
+    // the rest of the turn once the dice are up, and every other card needs
+    // them up first.
+    let reason = turnBlock;
+    if (!reason && card.timing === 'before_roll' && rolled) {
+        reason = 'Played before the dice, and they are already up';
+    }
+    if (!reason && card.timing !== 'before_roll' && !rolled) {
+        reason = 'Roll the dice first';
+    }
+    if (!reason && BOARD_TARGETS.includes(card.needs_target)) {
+        reason = 'Needs a target picked on the board, which has no flow yet';
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'progress-card-actions';
+
+    const choices = TARGET_CHOICES[card.needs_target];
+    let select = null;
+    if (choices) {
+        select = document.createElement('select');
+        select.className = 'progress-target';
+        select.setAttribute('aria-label', `Target for ${card.name}`);
+        choices.forEach(choice => {
+            const option = document.createElement('option');
+            option.value = choice;
+            option.textContent = choice;
+            select.appendChild(option);
+        });
+        select.disabled = Boolean(reason);
+        actions.appendChild(select);
+    }
+
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'progress-play';
+    play.dataset.progressCard = cardId;
+    play.textContent = 'Play';
+    play.disabled = Boolean(reason);
+    play.title = reason;
+    actions.appendChild(play);
+
+    row.appendChild(actions);
+
+    if (reason) {
+        const note = document.createElement('div');
+        note.className = 'ck-note';
+        note.textContent = reason;
+        row.appendChild(note);
+    }
+
+    return row;
 }
 
 /**
@@ -575,6 +858,19 @@ knightList?.addEventListener('click', (event) => {
         ? 'promote_knight'
         : 'activate_knight';
     emitGame(eventName, { name: viewState.identity.name, vertex: button.dataset.vertex });
+});
+
+progressHandDiv?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-progress-card]');
+    if (!button || button.disabled) {
+        return;
+    }
+    const select = button.parentElement.querySelector('.progress-target');
+    const payload = { name: viewState.identity.name, card: button.dataset.progressCard };
+    if (select) {
+        payload.target = select.value;
+    }
+    emitGame('play_progress_card', payload);
 });
 
 buildKnightBtn?.addEventListener('click', () => toggleCkMode('knight'));

@@ -1,4 +1,5 @@
 import { chatForm, chatInput, chatSendBtn, logEntriesDiv, logJumpBtn, logTabBadge, logTabBtn, sideTabs, tradeTabBadge, tradeTabBtn } from './dom.js';
+import { closePopover, togglePopover } from './popovers.js';
 import { emitGame, socket } from './socket.js';
 import { viewState } from './state.js';
 
@@ -236,12 +237,15 @@ updateChatAvailability();
 
 // Side panel tabs
 //
-// The log and the trade panel are both long, variable-length lists that are
-// only sometimes read, so they share one box instead of costing two columns.
-// Nothing about either panel's content changes here - only which one is shown.
+// The log and chat are never hidden: they are the two things a player reads
+// continuously, and taking either off screen to show a trade offer is what made
+// chat look broken. So only the trade panel folds - the Trade tab raises it as
+// a popover over this box rather than taking the log's place. Both tabs keep
+// their ids, their roles and their badges; only where the trade panel is
+// painted has changed.
 
 /**
- * Show one tab's panel and hide the others.
+ * Show one tab's panel.
  *
  * @param {HTMLElement} tab - The tab button to select
  */
@@ -250,22 +254,20 @@ function selectSideTab(tab) {
         return;
     }
 
-    sideTabs.querySelectorAll('[role="tab"]').forEach(button => {
-        const selected = button === tab;
-        button.setAttribute('aria-selected', selected ? 'true' : 'false');
-        const panel = document.getElementById(button.getAttribute('aria-controls'));
-        if (panel) {
-            panel.hidden = !selected;
-        }
-    });
-
     if (tab === tradeTabBtn) {
         tradeTabBadge?.classList.add('hidden');
+        togglePopover(tradeTabBtn);
+        // The log tab stays selected: its panel never went away.
+        logTabBtn?.setAttribute('aria-selected', 'true');
+        return;
     }
+
     if (tab === logTabBtn) {
+        closePopover();
+        logTabBtn.setAttribute('aria-selected', 'true');
         logTabBadge?.classList.add('hidden');
-        // A hidden panel has no scroll height, so the log has to be pinned to
-        // the newest entry once it is on screen again
+        // An entry that arrived while the trade popover covered the list leaves
+        // it scrolled up, so pin it back to the newest entry.
         scrollLogToBottom();
     }
 }

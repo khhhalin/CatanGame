@@ -85,59 +85,176 @@
              and the board, which is the visual focus. The third region, the
              aside, is a sibling of the whole screen so the lobby shares it.
              The grid areas are re-arranged by media query, so nothing here
-             assumes a column count. -->
+             assumes a column count.
+
+             The rail holds only what must never be hidden: the scoreboard, and
+             one summary line per folded subject. Everything else is a `.fold` -
+             a chip that always states its headline numbers, and a popover that
+             carries the detail and the actions. The popovers are
+             `position: fixed` and placed by popovers.js, so opening one can
+             neither reflow the rail nor resize the board. -->
         <div id="game-screen" class="hidden">
             <div class="game-rail">
                 <section class="panel" id="players-panel">
                     <h2 class="panel-title">Players</h2>
-                    <ul id="game-players" class="panel-body user-list"></ul>
-                </section>
-                <!-- Cities & Knights. Every panel below is hidden until a
-                     board payload says the rule is on, so a base game shows
-                     exactly what it always did. Nothing in here is populated
-                     from the template: the client fills the bodies from
-                     `board.cities_knights`. -->
-                <section class="panel hidden ck-panel" id="barbarian-panel">
-                    <h2 class="panel-title">Barbarians</h2>
-                    <div class="panel-body">
-                        <div id="barbarian-track" class="barbarian-track"
-                             role="img" aria-label="Barbarian ship position"></div>
-                        <div id="barbarian-status" class="barbarian-status"></div>
-                        <div id="barbarian-defense" class="ck-note"></div>
-                    </div>
+                    <!-- Deliberately not a `.panel-body`: the full scoreboard
+                         is one of the things that must never scroll. -->
+                    <ul id="game-players" class="user-list"></ul>
+                    <div id="award-summary" class="award-summary"></div>
                 </section>
 
-                <section class="panel hidden ck-panel" id="improvements-panel">
-                    <h2 class="panel-title">City Improvements</h2>
-                    <div id="improvement-tracks" class="panel-body improvement-tracks"></div>
-                </section>
-
-                <section class="panel hidden ck-panel" id="knights-panel">
-                    <h2 class="panel-title">Knights</h2>
-                    <div class="panel-body">
-                        <!-- Static so their listeners are registered once; the
-                             client only rewrites their labels and state. -->
-                        <div class="ck-actions">
-                            <button type="button" id="build-knight-btn" class="ck-action"></button>
-                            <button type="button" id="move-knight-btn" class="ck-action"></button>
-                            <button type="button" id="build-wall-btn" class="ck-action"></button>
+                <section class="panel" id="folds-panel">
+                    <h2 class="panel-title">Details</h2>
+                    <div class="fold-list">
+                        <!-- Cities & Knights. Every fold below is hidden until
+                             a board payload says the rule is on, so a base game
+                             shows exactly what it always did. Nothing in here
+                             is populated from the template: the client fills
+                             the bodies from `board.cities_knights`. -->
+                        <div class="fold hidden ck-panel" id="barbarian-panel">
+                            <button type="button" class="fold-chip" id="barbarian-chip"
+                                    aria-expanded="false" aria-controls="barbarian-popover">
+                                <span class="fold-name">Barbarians</span>
+                                <span class="fold-value" id="barbarian-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="barbarian-popover"
+                                 role="dialog" aria-label="Barbarians">
+                                <div class="popover-head">
+                                    <span>Barbarians</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div class="popover-body">
+                                    <div id="barbarian-track" class="barbarian-track"
+                                         role="img" aria-label="Barbarian ship position"></div>
+                                    <div id="barbarian-status" class="barbarian-status"></div>
+                                    <div id="barbarian-defense" class="ck-note"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div id="knight-hint" class="ck-note"></div>
-                        <div id="knight-list" class="knight-list"></div>
-                    </div>
-                </section>
 
-                <section class="panel" id="dev-cards-panel">
-                    <h2 class="panel-title">Development Cards</h2>
-                    <div class="panel-body">
-                        <div id="dev-deck-remaining" class="dev-deck-remaining">Deck: 0 left</div>
-                        <button id="buy-dev-card-btn">Buy Card</button>
-                        <div id="my-dev-cards" class="my-dev-cards"></div>
+                        <div class="fold hidden ck-panel" id="improvements-panel">
+                            <button type="button" class="fold-chip" id="improvements-chip"
+                                    aria-expanded="false" aria-controls="improvements-popover">
+                                <span class="fold-name">City Improvements</span>
+                                <span class="fold-value" id="improvements-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="improvements-popover"
+                                 role="dialog" aria-label="City Improvements">
+                                <div class="popover-head">
+                                    <span>City Improvements</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div id="improvement-tracks"
+                                     class="popover-body improvement-tracks"></div>
+                            </div>
+                        </div>
+
+                        <div class="fold hidden ck-panel" id="knights-panel">
+                            <button type="button" class="fold-chip" id="knights-chip"
+                                    aria-expanded="false" aria-controls="knights-popover">
+                                <span class="fold-name">Knights</span>
+                                <span class="fold-value" id="knights-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="knights-popover"
+                                 role="dialog" aria-label="Knights">
+                                <div class="popover-head">
+                                    <span>Knights</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div class="popover-body">
+                                    <!-- Static so their listeners are registered
+                                         once; the client only rewrites their
+                                         labels and state. -->
+                                    <div class="ck-actions">
+                                        <button type="button" id="build-knight-btn" class="ck-action"></button>
+                                        <button type="button" id="move-knight-btn" class="ck-action"></button>
+                                        <button type="button" id="build-wall-btn" class="ck-action"></button>
+                                    </div>
+                                    <div id="knight-hint" class="ck-note"></div>
+                                    <div id="knight-list" class="knight-list"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="fold" id="dev-cards-panel">
+                            <button type="button" class="fold-chip" id="dev-cards-chip"
+                                    aria-expanded="false" aria-controls="dev-cards-popover">
+                                <span class="fold-name">Development Cards</span>
+                                <span class="fold-value" id="dev-cards-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="dev-cards-popover"
+                                 role="dialog" aria-label="Development Cards">
+                                <div class="popover-head">
+                                    <span>Development Cards</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div class="popover-body">
+                                    <div id="dev-deck-remaining" class="dev-deck-remaining">Deck: 0 left</div>
+                                    <button id="buy-dev-card-btn">Buy Card</button>
+                                    <div id="my-dev-cards" class="my-dev-cards"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cities & Knights replaces the development card
+                             deck outright with three progress card decks, and
+                             the server refuses `buy_dev_card` once it is on.
+                             So exactly one of these two folds is ever shown. -->
+                        <div class="fold hidden ck-panel" id="progress-cards-panel">
+                            <button type="button" class="fold-chip" id="progress-cards-chip"
+                                    aria-expanded="false" aria-controls="progress-cards-popover">
+                                <span class="fold-name">Progress Cards</span>
+                                <span class="fold-value" id="progress-cards-chip-value">—</span>
+                            </button>
+                            <div class="popover popover-wide hidden" id="progress-cards-popover"
+                                 role="dialog" aria-label="Progress Cards">
+                                <div class="popover-head">
+                                    <span>Progress Cards</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div id="progress-hand" class="popover-body progress-hand"></div>
+                            </div>
+                        </div>
+
+                        <div class="fold" id="bank-panel">
+                            <button type="button" class="fold-chip" id="bank-chip"
+                                    aria-expanded="false" aria-controls="bank-popover">
+                                <span class="fold-name">Bank</span>
+                                <span class="fold-value" id="bank-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="bank-popover"
+                                 role="dialog" aria-label="Bank">
+                                <div class="popover-head">
+                                    <span>Bank</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div id="bank-display" class="popover-body bank-display"></div>
+                            </div>
+                        </div>
+
+                        <div class="fold hidden" id="active-rules-panel">
+                            <button type="button" class="fold-chip" id="active-rules-chip"
+                                    aria-expanded="false" aria-controls="active-rules-popover">
+                                <span class="fold-name">House Rules</span>
+                                <span class="fold-value" id="active-rules-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="active-rules-popover"
+                                 role="dialog" aria-label="House Rules">
+                                <div class="popover-head">
+                                    <span>House Rules</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div id="active-rules" class="popover-body active-rules"></div>
+                            </div>
+                        </div>
                     </div>
-                </section>
-                <section class="panel hidden" id="active-rules-panel">
-                    <h2 class="panel-title">House Rules</h2>
-                    <div id="active-rules" class="active-rules panel-body"></div>
                 </section>
             </div>
 
@@ -195,6 +312,9 @@
                     </div>
                 </div>
                 <div class="game-console" id="game-console">
+                    <!-- Whose turn it is, stated rather than left to be
+                         inferred from the Next Turn button's label. -->
+                    <div id="turn-indicator" class="turn-indicator">—</div>
                     <div class="timer-container">
                         <div id="dice-timer" class="timer">Dice: 15s</div>
                         <div id="round-timer" class="timer">Round: 120s</div>
@@ -206,12 +326,19 @@
                     <!-- Grouped so the row wraps between groups instead of
                          mid-group: a build button landing on its own second
                          row is what made the console two rows tall at 1366,
-                         and every row it grows is a row the board loses. -->
+                         and every row it grows is a row the board loses.
+                         The cost sits in a span of its own so panels.js can
+                         rewrite the count without touching the name - the
+                         labels are fixed width, because a button that resizes
+                         rewraps the console and moves the camera. -->
                     <div class="console-group build-group">
                         <input type="color" id="color-picker" title="Choose your color">
-                        <button id="place-settlement-btn">Settlement</button>
-                        <button id="place-road-btn">Road</button>
-                        <button id="upgrade-city-btn">City</button>
+                        <button id="place-settlement-btn">Settlement
+                            <span class="build-cost">🌲🧱🌾🐑</span></button>
+                        <button id="place-road-btn">Road
+                            <span class="build-cost">🌲🧱</span></button>
+                        <button id="upgrade-city-btn">City
+                            <span class="build-cost">🌾🌾🪨🪨🪨</span></button>
                     </div>
                     <div class="console-group turn-group">
                         <button id="next-turn-btn">Next Turn</button>
@@ -237,21 +364,17 @@
             <aside class="table-aside">
                 <section class="panel" id="info-panel">
                     <div id="player-resources-panel">
-                        <h2 class="panel-title">Your Resources</h2>
+                        <h2 class="panel-title">Your Hand</h2>
                         <div id="resource-display" class="resource-display"></div>
-                    </div>
-                    <div id="bank-panel">
-                        <h2 class="panel-title">Bank</h2>
-                        <div id="bank-display" class="bank-display"></div>
                     </div>
                 </section>
 
-                <!-- Log and trade share one box: both are long, variable-length
-                     lists and showing both at once is what forced a fourth
-                     column. Either tab flags itself when something arrives in
-                     it while the other one is showing - a chat message landing
-                     in a hidden tab with no indicator reads as "chat is
-                     broken". -->
+                <!-- The log is never hidden - it and chat are the two things a
+                     player reads continuously. Trade is the tab that folds: the
+                     Trade button opens `#trade-panel` as a popover over this
+                     box rather than taking the log's place. Both tabs keep
+                     their ids, roles and badges; only where the trade panel is
+                     painted changed. -->
                 <section class="panel tabbed-panel" id="side-tabs">
                     <div class="tab-bar" role="tablist" aria-label="Side panels">
                         <button type="button" class="tab" id="tab-log" role="tab"
@@ -287,12 +410,19 @@
                         </form>
                     </div>
 
-                    <div class="tab-panel" id="trade-panel" role="tabpanel"
-                         aria-labelledby="tab-trade" hidden>
-                        <button id="propose-trade-btn">Propose Trade</button>
-                        <div class="trade-scroll">
-                            <div id="trade-offers" class="trade-offers"></div>
-                            <div id="my-offers" class="my-offers"></div>
+                    <div class="tab-panel popover popover-wide hidden" id="trade-panel"
+                         role="tabpanel" aria-labelledby="tab-trade">
+                        <div class="popover-head">
+                            <span>Trade</span>
+                            <button type="button" class="popover-close"
+                                    data-close-popover aria-label="Close">×</button>
+                        </div>
+                        <div class="popover-body">
+                            <button id="propose-trade-btn">Propose Trade</button>
+                            <div class="trade-scroll">
+                                <div id="trade-offers" class="trade-offers"></div>
+                                <div id="my-offers" class="my-offers"></div>
+                            </div>
                         </div>
                     </div>
                 </section>

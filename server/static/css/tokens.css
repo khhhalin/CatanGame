@@ -70,8 +70,10 @@
            board: the board track is told to eat the leftover height rather
            than sizing to a fixed aspect ratio. See shell patterns. */
     --shell-min-board: 18rem;
-    --panel-rail: 14.5rem;
-    --panel-aside: 20rem;
+    /* The rail carries the scoreboard and one line per folded subject, so it
+       is sized by the widest of those lines rather than by a panel of tracks. */
+    --panel-rail: 15.5rem;
+    --panel-aside: 21rem;
 }
 
 /* ------------------------------------------------------------ light theme */

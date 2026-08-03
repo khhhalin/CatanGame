@@ -227,8 +227,21 @@ button {
     transition: background-color var(--dur-med) var(--ease);
 }
 
-button:hover {
+button:hover:not(:disabled) {
     background-color: var(--accent-dark);
+}
+
+/* One disabled treatment for the whole client. The tester's complaint was that
+   some actions grey out and others let you click and then show an error; every
+   action greys out now, with the reason in `title`. Never `opacity` for this -
+   it fades the label along with the box and takes it below AA every time. Mute
+   the specific tokens instead. */
+button:disabled {
+    background-color: var(--muted-fill);
+    color: var(--text-faint);
+    border-color: transparent;
+    box-shadow: none;
+    cursor: not-allowed;
 }
 
 #join-screen {
@@ -325,6 +338,40 @@ button:hover {
 .user-list li.current-user {
     background-color: var(--accent);
     font-weight: bold;
+}
+
+/* A ring, never a border width: the seat on turn changes on every turn, and a
+   3px border appearing on one row would resize the panel under the whole rail.
+   Two rings, light then dark, because the fill under it is the player's own
+   colour and could be anything. */
+#game-players li.current-turn {
+    box-shadow: inset 0 0 0 2px var(--surface-1), inset 0 0 0 4px var(--text);
+}
+
+.score-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-weight: bold;
+}
+
+.score-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.score-points {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Deliberately inherits the row's own text colour rather than --text-muted or
+   an opacity: the row is filled with the player's colour, which the client
+   already picked a contrasting ink for, and either of those would undo that. */
+.score-meta {
+    font-size: var(--text-2xs);
+    line-height: var(--leading-tight);
 }
 
 .user-list li.current-turn {
@@ -500,6 +547,11 @@ button:hover {
     text-align: left;
 }
 
+/* Two panels, both content-sized, and between them they are far shorter than
+   the column. That is the point: the rail used to carry six stacked panels, it
+   overflowed by 46px in a Cities & Knights game, and the House Rules panel was
+   clipped off the bottom. Everything except the scoreboard is a `.fold` now, so
+   the rail states six subjects in six lines instead of six panels. */
 .game-rail {
     grid-area: rail;
     display: flex;
@@ -509,18 +561,15 @@ button:hover {
     min-height: 0;
 }
 
-/* Content-sized, never given a flex ratio. A four-player roster sitting in a
-   track sized for six leaves a hole INSIDE the panel, which reads as a
-   rendering bug; the rail is one scroll column instead, so the slack falls
-   outside the panels where it is just background. */
-#players-panel,
-#dev-cards-panel,
-#active-rules-panel {
+.game-rail > .panel {
     flex: none;
 }
 
-#active-rules-panel {
-    max-height: 9rem;
+/* The full scoreboard is one of the things that must never be hidden or cut
+   off, so it is sized by its content and nothing here may clip it. */
+#game-players {
+    display: block;
+    overflow: visible;
 }
 
 /* The stage: board over console, and the board is the ONLY greedy track. */
@@ -782,11 +831,42 @@ button:hover {
     cursor: pointer;
 }
 
+/* Whose turn it is, said in words beside the actions it gates. */
+.turn-indicator {
+    flex: none;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-3);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.turn-indicator.mine {
+    background-color: var(--good-soft);
+    color: var(--good);
+}
+
+/* The build buttons carry their cost. Two rows, name over cost, so adding the
+   cost widened nothing: a console button that changes width rewraps the
+   console, which resizes the board box and moves the camera. */
 #place-settlement-btn,
 #place-road-btn,
 #upgrade-city-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
     padding: var(--space-1) var(--space-2);
     font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+}
+
+.build-cost {
+    font-size: var(--text-2xs);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
 }
 
 /* Armed. Border *colour* and an outer glow only - both are free of layout.
@@ -853,6 +933,167 @@ button:hover {
 
 #end-game-btn:hover {
     background-color: color-mix(in srgb, var(--bad) 80%, var(--text));
+}
+
+/* --------------------------------------------------------- folds and popovers */
+
+/* A fold is one line that always states its subject's headline numbers, and a
+   popover carrying the detail and the actions. This is what replaced the stack
+   of panels that overflowed the rail: six subjects now cost six lines instead
+   of six boxes, and nothing is deleted - it is one press away.
+
+   The popover is `position: fixed` and placed by popovers.js. That is the
+   load-bearing part: it is outside every flow on the page, so opening one can
+   neither reflow the rail nor resize the board box nor move the camera. */
+
+.fold-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.fold {
+    min-width: 0;
+}
+
+.fold-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    text-align: left;
+    background-color: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: var(--text-2xs);
+    line-height: var(--leading-tight);
+}
+
+.fold-chip:hover {
+    background-color: var(--surface-3);
+}
+
+/* The chip is a disclosure, so it says which way it is pointing. Colour and a
+   ring only - a chip that grew when opened would reflow the rail. */
+.fold-chip[aria-expanded="true"] {
+    background-color: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.fold-name {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: bold;
+}
+
+.fold-value {
+    font-size: var(--text-xs);
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    /* The summary is the whole point of the chip, so it is never truncated:
+       it wraps to a second line rather than hiding a number. */
+    overflow-wrap: anywhere;
+}
+
+.fold-value.warning { color: var(--warn); }
+.fold-value.danger { color: var(--bad); }
+
+.popover {
+    position: fixed;
+    z-index: var(--z-dropdown);
+    width: 18rem;
+    max-height: min(32rem, calc(100dvh - 2rem));
+    display: flex;
+    flex-direction: column;
+    background-color: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-3);
+}
+
+.popover-wide {
+    width: 22rem;
+}
+
+.popover-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--panel-rule);
+    font-size: var(--text-xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.popover-close {
+    padding: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    line-height: 1;
+    font-size: var(--text-lg);
+    background: none;
+    border: 2px solid transparent;
+    color: var(--text-muted);
+}
+
+.popover-close:hover {
+    background-color: var(--surface-3);
+    color: var(--text);
+}
+
+/* The one place inside a popover that may scroll: a hand of progress cards or
+   six knights is genuinely unbounded, and the alternative is clipping it. */
+.popover-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-2) var(--space-3);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* --------------------------------------------------------- the scoreboard */
+
+/* Who holds each bonus and on what. Both awards were in the board payload and
+   nowhere on screen, so a player could lose Longest Road without being told. */
+.award-summary {
+    flex: none;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--panel-rule);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.award-row {
+    display: flex;
+    flex-direction: column;
+    font-size: var(--text-2xs);
+    line-height: var(--leading-tight);
+}
+
+.award-name {
+    color: var(--text-muted);
+}
+
+.award-holder {
+    color: var(--text-faint);
+}
+
+.award-row.held .award-holder {
+    color: var(--text);
+    font-weight: bold;
 }
 
 /* ------------------------------------------------------- rail panel bodies */
@@ -1071,6 +1312,16 @@ button:hover {
 
 #propose-trade-btn:hover {
     background-color: color-mix(in srgb, var(--info) 82%, var(--text));
+}
+
+/* The trade panel is a popover, and its body already scrolls. Two nested
+   scrollers in one 22rem box is two scrollbars and neither scrolls what the
+   player expected, so the outer one stands down here. */
+#trade-panel .popover-body {
+    overflow-y: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
 }
 
 .trade-scroll {
@@ -1521,50 +1772,12 @@ button:hover {
 
 /* -------------------------------------------------- cities & knights panels */
 
-/* These three panels are `.hidden` in the template and only ever unhidden by
-   the client when the running game has the expansion on, so none of this
-   applies to a base game. They are denser than the rest of the rail because
-   three improvement tracks and up to six knights have to fit beside the
-   board. */
+/* The Cities & Knights folds are `.hidden` in the template and only ever
+   unhidden by the client when the running game has the expansion on, so none of
+   this applies to a base game. */
 
 .ck-panel {
-    flex: none;
-    font-size: 0.75rem;
-}
-
-#improvements-panel {
-    max-height: 21rem;
-}
-
-#knights-panel {
-    max-height: 19rem;
-}
-
-/* Six panels no longer fit a fixed-height column, so the rail itself scrolls.
-   Harmless in the base game, where four panels share the height as before. */
-.game-rail {
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-}
-
-/* Only where the rail is a full-height column of its own: below this the rail
-   is a horizontal strip and the panels are sized by that media query. */
-@media (min-width: 1201px) {
-    #game-screen.ck-on {
-        grid-template-columns: 15rem minmax(0, 1fr);
-    }
-
-    #game-screen.ck-on .game-rail > .panel {
-        flex: none;
-    }
-
-    #game-screen.ck-on #players-panel {
-        max-height: 10rem;
-    }
-
-    #game-screen.ck-on #dev-cards-panel {
-        max-height: 12rem;
-    }
+    font-size: var(--text-sm);
 }
 
 /* A short explanation under a control: a cost, a reason a button is off, or
@@ -1795,6 +2008,53 @@ button:hover {
     flex: 1 1 0;
     padding: 0.25rem;
     font-size: 0.65rem;
+}
+
+/* ------------------------------------------------------- progress cards */
+
+/* Cities & Knights replaces the development card deck with these. The hand is
+   this viewer's own; everyone else's is a count on the board payload. */
+
+.progress-hand {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.progress-card {
+    padding: var(--space-2);
+    background-color: var(--sunken);
+    border-radius: var(--radius-sm);
+}
+
+.progress-card-title {
+    font-size: var(--text-sm);
+    font-weight: bold;
+}
+
+.progress-card-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+
+.progress-target {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.2rem;
+    font-size: var(--text-2xs);
+    font-family: inherit;
+    background-color: var(--surface-1);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.progress-play {
+    flex: none;
+    padding: 0.25rem var(--space-3);
+    font-size: var(--text-2xs);
 }
 
 /* ----------------------------------------------------------- commodities */

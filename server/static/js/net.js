@@ -10,10 +10,10 @@ import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, turnSo
 import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
 import { handleNameTaken, renderActiveRules, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
 import { displayError, logToGameConsole, showNotice } from './notices.js';
-import { openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, renderVictimList, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
+import { offerVictimChoice, openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
 import { setConnectionStatus, socket, socketAvailable } from './socket.js';
 import { applyBoardFacts, getBoard, getCurrentPlayer, getRole, isMyTurn, setRoster, viewState } from './state.js';
-import { startTimerInterval, updateTimers } from './timers.js';
+import { noteServerClocks, updateTimers } from './timers.js';
 import { renderTradeOffers, showInventionModal, showMonopolyModal } from './trade.js';
 
 // Socket event handlers
@@ -135,6 +135,8 @@ socket.on('game_state', (data) => {
     
     // Update button colors
     updateButtonColors();
+    updateGameUI(data.board);
+    updateTimers(data.board);
     checkLogGap(data);
 
     console.log('Reconnected to game. Current player:', data.current_player);
@@ -157,14 +159,12 @@ socket.on('turn_changed', (data) => {
     renderCitiesKnights();
     console.log('Turn changed. Current player:', data.current_player);
 
-    // Update timers from server data
-    if (data.dice_roll_time !== undefined) {
-        viewState.timers.diceSeconds = data.dice_roll_time;
-        viewState.timers.roundSeconds = data.round_time;
-        viewState.timers.updatedAt = Date.now();
-        startTimerInterval();
-    }
-    
+    // `turn_changed` carries the fresh clocks a fraction before the board
+    // broadcast that repeats them, so record them the moment they land.
+    noteServerClocks(data);
+    updateTimers();
+
+
     // Play sound if it's now my turn
     if (isMyTurn() && !wasMyTurn) {
         turnSound.play().catch(e => console.log('Could not play sound:', e));
@@ -222,6 +222,12 @@ socket.on('board_updated', (data) => {
     renderBank();
     renderTradeOffers();
     renderDevCards();
+    // The scoreboard used to be redrawn only by `turn_changed`, so points,
+    // road lengths, knight counts and the two bonus holders all sat stale
+    // until somebody ended a turn - the same defect the tester reported for
+    // the barbarian counter. Anything derived from the payload is redrawn when
+    // the payload arrives.
+    renderGameSidebar({ players: data.board.players });
     updateGameUI(data.board);
     updateButtonColors();
     updateTimers(data.board);
@@ -233,6 +239,36 @@ socket.on('board_updated', (data) => {
     if (data.highlight) {
         setTimeout(() => setHighlight(null), 2000);
     }
+});
+
+// Cities & Knights rolls an event die on every roll, not only when the
+// barbarians move. It arrives before the board broadcast that carries the same
+// position, so the track is redrawn twice - the point is that neither redraw
+// waits for a turn boundary, which is what made the counter look frozen.
+socket.on('event_die', (data) => {
+    if (!data || typeof data !== 'object') {
+        console.warn('Ignoring malformed event_die payload:', data);
+        return;
+    }
+    if (data.barbarian && typeof data.position === 'number') {
+        applyBoardFacts({
+            cities_knights: {
+                ...(getBoard()?.cities_knights || {}),
+                barbarian_position: data.position,
+                barbarian_track_length: data.track_length
+            }
+        });
+    }
+    renderCitiesKnights();
+});
+
+socket.on('barbarian_attack', (data) => {
+    console.log('Barbarian attack:', data);
+    renderCitiesKnights();
+});
+
+socket.on('progress_card_played', (data) => {
+    console.log('Progress card played:', data);
 });
 
 socket.on('dev_card_bought', (data) => {
@@ -316,9 +352,10 @@ socket.on('choose_victim', (data) => {
             must_choose_victim: true,
             robber_victims: data.victims || []
         });
-        renderVictimList();
         victimModal.classList.remove('hidden');
-        victimModal.classList.add('show');
+        // Opens the picker, or - with a single candidate - answers it outright
+        // rather than making the player click the only button on offer.
+        offerVictimChoice();
     } else {
         console.log('Not current player, skipping modal');
     }

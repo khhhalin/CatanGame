@@ -26,6 +26,8 @@ export const rulesLockedNote = document.getElementById('rules-locked-note');
 export const activeRulesPanel = document.getElementById('active-rules-panel');
 export const activeRulesDiv = document.getElementById('active-rules');
 export const gamePlayersList = document.getElementById('game-players');
+export const awardSummary = document.getElementById('award-summary');
+export const turnIndicator = document.getElementById('turn-indicator');
 export const gameConsole = document.getElementById('game-console');
 export const gameBoard = document.getElementById('game-board');
 export const nextTurnBtn = document.getElementById('next-turn-btn');
@@ -47,6 +49,7 @@ export const closeTradeModal = document.getElementById('close-trade-modal');
 export const submitTradeBtn = document.getElementById('submit-trade-btn');
 export const diceTimerEl = document.getElementById('dice-timer');
 export const roundTimerEl = document.getElementById('round-timer');
+export const devCardsPanel = document.getElementById('dev-cards-panel');
 export const buyDevCardBtn = document.getElementById('buy-dev-card-btn');
 export const myDevCardsDiv = document.getElementById('my-dev-cards');
 export const inventionModal = document.getElementById('invention-modal');
@@ -84,6 +87,18 @@ export const knightHint = document.getElementById('knight-hint');
 export const buildKnightBtn = document.getElementById('build-knight-btn');
 export const moveKnightBtn = document.getElementById('move-knight-btn');
 export const buildWallBtn = document.getElementById('build-wall-btn');
+
+// The chip each folded subject collapses to. Its `-value` span is the summary
+// line the player reads without opening anything.
+export const barbarianChipValue = document.getElementById('barbarian-chip-value');
+export const improvementsChipValue = document.getElementById('improvements-chip-value');
+export const knightsChipValue = document.getElementById('knights-chip-value');
+export const devCardsChipValue = document.getElementById('dev-cards-chip-value');
+export const bankChipValue = document.getElementById('bank-chip-value');
+export const progressCardsPanel = document.getElementById('progress-cards-panel');
+export const progressCardsChipValue = document.getElementById('progress-cards-chip-value');
+export const progressHandDiv = document.getElementById('progress-hand');
+export const activeRulesChipValue = document.getElementById('active-rules-chip-value');
 
 // Discard and victim modal elements
 export const discardModal = document.getElementById('discard-modal');

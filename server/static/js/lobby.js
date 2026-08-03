@@ -2,7 +2,7 @@
 
 import { setHighlight } from './board.js';
 import { renderCitiesKnights } from './cities-knights.js';
-import { activeRulesDiv, activeRulesPanel, diceDisplay, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
 import { requestLogCatchUp } from './event-log.js';
 import { displayError, showNotice } from './notices.js';
 import { emitGame, socket } from './socket.js';
@@ -441,4 +441,12 @@ export function renderActiveRules() {
 
     activeRulesDiv.textContent = parts.length > 0 ? parts.join(' · ') : 'Base game rules';
     activeRulesPanel.classList.remove('hidden');
+
+    // Folded, the interesting fact is only how far this table is from the base
+    // game; the list itself is one click away.
+    if (activeRulesChipValue) {
+        activeRulesChipValue.textContent = parts.length > 0
+            ? `${parts.length} changed`
+            : 'Base game';
+    }
 }
