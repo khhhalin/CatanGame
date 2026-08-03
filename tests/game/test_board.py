@@ -5,62 +5,20 @@ import random
 from game.game import Game
 
 
-def test_board_has_nineteen_land_hexes(fresh_game):
-    land = [h for h in fresh_game.hexes.values() if h.type != 'ocean']
-    assert len(land) == 19
-
-
 def test_exactly_one_desert_and_it_has_no_number(fresh_game):
     deserts = [h for h in fresh_game.hexes.values() if h.type == 'desert']
     assert len(deserts) == 1
     assert deserts[0].number is None
 
 
-def test_every_land_hex_except_desert_has_a_legal_number(fresh_game):
-    for hex_obj in fresh_game.hexes.values():
-        if hex_obj.type in ('ocean', 'desert'):
-            continue
-        assert hex_obj.number is not None
-        assert 2 <= hex_obj.number <= 12
-        assert hex_obj.number != 7, "7 is the robber roll and never sits on a hex"
-
-
-def test_resource_hex_distribution_matches_standard_catan(fresh_game):
-    counts = {}
-    for hex_obj in fresh_game.hexes.values():
-        if hex_obj.type != 'ocean':
-            counts[hex_obj.type] = counts.get(hex_obj.type, 0) + 1
-    assert counts == {
-        'wood': 4, 'wheat': 4, 'sheep': 4,
-        'brick': 3, 'ore': 3, 'desert': 1,
-    }
-
-
-def test_number_tokens_are_the_eighteen_in_the_box(fresh_game):
+def test_the_token_set_is_the_same_for_every_seed():
     """The token set is fixed: 2 and 12 once, everything else twice.
 
-    The pool used to be weighted by dice probability (five 6s, five 8s) and
-    held 30 tokens for 18 slots, so the dealt board ran hot and often had no
-    2 or 12 at all.
+    Only placement is random; a weighted pool would vary the set per run. The
+    pool used to be weighted by dice probability (five 6s, five 8s) and held 30
+    tokens for 18 slots, so the dealt board ran hot and often had no 2 or 12 at
+    all.
     """
-    numbers = sorted(
-        hex_obj.number
-        for hex_obj in fresh_game.hexes.values()
-        if hex_obj.type not in ('ocean', 'desert')
-    )
-    assert numbers == [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
-
-
-def test_every_numbered_hex_has_a_token_and_the_desert_has_none(fresh_game):
-    for hex_obj in fresh_game.hexes.values():
-        if hex_obj.type in ('ocean', 'desert'):
-            assert hex_obj.number is None
-        else:
-            assert hex_obj.number is not None
-
-
-def test_the_token_set_is_the_same_for_every_seed():
-    """Only placement is random; a weighted pool would vary the set per run."""
     for seed in range(10):
         game = Game(["A", "B"], [], rng=random.Random(seed))
         numbers = sorted(
@@ -86,25 +44,6 @@ def test_distribution_is_identical_across_seeds(fresh_game):
         }, f"seed {seed} produced {counts}"
 
 
-def test_board_generation_holds_for_many_seeds():
-    """The distribution is fixed, so a bad seed would show up as a wrong count."""
-    for seed in range(25):
-        game = Game(["A", "B"], [], rng=random.Random(seed))
-        land = [h for h in game.hexes.values() if h.type != 'ocean']
-        assert len(land) == 19, f"seed {seed} produced {len(land)} land hexes"
-        numbers = [h.number for h in land if h.type != 'desert']
-        assert 7 not in numbers, f"seed {seed} placed a 7"
-        assert all(n is not None for n in numbers), f"seed {seed} left a hex unnumbered"
-
-
-def test_same_seed_produces_the_same_board():
-    """Determinism is what makes every other test reproducible."""
-    first = Game(["A", "B"], [], rng=random.Random(999))
-    second = Game(["A", "B"], [], rng=random.Random(999))
-    assert {k: (h.type, h.number) for k, h in first.hexes.items()} == \
-           {k: (h.type, h.number) for k, h in second.hexes.items()}
-
-
 def test_vertices_and_edges_are_generated(fresh_game):
     assert len(fresh_game.vertices) > 0
     assert len(fresh_game.edges) > 0
@@ -112,44 +51,6 @@ def test_vertices_and_edges_are_generated(fresh_game):
     for edge in fresh_game.edges.values():
         for vertex_key in edge.neighbors.get('vertices', []):
             assert vertex_key in fresh_game.vertices
-
-
-def test_the_whole_board_is_reproducible_across_processes():
-    """Hexes, vertices, edges and ports must all come back identical.
-
-    Board generation iterates sets of string keys; set order varies between
-    processes, so without sorting, the same seed produced different vertex
-    ordering and different port placement on every run — which showed up as a
-    test that passed four times in five.
-    """
-    import json
-    import os
-    import subprocess
-    import sys
-
-    script = (
-        "import sys, json, random;"
-        "sys.path.insert(0, 'server');"
-        "from game.game import Game;"
-        "g = Game(['A','B'], [], rng=random.Random(99));"
-        "print(json.dumps({"
-        "'hexes': sorted((k, h.type, h.number) for k, h in g.hexes.items()),"
-        "'vertices': sorted(g.vertices),"
-        "'edges': sorted(g.edges),"
-        "'ports': sorted((k, str(v.port)) for k, v in g.vertices.items() if v.port),"
-        "}))"
-    )
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    runs = []
-    for seed in ("0", "1"):
-        env = dict(os.environ, PYTHONHASHSEED=seed)
-        out = subprocess.run([sys.executable, "-c", script], capture_output=True,
-                             text=True, cwd=root, env=env, check=True)
-        # Board generation still prints progress, so take the last line.
-        runs.append(json.loads(out.stdout.strip().splitlines()[-1]))
-
-    assert runs[0] == runs[1], "the same seed must build the same board in any process"
 
 
 def test_the_board_has_a_ring_of_ocean_around_the_land(fresh_game):

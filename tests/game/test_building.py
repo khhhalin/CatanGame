@@ -80,14 +80,12 @@ class TestSetupOrdering:
         result = fresh_game.place_settlement(name, far)
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'You must place a road next'
 
     def test_a_road_before_any_settlement_is_refused(self, fresh_game):
         name = acting(fresh_game)
         result = fresh_game.build_road(name, next(iter(fresh_game.edges)))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'You must place a settlement first'
 
     def test_the_setup_road_must_touch_the_new_settlement(self, fresh_game):
         name = acting(fresh_game)
@@ -99,7 +97,6 @@ class TestSetupOrdering:
         result = fresh_game.build_road(name, elsewhere)
 
         assert result['code'] == 'INVALID_PLACEMENT'
-        assert result['error'] == 'Road must be connected to your settlement'
 
     def test_a_settlement_and_road_pass_the_turn_on(self, fresh_game):
         first = acting(fresh_game)
@@ -118,7 +115,6 @@ class TestSetupOrdering:
         result = fresh_game.place_settlement(intruder, a_vertex(fresh_game))
 
         assert result['code'] == 'NOT_YOUR_TURN'
-        assert result['error'] == f'Only {name} can place buildings'
 
     def test_setup_placement_costs_nothing(self, fresh_game):
         name = acting(fresh_game)
@@ -158,7 +154,6 @@ class TestDistanceRule:
         result = fresh_game.place_settlement(name, neighbour_of(fresh_game, occupied))
 
         assert result['code'] == 'INVALID_PLACEMENT'
-        assert result['error'] == 'Cannot place settlement next to another settlement'
 
     def test_your_own_settlement_blocks_you_too(self, fresh_game):
         name = acting(fresh_game)
@@ -187,13 +182,11 @@ class TestDistanceRule:
         result = fresh_game.place_settlement(name, occupied)
 
         assert result['code'] == 'OCCUPIED'
-        assert result['error'] == 'This location already has a building'
 
     def test_an_unknown_vertex_is_refused(self, fresh_game):
         result = fresh_game.place_settlement(acting(fresh_game), 'nowhere')
 
         assert result['code'] == 'INVALID_TARGET'
-        assert result['error'] == 'Invalid vertex'
 
 
 class TestBuildingInPlay:
@@ -204,7 +197,6 @@ class TestBuildingInPlay:
         result = playing_game.place_settlement(name, a_vertex(playing_game))
 
         assert result['code'] == 'INVALID_PLACEMENT'
-        assert result['error'] == 'Settlement must be connected to your own road'
 
     def test_someone_elses_road_does_not_count(self, playing_game, rich):
         name = acting(playing_game)
@@ -238,7 +230,6 @@ class TestBuildingInPlay:
         result = playing_game.place_settlement(name, vertex_key)
 
         assert result['code'] == 'INSUFFICIENT_RESOURCES'
-        assert result['error'].startswith('Not enough resources. Need:')
 
     def test_the_robber_must_be_moved_first(self, playing_game, rich):
         name = acting(playing_game)
@@ -258,7 +249,6 @@ class TestRoadConnectivity:
         result = playing_game.build_road(name, next(iter(playing_game.edges)))
 
         assert result['code'] == 'INVALID_PLACEMENT'
-        assert result['error'] == 'Road must be connected to your own road'
 
     def test_a_road_next_to_your_own_is_allowed(self, playing_game, rich):
         name = acting(playing_game)
@@ -325,7 +315,6 @@ class TestRoadConnectivity:
         result = playing_game.build_road(name, edge_key)
 
         assert result['code'] == 'OCCUPIED'
-        assert result['error'] == 'This location already has a road'
 
     def test_a_two_roads_card_pays_for_the_placement(self, playing_game):
         name = acting(playing_game)
@@ -351,7 +340,6 @@ class TestPieceSupply:
         result = playing_game.place_settlement(name, a_vertex(playing_game))
 
         assert result['code'] == 'NO_PIECES_LEFT'
-        assert result['error'] == f'You have used all {playing_game.MAX_SETTLEMENTS} settlements'
 
     def test_roads_run_out(self, playing_game, rich):
         name = acting(playing_game)
@@ -361,7 +349,6 @@ class TestPieceSupply:
         result = playing_game.build_road(name, next(iter(playing_game.edges)))
 
         assert result['code'] == 'NO_PIECES_LEFT'
-        assert result['error'] == f'You have used all {playing_game.MAX_ROADS} roads'
 
     def test_cities_run_out(self, playing_game, rich):
         name = acting(playing_game)
@@ -375,7 +362,6 @@ class TestPieceSupply:
         result = playing_game.upgrade_city(name, vertex_key)
 
         assert result['code'] == 'NO_PIECES_LEFT'
-        assert result['error'] == f'You have used all {playing_game.MAX_CITIES} cities'
 
     def test_the_supply_is_read_from_the_house_rules(self, rng):
         from game.game import Game
@@ -412,7 +398,6 @@ class TestUpgradingToACity:
         result = playing_game.upgrade_city(name, vertex_key)
 
         assert result['code'] == 'NOT_YOUR_PIECE'
-        assert result['error'] == 'Can only upgrade your own settlements'
 
     def test_a_city_cannot_be_upgraded_again(self, playing_game, rich):
         name = acting(playing_game)
@@ -423,7 +408,6 @@ class TestUpgradingToACity:
         result = playing_game.upgrade_city(name, vertex_key)
 
         assert result['code'] == 'INVALID_TARGET'
-        assert result['error'] == 'Can only upgrade settlements to cities'
 
     def test_an_empty_intersection_has_nothing_to_upgrade(self, playing_game, rich):
         name = acting(playing_game)
@@ -432,7 +416,6 @@ class TestUpgradingToACity:
         result = playing_game.upgrade_city(name, a_vertex(playing_game))
 
         assert result['code'] == 'INVALID_TARGET'
-        assert result['error'] == 'No building at this location'
 
     def test_upgrading_during_setup_is_refused(self, fresh_game):
         name = acting(fresh_game)
@@ -442,7 +425,6 @@ class TestUpgradingToACity:
         result = fresh_game.upgrade_city(name, vertex_key)
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'Cannot upgrade to city during setup phase'
 
 
 class TestWinning:

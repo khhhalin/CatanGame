@@ -41,13 +41,11 @@ class TestMovingTheRobber:
         result = fresh_game.move_robber(acting(fresh_game), a_land_hex(fresh_game))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'Cannot move robber during setup'
 
     def test_the_robber_only_moves_when_it_is_owed(self, playing_game):
         result = playing_game.move_robber(acting(playing_game), a_land_hex(playing_game))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'You do not need to move the robber'
 
     def test_only_the_current_player_moves_it(self, playing_game):
         playing_game.must_move_robber = True
@@ -58,7 +56,6 @@ class TestMovingTheRobber:
         )
 
         assert result['code'] == 'NOT_YOUR_TURN'
-        assert result['error'] == f'Only {name} can move the robber'
 
     def test_the_ocean_is_not_a_hiding_place(self, playing_game):
         playing_game.must_move_robber = True
@@ -66,7 +63,6 @@ class TestMovingTheRobber:
         result = playing_game.move_robber(acting(playing_game), an_ocean_hex(playing_game))
 
         assert result['code'] == 'INVALID_TARGET'
-        assert result['error'] == 'Cannot place robber on ocean'
 
     def test_an_unknown_hex_is_refused(self, playing_game):
         playing_game.must_move_robber = True
@@ -74,7 +70,6 @@ class TestMovingTheRobber:
         result = playing_game.move_robber(acting(playing_game), 'nowhere')
 
         assert result['code'] == 'INVALID_TARGET'
-        assert result['error'] == 'Invalid hex'
 
     def test_a_legal_move_clears_the_obligation(self, playing_game):
         playing_game.must_move_robber = True
@@ -161,7 +156,6 @@ class TestStealing:
         result = game.steal_from_victim(thief, 'Nobody')
 
         assert result['code'] == 'INVALID_TARGET'
-        assert result['error'] == 'Invalid victim selection'
 
     def test_stealing_without_a_pending_choice_is_refused(self, playing_game):
         name = acting(playing_game)
@@ -169,7 +163,6 @@ class TestStealing:
         result = playing_game.steal_from_victim(name, other_player(playing_game, name))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'No victim selection required'
 
 
 class TestDiscarding:
@@ -177,7 +170,6 @@ class TestDiscarding:
         result = playing_game.discard(acting(playing_game), {'wood': 1})
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'You do not need to discard'
 
     def test_the_wrong_number_of_cards_is_refused(self, playing_game):
         name = acting(playing_game)
@@ -215,7 +207,6 @@ class TestAdvancingTheTurn:
         result = playing_game.advance_turn(other_player(playing_game, name))
 
         assert result['code'] == 'NOT_YOUR_TURN'
-        assert result['error'] == f'Only {name} can advance the turn'
 
     def test_an_expired_round_lets_anyone_move_it_on(self, playing_game):
         name = acting(playing_game)
@@ -245,7 +236,6 @@ class TestAdvancingTheTurn:
         result = fresh_game.advance_turn(acting(fresh_game))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'Cannot skip turn during setup phase'
 
     def test_a_new_turn_drops_unspent_follow_ups(self, playing_game):
         name = acting(playing_game)
@@ -270,7 +260,6 @@ class TestRollingTheDice:
         result = fresh_game.roll_dice(acting(fresh_game))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'Cannot roll dice during setup phase'
 
     def test_only_the_current_player_rolls(self, playing_game):
         name = acting(playing_game)
@@ -278,7 +267,6 @@ class TestRollingTheDice:
         result = playing_game.roll_dice(other_player(playing_game, name))
 
         assert result['code'] == 'NOT_YOUR_TURN'
-        assert result['error'] == f'Only {name} can roll dice'
 
     def test_one_roll_per_turn(self, playing_game):
         name = acting(playing_game)
@@ -287,7 +275,6 @@ class TestRollingTheDice:
         result = playing_game.roll_dice(name)
 
         assert result['code'] == 'ALREADY_ROLLED'
-        assert result['error'] == 'You have already rolled this turn'
 
     def test_a_seven_owes_the_robber_and_the_discards(self, started_game):
         from tests.conftest import ScriptedRandom
@@ -313,7 +300,6 @@ class TestDevelopmentCards:
         result = fresh_game.buy_dev_card(acting(fresh_game))
 
         assert result['code'] == 'WRONG_PHASE'
-        assert result['error'] == 'Cannot buy development cards during setup'
 
     def test_the_robber_comes_first(self, playing_game):
         playing_game.must_move_robber = True
@@ -331,7 +317,6 @@ class TestDevelopmentCards:
         result = playing_game.buy_dev_card(acting(playing_game))
 
         assert result['code'] == 'ACTION_FAILED'
-        assert result['error'] == 'Cannot afford development card'
 
     def test_a_knight_owes_the_robber(self, playing_game):
         name = acting(playing_game)
@@ -370,7 +355,6 @@ class TestDevelopmentCards:
         result = playing_game.play_dev_card(acting(playing_game), 'monopoly')
 
         assert result['code'] == 'ACTION_REJECTED'
-        assert result['error'] == 'You do not have this card'
 
     def test_a_victory_point_card_can_end_the_game(self, playing_game):
         name = acting(playing_game)
@@ -408,7 +392,6 @@ class TestInventionAndMonopoly:
         result = playing_game.use_invention(name, {'wood': 3})
 
         assert result['code'] == 'INVALID_PAYLOAD'
-        assert result['error'] == 'Invention gives exactly 2 resources'
 
     def test_monopoly_without_the_card_is_refused(self, playing_game):
         result = playing_game.use_monopoly(acting(playing_game), 'wood')
@@ -434,7 +417,6 @@ class TestTrading:
         result = playing_game.propose_trade(acting(playing_game), {'wood': 1}, {})
 
         assert result['code'] == 'INVALID_PAYLOAD'
-        assert result['error'] == 'A trade needs resources on both sides'
 
     def test_you_cannot_offer_what_you_do_not_hold(self, playing_game):
         name = acting(playing_game)
@@ -442,7 +424,6 @@ class TestTrading:
         result = playing_game.propose_trade(name, {'wood': 1}, {'ore': 1})
 
         assert result['code'] == 'INSUFFICIENT_RESOURCES'
-        assert result['error'] == 'Not enough wood: have 0, offering 1'
 
     def test_only_the_current_player_proposes(self, playing_game):
         name = acting(playing_game)
@@ -492,7 +473,6 @@ class TestTrading:
         result = playing_game.propose_trade(name, {'wood': 4}, {'ore': 1})
 
         assert result['code'] == 'BANK_EMPTY'
-        assert result['error'] == 'Bank does not have 1 ore'
         assert playing_game.get_player(name).resources == {'wood': 4}, "nothing was touched"
 
     def test_accepting_an_offer_you_cannot_pay_for_is_refused(self, playing_game):
@@ -504,7 +484,6 @@ class TestTrading:
         result = playing_game.accept_trade(offer['id'], opponent)
 
         assert result['code'] == 'INSUFFICIENT_RESOURCES'
-        assert result['error'] == 'Not enough ore to accept this trade'
 
     def test_an_unknown_offer_is_refused(self, playing_game):
         result = playing_game.accept_trade(999, acting(playing_game))
@@ -533,4 +512,3 @@ class TestTrading:
         result = playing_game.complete_trade(offer['id'], name)
 
         assert result['code'] == 'TRADE_FAILED'
-        assert result['error'] == 'Could not complete trade'

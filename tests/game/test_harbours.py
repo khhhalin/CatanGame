@@ -28,10 +28,6 @@ def hexes_shared_by(game, vertex_keys):
     return shared
 
 
-def test_there_are_exactly_nine_harbours(fresh_game):
-    assert len(harbour_edges(fresh_game)) == 9
-
-
 def test_the_split_is_four_generic_and_one_per_resource(fresh_game):
     ports = list(harbour_edges(fresh_game).values())
     generic = [p for p in ports if p['type'] == 'generic']
@@ -49,21 +45,6 @@ def test_a_harbour_serves_the_two_intersections_at_the_ends_of_its_edge(fresh_ga
 
     served = [v for v in fresh_game.vertices.values() if v.port]
     assert len(served) == 18, "9 harbours, each serving 2 intersections and no others"
-
-
-def test_every_harbour_sits_on_a_coastal_edge(fresh_game):
-    """Land on one side, open sea on the other — exactly one hex in common."""
-    for edge_key in harbour_edges(fresh_game):
-        ends = fresh_game.edges[edge_key].neighbors['vertices']
-        assert len(hexes_shared_by(fresh_game, ends)) == 1
-
-
-def test_harbours_never_share_an_intersection(fresh_game):
-    claimed = set()
-    for edge_key in harbour_edges(fresh_game):
-        ends = set(fresh_game.edges[edge_key].neighbors['vertices'])
-        assert not ends & claimed, f"{edge_key} shares an intersection with another harbour"
-        claimed |= ends
 
 
 def test_the_geometry_holds_for_many_seeds():

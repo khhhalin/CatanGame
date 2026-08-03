@@ -41,6 +41,13 @@ class TestRegistry:
         assert rules_module.coerce({'board_layout': 'atlantis'})['board_layout'] == 'random'
 
     def test_every_listed_map_can_be_built(self):
+        """The lobby dropdown is checked against what actually builds.
+
+        The per-layout classes below name their three maps, so they cannot
+        catch a fourth added to the options list that never builds — a player
+        would pick it and get no board at all. This iterates the advertised
+        list, so the literal is asserted against the thing it has to match.
+        """
         listed = rules_module.RULES_BY_ID['board_layout']['options']
         for option in listed:
             game = make_game(option['id'])

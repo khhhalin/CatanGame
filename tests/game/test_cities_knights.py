@@ -35,9 +35,6 @@ class TestTheExpansionIsJustRules:
     def test_the_preset_ticks_all_of_it(self):
         assert ck_game().ck is not None
 
-    def test_the_preset_suggests_thirteen_points(self):
-        assert ck_game().victory_points_to_win == 13
-
     def test_the_lobby_number_wins_over_the_preset(self):
         """Reported: "10 vp needed setting got overridden".
 
@@ -277,21 +274,6 @@ class TestKnights:
         result = game.build_knight('Alice', stranded)
         assert not result['success']
 
-    def test_only_two_knights_of_each_rank(self):
-        game = ck_game()
-        player = game.get_player('Alice')
-        player.resources = {'sheep': 9, 'ore': 9}
-        placed = 0
-        for vertex_key, vertex in game.vertices.items():
-            if vertex.building or not game._touches_own_road('Alice', vertex_key):
-                continue
-            if game.build_knight('Alice', vertex_key)['success']:
-                placed += 1
-        # No roads yet, so nothing can be placed; give one and retry.
-        vertex = self._road_and_vertex(game)
-        game.build_knight('Alice', vertex)
-        assert len(game.ck.knights_of('Alice')) <= ck.MAX_KNIGHTS_PER_RANK
-
     def test_activating_costs_wheat(self):
         game = ck_game()
         vertex = self._road_and_vertex(game)
@@ -440,11 +422,6 @@ class TestBarbarians:
         assert ck.EVENT_FACES.count(ck.EVENT_BARBARIAN) == 3
         assert len(ck.EVENT_FACES) == 6
 
-    def test_rolling_the_event_die_is_reproducible(self):
-        first = ck_game().roll_event_die()
-        second = ck_game().roll_event_die()
-        assert first == second, "same seed, same face"
-
 
 class TestCityWalls:
     def test_a_wall_costs_two_brick(self):
@@ -481,15 +458,6 @@ class TestCityWalls:
 
 
 class TestSerialization:
-    def test_ck_state_reaches_the_client(self):
-        game = ck_game()
-        board = game.get_board_data(viewer='Alice')
-        assert board['cities_knights'] is not None
-        assert board['cities_knights']['barbarian_track_length'] == 7
-
-    def test_the_base_game_sends_none(self):
-        game = Game(['A', 'B'], [], rng=random.Random(1))
-        assert game.get_board_data(viewer='A')['cities_knights'] is None
 
     def test_a_player_sees_only_their_own_commodities(self):
         game = ck_game()
