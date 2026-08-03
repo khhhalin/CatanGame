@@ -12,13 +12,15 @@ from game.dev_card_rules import DevCardRules
 from game.player import Player
 from game.results import refused
 from game.robber_rules import RobberRules
+from game.seafarers import SeafarersRules
 from game.trade import TradeManager
 from game.trade_rules import TradeRules
 from game.turn_clock import TurnClock
 
 logger = logging.getLogger(__name__)
 
-class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRules, TurnClock):
+class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
+           CitiesKnightsRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -57,6 +59,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
     MAX_SETTLEMENTS = 5
     MAX_CITIES = 4
     MAX_ROADS = 15
+    MAX_SHIPS = 15
 
     def __init__(
         self,
@@ -110,6 +113,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
         # Robber
         self.robber_hex = None  # Hex key where robber is located
+        # Seafarers. The pirate starts beside the board rather than on it, and
+        # enters play the first time somebody moves it.
+        self.pirate_hex = None
+        self.ship_moved_this_turn = False
+        # Which islands each player has a building on, and what the special
+        # points for reaching a new one have added up to.
+        self.player_islands = {}
+        self.island_points = {}
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -136,6 +147,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         self.MAX_SETTLEMENTS = self.rules['max_settlements']
         self.MAX_CITIES = self.rules['max_cities']
         self.MAX_ROADS = self.rules['max_roads']
+        self.MAX_SHIPS = self.rules['max_ships']
 
         # Somewhere to keep improvement tracks, knights, walls, the barbarian
         # ship and the progress decks — built when any rule needs it. Its
@@ -211,6 +223,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             return len(player.cities) < self.MAX_CITIES
         if piece == 'road':
             return len(player.roads) < self.MAX_ROADS
+        if piece == 'ship':
+            return len(player.ships) < self.MAX_SHIPS
         return False
 
     def check_invariants(self) -> list:
@@ -231,6 +245,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                 problems.append(f"{player.name} has {len(player.cities)} cities")
             if len(player.roads) > self.MAX_ROADS:
                 problems.append(f"{player.name} has {len(player.roads)} roads")
+            if len(player.ships) > self.MAX_SHIPS:
+                problems.append(f"{player.name} has {len(player.ships)} ships")
 
         for resource_type, count in self.bank.resources.items():
             if count < 0:
@@ -417,6 +433,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         vertex = self.vertices.get(vertex_key)
         if vertex is None:
             return refused('INVALID_TARGET', 'Invalid vertex')
+        # With ships in play the graph reaches out over the water, so the
+        # intersections a shipping route turns on exist as well. A building
+        # belongs to the land, and a vertex lists land hexes only, so an
+        # intersection touching none of them is out at sea.
+        if not vertex.neighbors['hexes']:
+            return refused('INVALID_PLACEMENT', 'A settlement must stand on the coast or inland')
         if vertex.building is not None:
             return refused('OCCUPIED', 'This location already has a building')
         if not self._respects_distance_rule(vertex_key):
@@ -445,12 +467,22 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         # Recorded for the starter resources the second placement grants.
         self.track_settlement(player_name, vertex_key)
         self.update_harbormaster()
+        # The islands a player starts on are theirs already, so setup records
+        # them without scoring them.
+        island_points = self.record_island_settlement(
+            player_name, vertex_key, award=not in_setup
+        )
 
         if in_setup:
             self.last_setup_settlement = vertex_key
         self.setup_action = "road" if in_setup else "settlement"
 
-        return {'success': True, 'error': '', 'building_type': building_type}
+        return {
+            'success': True,
+            'error': '',
+            'building_type': building_type,
+            'island_points': island_points,
+        }
 
     def build_road(self, player_name: str, edge_key: str) -> dict:
         """Build a road, free during setup and paid for afterwards.
@@ -477,6 +509,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             return refused('INVALID_TARGET', 'Invalid edge')
         if edge.road is not None:
             return refused('OCCUPIED', 'This location already has a road')
+        # Roads and ships never share a hex side, and a road needs land under
+        # it — with ships in play the board holds open-water sides too.
+        if edge.ship is not None:
+            return refused('OCCUPIED', 'This coastal side already carries a ship')
+        if not self.land_hexes_of_edge(edge_key):
+            return refused('INVALID_PLACEMENT', 'A road cannot be built out at sea')
 
         used_free_road = False
         if in_setup:
@@ -583,6 +621,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         if self.rules['harbormaster'] and self.harbormaster_holder == player_name:
             points += 2
 
+        # Special points sit under the settlement that earned them and are
+        # never lost, so they are simply added to the owner's total.
+        if self.rules['island_victory_points']:
+            points += self.island_points.get(player_name, 0)
+
         if self.ck is not None:
             if self.rules['metropolis']:
                 # A metropolis makes its city worth 4 instead of 2, so it adds
@@ -622,7 +665,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
         edges = {}
         for key, edge_obj in self.edges.items():
-            edge_data = {'road': edge_obj.road, 'neighbors': edge_obj.neighbors}
+            edge_data = {
+                'road': edge_obj.road,
+                'ship': edge_obj.ship,
+                'neighbors': edge_obj.neighbors,
+            }
             # A harbour belongs to this coastal edge; both of its intersections
             # also carry it, which is where the renderer still reads it from.
             if edge_obj.port:
@@ -661,6 +708,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             if self.game_phase == "setup"
             else self.players[self.current_player_index].name,
             'robber_hex': self.robber_hex,
+            'pirate_hex': self.pirate_hex,
+            'ship_moved_this_turn': self.ship_moved_this_turn,
+            'island_points': self.island_points,
             'must_move_robber': self.must_move_robber,
             'must_choose_victim': self.must_choose_victim,
             'robber_victims': self.robber_victims,
@@ -920,20 +970,47 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         rounds = self.rules['robber_free_opening_rounds']
         return self.turn_count < rounds * len(self.players)
 
+    def route_pieces(self, player_name: str) -> dict:
+        """The player's pieces a trade route can run along: edge key -> kind.
+
+        Roads alone in the base game. With the Longest Trade Route in play,
+        "both roads and ships count toward the length of a player's trade
+        route", so the ships join them — and the kind is kept, because the two
+        only chain together where their owner has a building.
+        """
+        pieces = {
+            edge_key: 'road'
+            for edge_key, edge in self.edges.items()
+            if edge.road and edge.road.get('player') == player_name
+        }
+        if self.rules['longest_trade_route']:
+            for edge_key, edge in self.edges.items():
+                if edge.ship and edge.ship.get('player') == player_name:
+                    pieces[edge_key] = 'ship'
+        return pieces
+
     def calculate_longest_road(self, player_name: str) -> int:
-        """Calculate longest road for a player, respecting road blocks."""
+        """The player's longest unbranched line of pieces, respecting blocks.
+
+        Ships count alongside roads once the table plays the Longest Trade
+        Route; `route_pieces` decides which pieces are in play, and this walk
+        is otherwise the base game's.
+        """
         player = self.get_player(player_name)
         if not player:
             return 0
 
-        player_roads = [
-            edge_key
-            for edge_key, edge in self.edges.items()
-            if edge.road and edge.road.get('player') == player_name
-        ]
+        player_roads = self.route_pieces(player_name)
 
         if not player_roads:
             return 0
+
+        def own_building(vertex_key):
+            """Whether this player has a settlement or city here."""
+            vertex = self.vertices.get(vertex_key)
+            return bool(
+                vertex and vertex.building and vertex.building.get('player') == player_name
+            )
 
         def has_other_player_building(vertex_key):
             """Check if vertex has another player's building."""
@@ -960,8 +1037,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                 if count == 1 and not has_other_player_building(v)
             ]
 
-        def dfs(vertex_key, visited_edges):
-            """DFS to find longest path from current vertex."""
+        def dfs(vertex_key, visited_edges, arrived_by=None):
+            """DFS to find longest path from current vertex.
+
+            `arrived_by` is the kind of piece the walk reached this
+            intersection on. A road and a shipping route "only count as one
+            continuous trade route if the player has a settlement or city at
+            the intersection where the two meet", so changing kind here needs
+            a building of the player's own.
+            """
             max_length = len(visited_edges)
 
             # Get all connected edges
@@ -973,9 +1057,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                 if edge_key in visited_edges:
                     continue
 
-                # Check if this is player's road
+                # Check if this is a piece of the player's own
+                if edge_key not in player_roads:
+                    continue
                 edge = self.edges.get(edge_key)
-                if not edge or not edge.road or edge.road.get('player') != player_name:
+                kind = player_roads[edge_key]
+                if arrived_by is not None and kind != arrived_by and not own_building(vertex_key):
                     continue
 
                 # Find the next vertex
@@ -997,7 +1084,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                     continue
 
                 # Continue through empty vertices or player's own buildings
-                result = dfs(next_vertex, visited_edges + [edge_key])
+                result = dfs(next_vertex, visited_edges + [edge_key], kind)
                 max_length = max(max_length, result)
 
             return max_length
@@ -1007,7 +1094,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
         # If no valid endpoints (all blocked), try finding any starting point
         if not endpoints:
-            for edge_key in player_roads:
+            for edge_key in sorted(player_roads):
                 edge = self.edges[edge_key]
                 for v in edge.neighbors.get('vertices', []):
                     if not has_other_player_building(v):
@@ -1024,8 +1111,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         return max_length
 
     def update_longest_road(self):
-        """Update longest road holder after road placement."""
-        if not self.rules['longest_road_card']:
+        """Work out who holds the Longest Road, or the Longest Trade Route.
+
+        The Seafarers card replaces the base-game one rather than joining it,
+        so the table playing trade routes is enough on its own to award it.
+        """
+        if not self.rules['longest_road_card'] and not self.rules['longest_trade_route']:
             return
 
         max_length = 0

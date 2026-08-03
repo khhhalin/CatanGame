@@ -273,14 +273,19 @@ class BoardBuilder:
         # Step 2: Create hex objects with resource types and numbers
         self._create_hexes(land_hex_keys, ocean_hex_keys)
 
-        # Step 3: Generate vertices and edges from the land only. The ocean ring
-        # is scenery: giving it intersections would let a player settle on the
-        # water and would rob the coastline of the signature the harbours are
-        # placed from.
-        self._generate_vertices_and_edges(land_hex_keys)
+        # Step 3: Generate the graph. Without ships the ocean ring is scenery
+        # and only the land carries intersections and hex sides. Ships need
+        # somewhere to be built, so with the rule on the sea is generated too —
+        # which is a bigger graph, not a different one: `is_coastal_edge` picks
+        # the coastline out by counting *land* neighbours rather than by
+        # counting neighbours, so the harbours land in the same places either
+        # way, and `vertices` still list land hexes only, which is what keeps a
+        # settlement off the open water.
+        graph_hex_keys = land_hex_keys | ocean_hex_keys if self.rules['ships'] else land_hex_keys
+        self._generate_vertices_and_edges(graph_hex_keys)
 
         # Step 4: Build all neighbor relationships
-        self._build_neighbor_relationships(land_hex_keys)
+        self._build_neighbor_relationships(land_hex_keys, graph_hex_keys)
 
         # Step 4b: separate the red numbers, if the table asked for it. It runs
         # here rather than in _create_hexes because it needs to know which hexes
@@ -414,7 +419,12 @@ class BoardBuilder:
         the direction vectors from hex.md.
 
         Args:
-            hex_keys: Set of all hex coordinate keys
+            hex_keys: The hexes the graph is drawn from — the island alone in
+                the base game, the island and the sea around it once ships are
+                in play. A sea intersection is generated so a shipping route
+                out in open water has corners to turn on; nothing may be built
+                on one, because a vertex only ever lists *land* hexes as its
+                neighbours and every building rule reads that list.
         """
         vertex_keys = set()
         edge_keys = set()
@@ -445,15 +455,21 @@ class BoardBuilder:
         for key in sorted(edge_keys):
             self.edges[key] = Edge(key)
 
-    def _build_neighbor_relationships(self, land_hex_keys: set):
+    def _build_neighbor_relationships(self, land_hex_keys: set, graph_hex_keys: set):
         """
         Build all neighbor relationships between hexes, vertices, and edges.
 
         Uses algebraic rules from hex.md to derive neighbors without lookup tables.
 
         Args:
-            land_hex_keys: The land hexes. Vertices and edges are attached to
-                these only, because the ocean ring carries no buildings.
+            land_hex_keys: The land hexes. A vertex lists these and nothing
+                else, because a building belongs to the land: production, the
+                distance rule, the robber's victims and settlement legality all
+                read `vertex.neighbors['hexes']`.
+            graph_hex_keys: The hexes the sides were generated from. An edge
+                lists whichever of these it separates, sea included, because a
+                ship needs to know it is on water and the pirate needs to know
+                which sides border its hex.
         """
         # Build hex -> hex neighbors
         for hex_key, hex_obj in self.hexes.items():
@@ -464,19 +480,22 @@ class BoardBuilder:
                 if neighbor_key in self.hexes:
                     hex_obj.neighbors.append(neighbor_key)
 
-        # Build hex -> vertices and hex -> edges neighbors
+        # Build hex -> vertices: the land only, so an intersection out in the
+        # sea touches nothing and no building rule will have it.
         for hex_key in sorted(land_hex_keys):
             hx, hy, hz = self._parse_key(hex_key)
 
-            # Vertices
             for vx, vy, vz in self.VERTEX_DIRECTIONS:
                 vertex_key = self._hex_key(hx + vx, hy + vy, hz + vz)
                 if vertex_key in self.vertices:
                     self.vertices[vertex_key].neighbors["hexes"].append(hex_key)
 
-            # Edges. An inland side is reached from both of its hexes and so
-            # collects both; a coastal one is only ever reached from the land,
-            # which is the signature the harbours are placed from.
+        # Build hex -> edges over everything the graph was drawn from. A side
+        # collects each of the two hexes it separates that the graph holds, so
+        # a coastal side knows both its land and its water.
+        for hex_key in sorted(graph_hex_keys):
+            hx, hy, hz = self._parse_key(hex_key)
+
             for ex, ey, ez in self.EDGE_DIRECTIONS:
                 edge_key = self._edge_key(hx + ex, hy + ey, hz + ez)
                 if edge_key in self.edges:
@@ -557,18 +576,66 @@ class BoardBuilder:
                     ):
                         vertex_obj.neighbors["vertices"].append(connected_vertex_key)
 
-    def _coastal_edges_in_order(self) -> list:
-        """The coastal edges, walked as a ring around the island.
+    def islands(self) -> dict:
+        """Land hex key -> the id of the island it belongs to.
 
-        A coastal edge is a hex side with land on one side and open sea on the
-        other, and since a side is one Edge that knows both of its hexes, it
-        can say so itself: only the land is generated, so a coastal side ends
-        up with a single hex where an inland one has two.
+        An island is derived, never authored: a stretch of land the sea cuts
+        off from the rest of the board, found by flood fill over neighbouring
+        land hexes. A map file can group hexes into regions for its own
+        purposes, but which of them a player has landed on has to come from the
+        board as it was actually dealt — a region whose pool dealt it some sea
+        may end up as two islands, or none.
+
+        The id is the lowest hex key in the component, so it is stable for a
+        board however the hexes were iterated.
         """
+        land = sorted(key for key, hex_obj in self.hexes.items() if hex_obj.type != 'ocean')
+        island_of = {}
+        for start in land:
+            if start in island_of:
+                continue
+            component = []
+            frontier = [start]
+            seen = {start}
+            while frontier:
+                key = frontier.pop()
+                component.append(key)
+                for neighbor_key in sorted(self.hexes[key].neighbors):
+                    if neighbor_key in seen or self.hexes[neighbor_key].type == 'ocean':
+                        continue
+                    seen.add(neighbor_key)
+                    frontier.append(neighbor_key)
+            island_id = min(component)
+            for key in component:
+                island_of[key] = island_id
+        return island_of
+
+    def land_hexes_of_edge(self, edge_key: str) -> list:
+        """The land hexes this side separates — none, one or two of them."""
+        edge = self.edges.get(edge_key)
+        if edge is None:
+            return []
+        return [
+            hex_key
+            for hex_key in edge.neighbors["hexes"]
+            if self.hexes[hex_key].type != 'ocean'
+        ]
+
+    def is_coastal_edge(self, edge_key: str) -> bool:
+        """Whether this side has land on one hand and open sea on the other.
+
+        Counting *land* neighbours rather than neighbours is what lets the same
+        signature hold whether or not the sea was generated: with ships off a
+        coastal side is the only kind with a single hex at all, and with ships
+        on it has two hexes of which exactly one is land. An inland side has
+        two land hexes, and a side out at sea has none.
+        """
+        return len(self.land_hexes_of_edge(edge_key)) == 1
+
+    def _coastal_edges_in_order(self) -> list:
+        """The coastal edges, walked as a ring around the island."""
         coastal = [
-            edge_key
-            for edge_key in sorted(self.edges)
-            if len(self.edges[edge_key].neighbors["hexes"]) == 1
+            edge_key for edge_key in sorted(self.edges) if self.is_coastal_edge(edge_key)
         ]
 
         if not coastal:

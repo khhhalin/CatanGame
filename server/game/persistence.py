@@ -64,6 +64,7 @@ def _player_state(player) -> dict:
         'settlements': player.settlements,
         'cities': player.cities,
         'roads': player.roads,
+        'ships': player.ships,
         'victory_points': player.victory_points,
         'knights_played': player.knights_played,
     }
@@ -117,6 +118,12 @@ def serialize(game: Game) -> dict:
         'turn_count': game.turn_count,
         'has_rolled_dice': game.has_rolled_dice,
         'robber_hex': game.robber_hex,
+        # Seafarers. The pirate is None until somebody first moves it, which is
+        # a real state and not a missing field.
+        'pirate_hex': game.pirate_hex,
+        'ship_moved_this_turn': game.ship_moved_this_turn,
+        'player_islands': game.player_islands,
+        'island_points': game.island_points,
         'must_move_robber': game.must_move_robber,
         'must_choose_victim': game.must_choose_victim,
         'robber_victims': game.robber_victims,
@@ -144,6 +151,7 @@ def serialize(game: Game) -> dict:
         'ports': {k: v.port for k, v in game.vertices.items() if v.port},
         'buildings': {k: v.building for k, v in game.vertices.items() if v.building},
         'roads_on_edges': {k: e.road for k, e in game.edges.items() if e.road},
+        'ships_on_edges': {k: e.ship for k, e in game.edges.items() if e.ship},
         'cities_knights': _ck_state(game.ck),
     }
 
@@ -211,6 +219,15 @@ def deserialize(data: dict, config=None) -> Game:
             game.vertices[key].building = building
     for edge in game.edges.values():
         edge.road = None
+        edge.ship = None
+    for key, ship in sorted(data.get('ships_on_edges', {}).items()):
+        edge_key = game.canonical_edge_key(key)
+        if edge_key is None:
+            # A save of a game played with ships, reloaded by a table that has
+            # since turned the rule off, has no sea sides to put them back on.
+            logger.warning("saved ship on %s is not a side of this board; dropping it", key)
+            continue
+        game.edges[edge_key].ship = ship
     for key, road in sorted(data.get('roads_on_edges', {}).items()):
         edge_key = game.canonical_edge_key(key)
         if edge_key is None:
@@ -237,6 +254,7 @@ def deserialize(data: dict, config=None) -> Game:
         player.settlements = list(saved.get('settlements', []))
         player.cities = list(saved.get('cities', []))
         player.roads = _edges_on_board(game, saved.get('roads', []))
+        player.ships = _edges_on_board(game, saved.get('ships', []))
         player.victory_points = saved.get('victory_points', 0)
         player.knights_played = saved.get('knights_played', 0)
 
@@ -248,7 +266,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'free_roads_remaining', 'pending_invention', 'pending_monopoly',
                   'state_version', 'longest_road_holder', 'largest_army_holder',
                   'longest_road_length', 'harbormaster_holder', 'harbor_points',
-                  'player_settlements'):
+                  'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
+                  'player_islands', 'island_points'):
         if field in data:
             setattr(game, field, data[field])
 

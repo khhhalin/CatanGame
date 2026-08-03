@@ -559,7 +559,7 @@ class TestPresets:
         assert chosen['city_improvements'] is False
 
     def test_an_unknown_preset_is_none(self):
-        assert rules_module.preset_rules('seafarers') is None
+        assert rules_module.preset_rules('no_such_preset') is None
 
 
 class TestLegacyModeFlag:

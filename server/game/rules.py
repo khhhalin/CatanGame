@@ -333,6 +333,52 @@ RULES += [
 ]
 
 
+# --- Seafarers, one mechanic at a time ----------------------------------
+# The expansion decomposed the same way Cities & Knights is. Ships are the
+# foundation: nothing else here means anything without a sea network, which is
+# what `DEPENDENCIES` below records.
+RULES += [
+    _bool("ships", "Ships", False,
+          "Seafarers rulebook, 'Ships'; expansions.md 35-56",
+          "One wool and one lumber builds a ship on a sea edge, and a shipping "
+          "route expands your network exactly as roads do. A ship may never "
+          "share a hex side with a road, and the two networks only join where "
+          "you have a settlement. This also gives the board its sea edges, so "
+          "a second island can be reached at all.",
+          group=EXPANSION),
+    _bool("ship_movement", "Moving ships", False,
+          "Seafarers rulebook, 'Moving Ships'; expansions.md 62-71",
+          "One ship per turn may be picked up and re-laid anywhere you could "
+          "build a new one, for free. Not a ship built this turn, not one whose "
+          "both ends touch your other pieces — which is what a closed route "
+          "between two of your settlements is — and never off a hex side the "
+          "pirate is sitting beside.",
+          group=EXPANSION),
+    _bool("pirate", "The pirate", False,
+          "Seafarers rulebook, 'The Pirate'; expansions.md 88-100",
+          "A black ship the roller of a 7 may move instead of the robber. It "
+          "sits on a sea hex, steals one card from a player with a ship beside "
+          "it, and blocks every hex side around that hex: no ship may be built "
+          "there and none may be moved away. It does not stop production.",
+          group=EXPANSION),
+    _bool("longest_trade_route", "Longest Trade Route", False,
+          "Seafarers rulebook, 'The Longest Trade Route'; expansions.md 76-85",
+          "Roads and ships count together for the 2-point card, replacing the "
+          "roads-only Longest Road. A road and a shipping route only join into "
+          "one route where their owner has a settlement or city at the "
+          "intersection they meet on.",
+          group=EXPANSION),
+    _bool("island_victory_points", "Special points for new islands", False,
+          "Seafarers rulebook, 'Catan Chits'; expansions.md 121-122, 208-210",
+          "Your first settlement on an island you did not start on scores "
+          "special victory points on top of the point the settlement itself is "
+          "worth. An island is worked out from the board — every stretch of "
+          "land the sea cuts off from the rest is one — so the same rule fits "
+          "any map.",
+          group=EXPANSION),
+]
+
+
 # --- Expansion numbers --------------------------------------------------
 RULES += [
     _int("barbarian_track_length", "Barbarian track spaces", 7, 3, 15,
@@ -348,6 +394,15 @@ RULES += [
     _int("max_city_walls", "City walls per player", 3, 0, 10,
          "Cities & Knights rulebook; expansions.md 473–474",
          "How many city walls each player may have standing at once.",
+         group=EXPANSION),
+    _int("max_ships", "Ships per player", 15, 1, 60,
+         "Seafarers rulebook; expansions.md 51-52",
+         "How many ships each player may have on the board at once.",
+         group=EXPANSION),
+    _int("island_points_per_island", "Points for a new island", 2, 1, 5,
+         "Seafarers rulebook, 'Heading for New Shores'; expansions.md 121",
+         "How many special victory points the first settlement on an island "
+         "you did not start on is worth.",
          group=EXPANSION),
 ]
 
@@ -371,6 +426,14 @@ DEPENDENCIES = {
     # level beats the red die. Neither half is optional: with no tracks every
     # player sits at level 0 and the deck is all but undealt.
     "progress_cards": ("barbarians", "city_improvements"),
+    # Every one of these acts on ships. Without them the board has no sea edges
+    # at all, so the pirate would sit where nothing can be blocked, the trade
+    # route would be the Longest Road under another name, and no island beyond
+    # the one everybody started on could ever be reached.
+    "ship_movement": ("ships",),
+    "pirate": ("ships",),
+    "longest_trade_route": ("ships",),
+    "island_victory_points": ("ships",),
 }
 
 # The rules that need the expansion's own state object — its tracks, knight
@@ -440,6 +503,25 @@ PRESETS = [
             "city_walls": True,
             "setup_second_city": True,
             "largest_army_card": False,
+        },
+    },
+    {
+        "id": "seafarers",
+        "name": "Seafarers",
+        "source": "Seafarers rulebook; expansions.md 33-131",
+        "summary": (
+            "Ships, moving them, the pirate, the Longest Trade Route in place "
+            "of the Longest Road, and special points for settling a new "
+            "island. The scenarios play to more than 10 points, so the target "
+            "is raised to 14 as 'Heading for New Shores' asks."
+        ),
+        "rules": {
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            "longest_trade_route": True,
+            "island_victory_points": True,
+            "victory_target": 14,
         },
     },
     {

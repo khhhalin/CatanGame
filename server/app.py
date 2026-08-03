@@ -31,6 +31,7 @@ from handlers import (  # noqa: F401  (imported for their side effects)
     dev_cards,
     lobby,
     robber,
+    ships,
     trading,
     turns,
 )

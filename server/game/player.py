@@ -14,6 +14,7 @@ class Player:
         settlements (list): Vertex keys where settlements are built.
         cities (list): Vertex keys where cities are built.
         roads (list): Edge keys where roads are built.
+        ships (list): Seafarers. Edge keys where ships are built.
         victory_points (int): Total victory points.
     """
 
@@ -36,6 +37,7 @@ class Player:
         self.settlements = []
         self.cities = []
         self.roads = []
+        self.ships = []
         self.victory_points = 0
         self.knights_played = 0  # Track Knight cards played for Largest Army
 
@@ -84,6 +86,7 @@ class Player:
             'settlements': self.settlements,
             'cities': self.cities,
             'roads': self.roads,
+            'ships': self.ships,
             'victory_points': self.get_victory_points(longest_road_holder, largest_army_holder),
             'knights_played': self.knights_played,
         }

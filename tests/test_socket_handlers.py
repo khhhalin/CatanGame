@@ -510,7 +510,7 @@ class TestLobbyRules:
     def test_an_unknown_preset_is_refused(self, socket_app):
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
-        client.emit('set_rules', {'preset': 'seafarers'})
+        client.emit('set_rules', {'preset': 'no_such_preset'})
         assert last_error(client)['code'] == 'UNKNOWN_PRESET'
 
     def test_a_rule_without_what_it_needs_refuses_the_start(self, socket_app):

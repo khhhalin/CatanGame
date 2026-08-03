@@ -37,6 +37,9 @@ class TurnClock:
         self.dice_rolled_time = None
         self.has_rolled_dice = False
         self.free_roads_remaining = 0  # Reset free roads at start of turn
+        # Seafarers allows one ship to be moved per turn, and the allowance
+        # does not accumulate.
+        self.ship_moved_this_turn = False
 
     def advance_turn(self, player_name: str) -> dict:
         """End the current turn at a player's request."""
