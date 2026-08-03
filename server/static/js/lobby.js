@@ -2,7 +2,7 @@
 
 import { setHighlight } from './board.js';
 import { renderCitiesKnights } from './cities-knights.js';
-import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
 import { requestLogCatchUp } from './event-log.js';
 import { displayError, showNotice } from './notices.js';
 import { emitGame, socket } from './socket.js';
@@ -324,6 +324,52 @@ function applyRuleValue(rule) {
 }
 
 /**
+ * Render the preset shortcuts the server offers.
+ *
+ * The catalogue is past thirty switches now that Cities & Knights is eight
+ * separate rules rather than one. Reading all of them to reach a published rule
+ * set is the kind of thing nobody does, so each preset is one button - and
+ * because a preset only ticks individual rules, every one of them stays
+ * separately switchable underneath.
+ */
+function renderRulePresets() {
+    if (!rulePresets) {
+        return;
+    }
+
+    const presets = viewState.server.rules.presets;
+    rulePresets.classList.toggle('hidden', presets.length === 0);
+
+    const fragment = document.createDocumentFragment();
+    presets.forEach(preset => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rule-preset';
+        button.id = `preset-${preset.id}`;
+        button.dataset.presetId = preset.id;
+        button.textContent = preset.name;
+        button.title = preset.summary || '';
+        button.disabled = viewState.server.rules.locked;
+        fragment.appendChild(button);
+    });
+
+    rulePresets.innerHTML = '';
+    rulePresets.appendChild(fragment);
+}
+
+if (rulePresets) {
+    // The server owns what a preset means: it is sent by id and the reply is
+    // the rule set that came back, so the client keeps no copy of either.
+    rulePresets.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-preset-id]');
+        if (!button || button.disabled) {
+            return;
+        }
+        emitGame('set_rules', { preset: button.dataset.presetId });
+    });
+}
+
+/**
  * Render the lobby rules panel from the server's catalogue and selection.
  * The rows are rebuilt only when the catalogue itself changes, so a value
  * broadcast does not destroy focus or the caret in a number field.
@@ -351,6 +397,7 @@ export function renderRulesPanel() {
         viewState.renderedRulesSignature = signature;
     }
 
+    renderRulePresets();
     viewState.server.rules.catalogue.forEach(applyRuleValue);
 
     if (rulesLockedNote) {

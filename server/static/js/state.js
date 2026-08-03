@@ -23,7 +23,9 @@ export const viewState = {
         // client never writes to `selected` itself - a change is emitted and
         // re-read from the `rules_changed` reply, so every table member sees
         // the same thing.
-        rules: { catalogue: [], selected: {}, locked: false }
+        // `presets` are named sets of individual rules, not modes: picking one
+        // ticks its rules and nothing records that it was used.
+        rules: { catalogue: [], presets: [], selected: {}, locked: false }
     },
 
     // What this tab asked to join as. The name is what the player typed; the

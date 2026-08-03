@@ -22,6 +22,7 @@ export const joinColorPicker = document.getElementById('join-color-picker');
 export const startGameBtn = document.getElementById('start-game-btn');
 export const startReasonEl = document.getElementById('start-reason');
 export const rulesList = document.getElementById('rules-list');
+export const rulePresets = document.getElementById('rule-presets');
 export const rulesLockedNote = document.getElementById('rules-locked-note');
 export const activeRulesPanel = document.getElementById('active-rules-panel');
 export const activeRulesDiv = document.getElementById('active-rules');

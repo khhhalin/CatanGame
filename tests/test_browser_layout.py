@@ -39,6 +39,7 @@ from browser_harness import (
 from browser_harness import (
     stop_server as harness_stop_server,
 )
+from game import rules
 from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
@@ -224,13 +225,21 @@ def browser():
         instance.close()
 
 
-def make_table(browser, url, names, rules):
+def choose_preset(player, preset_id):
+    """Take a published rule set the way a host would - one button."""
+    player.page.click(f"#preset-{preset_id}")
+    player.page.wait_for_timeout(400)
+
+
+def make_table(browser, url, names, rules=None, preset=None):
     players = [
         Player(browser, url, name, viewport=VIEWPORT, yolo=True) for name in names
     ]
     for player in players:
         player.join()
-    for rule_id, value in rules.items():
+    if preset:
+        choose_preset(players[0], preset)
+    for rule_id, value in (rules or {}).items():
         set_rule(players[0], rule_id, value)
     players[0].page.wait_for_selector("#start-game-btn:not(.hidden)", timeout=8000)
     players[0].page.click("#start-game-btn")
@@ -243,9 +252,12 @@ def make_table(browser, url, names, rules):
 def ck_table(browser, tmp_path_factory):
     """Four players, Cities & Knights on, past setup. The worst case."""
     proc, url = start_server(tmp_path_factory.mktemp("layout-ck"), seed=GAME_SEED)
+    # Through the preset, not by ticking eight boxes: `cities_and_knights` is no
+    # longer a rule at all - it is a named set of the individual ones - and the
+    # picker has to be able to reach the expansion in one press or nobody will.
     players = make_table(
         browser, url, ["Alice", "Bob", "Carol", "Dave"],
-        {"cities_and_knights": True},
+        preset="cities_and_knights",
     )
     place_setup_round(players)
     yield players
@@ -266,8 +278,16 @@ class TestCitiesAndKnightsFits:
     """1920x1080, four players, Cities & Knights: the case that overflowed."""
 
     def test_the_expansion_really_is_on(self, ck_table):
+        """The preset button really did tick the individual rules.
+
+        Asserted against the running game's own rule set rather than against a
+        copy of the preset: a preset that ticks nothing would satisfy any test
+        that only compared it to itself.
+        """
         board = ck_table[0].board()
-        assert board["rules"]["cities_and_knights"] is True
+        for rule in ("commodities", "city_improvements", "metropolis", "knights",
+                     "barbarians", "city_walls", "progress_cards"):
+            assert board["rules"][rule] is True, f"{rule} is off after the preset"
         assert board["cities_knights"] is not None
         assert len(board["players"]) == 4
 
@@ -469,6 +489,31 @@ class TestCitiesAndKnightsFits:
         )
         assert share > 0.55, f"the board is only {share:.0%} of the screen"
 
+    def test_progress_cards_replace_the_development_deck(self, ck_table):
+        """The server refuses `buy_dev_card` once progress cards are in play, so
+        a Development Cards fold in such a game offers something that cannot be
+        bought. Exactly one of the two card folds is ever on screen."""
+        player = ck_table[0]
+        assert player.page.is_visible("#progress-cards-chip"), (
+            "the progress card hand is not on screen in a Cities & Knights game"
+        )
+        assert not player.page.is_visible("#dev-cards-panel"), (
+            "the development card fold is still offered alongside progress cards"
+        )
+
+    def test_the_barbarian_chip_states_the_clock_without_being_opened(self, ck_table):
+        """The tester's example of a counter that only moved on end turn. The
+        ship's position is the expansion's clock; it belongs on the chip."""
+        value = ck_table[0].page.inner_text("#barbarian-chip-value")
+        assert "🚢" in value and "/" in value, f"the barbarian chip says {value!r}"
+
+    def test_the_awards_name_their_holder_and_the_number(self, ck_table):
+        """Longest Road and the Harbormaster were both in the board payload and
+        nowhere on screen, so a player could lose either without being told."""
+        text = ck_table[0].page.inner_text("#award-summary")
+        assert "Longest Road" in text, text
+        assert "Largest Army" in text, text
+
     def test_no_console_errors_were_logged(self, ck_table):
         for player in ck_table:
             assert player.noisy_errors() == [], (
@@ -529,18 +574,68 @@ class TestBaseGameFits:
             )
 
 
-class TestTheLobbyFits:
-    def test_the_lobby_does_not_scroll_at_1920x1080(self, browser, tmp_path_factory):
-        proc, url = start_server(tmp_path_factory.mktemp("layout-lobby"))
-        try:
-            player = Player(browser, url, "Solo", viewport=VIEWPORT)
-            player.join()
-            player.page.wait_for_selector("#user-screen:not(.hidden)", timeout=8000)
-            player.page.wait_for_timeout(400)
-            shot(player, "lobby-1920x1080")
+@pytest.fixture(scope="module")
+def lobby(browser, tmp_path_factory):
+    proc, url = start_server(tmp_path_factory.mktemp("layout-lobby"))
+    player = Player(browser, url, "Solo", viewport=VIEWPORT)
+    player.join()
+    player.page.wait_for_selector("#user-screen:not(.hidden)", timeout=8000)
+    player.page.wait_for_timeout(400)
+    yield player
+    harness_stop_server(proc)
 
-            page = player.page.evaluate(_PAGE_SCROLLS)
-            assert page["height"] <= page["viewH"] + 1, f"the lobby page scrolls: {page}"
-            assert page["width"] <= page["viewW"] + 1, f"the lobby scrolls sideways: {page}"
-        finally:
-            harness_stop_server(proc)
+
+class TestTheLobbyFits:
+    def test_the_lobby_does_not_scroll_at_1920x1080(self, lobby):
+        shot(lobby, "lobby-1920x1080")
+        page = lobby.page.evaluate(_PAGE_SCROLLS)
+        assert page["height"] <= page["viewH"] + 1, f"the lobby page scrolls: {page}"
+        assert page["width"] <= page["viewW"] + 1, f"the lobby scrolls sideways: {page}"
+
+    def test_every_rule_the_server_has_reaches_the_picker(self, lobby):
+        """Cities & Knights was decomposed from one switch into eight, and the
+        catalogue is past thirty rules. A picker that dropped one silently would
+        make that rule unreachable, so this is checked against the catalogue the
+        server actually broadcast rather than against a list copied into here.
+        """
+        rendered = set(lobby.page.eval_on_selector_all(
+            "#rules-list [data-rule-id]", "els => els.map(e => e.dataset.ruleId)"
+        ))
+        missing = [rule["id"] for rule in rules.catalogue() if rule["id"] not in rendered]
+        assert missing == [], f"these rules have no control in the picker: {missing}"
+
+        grouped = lobby.page.evaluate(
+            "() => document.querySelectorAll('#rules-list [data-rule-id]').length"
+            "      === document.querySelectorAll('#rules-list .rule-group [data-rule-id]').length"
+        )
+        assert grouped, "a rule was rendered outside every group section"
+
+    def test_every_preset_the_server_offers_is_one_button(self, lobby):
+        """Reaching a published rule set by reading thirty switches is a thing
+        nobody does."""
+        rendered = set(lobby.page.eval_on_selector_all(
+            "#rule-presets [data-preset-id]", "els => els.map(e => e.dataset.presetId)"
+        ))
+        missing = [p["id"] for p in rules.presets() if p["id"] not in rendered]
+        assert missing == [], f"these presets have no button: {missing}"
+
+    def test_a_preset_ticks_the_rules_it_names(self, lobby):
+        """A preset is a shortcut, not a mode: what it leaves behind is
+        individual rules, each still switchable."""
+        lobby.page.click("#preset-cities_and_knights")
+        lobby.page.wait_for_function(
+            "() => document.getElementById('rule-knights').checked === true",
+            timeout=3000,
+        )
+        for rule in ("commodities", "city_improvements", "barbarians",
+                     "city_walls", "progress_cards"):
+            assert lobby.page.is_checked(f"#rule-{rule}"), f"{rule} was not ticked"
+
+        lobby.page.click("#preset-base_game")
+        lobby.page.wait_for_function(
+            "() => document.getElementById('rule-knights').checked === false",
+            timeout=3000,
+        )
+
+    def test_no_console_errors_were_logged(self, lobby):
+        assert lobby.noisy_errors() == [], lobby.noisy_errors()

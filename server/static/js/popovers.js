@@ -18,6 +18,10 @@
 const ANCHOR_GAP = 6;
 const VIEWPORT_MARGIN = 8;
 
+// Floor for a popover dropped below its trigger: below this it shows nothing
+// useful, and a hair of overhang beats a panel with no content in it.
+const MIN_DROPPED_HEIGHT = 160;
+
 // The chip (or tab) that opened whatever is currently up, or null.
 let openTrigger = null;
 
@@ -45,21 +49,50 @@ function panelFor(trigger) {
  */
 function place(panel, trigger) {
     const anchor = trigger.getBoundingClientRect();
+    // What the panel must not land on. For a rail chip that is the chip; for a
+    // tab it is the whole tab bar, because the tab beside it is what switches
+    // back and a popover over it makes the panel a one-way trip.
+    const keepClear = (trigger.closest('[role="tablist"]') || trigger)
+        .getBoundingClientRect();
+
+    // A height cap from a previous placement would otherwise be measured as if
+    // it were the panel's natural size.
+    panel.style.maxHeight = '';
 
     // Measured after it is displayed but before it is painted at its final
     // spot, so `hidden` has to be off by the time this runs.
     const width = panel.offsetWidth;
     const height = panel.offsetHeight;
 
+    const clampX = (x) => Math.max(
+        VIEWPORT_MARGIN, Math.min(x, window.innerWidth - width - VIEWPORT_MARGIN)
+    );
+    const clampY = (y) => Math.max(
+        VIEWPORT_MARGIN, Math.min(y, window.innerHeight - height - VIEWPORT_MARGIN)
+    );
+
     let left = anchor.right + ANCHOR_GAP;
     if (left + width > window.innerWidth - VIEWPORT_MARGIN) {
         // No room to the right: hang it off the left edge of the anchor instead
         left = anchor.left - ANCHOR_GAP - width;
     }
-    left = Math.max(VIEWPORT_MARGIN, Math.min(left, window.innerWidth - width - VIEWPORT_MARGIN));
+    left = clampX(left);
+    let top = clampY(anchor.top);
 
-    let top = anchor.top;
-    top = Math.max(VIEWPORT_MARGIN, Math.min(top, window.innerHeight - height - VIEWPORT_MARGIN));
+    // Neither side had room, so clamping put the panel back on top of the
+    // controls that operate it. The Trade tab did exactly this: the panel
+    // landed over the tab bar and the Game Log tab became unclickable, which
+    // made opening Trade a one-way trip. Below is the one band always clear.
+    const covers = left < keepClear.right && left + width > keepClear.left
+        && top < keepClear.bottom && top + height > keepClear.top;
+    if (covers) {
+        const room = window.innerHeight - VIEWPORT_MARGIN - keepClear.bottom - ANCHOR_GAP;
+        // Capped rather than clamped: a panel taller than the space below would
+        // be dragged back up over the controls by clampY.
+        panel.style.maxHeight = `${Math.max(MIN_DROPPED_HEIGHT, room)}px`;
+        left = clampX(keepClear.right - width);
+        top = keepClear.bottom + ANCHOR_GAP;
+    }
 
     panel.style.left = `${Math.round(left)}px`;
     panel.style.top = `${Math.round(top)}px`;
