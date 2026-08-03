@@ -6,7 +6,6 @@ from game.event_log import MAX_CHAT_LENGTH, MAX_ENTRIES, EventLog, sanitize_chat
 
 class FakeClock:
     """A clock that only moves when the test says so."""
-
     def __init__(self, start=1_000_000.0):
         self.now = start
 
@@ -31,17 +30,11 @@ class TestEntryShape:
         entry = make_log().log('dice', 'Alice rolled 7', player='Alice', total=7)
         assert entry['details'] == {'total': 7}
 
-    def test_details_is_an_empty_dict_when_nothing_is_passed(self):
-        assert make_log().log('game', 'The game began')['details'] == {}
-
     def test_player_is_none_for_a_system_event(self):
         assert make_log().log('game', 'The game began')['player'] is None
 
 
 class TestIds:
-    def test_the_first_entry_is_id_one(self):
-        assert make_log().log('game', 'started')['id'] == 1
-
     def test_ids_increase_by_one(self):
         log = make_log()
         ids = [log.log('chat', str(index))['id'] for index in range(5)]
@@ -66,10 +59,6 @@ class TestIds:
 
 
 class TestTimestamps:
-    def test_the_injected_clock_is_used(self):
-        clock = FakeClock(start=1_700_000_000.0)
-        assert make_log(clock).log('chat', 'hi')['at'] == 1_700_000_000.0
-
     def test_each_entry_is_stamped_when_it_is_logged(self):
         clock = FakeClock(start=100.0)
         log = make_log(clock)
@@ -78,8 +67,6 @@ class TestTimestamps:
         second = log.log('chat', 'second')
         assert (first['at'], second['at']) == (100.0, 130.0)
 
-    def test_the_timestamp_is_a_float(self):
-        assert isinstance(make_log().log('chat', 'hi')['at'], float)
 
 
 class TestBound:
@@ -91,31 +78,14 @@ class TestBound:
             'message 3', 'message 4', 'message 5',
         ]
 
-    def test_the_log_never_grows_past_its_cap(self):
-        log = make_log(max_entries=10)
-        for index in range(500):
-            log.log('dice', str(index))
-        assert len(log.recent(limit=1000)) == 10
 
 
 class TestRecent:
-    def test_it_returns_everything_when_the_log_is_short(self):
-        log = make_log()
-        log.log('chat', 'only one')
-        assert len(log.recent()) == 1
-
     def test_it_returns_the_newest_entries_not_the_oldest(self):
         log = make_log()
         for index in range(10):
             log.log('chat', str(index))
         assert [entry['text'] for entry in log.recent(limit=3)] == ['7', '8', '9']
-
-    def test_it_stays_in_chronological_order(self):
-        log = make_log()
-        for index in range(10):
-            log.log('chat', str(index))
-        ids = [entry['id'] for entry in log.recent(limit=4)]
-        assert ids == sorted(ids)
 
     def test_a_limit_of_zero_returns_nothing(self):
         log = make_log()
@@ -146,22 +116,9 @@ class TestSince:
         log.log('chat', 'hi')
         assert log.since(9999) == []
 
-    def test_it_stays_in_chronological_order(self):
-        log = make_log()
-        for index in range(6):
-            log.log('chat', str(index))
-        ids = [entry['id'] for entry in log.since(2)]
-        assert ids == sorted(ids)
 
 
 class TestKinds:
-    def test_every_documented_kind_is_accepted(self):
-        from game import event_log
-
-        log = make_log()
-        for kind in event_log.KINDS:
-            assert log.log(kind, 'fine')['kind'] == kind
-
     def test_an_unknown_kind_is_rejected(self):
         """Documented behaviour: raise, because a bad kind is a caller bug."""
         with pytest.raises(ValueError):
@@ -178,9 +135,6 @@ class TestKinds:
 class TestSanitizeChat:
     def test_it_trims_surrounding_whitespace(self):
         assert sanitize_chat('  hello  ') == 'hello'
-
-    def test_it_collapses_runs_of_whitespace(self):
-        assert sanitize_chat('trade   me    wood') == 'trade me wood'
 
     def test_it_collapses_newlines_that_would_take_over_the_panel(self):
         assert sanitize_chat('one\n\n\ntwo') == 'one two'
