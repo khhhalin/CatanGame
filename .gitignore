@@ -19,3 +19,6 @@ node_modules/
 server/data/users.json
 server/data/game.json
 server/data/*.save.json
+
+# Screenshots from the browser suites - evidence for a run, not source.
+test-artifacts/

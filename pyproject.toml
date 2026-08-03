@@ -49,5 +49,7 @@ testpaths = ["tests"]
 # Browser tests are excluded by default: they launch Chromium and a real
 # server. Run them with `pytest -m slow`.
 addopts = "--import-mode=importlib -m 'not slow'"
-pythonpath = ["server"]
+# "tests" as well as "server": the browser suites share `browser_harness`,
+# which is support code rather than a test module.
+pythonpath = ["server", "tests"]
 markers = ["slow: end-to-end socket tests, excluded from the fast rules suite"]
