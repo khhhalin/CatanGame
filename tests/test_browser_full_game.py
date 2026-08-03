@@ -19,10 +19,11 @@ Run: pytest tests/test_browser_full_game.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
-    click_edge,
-    click_vertex,
-    edge_next_to,
-    legal_setup_vertex,
+    build_road,
+    build_settlement,
+    edges_next_to,
+    launch_browser,
+    legal_setup_vertices,
     play_one_turn,
     start_server,
     stop_server,
@@ -51,7 +52,7 @@ def server(tmp_path_factory):
 @pytest.fixture(scope="module")
 def browser():
     with sync_playwright() as play:
-        instance = play.chromium.launch()
+        instance = launch_browser(play)
         yield instance
         instance.close()
 
@@ -174,24 +175,12 @@ class TestGameSetup:
 
             actor = by_name[board["current_player"]]
 
-            vertex = legal_setup_vertex(board)
-            assert vertex, "no legal vertex left during setup"
-            actor.page.click("#place-settlement-btn")
-            click_vertex(actor, vertex)
-            actor.page.wait_for_function(
-                "key => (window.__catanDebug.getBoard().vertices[key] || {}).building",
-                arg=vertex, timeout=8000,
-            )
+            vertex = build_settlement(actor, legal_setup_vertices(board))
             placed += 1
 
-            edge = edge_next_to(actor.board(), vertex)
-            assert edge, "no legal road beside the settlement just placed"
-            actor.page.click("#place-road-btn")
-            click_edge(actor, edge)
-            actor.page.wait_for_function(
-                "key => (window.__catanDebug.getBoard().edges[key] || {}).road",
-                arg=edge, timeout=8000,
-            )
+            edges = edges_next_to(actor.board(), vertex)
+            assert edges, "no legal road beside the settlement just placed"
+            build_road(actor, edges)
 
         assert placed == expected, f"only {placed} of {expected} setup placements landed"
         assert alice.board()["game_phase"] == "playing"
