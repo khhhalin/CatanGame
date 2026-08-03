@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modal dialogs — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   MODAL DIALOGS — native <dialog>, three shapes.
+   ---------------------------------------------------------------------------
+   Use the native element, not a div with `position: fixed`. showModal() gives
+   you, for free and correctly: a focus trap, inert background content, Escape
+   to close, restored focus on close, and a ::backdrop that is not part of the
+   page flow. Reimplementing that with a div is how you end up with a dialog
+   a keyboard user can tab out of behind the overlay.
+
+   In a real-time game a modal blocks the board, so this pattern is only for
+   things the game is actually waiting on:
+     - a decision the server is blocked on (discard, choose a victim,
+       Year of Plenty, Monopoly)
+     - a form the player opened deliberately (propose a trade)
+   Never for errors, another player's action, or anything informational -
+   those belong in the notice region (see banners.html), because a modal
+   during someone else's turn hides the very board the message is about.
+   ========================================================================== */
+
+dialog {
+    width: min(34rem, calc(100vw - 2 * var(--space-4)));
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    color: var(--text);
+    box-shadow: var(--shadow-3);
+    /* max-height + an internal scroll region, so a tall dialog on a short
+       laptop scrolls its body rather than losing its buttons off-screen. */
+    max-height: min(90dvh, 44rem);
+    overflow: hidden;
+}
+
+dialog::backdrop {
+    background: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(2px);
+}
+
+.dlg { display: flex; flex-direction: column; max-height: inherit; }
+
+.dlg__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+
+.dlg__head h2 { margin: 0; font-size: var(--text-xl); line-height: var(--leading-tight); }
+
+.dlg__sub { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--text-muted); }
+
+.dlg__close {
+    flex: none;
+    width: 2rem; height: 2rem;
+    display: grid; place-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--text-lg);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.dlg__close:hover { background: var(--surface-3); }
+
+.dlg__body {
+    padding: var(--space-4);
+    overflow-y: auto;
+    min-height: 0;
+    display: grid;
+    gap: var(--space-4);
+}
+
+.dlg__foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+}
+
+.dlg__status { margin-right: auto; font-size: var(--text-sm); color: var(--text-muted); }
+.dlg__status--bad { color: var(--text); background: var(--bad-soft); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); }
+
+/* ------------------------------------------------------------------ parts */
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-1);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.btn:hover { background: var(--surface-3); }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn--primary:hover { background: var(--accent-hover); }
+
+.btn:disabled {
+    background: var(--surface-3);
+    border-color: var(--border);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.fieldset { border: 0; padding: 0; margin: 0; }
+
+.fieldset > legend {
+    padding: 0;
+    margin-bottom: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+/* One row per resource: swatch, name, stepper, and what you actually hold.
+   "You have 3" next to the input is what stops a player proposing a trade
+   they cannot pay for. */
+.res-rows { display: grid; gap: var(--space-2); }
+
+.res-row {
+    display: grid;
+    grid-template-columns: 0.4rem minmax(4rem, 1fr) auto auto;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+}
+
+.res-row__pip { width: 0.4rem; height: 1.4rem; border-radius: var(--radius-pill); background: var(--rc); }
+.res-row__name { font-size: var(--text-sm); font-weight: 600; }
+.res-row__have { font-family: var(--font-num); font-size: var(--text-2xs); color: var(--text-muted); white-space: nowrap; }
+
+.stepper {
+    display: inline-flex;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-1);
+}
+
+.stepper button {
+    font: inherit;
+    width: 1.9rem;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.stepper button:hover { background: var(--surface-3); }
+.stepper button:disabled { color: var(--text-faint); cursor: not-allowed; }
+
+.stepper input {
+    font: inherit;
+    font-family: var(--font-num);
+    font-weight: 700;
+    font-size: var(--text-sm);
+    width: 2.75rem;
+    text-align: center;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text);
+    padding: var(--space-1) 0;
+    -moz-appearance: textfield;
+}
+
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.trade-cols {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+}
+
+/* ------------------------------------------------- radio / choice buttons */
+
+/* Real radios behind the cards: arrow keys move between them, the group has
+   one tab stop, and the selection is announced. */
+.choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+    gap: var(--space-2);
+}
+
+.choice { position: relative; }
+
+.choice input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.choice__face {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    border-bottom: 3px solid var(--rc);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-align: center;
+}
+
+.choice__n { font-family: var(--font-num); font-size: var(--text-2xs); color: var(--text-muted); }
+
+.choice input:checked + .choice__face {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.choice input:checked + .choice__face::after {
+    content: "Selected";
+    font-size: var(--text-2xs);
+    color: var(--text);
+}
+
+.choice input:focus-visible + .choice__face { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.hint {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--info);
+    background: var(--info-soft);
+    font-size: var(--text-sm);
+}
+
+.counter {
+    font-family: var(--font-num);
+    font-weight: 700;
+}
+
+/* A static copy of the dialog surface, for showing several variants on one
+   page. Only the demo uses this; the real thing is always a <dialog>. */
+.dlg-static {
+    width: min(34rem, 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+}
+
+.demo-dialogs { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr)); align-items: start; }
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Modal dialogs</h1>
+        <p>Native <code>&lt;dialog&gt;</code> with <code>showModal()</code>: focus
+            trap, Escape, inert background and a real backdrop, none of it
+            hand-written. The first one below is a live modal; the rest are the
+            same surface shown statically so several fit on one page.</p>
+    </header>
+
+    <!-- Opened on load so the screenshot shows the real modal, backdrop and all. -->
+    <dialog id="trade-dialog">
+        <form method="dialog" class="dlg">
+            <div class="dlg__head">
+                <div>
+                    <h2>Propose a trade</h2>
+                    <p class="dlg__sub">Every player sees this offer and has 60 seconds to answer.</p>
+                </div>
+                <button type="submit" class="dlg__close" aria-label="Close" value="cancel">×</button>
+            </div>
+
+            <div class="dlg__body">
+                <div class="trade-cols">
+                    <fieldset class="fieldset">
+                        <legend>You give</legend>
+                        <div class="res-rows">
+                            <div class="res-row" style="--rc: var(--res-wood);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="give-wood">Wood</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Less wood">−</button>
+                                    <!-- autofocus on the first real control, not the close
+                                         button: showModal() otherwise lands focus on × and the
+                                         dialog opens looking like it is about to be dismissed. -->
+                                    <input id="give-wood" type="number" value="2" min="0" max="3" autofocus>
+                                    <button type="button" aria-label="More wood">+</button>
+                                </span>
+                                <span class="res-row__have">of 3</span>
+                            </div>
+                            <div class="res-row" style="--rc: var(--res-brick);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="give-brick">Brick</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Less brick">−</button>
+                                    <input id="give-brick" type="number" value="0" min="0" max="2">
+                                    <button type="button" aria-label="More brick">+</button>
+                                </span>
+                                <span class="res-row__have">of 2</span>
+                            </div>
+                            <div class="res-row" style="--rc: var(--res-sheep);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="give-sheep">Sheep</label>
+                                <span class="stepper">
+                                    <button type="button" disabled aria-label="Less sheep">−</button>
+                                    <input id="give-sheep" type="number" value="0" min="0" max="0" disabled>
+                                    <button type="button" disabled aria-label="More sheep">+</button>
+                                </span>
+                                <span class="res-row__have">none</span>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="fieldset">
+                        <legend>You want</legend>
+                        <div class="res-rows">
+                            <div class="res-row" style="--rc: var(--res-ore);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="want-ore">Ore</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Less ore">−</button>
+                                    <input id="want-ore" type="number" value="1" min="0" max="10">
+                                    <button type="button" aria-label="More ore">+</button>
+                                </span>
+                                <span class="res-row__have">bank 0</span>
+                            </div>
+                            <div class="res-row" style="--rc: var(--res-wheat);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="want-wheat">Wheat</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Less wheat">−</button>
+                                    <input id="want-wheat" type="number" value="0" min="0" max="10">
+                                    <button type="button" aria-label="More wheat">+</button>
+                                </span>
+                                <span class="res-row__have">bank 2</span>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+
+                <p class="hint">You give <strong>2 wood</strong> for <strong>1 ore</strong>.
+                    Nobody currently holds ore except Tomasz.</p>
+            </div>
+
+            <div class="dlg__foot">
+                <span class="dlg__status">Offer expires 60s after you send it</span>
+                <button type="submit" class="btn" value="cancel">Cancel</button>
+                <button type="submit" class="btn btn--primary" value="send">Send offer</button>
+            </div>
+        </form>
+    </dialog>
+
+    <section class="demo-section">
+        <h2>Blocking decisions</h2>
+        <div class="demo-stage demo-dialogs">
+
+            <div class="dlg-static">
+                <div class="dlg">
+                    <div class="dlg__head">
+                        <div>
+                            <h2>Year of Plenty</h2>
+                            <p class="dlg__sub">Take any two resources from the bank.</p>
+                        </div>
+                    </div>
+                    <div class="dlg__body">
+                        <fieldset class="fieldset">
+                            <legend>Choose 2 — <span class="counter">1 of 2</span> chosen</legend>
+                            <div class="choices">
+                                <label class="choice"><input type="checkbox" name="yop" checked>
+                                    <span class="choice__face" style="--rc: var(--res-wood);">Wood<span class="choice__n">bank 19</span></span></label>
+                                <label class="choice"><input type="checkbox" name="yop">
+                                    <span class="choice__face" style="--rc: var(--res-brick);">Brick<span class="choice__n">bank 17</span></span></label>
+                                <label class="choice"><input type="checkbox" name="yop">
+                                    <span class="choice__face" style="--rc: var(--res-sheep);">Sheep<span class="choice__n">bank 14</span></span></label>
+                                <label class="choice"><input type="checkbox" name="yop">
+                                    <span class="choice__face" style="--rc: var(--res-wheat);">Wheat<span class="choice__n">bank 2</span></span></label>
+                            </div>
+                        </fieldset>
+                        <p class="hint">The bank is out of ore, so it is not offered.</p>
+                    </div>
+                    <div class="dlg__foot">
+                        <span class="dlg__status">Pick one more</span>
+                        <button type="button" class="btn btn--primary" disabled>Take 2 resources</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dlg-static">
+                <div class="dlg">
+                    <div class="dlg__head">
+                        <div>
+                            <h2>Monopoly</h2>
+                            <p class="dlg__sub">Name one resource. Every other player hands you all of theirs.</p>
+                        </div>
+                    </div>
+                    <div class="dlg__body">
+                        <fieldset class="fieldset">
+                            <legend>Choose 1</legend>
+                            <div class="choices">
+                                <label class="choice"><input type="radio" name="mono">
+                                    <span class="choice__face" style="--rc: var(--res-wood);">Wood<span class="choice__n">others hold 6</span></span></label>
+                                <label class="choice"><input type="radio" name="mono" checked>
+                                    <span class="choice__face" style="--rc: var(--res-ore);">Ore<span class="choice__n">others hold 4</span></span></label>
+                                <label class="choice"><input type="radio" name="mono">
+                                    <span class="choice__face" style="--rc: var(--res-wheat);">Wheat<span class="choice__n">others hold 3</span></span></label>
+                            </div>
+                        </fieldset>
+                        <p class="hint">Taking ore collects <strong>4 cards</strong> —
+                            3 from Tomasz and 1 from Ewa.</p>
+                    </div>
+                    <div class="dlg__foot">
+                        <button type="button" class="btn">Cancel</button>
+                        <button type="button" class="btn btn--primary">Take all ore</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dlg-static">
+                <div class="dlg">
+                    <div class="dlg__head">
+                        <div>
+                            <h2>Discard 4 cards</h2>
+                            <p class="dlg__sub">Kalina rolled 7 and you are over the hand limit of 7.</p>
+                        </div>
+                    </div>
+                    <div class="dlg__body">
+                        <div class="res-rows">
+                            <div class="res-row" style="--rc: var(--res-wood);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="dis-wood">Wood</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Discard less wood">−</button>
+                                    <input id="dis-wood" type="number" value="2" min="0" max="3">
+                                    <button type="button" aria-label="Discard more wood">+</button>
+                                </span>
+                                <span class="res-row__have">of 3</span>
+                            </div>
+                            <div class="res-row" style="--rc: var(--res-brick);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="dis-brick">Brick</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Discard less brick">−</button>
+                                    <input id="dis-brick" type="number" value="1" min="0" max="2">
+                                    <button type="button" aria-label="Discard more brick">+</button>
+                                </span>
+                                <span class="res-row__have">of 2</span>
+                            </div>
+                            <div class="res-row" style="--rc: var(--res-wheat);">
+                                <span class="res-row__pip"></span>
+                                <label class="res-row__name" for="dis-wheat">Wheat</label>
+                                <span class="stepper">
+                                    <button type="button" aria-label="Discard less wheat">−</button>
+                                    <input id="dis-wheat" type="number" value="0" min="0" max="2">
+                                    <button type="button" aria-label="Discard more wheat">+</button>
+                                </span>
+                                <span class="res-row__have">of 2</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dlg__foot">
+                        <span class="dlg__status dlg__status--bad">3 of 4 chosen — 1 more</span>
+                        <button type="button" class="btn btn--primary" disabled>Discard</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dlg-static">
+                <div class="dlg">
+                    <div class="dlg__head">
+                        <div>
+                            <h2>Steal from whom?</h2>
+                            <p class="dlg__sub">Your robber sits on the 8-ore. Two players build there.</p>
+                        </div>
+                    </div>
+                    <div class="dlg__body">
+                        <div class="choices" style="grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));">
+                            <label class="choice"><input type="radio" name="victim" checked>
+                                <span class="choice__face" style="--rc: var(--player-3);">Ewa<span class="choice__n">11 cards</span></span></label>
+                            <label class="choice"><input type="radio" name="victim">
+                                <span class="choice__face" style="--rc: var(--player-4);">Tomasz<span class="choice__n">3 cards</span></span></label>
+                        </div>
+                        <p class="hint">You take one card at random — you do not choose which.</p>
+                    </div>
+                    <div class="dlg__foot">
+                        <button type="button" class="btn btn--primary">Steal from Ewa</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p class="demo-note">Every dialog's primary button says what it will do
+            ("Take all ore", "Steal from Ewa"), never "OK". The footer's status
+            slot carries the blocking reason, so a disabled button is never
+            unexplained.</p>
+    </section>
+</main>
+
+<script>
+/* Demo device only: open the live modal on the widest viewport so one
+   screenshot proves the real <dialog> + ::backdrop, and leave it closed on
+   narrower ones so the static variants below are not dimmed out of review.
+   In the app this is an ordinary click handler. */
+if (window.innerWidth >= 1600) {
+    document.getElementById("trade-dialog").showModal();
+}
+</script>
+</body>
+</html>

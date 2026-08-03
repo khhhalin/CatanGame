@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event log &amp; chat — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   EVENT LOG & CHAT — one interleaved history.
+   ---------------------------------------------------------------------------
+   Chat and the game log are ONE list, ordered as the server logged them.
+   Two separate lists force the reader to correlate "Kalina moved the robber"
+   with "rude" by timestamp, which is exactly the work a log exists to save.
+
+   The pieces that make a scrolling log behave:
+
+     - The list sits on its bottom edge via `margin-top: auto` on the first
+       row, NOT `justify-content: flex-end`, which makes the top of an
+       overflowing scroll container unreachable in every browser.
+     - Autoscroll only when the reader is already at the bottom. If they have
+       scrolled up, new entries stay put and a "new messages" button appears.
+       Yanking the viewport while someone reads history is the single most
+       hated behaviour a log can have.
+     - `aria-live="polite"` with `aria-relevant="additions"`, so a screen
+       reader hears new entries and is not re-read the whole history.
+     - Entry kind is carried by an icon glyph and a label, not by colour
+       alone. Player names take the player's colour as a bonus signal.
+   ========================================================================== */
+
+.logbox {
+    display: flex;
+    flex-direction: column;
+    height: 30rem;
+    min-height: 0;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+
+.logbox__tabs {
+    flex: none;
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2) 0;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.tab {
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+
+/* A badge on a hidden tab. A chat message landing in a tab you cannot see,
+   with nothing to say so, reads as "chat is broken". */
+.tab__badge {
+    display: inline-block;
+    margin-left: var(--space-1);
+    min-width: 1.15rem;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+}
+
+/* ------------------------------------------------------------------ list */
+
+/* The jump button lives on this wrapper, NOT inside .log. Absolute
+   positioning inside a scroll container resolves against the scrolled
+   CONTENT, so the button rode down and sat on top of the newest entry -
+   covering exactly the message it was advertising. */
+.log-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+
+.log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Pins a short history to the bottom without breaking scroll on a long one. */
+.log > :first-child { margin-top: auto; }
+
+
+
+.entry {
+    display: grid;
+    grid-template-columns: 3.6rem 1.15rem minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: baseline;
+    padding: var(--space-1) 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.entry:last-child { border-bottom: 0; }
+
+.entry__time {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Icons come from what a bare system font stack actually ships. The first
+   pass used the Unicode die face (U+2684) and crossed swords (U+2694); both
+   rendered as tofu boxes in headless Chromium, which is what a Linux player
+   without a symbol font also sees. Everything here is Latin-1, arrows, or
+   geometric shapes - present in DejaVu, Liberation and the MS core fonts. */
+.entry__icon { font-size: var(--text-xs); text-align: center; color: var(--text-faint); }
+.entry__text { color: var(--text-muted); }
+.entry__text b { color: var(--pc, var(--text)); }
+
+/* Chat is the one kind that gets full-strength text: it is the only kind a
+   human wrote and the only kind worth re-reading. */
+.entry--chat .entry__text { color: var(--text); }
+
+.entry--dice .entry__text,
+.entry--build .entry__text { color: var(--text-muted); }
+
+.entry--alert {
+    background: var(--bad-soft);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    margin: var(--space-1) calc(-1 * var(--space-2));
+}
+
+.entry--alert .entry__text { color: var(--text); }
+
+.entry--win {
+    background: var(--good-soft);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    margin: var(--space-1) calc(-1 * var(--space-2));
+}
+
+.entry--win .entry__text { color: var(--text); font-weight: 600; }
+
+/* A day/round separator, so a long history has landmarks. */
+.log__sep {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-3) 0 var(--space-2);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+}
+
+.log__sep::before, .log__sep::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--border);
+}
+
+.dice-roll {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    vertical-align: -2px;
+}
+
+.pip {
+    width: 1.15rem; height: 1.15rem;
+    display: inline-grid; place-items: center;
+    border-radius: 3px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    color: var(--text);
+}
+
+/* ------------------------------------------------------- jump-to-latest */
+
+/* A strip between the log and the input, not a pill floating over the list.
+   A floating pill ALWAYS covers whichever row happens to be at the bottom of
+   the viewport, and reserving space for it with padding only helps in the one
+   case where the button is hidden anyway - when you are already at the
+   bottom. As a strip it is full width, impossible to miss, and covers
+   nothing. */
+.log-jump {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    width: 100%;
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    padding: var(--space-1) var(--space-3);
+    border: 0;
+    border-top: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+    cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ input */
+
+.chat-form {
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+}
+
+.chat-form input {
+    font: inherit;
+    font-size: var(--text-sm);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    color: var(--text);
+}
+
+.chat-form input::placeholder { color: var(--text-faint); }
+
+.chat-form__count {
+    grid-column: 1 / -1;
+    justify-self: end;
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+}
+
+.chat-form__count--near { color: var(--text); }
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+    cursor: pointer;
+}
+
+.demo-two { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr)); align-items: start; }
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Event log &amp; chat</h1>
+        <p>One interleaved history: system events, dice, builds and player chat
+            in the order the server logged them, with the scroll behaviour that
+            makes a live log readable.</p>
+    </header>
+
+    <section class="demo-section">
+        <h2>At rest — scrolled to the bottom</h2>
+        <div class="demo-stage demo-two">
+
+            <section class="logbox">
+                <div class="logbox__tabs" role="tablist" aria-label="Side panels">
+                    <button type="button" class="tab" role="tab" aria-selected="true" id="t-log" aria-controls="p-log">Game log</button>
+                    <button type="button" class="tab" role="tab" aria-selected="false" id="t-trade" aria-controls="p-trade">Trade <span class="tab__badge">2</span></button>
+                </div>
+
+                <div class="log-wrap">
+                <div class="log" role="log" id="p-log" aria-labelledby="t-log"
+                     aria-live="polite" aria-relevant="additions">
+                    <div class="log__sep">Round 13</div>
+
+                    <div class="entry entry--build" style="--pc: var(--player-3);">
+                        <span class="entry__time">21:02:11</span>
+                        <span class="entry__icon" aria-hidden="true">⌂</span>
+                        <span class="entry__text"><b>Ewa</b> placed a settlement on the 6 / 9 / 4 corner.</span>
+                    </div>
+
+                    <div class="entry entry--dice" style="--pc: var(--player-4);">
+                        <span class="entry__time">21:02:40</span>
+                        <span class="entry__icon" aria-hidden="true">◆</span>
+                        <span class="entry__text"><b>Tomasz</b> rolled
+                            <span class="dice-roll"><span class="pip">5</span><span class="pip">4</span></span>
+                            — Kalina collected 2 wood.</span>
+                    </div>
+
+                    <div class="entry entry--chat" style="--pc: var(--player-1);">
+                        <span class="entry__time">21:03:04</span>
+                        <span class="entry__icon" aria-hidden="true">»</span>
+                        <span class="entry__text"><b>Kalina</b> anyone got ore? I'll pay two wood</span>
+                    </div>
+
+                    <div class="entry" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:03:19</span>
+                        <span class="entry__icon" aria-hidden="true">+</span>
+                        <span class="entry__text"><b>Marek</b> bought a development card.</span>
+                    </div>
+
+                    <div class="entry entry--chat" style="--pc: var(--player-4);">
+                        <span class="entry__time">21:03:41</span>
+                        <span class="entry__icon" aria-hidden="true">»</span>
+                        <span class="entry__text"><b>Tomasz</b> not a chance, I need it for the city</span>
+                    </div>
+
+                    <div class="log__sep">Round 14</div>
+
+                    <div class="entry entry--alert" style="--pc: var(--player-1);">
+                        <span class="entry__time">21:04:02</span>
+                        <span class="entry__icon" aria-hidden="true">!</span>
+                        <span class="entry__text"><b>Kalina</b> rolled
+                            <span class="dice-roll"><span class="pip">3</span><span class="pip">4</span></span>
+                            — the robber must move.</span>
+                    </div>
+
+                    <div class="entry" style="--pc: var(--player-3);">
+                        <span class="entry__time">21:04:10</span>
+                        <span class="entry__icon" aria-hidden="true">↓</span>
+                        <span class="entry__text"><b>Ewa</b> discarded 5 cards to the bank.</span>
+                    </div>
+
+                    <div class="entry" style="--pc: var(--player-1);">
+                        <span class="entry__time">21:04:33</span>
+                        <span class="entry__icon" aria-hidden="true">▲</span>
+                        <span class="entry__text"><b>Kalina</b> moved the robber to the desert and stole 1 card from Ewa.</span>
+                    </div>
+
+                    <div class="entry entry--chat" style="--pc: var(--player-3);">
+                        <span class="entry__time">21:04:51</span>
+                        <span class="entry__icon" aria-hidden="true">»</span>
+                        <span class="entry__text"><b>Ewa</b> rude</span>
+                    </div>
+
+                    <div class="entry entry--build" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:05:08</span>
+                        <span class="entry__icon" aria-hidden="true">⌂</span>
+                        <span class="entry__text"><b>Marek</b> upgraded a settlement to a city — now on 7 victory points.</span>
+                    </div>
+                </div>
+                </div>
+
+                <form class="chat-form" onsubmit="return false;">
+                    <label class="visually-hidden" for="chat-a">Chat message</label>
+                    <input id="chat-a" type="text" placeholder="Say something…" maxlength="300" autocomplete="off">
+                    <button type="submit" class="btn">Send</button>
+                    <span class="chat-form__count">0 / 300</span>
+                </form>
+            </section>
+
+            <section class="logbox">
+                <div class="logbox__tabs" role="tablist" aria-label="Side panels">
+                    <button type="button" class="tab" role="tab" aria-selected="true" id="t-log2" aria-controls="p-log2">Game log</button>
+                    <button type="button" class="tab" role="tab" aria-selected="false" id="t-trade2" aria-controls="p-trade2">Trade</button>
+                </div>
+
+                <div class="log-wrap">
+                <div class="log" role="log" id="p-log2" aria-labelledby="t-log2">
+                    <div class="log__sep">Round 11</div>
+                    <div class="entry entry--dice" style="--pc: var(--player-2);">
+                        <span class="entry__time">20:58:02</span>
+                        <span class="entry__icon" aria-hidden="true">◆</span>
+                        <span class="entry__text"><b>Marek</b> rolled
+                            <span class="dice-roll"><span class="pip">6</span><span class="pip">2</span></span>
+                            — Ewa collected 1 sheep, Tomasz collected 2 ore.</span>
+                    </div>
+                    <div class="entry" style="--pc: var(--player-2);">
+                        <span class="entry__time">20:58:31</span>
+                        <span class="entry__icon" aria-hidden="true">⇄</span>
+                        <span class="entry__text"><b>Marek</b> traded 2 sheep to <b style="--pc: var(--player-3); color: var(--player-3);">Ewa</b> for 1 wheat.</span>
+                    </div>
+                    <div class="entry entry--chat" style="--pc: var(--player-3);">
+                        <span class="entry__time">20:59:12</span>
+                        <span class="entry__icon" aria-hidden="true">»</span>
+                        <span class="entry__text"><b>Ewa</b> good deal, I needed the sheep for the harbour</span>
+                    </div>
+                    <div class="entry" style="--pc: var(--player-1);">
+                        <span class="entry__time">21:00:04</span>
+                        <span class="entry__icon" aria-hidden="true">✦</span>
+                        <span class="entry__text"><b>Kalina</b> played a Knight and took Largest Army.</span>
+                    </div>
+                    <div class="entry entry--dice" style="--pc: var(--player-3);">
+                        <span class="entry__time">21:00:38</span>
+                        <span class="entry__icon" aria-hidden="true">◆</span>
+                        <span class="entry__text"><b>Ewa</b> rolled
+                            <span class="dice-roll"><span class="pip">4</span><span class="pip">4</span></span>
+                            — Marek collected 1 brick, Kalina collected 1 wheat.</span>
+                    </div>
+                    <div class="entry entry--chat" style="--pc: var(--player-4);">
+                        <span class="entry__time">21:01:15</span>
+                        <span class="entry__icon" aria-hidden="true">»</span>
+                        <span class="entry__text"><b>Tomasz</b> that 8 hex has not come up once all game</span>
+                    </div>
+                    <div class="entry entry--build" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:01:52</span>
+                        <span class="entry__icon" aria-hidden="true">⌂</span>
+                        <span class="entry__text"><b>Marek</b> built a road towards the ore harbour.</span>
+                    </div>
+                    <div class="entry entry--alert" style="--pc: var(--player-4);">
+                        <span class="entry__time">21:02:29</span>
+                        <span class="entry__icon" aria-hidden="true">!</span>
+                        <span class="entry__text"><b>Tomasz</b> rolled
+                            <span class="dice-roll"><span class="pip">3</span><span class="pip">4</span></span>
+                            — the robber must move.</span>
+                    </div>
+                    <div class="entry" style="--pc: var(--player-4);">
+                        <span class="entry__time">21:03:02</span>
+                        <span class="entry__icon" aria-hidden="true">▲</span>
+                        <span class="entry__text"><b>Tomasz</b> moved the robber to the 6-wheat and stole 1 card from Marek.</span>
+                    </div>
+                    <div class="entry entry--chat" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:03:40</span>
+                        <span class="entry__icon" aria-hidden="true">»</span>
+                        <span class="entry__text"><b>Marek</b> of course it was the ore</span>
+                    </div>
+                    <div class="entry" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:04:47</span>
+                        <span class="entry__icon" aria-hidden="true">+</span>
+                        <span class="entry__text"><b>Marek</b> bought a development card. 4 left in the deck.</span>
+                    </div>
+                    <div class="entry entry--build" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:05:21</span>
+                        <span class="entry__icon" aria-hidden="true">⌂</span>
+                        <span class="entry__text"><b>Marek</b> upgraded the 8-ore settlement to a city.</span>
+                    </div>
+                    <div class="entry entry--win" style="--pc: var(--player-2);">
+                        <span class="entry__time">21:05:44</span>
+                        <span class="entry__icon" aria-hidden="true">★</span>
+                        <span class="entry__text"><b>Marek</b> wins with 10 victory points.</span>
+                    </div>
+                </div>
+                </div>
+                <button type="button" class="log-jump">3 new messages ↓</button>
+
+                <form class="chat-form" onsubmit="return false;">
+                    <label class="visually-hidden" for="chat-b">Chat message</label>
+                    <input id="chat-b" type="text" value="you got extremely lucky with those sixes and you know it, next game I am taking that ore corner first" maxlength="300" autocomplete="off">
+                    <button type="submit" class="btn">Send</button>
+                    <span class="chat-form__count chat-form__count--near">104 / 300</span>
+                </form>
+            </section>
+        </div>
+        <p class="demo-note">Right-hand copy shows the scrolled-up state: new
+            entries did not move the viewport, and the strip above the input is the way
+            back. It is a strip rather than a floating pill because a pill
+            always lands on whichever row happens to be at the bottom.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>The autoscroll rule</h2>
+        <div class="demo-stage">
+            <pre style="margin: 0; overflow-x: auto; font-family: var(--font-num); font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6;"><code>// Read BEFORE appending: once the node is in the tree the measurement
+// has already changed. 24px of slack, because a trackpad rarely lands
+// exactly on zero.
+const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight &lt; 24;
+
+log.append(entry);
+
+if (atBottom) {
+    log.scrollTop = log.scrollHeight;   // not scrollIntoView: that scrolls
+    jumpBtn.hidden = true;              // ancestors too, and can move the page
+} else {
+    jumpBtn.hidden = false;
+    jumpBtn.textContent = `${++unread} new messages ↓`;
+}</code></pre>
+        </div>
+        <p class="demo-note">Also worth knowing: <code>overflow-anchor</code> is
+            on by default in Chromium and will fight a manual autoscroll on a
+            list that grows at the bottom. If entries jitter, set
+            <code>overflow-anchor: none</code> on the scroll container.</p>
+    </section>
+</main>
+</body>
+</html>

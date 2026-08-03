@@ -90,8 +90,12 @@ AUDIT_JS = r"""
     if (cs.clipPath && cs.clipPath !== "none") continue;
 
     // --- overflow: only a complaint when the box cannot scroll to reveal it.
-    const scrollableX = ["auto", "scroll"].includes(cs.overflowX);
-    const scrollableY = ["auto", "scroll"].includes(cs.overflowY);
+    // Text controls scroll their own value natively and always report
+    // scrollWidth > clientWidth once the value is longer than the field.
+    const tag = el.tagName;
+    const nativeScroller = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    const scrollableX = nativeScroller || ["auto", "scroll"].includes(cs.overflowX);
+    const scrollableY = nativeScroller || ["auto", "scroll"].includes(cs.overflowY);
     if (!scrollableX && el.scrollWidth - el.clientWidth > 1 && cs.overflowX !== "visible") {
       out.elementOverflow.push({
         el: desc(el), axis: "x", over: el.scrollWidth - el.clientWidth });

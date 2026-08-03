@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cities &amp; Knights panels — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   CITIES & KNIGHTS — improvement tracks, barbarians, knights.
+   ---------------------------------------------------------------------------
+   The expansion adds three panels that all show *progress towards a
+   threshold*, and each one is unreadable if you show only the current number.
+
+     - Improvements: level 0-5 on trade / politics / science, each level
+       costing an increasing number of one commodity. What matters is "how
+       many more paper to level 4", so the next cost is on the row.
+     - Barbarians: a ship that advances one step per turn and attacks on
+       arrival. What matters is knight strength vs city count, so both numbers
+       and the verdict are shown, not the ship position alone.
+     - Knights: rank, active/inactive, and whether it has acted this turn.
+       Three booleans per knight, so each is a word, never a shade of grey.
+
+   Every panel here is hidden entirely when the rule is off, and none of them
+   is populated from markup - the shapes below are what the client fills.
+   ========================================================================== */
+
+.panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+
+.panel__title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.panel__meta {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-faint);
+}
+
+.panel__body { padding: var(--space-3); display: grid; gap: var(--space-3); }
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.btn:hover { background: var(--surface-3); }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn--sm { padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+
+.btn:disabled {
+    background: var(--surface-3);
+    border-color: var(--border);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* ================================================= improvement tracks */
+
+.track {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-3);
+    align-items: center;
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border-left: 3px solid var(--cc);
+}
+
+.track__name { font-size: var(--text-sm); font-weight: 700; }
+.track__name small { font-weight: 400; color: var(--text-muted); font-size: var(--text-2xs); }
+
+/* Five discrete pips, not a bar: the track has exactly five steps and a
+   continuous bar invites the reader to estimate a percentage that does not
+   exist. */
+.pips { display: flex; gap: 3px; grid-column: 1 / -1; }
+
+.pips span {
+    flex: 1 1 0;
+    height: 0.55rem;
+    border-radius: 2px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+}
+
+.pips span[data-on] { background: var(--cc); border-color: var(--cc); }
+
+/* The step you can buy next: outlined, so "one more" is visible without
+   counting the filled ones. */
+.pips span[data-next] { border: 1px dashed var(--cc); background: transparent; }
+
+.track__next {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+}
+
+.track__cost { font-family: var(--font-num); }
+.track__cost b { color: var(--text); }
+
+.metropolis {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    white-space: nowrap;
+}
+
+.metropolis--held-by-other {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    color: var(--text-muted);
+}
+
+/* ================================================= barbarian track */
+
+/* The ship's position is a row of steps rather than a percentage bar, and the
+   attack step is marked, so "two turns away" is countable. */
+.barb {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.barb__step {
+    flex: 1 1 0;
+    height: 1.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    display: grid;
+    place-items: center;
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    /* --text-muted, not --text-faint: faint on surface-3 is 4.1:1 in the dark
+       theme, and these are the step numbers a player counts turns with. */
+    color: var(--text-muted);
+}
+
+.barb__step[data-done] { background: color-mix(in srgb, var(--bad) 35%, var(--surface-2)); border-color: var(--bad); color: var(--text); }
+.barb__step[data-here] { background: var(--bad); border-color: var(--bad); color: var(--on-status); font-weight: 800; }
+.barb__step[data-attack] { border-style: dashed; border-width: 2px; }
+
+.strength {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: var(--space-2);
+}
+
+.strength__cell {
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    text-align: center;
+}
+
+.strength__n { font-family: var(--font-num); font-size: var(--text-xl); font-weight: 700; line-height: 1.1; display: block; }
+.strength__l { font-size: var(--text-2xs); color: var(--text-muted); }
+
+.verdict {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    border-left: 3px solid var(--vc);
+    background: var(--vbg);
+}
+
+.verdict--bad  { --vc: var(--bad);  --vbg: var(--bad-soft); }
+.verdict--good { --vc: var(--good); --vbg: var(--good-soft); }
+
+/* ================================================= knight cards */
+
+.knights {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: var(--space-2);
+}
+
+.knight {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--kc);
+}
+
+.knight__rank { font-size: var(--text-sm); font-weight: 700; }
+.knight__where { font-family: var(--font-num); font-size: var(--text-2xs); color: var(--text-muted); }
+
+.knight__states { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+
+/* Three independent booleans per knight. Each is a word, because a knight
+   that is "active but has already acted" cannot be read off two shades. */
+.state {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+}
+
+.state--active   { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.state--inactive { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-muted); }
+.state--acted    { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+
+.knight__acts { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-1); }
+
+.ck-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.ck-note { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
+
+.demo-cols {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+    align-items: start;
+}
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Cities &amp; Knights panels</h1>
+        <p>The three expansion panels — improvement tracks, the barbarian ship
+            and your knights. All three show progress towards a threshold, so
+            all three show the threshold, not just the current number.</p>
+    </header>
+
+    <section class="demo-section">
+        <h2>City improvements</h2>
+        <div class="demo-stage demo-cols">
+            <section class="panel">
+                <h3 class="panel__title">City improvements <span class="panel__meta">3 tracks · level 0–5</span></h3>
+                <div class="panel__body">
+
+                    <div class="track" style="--cc: var(--com-cloth);">
+                        <span class="track__name">Trade <small>cloth</small></span>
+                        <span class="metropolis">Metropolis — yours</span>
+                        <span class="pips">
+                            <span data-on></span><span data-on></span><span data-on></span>
+                            <span data-on></span><span data-next></span>
+                        </span>
+                        <span class="track__next">
+                            <span>Level 4 of 5 · trades 2:1 with the bank</span>
+                            <span class="track__cost">Next: <b>5 cloth</b> — you have 2</span>
+                        </span>
+                    </div>
+
+                    <div class="track" style="--cc: var(--com-coin);">
+                        <span class="track__name">Politics <small>coin</small></span>
+                        <span class="metropolis metropolis--held-by-other">Metropolis — Ewa</span>
+                        <span class="pips">
+                            <span data-on></span><span data-on></span><span data-next></span>
+                            <span></span><span></span>
+                        </span>
+                        <span class="track__next">
+                            <span>Level 2 of 5 · promotes knights to Mighty</span>
+                            <span class="track__cost">Next: <b>3 coin</b> — you have 4</span>
+                        </span>
+                    </div>
+
+                    <div class="track" style="--cc: var(--com-paper);">
+                        <span class="track__name">Science <small>paper</small></span>
+                        <span></span>
+                        <span class="pips">
+                            <span data-on></span><span data-next></span><span></span>
+                            <span></span><span></span>
+                        </span>
+                        <span class="track__next">
+                            <span>Level 1 of 5 · unlocks the Aqueduct</span>
+                            <span class="track__cost">Next: <b>2 paper</b> — you have 0</span>
+                        </span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3 class="panel__title">Barbarians <span class="panel__meta">attack on step 7</span></h3>
+                <div class="panel__body">
+                    <div class="barb" role="img" aria-label="Barbarian ship on step 5 of 7 — two turns from attacking">
+                        <span class="barb__step" data-done>1</span>
+                        <span class="barb__step" data-done>2</span>
+                        <span class="barb__step" data-done>3</span>
+                        <span class="barb__step" data-done>4</span>
+                        <span class="barb__step" data-here>5</span>
+                        <span class="barb__step">6</span>
+                        <span class="barb__step" data-attack>7</span>
+                    </div>
+                    <p class="ck-note">The ship lands in <strong>2 turns</strong>.</p>
+
+                    <div class="strength">
+                        <span class="strength__cell"><span class="strength__n">4</span><span class="strength__l">Knight strength</span></span>
+                        <span class="strength__cell"><span class="strength__n">6</span><span class="strength__l">Cities on Catan</span></span>
+                    </div>
+
+                    <p class="verdict verdict--bad">Catan loses. The weakest defender
+                        loses a city — you have 1 active knight of 3.
+                        <strong>Activate a knight to help.</strong></p>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">Five discrete pips rather than a progress bar,
+            because the track has exactly five steps. The dashed pip is the one
+            you can buy next, and its cost sits on the row against what you
+            actually hold — the only number a player is trying to work out.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>Knights</h2>
+        <div class="demo-stage">
+            <section class="panel" style="max-width: 46rem;">
+                <h3 class="panel__title">Your knights <span class="panel__meta">3 of 6 built · strength 4</span></h3>
+                <div class="panel__body">
+                    <div class="ck-actions">
+                        <button type="button" class="btn btn--primary btn--sm">Build a knight — 1 sheep, 1 ore</button>
+                        <button type="button" class="btn btn--sm">Move a knight</button>
+                        <button type="button" class="btn btn--sm" disabled>Build a wall — needs 1 brick</button>
+                    </div>
+
+                    <div class="knights">
+                        <div class="knight" style="--kc: var(--good);">
+                            <span class="knight__rank">Mighty knight</span>
+                            <span class="knight__where">on 6 / 9 / 4</span>
+                            <span class="knight__states">
+                                <span class="state state--active">Active</span>
+                                <span class="state state--acted">Acted</span>
+                            </span>
+                            <span class="knight__acts"><button type="button" class="btn btn--sm" disabled>Already acted</button></span>
+                        </div>
+
+                        <div class="knight" style="--kc: var(--good);">
+                            <span class="knight__rank">Strong knight</span>
+                            <span class="knight__where">on 8 / 3 / 10</span>
+                            <span class="knight__states">
+                                <span class="state state--active">Active</span>
+                            </span>
+                            <span class="knight__acts">
+                                <button type="button" class="btn btn--sm">Move</button>
+                                <button type="button" class="btn btn--sm">Chase robber</button>
+                            </span>
+                        </div>
+
+                        <div class="knight" style="--kc: var(--border-strong);">
+                            <span class="knight__rank">Basic knight</span>
+                            <span class="knight__where">on 11 / 5</span>
+                            <span class="knight__states">
+                                <span class="state state--inactive">Inactive</span>
+                            </span>
+                            <span class="knight__acts">
+                                <button type="button" class="btn btn--sm">Activate — 1 wheat</button>
+                                <button type="button" class="btn btn--sm" disabled>Promote — needs politics 3</button>
+                            </span>
+                        </div>
+                    </div>
+
+                    <p class="ck-note">Only active knights defend Catan. A knight that
+                        acts this turn is deactivated; 1 wheat brings it back.</p>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">Every disabled button says its own condition
+            ("needs politics 3", "needs 1 brick"). Rank, active and acted are
+            three independent facts, so each gets a word — "active but has
+            already acted" cannot be read off two shades of the same colour.</p>
+    </section>
+</main>
+</body>
+</html>
