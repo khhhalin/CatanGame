@@ -609,6 +609,47 @@ button:hover {
     background-color: var(--surface-2);
 }
 
+/* The ✓/✗ a click raises. Absolutely positioned inside the board box and
+   centred on the point it describes: it must be able to appear, move and
+   disappear without the canvas box or the camera noticing, because the target
+   it is asking about was chosen under that exact camera. placement.js sets
+   left/top in pixels; everything else is here. */
+.placement-confirm {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    transform: translateX(-50%);
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-pill);
+    background-color: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-2);
+}
+
+.placement-confirm-btn {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    font-size: var(--text-md);
+    line-height: 1;
+    border-radius: var(--radius-pill);
+    color: var(--on-status);
+}
+
+.placement-confirm-btn.confirm-yes {
+    background-color: var(--good);
+}
+
+.placement-confirm-btn.confirm-no {
+    background-color: var(--bad);
+}
+
+.placement-confirm-btn:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
 /* Mid-turn indicators, overlaid rather than stacked above the board. They
    float over the canvas so appearing and disappearing never changes the board
    box, and `pointer-events: none` keeps taps reaching the board underneath -
@@ -778,6 +819,28 @@ button:hover {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Personal setting, not a house rule, so it is styled as a plain checkbox
+   rather than as another action button. Sized so it cannot be the thing that
+   wraps the console onto a second row - every row costs the board its height. */
+.yolo-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-2xs);
+    font-weight: bold;
+    white-space: nowrap;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.yolo-toggle input {
+    cursor: pointer;
+}
+
+.yolo-toggle:has(input:checked) {
+    color: var(--warn);
 }
 
 /* Destructive: ends the match for the whole table */

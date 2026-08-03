@@ -1,10 +1,9 @@
 // The board: one render loop, and the taps and gestures that reach it.
 
-import { handleCkVertexTap } from './cities-knights.js';
 import { boardCanvas } from './dom.js';
 import { displayError } from './notices.js';
-import { emitGame } from './socket.js';
-import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
+import { clearHover, currentPreview, handlePlacementTap, samplePointer, updatePlacement } from './placement.js';
+import { getBoard, viewState } from './state.js';
 
 /**
  * Mark the board as needing a redraw on the next animation frame.
@@ -27,11 +26,20 @@ export function setHighlight(number) {
  * The single render loop for the lifetime of the page.
  */
 function frame() {
+    // Hit-testing the pointer and re-anchoring the confirm control belong to a
+    // frame, not to a pointermove: both are cheap here and unbounded there.
+    // This may mark the frame dirty, so it runs before the check below.
+    if (getBoard() && window.BoardRenderer) {
+        updatePlacement();
+    }
+
     if (viewState.render.dirty) {
         viewState.render.dirty = false;
         try {
             if (getBoard() && window.BoardRenderer) {
-                window.BoardRenderer.render(getBoard(), 'board-canvas', viewState.render.highlightNumber);
+                window.BoardRenderer.render(
+                    getBoard(), 'board-canvas', viewState.render.highlightNumber, currentPreview()
+                );
                 updateBoardLabel();
             }
         } catch (error) {
@@ -63,7 +71,10 @@ const TAP_MOVE_LIMIT_PX = 10;
 const TAP_TIME_LIMIT_MS = 700;
 
 /**
- * Handle a tap on the board - place building at tapped position
+ * Handle a tap on the board.
+ *
+ * A tap no longer places anything by itself: placement.js pins the target and
+ * raises a ✓/✗ over it, unless this browser is in YOLO mode.
  *
  * @param {PointerEvent} event - The pointerup event that ended the tap
  */
@@ -78,70 +89,7 @@ function handleBoardTap(event) {
         return;
     }
 
-    const position = window.BoardRenderer.clientToBoard(boardCanvas, event.clientX, event.clientY);
-
-    // Handle robber movement while the robber is still pending
-    if (mustMoveRobber() && isMyTurn()) {
-        const hexKey = window.BoardRenderer.findNearestHex(getBoard(), position.x, position.y);
-        if (hexKey) {
-            console.log('Moving robber to:', hexKey);
-            emitGame('move_robber', {
-                name: viewState.identity.name,
-                hex: hexKey
-            });
-        }
-        return;
-    }
-
-    if (!viewState.selectedBuilding || !isMyTurn()) {
-        return;
-    }
-
-    // During setup phase, ensure selected building matches setup_action
-    if (getGamePhase() === 'setup') {
-        const setupAction = getBoard().setup_action || 'settlement';
-        if (viewState.selectedBuilding !== setupAction) {
-            return;
-        }
-    }
-
-    if (viewState.selectedBuilding === 'settlement') {
-        // Find nearest vertex
-        const vertexKey = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
-        if (vertexKey) {
-            console.log('Placing settlement at:', vertexKey);
-            emitGame('place_settlement', {
-                name: viewState.identity.name,
-                vertex: vertexKey
-            });
-        }
-    } else if (viewState.selectedBuilding === 'road') {
-        // Find nearest edge
-        const edgeKey = window.BoardRenderer.findNearestEdge(getBoard(), position.x, position.y);
-        if (edgeKey) {
-            console.log('Placing road at:', edgeKey);
-            emitGame('place_road', {
-                name: viewState.identity.name,
-                edge: edgeKey
-            });
-        }
-    } else if (viewState.selectedBuilding === 'city') {
-        // Find nearest vertex to upgrade to city
-        const vertexKey = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
-        if (vertexKey) {
-            console.log('Upgrading to city at:', vertexKey);
-            emitGame('upgrade_city', {
-                name: viewState.identity.name,
-                vertex: vertexKey
-            });
-        }
-    } else if (viewState.selectedBuilding === 'knight' || viewState.selectedBuilding === 'city_wall'
-               || viewState.selectedBuilding === 'knight_move') {
-        const vertexKey = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
-        if (vertexKey) {
-            handleCkVertexTap(vertexKey);
-        }
-    }
+    handlePlacementTap(event.clientX, event.clientY);
 }
 
 boardCanvas.addEventListener('pointerdown', (event) => {
@@ -173,6 +121,18 @@ boardCanvas.addEventListener('pointerup', (event) => {
 boardCanvas.addEventListener('pointercancel', () => {
     viewState.pointerDown = null;
 });
+
+// Hover preview. Mouse and pen only: a finger has no hover state to preview
+// into, and following it would draw a ghost under the contact patch for the
+// whole of a drag. The handler only records the position - see updatePlacement.
+boardCanvas.addEventListener('pointermove', (event) => {
+    if (event.pointerType === 'touch') {
+        return;
+    }
+    samplePointer(event.clientX, event.clientY);
+});
+
+boardCanvas.addEventListener('pointerleave', clearHover);
 
 // Zoom and pan. Registered after the tap listeners above on purpose: the
 // renderer clears its `panning` flag on pointerup, and the tap handler has to

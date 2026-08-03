@@ -64,9 +64,15 @@ def browser():
 
 @pytest.fixture(scope="module")
 def table(browser, server):
-    """Two players and one observer, all watching the same game."""
-    alice = Player(browser, server, "Alice")
-    bob = Player(browser, server, "Bob")
+    """Two players and one observer, all watching the same game.
+
+    Both seats play in YOLO mode: a bot clicking through a hundred turns has
+    nothing to gain from confirming each one, and the confirm flow is the
+    default everywhere else — `test_browser_playthrough.py` plays it, and
+    `test_browser_confirm_placement.py` is about nothing else.
+    """
+    alice = Player(browser, server, "Alice", yolo=True)
+    bob = Player(browser, server, "Bob", yolo=True)
     watcher = Player(browser, server, "Watcher")
     alice.join()
     bob.join()
@@ -151,6 +157,19 @@ class TestGameSetup:
         for player in (alice, bob, watcher):
             player.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
         watcher.shot("02-observer-sees-the-board")
+
+    def test_both_bots_really_are_in_yolo_mode(self, table):
+        """The preference is written to localStorage before the page loads, so
+        a typo there would silently put this suite back on the confirm path -
+        every placement waiting for a control that never appears."""
+        alice, bob, watcher = table
+        for player in (alice, bob):
+            assert player.page.is_checked("#yolo-mode-toggle"), (
+                f"{player.name} is not in YOLO mode"
+            )
+        assert not watcher.page.is_checked("#yolo-mode-toggle"), (
+            "YOLO mode leaked into a tab that did not ask for it"
+        )
 
     def test_the_chosen_rules_actually_reached_the_engine(self, table):
         """A picker that displays a value the engine ignored is worse than no

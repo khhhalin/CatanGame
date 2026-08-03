@@ -165,6 +165,27 @@
                             <span id="free-roads-text">Free Roads: 2 remaining</span>
                         </div>
                     </div>
+                    <!-- Raised where a click landed, over the board and never
+                         in flow above it: anything that took a row of its own
+                         would resize the drawing buffer and move the camera
+                         under the very click it is asking about. placement.js
+                         positions it; the ✓ and ✗ are real buttons so they can
+                         be tabbed to and named for a screen reader. -->
+                    <div id="placement-confirm" class="placement-confirm hidden"
+                         role="group" aria-label="Confirm placement">
+                        <button type="button" id="placement-confirm-yes"
+                                class="placement-confirm-btn confirm-yes"
+                                aria-label="Confirm placement"
+                                title="Confirm placement (Enter)">
+                            <span aria-hidden="true">✓</span>
+                        </button>
+                        <button type="button" id="placement-confirm-no"
+                                class="placement-confirm-btn confirm-no"
+                                aria-label="Cancel placement"
+                                title="Cancel placement (Escape)">
+                            <span aria-hidden="true">✗</span>
+                        </button>
+                    </div>
                     <!-- The canvas is keyboard-zoomable (+ - 0, arrows); these
                          are the visible affordance for the same thing. -->
                     <div class="board-controls">
@@ -195,6 +216,16 @@
                     <div class="console-group turn-group">
                         <button id="next-turn-btn">Next Turn</button>
                         <button id="end-game-btn">End Game</button>
+                    </div>
+                    <!-- Personal, this browser only: it changes nothing anyone
+                         else can see, so it is not a house rule and never
+                         reaches the server. -->
+                    <div class="console-group option-group">
+                        <label class="yolo-toggle" for="yolo-mode-toggle"
+                               title="YOLO mode: place on click, with no ✓/✗ confirmation. Personal setting, this browser only.">
+                            <input type="checkbox" id="yolo-mode-toggle">
+                            <span>YOLO</span>
+                        </label>
                     </div>
                 </div>
             </div>

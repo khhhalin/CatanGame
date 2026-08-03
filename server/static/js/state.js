@@ -39,6 +39,13 @@ export const viewState = {
     // survive between them.
     knightMoveFrom: null,
 
+    // What the pointer is over, and what a click has offered up for a ✓.
+    // Both are `{kind, key, blocked}` or null. `sample` is the raw pointer
+    // position, written by pointermove and consumed by the render loop - doing
+    // the hit test in the handler would run it far more often than the display
+    // can show the result.
+    placement: { hover: null, pending: null, sample: null },
+
     // The gesture in progress on the board, used to tell a tap from a pan.
     pointerDown: null,
 

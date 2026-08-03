@@ -1,0 +1,528 @@
+// Hover, then confirm: the two steps between "I am pointing at that spot" and
+// "put a piece there".
+//
+// Every placement in the game - settlement, road, city, knight, knight move,
+// city wall and the robber - goes through here. A click no longer sends
+// anything; it pins a ghost and offers a ✓ and an ✗ over the board. Only ✓
+// emits, and it emits exactly what the click used to.
+//
+// The one escape hatch is YOLO mode: a personal, per-browser preference that
+// puts the click back in charge. It is deliberately not a house rule - it
+// changes nothing anyone else can see, so it never goes near the server or the
+// rules registry, and it lives in localStorage where the rest of the table
+// cannot reach it.
+
+import { markDirty } from './board.js';
+import { ckEnabled, handleCkVertexTap } from './cities-knights.js';
+import { boardCanvas, gameBoard, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
+import { emitGame } from './socket.js';
+import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
+
+// Personal preference, so a name that cannot collide with a table setting.
+const YOLO_STORAGE_KEY = 'catan.yoloMode';
+
+// Confirming must never move the board, so the control is an overlay pinned
+// over the canvas. These keep it clear of the target it describes and inside
+// the board box, which clips.
+const CONFIRM_OFFSET_Y = 34;
+const CONFIRM_MARGIN = 6;
+
+let yoloMode = readYoloPreference();
+
+/**
+ * Read the stored preference. Off unless it says otherwise: confirming is the
+ * default, and a browser with storage denied gets the safe half of that.
+ *
+ * @returns {boolean}
+ */
+function readYoloPreference() {
+    try {
+        return window.localStorage.getItem(YOLO_STORAGE_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Remember the preference for this browser.
+ *
+ * @param {boolean} enabled - Whether clicks should place immediately
+ */
+function writeYoloPreference(enabled) {
+    try {
+        window.localStorage.setItem(YOLO_STORAGE_KEY, enabled ? '1' : '0');
+    } catch {
+        // Private mode or storage disabled: the setting still applies to this
+        // page, it just will not outlive it.
+    }
+}
+
+/**
+ * What a click on the board would be an attempt to place right now, or null.
+ *
+ * The robber is the odd one out: there is no button to arm it, the server
+ * simply says a 7 is outstanding, so the mode is that flag.
+ *
+ * @returns {string|null} - Placement kind
+ */
+function currentPlacementKind() {
+    if (!getBoard() || !isMyTurn()) {
+        return null;
+    }
+    if (mustMoveRobber()) {
+        return 'robber';
+    }
+    if (!viewState.selectedBuilding) {
+        return null;
+    }
+    // Setup only accepts the piece the server is asking for next
+    if (getGamePhase() === 'setup'
+        && viewState.selectedBuilding !== (getBoard().setup_action || 'settlement')) {
+        return null;
+    }
+    return viewState.selectedBuilding;
+}
+
+/**
+ * The board key a pointer at this client position would snap to, or null.
+ *
+ * @param {string} kind - Placement kind
+ * @param {number} clientX - Pointer clientX
+ * @param {number} clientY - Pointer clientY
+ * @returns {string|null} - Board key
+ */
+function snapToTarget(kind, clientX, clientY) {
+    const board = getBoard();
+    const position = window.BoardRenderer.clientToBoard(boardCanvas, clientX, clientY);
+    if (kind === 'robber') {
+        return window.BoardRenderer.findNearestHex(board, position.x, position.y);
+    }
+    if (kind === 'road') {
+        return window.BoardRenderer.findNearestEdge(board, position.x, position.y);
+    }
+    return window.BoardRenderer.findNearestVertex(board, position.x, position.y);
+}
+
+// --------------------------------------------------------------- legality
+//
+// A client-side copy of the rules, and only ever a copy: the server checks all
+// of it again and its answer is what the board is drawn from. It exists so a
+// player can see "not allowed" before the round trip, so it errs towards
+// permissive - a ghost that says "blocked" where the server would have agreed
+// is a lie the player cannot argue with.
+
+/**
+ * Every knight on the board, whoever owns it, keyed by vertex.
+ *
+ * @returns {object} - {vertexKey: {owner, knight}}
+ */
+function knightsByVertex() {
+    const knights = {};
+    const owners = getBoard()?.cities_knights?.knights || {};
+    for (const [owner, list] of Object.entries(owners)) {
+        for (const knight of list || []) {
+            knights[knight.vertex] = { owner, knight };
+        }
+    }
+    return knights;
+}
+
+/**
+ * Whether this vertex has a building on one of its neighbours - Catan's
+ * distance rule, which applies whoever owns the neighbour.
+ */
+function respectsDistanceRule(board, vertexKey) {
+    const vertex = board.vertices[vertexKey];
+    return !(vertex.neighbors.vertices || [])
+        .some(neighbour => board.vertices[neighbour]?.building);
+}
+
+function touchesOwnRoad(board, vertexKey, me) {
+    return (board.vertices[vertexKey].neighbors.edges || [])
+        .some(edgeKey => board.edges[edgeKey]?.road?.player === me);
+}
+
+/**
+ * Whether a road here would touch the player's own network - their roads and
+ * their buildings both, as the engine has it.
+ */
+function roadConnects(board, edgeKey, me) {
+    const ends = board.edges[edgeKey].neighbors.vertices || [];
+    return ends.some(vertexKey => {
+        const vertex = board.vertices[vertexKey];
+        if (!vertex) {
+            return false;
+        }
+        if (vertex.building?.player === me) {
+            return true;
+        }
+        return (vertex.neighbors.edges || []).some(
+            other => other !== edgeKey && board.edges[other]?.road?.player === me
+        );
+    });
+}
+
+/**
+ * Whether the server would refuse this placement, as far as the client can
+ * tell.
+ *
+ * @param {string} kind - Placement kind
+ * @param {string} key - Board key the pointer snapped to
+ * @returns {boolean} - True when the placement is known to be illegal
+ */
+function isBlocked(kind, key) {
+    const board = getBoard();
+    const me = viewState.identity.name;
+    const inSetup = getGamePhase() === 'setup';
+
+    if (kind === 'robber') {
+        return board.hexes[key]?.type === 'ocean';
+    }
+
+    if (kind === 'road') {
+        if (board.edges[key]?.road) {
+            return true;
+        }
+        // The setup road must touch the settlement just placed, and which one
+        // that was is not in the payload. Own buildings is the closest the
+        // client can get without guessing.
+        return inSetup
+            ? !(board.edges[key].neighbors.vertices || [])
+                .some(vertexKey => board.vertices[vertexKey]?.building?.player === me)
+            : !roadConnects(board, key, me);
+    }
+
+    const vertex = board.vertices[key];
+    if (!vertex) {
+        return true;
+    }
+
+    if (kind === 'settlement') {
+        if (vertex.building || !respectsDistanceRule(board, key)) {
+            return true;
+        }
+        return !inSetup && !touchesOwnRoad(board, key, me);
+    }
+
+    if (kind === 'city') {
+        return vertex.building?.player !== me || vertex.building?.type !== 'settlement';
+    }
+
+    if (!ckEnabled()) {
+        return true;
+    }
+
+    const standing = knightsByVertex();
+
+    if (kind === 'city_wall') {
+        return vertex.building?.player !== me || vertex.building?.type !== 'city';
+    }
+
+    if (kind === 'knight') {
+        return Boolean(vertex.building) || Boolean(standing[key])
+            || !touchesOwnRoad(board, key, me);
+    }
+
+    if (kind === 'knight_move') {
+        // First tap picks the knight up, second puts it down, so which one is
+        // being previewed depends on whether an origin is already held.
+        if (!viewState.knightMoveFrom) {
+            return standing[key]?.owner !== me || !standing[key]?.knight.can_act;
+        }
+        return Boolean(vertex.building) || Boolean(standing[key]);
+    }
+
+    return false;
+}
+
+// ----------------------------------------------------------------- hovering
+
+/**
+ * Record where the pointer is, for the render loop to hit-test.
+ *
+ * Bookkeeping only: pointermove fires far more often than the display
+ * refreshes, and the snap and the redraw both belong to a frame.
+ *
+ * @param {number} clientX - Pointer clientX
+ * @param {number} clientY - Pointer clientY
+ */
+export function samplePointer(clientX, clientY) {
+    viewState.placement.sample = { x: clientX, y: clientY };
+}
+
+/**
+ * Forget where the pointer was - the cursor left the board, or a gesture began.
+ */
+export function clearHover() {
+    viewState.placement.sample = null;
+    if (viewState.placement.hover) {
+        viewState.placement.hover = null;
+        markDirty();
+    }
+}
+
+/**
+ * The ghost to draw this frame: the pinned selection if there is one, the
+ * hovered target otherwise.
+ *
+ * @returns {object|null} - {kind, key, blocked, color}
+ */
+export function currentPreview() {
+    const target = viewState.placement.pending || viewState.placement.hover;
+    if (!target) {
+        return null;
+    }
+    const mine = getBoard()?.players?.find(player => player.name === viewState.identity.name);
+    return { ...target, color: mine?.color || null };
+}
+
+/**
+ * Re-derive the hover ghost, retire a stale selection, and keep the confirm
+ * control over its target. Called once per frame from the render loop.
+ */
+export function updatePlacement() {
+    const kind = currentPlacementKind();
+
+    // A turn change, a piece that landed, or a disarmed button: whatever the
+    // selection was for is gone, so it must not stay pinned to the board.
+    if (viewState.placement.pending && viewState.placement.pending.kind !== kind) {
+        viewState.placement.pending = null;
+        markDirty();
+    }
+
+    updateHover(kind);
+    syncConfirmControl();
+}
+
+/**
+ * Recompute the hovered target from the last pointer sample.
+ * Redraws only when the snapped target actually changed - a pointer crossing a
+ * hex fires hundreds of moves and means one new ghost.
+ *
+ * @param {string|null} kind - Placement kind currently armed
+ */
+function updateHover(kind) {
+    const sample = viewState.placement.sample;
+    const previous = viewState.placement.hover;
+
+    if (!kind || !sample || !getBoard()) {
+        if (previous) {
+            viewState.placement.hover = null;
+            markDirty();
+        }
+        return;
+    }
+
+    const key = snapToTarget(kind, sample.x, sample.y);
+    const next = key ? { kind, key, blocked: isBlocked(kind, key) } : null;
+
+    const same = Boolean(next) === Boolean(previous)
+        && (!next || (next.key === previous.key && next.kind === previous.kind
+                      && next.blocked === previous.blocked));
+    if (same) {
+        return;
+    }
+
+    viewState.placement.hover = next;
+    markDirty();
+}
+
+// -------------------------------------------------------------- confirming
+
+/**
+ * Handle a tap on the board: place it outright in YOLO mode, otherwise pin the
+ * target and ask.
+ *
+ * @param {number} clientX - Pointer clientX of the tap
+ * @param {number} clientY - Pointer clientY of the tap
+ * @returns {boolean} - Whether the tap was a placement attempt at all
+ */
+export function handlePlacementTap(clientX, clientY) {
+    const kind = currentPlacementKind();
+    if (!kind) {
+        return false;
+    }
+
+    const key = snapToTarget(kind, clientX, clientY);
+    if (!key) {
+        return false;
+    }
+
+    // Picking the knight up is a selection, not a placement: nothing is sent
+    // and there is nothing to undo, so there is nothing to confirm either.
+    if (kind === 'knight_move' && !viewState.knightMoveFrom) {
+        handleCkVertexTap(key);
+        markDirty();
+        return true;
+    }
+
+    if (yoloMode) {
+        commit({ kind, key });
+        return true;
+    }
+
+    // Aiming somewhere else with a confirmation up moves the selection. It
+    // must not commit the old one - a click is never a ✓.
+    viewState.placement.pending = { kind, key, blocked: isBlocked(kind, key) };
+    markDirty();
+    return true;
+}
+
+/**
+ * Send the placement. This is the emit the click used to do, unchanged.
+ *
+ * @param {object} target - {kind, key}
+ */
+function commit(target) {
+    const name = viewState.identity.name;
+
+    if (target.kind === 'robber') {
+        emitGame('move_robber', { name, hex: target.key });
+    } else if (target.kind === 'settlement') {
+        emitGame('place_settlement', { name, vertex: target.key });
+    } else if (target.kind === 'road') {
+        emitGame('place_road', { name, edge: target.key });
+    } else if (target.kind === 'city') {
+        emitGame('upgrade_city', { name, vertex: target.key });
+    } else {
+        handleCkVertexTap(target.key);
+    }
+
+    viewState.placement.pending = null;
+    markDirty();
+}
+
+/**
+ * Commit whatever is pinned, if anything.
+ *
+ * @returns {boolean} - Whether there was something to confirm
+ */
+export function confirmPending() {
+    const pending = viewState.placement.pending;
+    if (!pending) {
+        return false;
+    }
+    commit(pending);
+    return true;
+}
+
+/**
+ * Drop the selection and leave the build mode armed, so the next click picks
+ * again rather than the player having to re-arm the button.
+ *
+ * @returns {boolean} - Whether there was something to cancel
+ */
+export function cancelPending() {
+    if (!viewState.placement.pending) {
+        return false;
+    }
+    viewState.placement.pending = null;
+    markDirty();
+    return true;
+}
+
+/**
+ * Show, hide and position the ✓/✗ control.
+ *
+ * It is absolutely positioned inside the board box and never in flow: an
+ * element that took a row of its own would resize the canvas and move the
+ * camera under the very click it is asking about.
+ */
+function syncConfirmControl() {
+    if (!placementConfirm) {
+        return;
+    }
+
+    const pending = viewState.placement.pending;
+    if (!pending) {
+        placementConfirm.classList.add('hidden');
+        return;
+    }
+
+    const point = anchorFor(pending);
+    if (!point) {
+        placementConfirm.classList.add('hidden');
+        return;
+    }
+
+    const box = gameBoard.getBoundingClientRect();
+    const width = placementConfirm.offsetWidth || 72;
+    const height = placementConfirm.offsetHeight || 32;
+    const left = Math.min(
+        Math.max(point.x - box.left, width / 2 + CONFIRM_MARGIN),
+        box.width - width / 2 - CONFIRM_MARGIN
+    );
+    // Above the target by default; below it when there is no room above. The
+    // element is centred on `left` by a CSS transform, so only `top` is a real
+    // edge here.
+    const above = point.y - box.top - CONFIRM_OFFSET_Y - height;
+    const top = above < CONFIRM_MARGIN ? point.y - box.top + CONFIRM_OFFSET_Y : above;
+
+    placementConfirm.style.left = `${Math.round(left)}px`;
+    placementConfirm.style.top = `${Math.round(top)}px`;
+    placementConfirm.classList.remove('hidden');
+}
+
+/**
+ * Where on screen the pinned target sits.
+ *
+ * @param {object} pending - {kind, key}
+ * @returns {object|null} - {x, y} in client coordinates
+ */
+function anchorFor(pending) {
+    const layout = window.BoardRenderer.computeLayout(getBoard());
+    let position = null;
+    if (pending.kind === 'robber') {
+        position = layout.hexPositions[pending.key];
+    } else if (pending.kind === 'road') {
+        const edge = layout.edgePositions[pending.key];
+        position = edge ? { x: edge.centerX, y: edge.centerY } : null;
+    } else {
+        position = layout.vertexPositions[pending.key];
+    }
+    if (!position) {
+        return null;
+    }
+    return window.BoardRenderer.boardToClient(
+        boardCanvas, position.x + layout.offsetX, position.y + layout.offsetY
+    );
+}
+
+placementConfirmYes?.addEventListener('click', () => {
+    confirmPending();
+});
+
+placementConfirmNo?.addEventListener('click', () => {
+    cancelPending();
+});
+
+// Enter and Escape reach the whole document so they work wherever the focus
+// landed - the canvas, the ✓, or nothing at all. Typing in the chat box is the
+// one place Enter means something else.
+document.addEventListener('keydown', (event) => {
+    if (!viewState.placement.pending) {
+        return;
+    }
+    const typing = event.target instanceof HTMLElement
+        && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName);
+
+    if (event.key === 'Escape' && cancelPending()) {
+        event.preventDefault();
+        return;
+    }
+    if (event.key === 'Enter' && !typing && confirmPending()) {
+        event.preventDefault();
+    }
+});
+
+if (yoloToggle) {
+    yoloToggle.checked = yoloMode;
+    yoloToggle.addEventListener('change', () => {
+        yoloMode = yoloToggle.checked;
+        writeYoloPreference(yoloMode);
+        // Turning it on mid-selection is an answer to the question on screen
+        if (yoloMode) {
+            confirmPending();
+        }
+    });
+}

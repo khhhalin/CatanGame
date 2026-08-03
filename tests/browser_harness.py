@@ -97,18 +97,34 @@ def stop_server(proc):
         proc.kill()
 
 
+# Personal, per-browser preference: a click places outright instead of raising
+# a ✓/✗. It is written straight into localStorage rather than clicked, so it is
+# already on for the very first placement a tab makes.
+YOLO_STORAGE_KEY = "catan.yoloMode"
+
+
 class Player:
     """One browser tab, with its console errors collected."""
 
-    def __init__(self, browser, url, name, viewport=None):
+    def __init__(self, browser, url, name, viewport=None, yolo=False):
         self.name = name
         self.errors = []
+        # Every helper below has to know which of the two flows this tab is on:
+        # waiting for a confirmation that YOLO mode will never raise is a
+        # timeout per placement, and a whole game of them is minutes.
+        self.yolo = yolo
         size = viewport or {"width": 1600, "height": 1000}
         options = {"viewport": size}
         if RECORD_VIDEO:
             options["record_video_dir"] = os.path.join(VIDEO_DIR, name)
             options["record_video_size"] = size
         context = browser.new_context(**options)
+        if yolo:
+            # A statement, not a function expression: an init script is run as
+            # source, so an arrow function here would only be defined.
+            context.add_init_script(
+                f"window.localStorage.setItem('{YOLO_STORAGE_KEY}', '1');"
+            )
         self.page = context.new_page()
         self.page.on("console", self._console)
         self.page.on("pageerror", lambda e: self.errors.append(f"pageerror: {e}"))
@@ -244,6 +260,63 @@ def first_clickable(player, kind, keys):
         if would_select(player, kind, key) == key:
             return key
     return None
+
+
+# --- The confirmation a click raises -------------------------------------
+#
+# A click selects; it no longer places. Every helper below drives the ✓ the
+# way a player does, because that is now the default experience — a suite that
+# skipped it would be testing a path only YOLO players ever see.
+
+
+def confirm_placement(player, timeout=3000):
+    """Press ✓ on the pending placement. False if nothing was pending."""
+    if player.yolo:
+        return False
+    try:
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=timeout)
+    except PlaywrightTimeout:
+        return False
+    player.page.click("#placement-confirm-yes")
+    return True
+
+
+def cancel_placement(player, timeout=3000):
+    """Press ✗ on the pending placement. False if nothing was pending."""
+    if player.yolo:
+        return False
+    try:
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=timeout)
+    except PlaywrightTimeout:
+        return False
+    player.page.click("#placement-confirm-no")
+    return True
+
+
+def confirm_is_showing(player):
+    return player.page.is_visible("#placement-confirm:not(.hidden)")
+
+
+def set_yolo_mode(player, enabled):
+    """Flip YOLO mode through the console toggle, as a player would."""
+    player.page.set_checked("#yolo-mode-toggle", enabled)
+    player.yolo = enabled
+
+
+def client_point(player, kind, key):
+    """Where on screen a vertex, edge or hex is, right now."""
+    layout = player.page.evaluate(_LAYOUT)
+    board_x, board_y = _board_point(player, kind, key)
+    return player.page.evaluate(
+        _TO_CLIENT, [board_x, board_y, layout["offsetX"], layout["offsetY"]]
+    )
+
+
+def hover_target(player, kind, key):
+    """Rest the cursor over a target, which is what raises the hover ghost."""
+    point = client_point(player, kind, key)
+    player.page.mouse.move(point["x"], point["y"])
+    return point
 
 
 def click_vertex(player, vertex_key):
@@ -395,6 +468,8 @@ def resolve_robber(player):
 
     for target in candidates[:6]:
         click_hex(player, target)
+        # The click only picked the hex; the robber moves on ✓.
+        confirm_placement(player)
         try:
             player.page.wait_for_function(
                 "() => window.__catanDebug.getBoard().must_move_robber === false",
@@ -475,6 +550,7 @@ def build_road(player, candidates):
     if not edge_key:
         raise AssertionError(f"no clickable road among {len(candidates)} candidates")
     click_edge(player, edge_key)
+    confirm_placement(player)
     _wait_for_new_piece(player, 'road', before)
     return edge_key
 
@@ -487,6 +563,7 @@ def build_settlement(player, candidates):
     if not vertex_key:
         raise AssertionError(f"no clickable vertex among {len(candidates)} candidates")
     click_vertex(player, vertex_key)
+    confirm_placement(player)
     _wait_for_new_piece(player, 'building', before)
     return vertex_key
 
@@ -513,6 +590,7 @@ def build_city(player, candidates):
         player.name,
     )
     click_vertex(player, vertex_key)
+    confirm_placement(player)
     player.page.wait_for_function(
         "([owner, before]) => Object.values(window.__catanDebug.getBoard().vertices)"
         ".filter(v => (v.building || {}).player === owner"

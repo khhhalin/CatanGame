@@ -26,6 +26,12 @@ const BOARD_CONFIG = {
     }
 };
 
+// The placement ghost. Fallback colour only: the preview normally carries the
+// acting player's own colour, which is what makes "that would be mine" read.
+const GHOST_ALLOWED_COLOR = '#ecf0f1';
+const GHOST_BLOCKED_COLOR = '#e74c3c';
+const GHOST_RING_RADIUS = 14;
+
 // Cache of the last computed layout, keyed by board data identity.
 // This is a memo of a pure computation, not state that drawing writes to.
 let lastLayoutBoardData = null;
@@ -543,14 +549,158 @@ function clientToBoard(canvas, clientX, clientY) {
 }
 
 /**
+ * Convert board drawing coordinates back into client (viewport) position.
+ * The exact inverse of clientToBoard, which is what lets an HTML overlay be
+ * pinned to a vertex, edge or hex without the overlay knowing the camera.
+ *
+ * @param {HTMLCanvasElement} canvas - The board canvas
+ * @param {number} boardX - X in drawing coordinates
+ * @param {number} boardY - Y in drawing coordinates
+ * @returns {object} - {x, y} in client coordinates
+ */
+function boardToClient(canvas, boardX, boardY) {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height || !canvas.width || !canvas.height) {
+        return { x: rect.left, y: rect.top };
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssX = boardX * camera.scale + camera.x;
+    const cssY = boardY * camera.scale + camera.y;
+    return {
+        x: rect.left + cssX * dpr * rect.width / canvas.width,
+        y: rect.top + cssY * dpr * rect.height / canvas.height
+    };
+}
+
+/**
+ * Draw the translucent piece a player is about to commit to.
+ *
+ * The preview is passed in per frame rather than stored here: drawing that
+ * owns state makes the picture depend on the order the draw calls ran.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} layout - Layout from getLayout
+ * @param {object} preview - {kind, key, blocked, color}
+ */
+function drawGhost(ctx, layout, preview) {
+    const { vertexPositions, edgePositions, hexPositions } = layout;
+    // Blocked is a different *shape* as well as a different colour: a player
+    // who cannot tell red from green still has to be able to tell "not allowed"
+    // from "not a target".
+    const color = preview.blocked ? GHOST_BLOCKED_COLOR : (preview.color || GHOST_ALLOWED_COLOR);
+
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+
+    // A dashed ring around the target, whatever the piece is. The piece art is
+    // small and half-transparent; the ring is what says "this spot, not the
+    // one next to it" at a glance.
+    if (preview.kind !== 'robber') {
+        const centre = preview.kind === 'road'
+            ? edgePositions[preview.key]
+            : vertexPositions[preview.key];
+        if (centre) {
+            ctx.save();
+            ctx.globalAlpha = 0.9;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(
+                centre.centerX ?? centre.x, centre.centerY ?? centre.y,
+                GHOST_RING_RADIUS, 0, Math.PI * 2
+            );
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    if (preview.kind === 'road') {
+        const pos = edgePositions[preview.key];
+        if (pos) {
+            ctx.setLineDash([]);
+            drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
+            ctx.setLineDash([5, 4]);
+            markIfBlocked(ctx, preview, pos.centerX, pos.centerY);
+        }
+    } else if (preview.kind === 'robber') {
+        const pos = hexPositions[preview.key];
+        if (pos) {
+            const radius = BOARD_CONFIG.hexRadius - 2;
+            ctx.beginPath();
+            for (let corner = 0; corner < 6; corner += 1) {
+                const angle = Math.PI / 3 * corner - Math.PI / 6;
+                const x = pos.x + radius * Math.cos(angle);
+                const y = pos.y + radius * Math.sin(angle);
+                if (corner === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+            ctx.globalAlpha = 0.3;
+            ctx.fill();
+            ctx.globalAlpha = 0.85;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            markIfBlocked(ctx, preview, pos.x, pos.y);
+        }
+    } else {
+        const pos = vertexPositions[preview.key];
+        if (pos) {
+            if (preview.kind === 'city') {
+                drawCity(ctx, pos.x, pos.y, color);
+            } else if (preview.kind === 'settlement') {
+                drawSettlement(ctx, pos.x, pos.y, color);
+            } else {
+                // Knights and walls have no board art of their own yet, so a
+                // ring says "here" without claiming to be a piece.
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 9, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+            markIfBlocked(ctx, preview, pos.x, pos.y);
+        }
+    }
+
+    ctx.restore();
+}
+
+/**
+ * Strike a blocked ghost through, so illegal reads as illegal without colour.
+ */
+function markIfBlocked(ctx, preview, x, y) {
+    if (!preview.blocked) {
+        return;
+    }
+    const arm = 11;
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = GHOST_BLOCKED_COLOR;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - arm, y - arm);
+    ctx.lineTo(x + arm, y + arm);
+    ctx.moveTo(x + arm, y - arm);
+    ctx.lineTo(x - arm, y + arm);
+    ctx.stroke();
+}
+
+/**
  * Render the Catan board on a canvas.
  *
  * @param {object} boardData - Board data from server
  * @param {string} canvasId - ID of the canvas element
  * @param {number|null} highlightNumber - Optional number to highlight on hexes
+ * @param {object|null} preview - Placement ghost {kind, key, blocked, color}
  * @returns {object} - Object with canvas and position data for click detection
  */
-function renderBoard(boardData, canvasId, highlightNumber = null) {
+function renderBoard(boardData, canvasId, highlightNumber = null, preview = null) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
         console.error('Canvas not found:', canvasId);
@@ -573,7 +723,8 @@ function renderBoard(boardData, canvasId, highlightNumber = null) {
         }
     }
 
-    const { hexPositions, vertexPositions, edgePositions, offsetX, offsetY, width, height } = getLayout(boardData);
+    const layout = getLayout(boardData);
+    const { hexPositions, vertexPositions, edgePositions, offsetX, offsetY, width, height } = layout;
     const hexKeys = Object.keys(hexes);
 
     // The canvas fills its container; the camera decides which part of the
@@ -670,6 +821,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null) {
                 drawCity(ctx, pos.x, pos.y, playerColor);
             }
         }
+    }
+
+    // Last, so the ghost is never hidden under a piece already on the board
+    if (preview && preview.key) {
+        drawGhost(ctx, layout, preview);
     }
 
     ctx.restore();
@@ -1015,6 +1171,7 @@ window.BoardRenderer = {
     render: renderBoard,
     computeLayout: computeLayout,
     clientToBoard: clientToBoard,
+    boardToClient: boardToClient,
     findNearestVertex: findNearestVertex,
     findNearestEdge: findNearestEdge,
     findNearestHex: findNearestHex,

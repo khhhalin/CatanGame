@@ -62,6 +62,14 @@ export const robberIndicator = document.getElementById('robber-indicator');
 export const devDeckRemaining = document.getElementById('dev-deck-remaining');
 export const boardCanvas = document.getElementById('board-canvas');
 
+// The ✓/✗ a click raises before a piece is placed, and the personal setting
+// that skips it. All three overlay or sit beside the board without ever being
+// in flow above it.
+export const placementConfirm = document.getElementById('placement-confirm');
+export const placementConfirmYes = document.getElementById('placement-confirm-yes');
+export const placementConfirmNo = document.getElementById('placement-confirm-no');
+export const yoloToggle = document.getElementById('yolo-mode-toggle');
+
 // Cities & Knights. These panels exist in the template but stay hidden unless
 // the running game has the expansion switched on.
 export const barbarianPanel = document.getElementById('barbarian-panel');
