@@ -9,13 +9,16 @@ const BOARD_CONFIG = {
     edgeRadius: 3,       // Not used currently, kept for reference
     clickRadius: 15,     // Pixels to detect clicks on vertices/edges
     colors: {
+        // Fallbacks only. The live values come from the CSS custom properties
+        // read in readPalette(), so the board follows the page's theme; these
+        // are what is drawn if a token is missing or the sheet has not loaded.
         ocean: '#1a5276',
-        desert: '#f4d03f',
-        ore: '#7f8c8d',
-        wheat: '#f39c12',
-        sheep: '#27ae60',
-        brick: '#c0392b',
-        wood: '#8b4513',
+        desert: '#e6d9bb',
+        ore: '#8a9bb0',
+        wheat: '#e0b64a',
+        sheep: '#8fbf4a',
+        brick: '#c9663a',
+        wood: '#3f8f5a',
         highlight: 'rgba(231, 76, 60, 0.5)',
         border: '#2c3e50',
         text: '#ecf0f1',
@@ -25,6 +28,67 @@ const BOARD_CONFIG = {
         edgeDefault: 'red'
     }
 };
+
+// The terrain fills and the harbour badges come from the stylesheet. The board
+// is a canvas, so nothing here inherits a colour: each one has to be read.
+const PALETTE_TOKENS = {
+    wood: '--terrain-wood',
+    brick: '--terrain-brick',
+    sheep: '--terrain-sheep',
+    wheat: '--terrain-wheat',
+    ore: '--terrain-ore',
+    desert: '--terrain-desert',
+    portWood: '--res-wood',
+    portBrick: '--res-brick',
+    portSheep: '--res-sheep',
+    portWheat: '--res-wheat',
+    portOre: '--res-ore',
+    onPort: '--on-resource',
+    portGeneric: '--info',
+    onGeneric: '--on-status'
+};
+
+const PALETTE_FALLBACKS = {
+    wood: '#3f8f5a', brick: '#c9663a', sheep: '#8fbf4a', wheat: '#e0b64a',
+    ore: '#8a9bb0', desert: '#e6d9bb',
+    portWood: '#2f6b3a', portBrick: '#a4502a', portSheep: '#5c7d26',
+    portWheat: '#8a6800', portOre: '#4d5b6b', onPort: '#ffffff',
+    portGeneric: '#1a5fb4', onGeneric: '#ffffff'
+};
+
+// Reading a custom property forces a style resolve, and this board redraws on
+// every pan frame, so the answer is cached until the theme that produced it
+// changes. Nothing else can change these values without a theme change.
+let palette = null;
+let paletteSignature = '';
+
+/**
+ * The board's colours, as the stylesheet currently defines them.
+ *
+ * @returns {object} - Token name to colour string
+ */
+function readPalette() {
+    const root = document.documentElement;
+    const prefersDark = window.matchMedia
+        && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const signature = `${root.getAttribute('data-theme') || ''}|${prefersDark}`;
+    if (palette && signature === paletteSignature) {
+        return palette;
+    }
+
+    const styles = getComputedStyle(root);
+    const next = {};
+    for (const name in PALETTE_TOKENS) {
+        next[name] = styles.getPropertyValue(PALETTE_TOKENS[name]).trim()
+            || PALETTE_FALLBACKS[name];
+    }
+    // The ocean is deliberately not a token: --board-backdrop is the same dark
+    // in both themes, and a light sea around it reads as a rendering fault.
+    next.ocean = BOARD_CONFIG.colors.ocean;
+    palette = next;
+    paletteSignature = signature;
+    return palette;
+}
 
 // The placement ghost. Fallback colour only: the preview normally carries the
 // acting player's own colour, which is what makes "that would be mine" read.
@@ -79,38 +143,364 @@ function parseKey(key) {
  * @param {boolean} isLand - Whether this is a land hex (not ocean)
  * @param {boolean} isHighlighted - Whether this hex should be highlighted
  */
-function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlighted = false) {
+function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlighted = false,
+                terrain = null) {
+    hexPath(ctx, centerX, centerY, radius);
+
+    // Highlight glow effect
+    if (isHighlighted) {
+        ctx.shadowColor = '#f1c40f';
+        ctx.shadowBlur = 20;
+    }
+
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = isHighlighted ? '#f1c40f' : BOARD_CONFIG.colors.border;
+    ctx.lineWidth = isHighlighted ? 4 : 2;
+    ctx.stroke();
+
+    // Reset shadow
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+
+    if (terrain) {
+        drawTerrainTexture(ctx, centerX, centerY, radius, terrain);
+    }
+
+    if (isLand && number !== null && number !== undefined) {
+        drawNumberToken(ctx, centerX, centerY, number, isHighlighted);
+    }
+}
+
+/**
+ * Trace a pointy-top hexagon, leaving it as the current path.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} centerX - Center x position
+ * @param {number} centerY - Center y position
+ * @param {number} radius - Hex radius
+ */
+function hexPath(ctx, centerX, centerY, radius) {
     ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-        const angle = Math.PI / 3 * i - Math.PI / 6;
+    for (let corner = 0; corner < 6; corner += 1) {
+        const angle = Math.PI / 3 * corner - Math.PI / 6;
         const x = centerX + radius * Math.cos(angle);
         const y = centerY + radius * Math.sin(angle);
-        if (i === 0) {
+        if (corner === 0) {
             ctx.moveTo(x, y);
         } else {
             ctx.lineTo(x, y);
         }
     }
     ctx.closePath();
-    
-    // Highlight glow effect
-    if (isHighlighted) {
-        ctx.shadowColor = '#f1c40f';
-        ctx.shadowBlur = 20;
+}
+
+/* -------------------------------------------------------------------------
+ * Terrain texture
+ *
+ * A wash of small geometric marks plus one resource symbol per tile. Two
+ * rules decide everything here:
+ *
+ *   - The number token stays the most legible thing on a hex. Every mark is
+ *     drawn at a low alpha, and the symbol sits at the top of the tile where
+ *     the token's disc is not, so nothing is ever drawn behind a digit.
+ *   - It has to be cheap. The board is redrawn on every pan and zoom frame,
+ *     so each tile is a handful of straight paths in unit coordinates scaled
+ *     by the radius - no gradients, no patterns, no offscreen canvases, and
+ *     deliberately nothing that animates, which is also why reduced-motion
+ *     needs no special case here.
+ * ---------------------------------------------------------------------- */
+
+// Alpha-blended over the terrain fill, so one pair of inks reads on a pale
+// desert and on a dark forest without either theme needing its own values.
+const TEXTURE_INK = 'rgba(20, 26, 34, 0.15)';
+const TEXTURE_HIGHLIGHT = 'rgba(255, 255, 255, 0.18)';
+const SYMBOL_INK = 'rgba(20, 26, 34, 0.38)';
+
+// Where the resource symbol sits, as a fraction of the hex radius. Above the
+// number token's disc and clear of the robber, which sits bottom-left.
+const SYMBOL_Y = -0.54;
+const SYMBOL_SIZE = 0.26;
+
+/**
+ * Draw the texture and resource symbol for one tile, clipped to its hex.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} cx - Hex centre x
+ * @param {number} cy - Hex centre y
+ * @param {number} radius - Hex radius
+ * @param {string} terrain - Hex type
+ */
+function drawTerrainTexture(ctx, cx, cy, radius, terrain) {
+    const paint = TERRAIN_TEXTURES[terrain];
+    if (!paint) {
+        return;
     }
-    
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.strokeStyle = isHighlighted ? '#f1c40f' : BOARD_CONFIG.colors.border;
-    ctx.lineWidth = isHighlighted ? 4 : 2;
+
+    ctx.save();
+    // Clipped rather than hand-fitted: marks can then be laid out on a simple
+    // grid without every one of them needing to know the hex outline.
+    hexPath(ctx, cx, cy, radius);
+    ctx.clip();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    paint(ctx, cx, cy, radius);
+
+    if (terrain !== 'ocean') {
+        ctx.fillStyle = SYMBOL_INK;
+        ctx.strokeStyle = SYMBOL_INK;
+        drawResourceGlyph(ctx, cx, cy + radius * SYMBOL_Y, radius * SYMBOL_SIZE, terrain);
+    }
+    ctx.restore();
+}
+
+/**
+ * Stroke a polyline given as unit offsets from a hex centre.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} cx - Hex centre x
+ * @param {number} cy - Hex centre y
+ * @param {number} radius - Hex radius
+ * @param {Array<Array<number>>} points - [[ux, uy], ...] in radius units
+ */
+function strokeUnitPath(ctx, cx, cy, radius, points) {
+    ctx.beginPath();
+    points.forEach(([ux, uy], index) => {
+        const x = cx + ux * radius;
+        const y = cy + uy * radius;
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
     ctx.stroke();
-    
-    // Reset shadow
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    
-    if (isLand && number !== null && number !== undefined) {
-        drawNumberToken(ctx, centerX, centerY, number, isHighlighted);
+}
+
+// Conifer positions and heights for the forest, in radius units. Laid out
+// around the token rather than over it.
+const FOREST_TREES = [[-0.58, 0.30, 0.34], [0.58, 0.34, 0.30], [0.0, 0.62, 0.30],
+                      [-0.62, -0.22, 0.26], [0.62, -0.18, 0.26]];
+const BRICK_COURSES = [[0.30, 0.0], [0.52, 0.5], [0.74, 0.0]];
+const MOUNTAIN_RIDGES = [[-0.52, 0.42, 0.42], [0.50, 0.50, 0.36], [0.02, 0.72, 0.30]];
+const FURROWS = [0.26, 0.46, 0.66];
+const TUFTS = [[-0.50, 0.30], [0.48, 0.28], [-0.10, 0.60], [0.60, 0.62], [-0.62, 0.66]];
+const DUNES = [[-0.30, 0.34], [0.36, 0.52], [-0.20, 0.72], [-0.58, 0.12], [0.56, 0.16]];
+const WAVES = [-0.30, 0.10, 0.50];
+
+const TERRAIN_TEXTURES = {
+    wood(ctx, cx, cy, radius) {
+        ctx.strokeStyle = TEXTURE_INK;
+        ctx.fillStyle = TEXTURE_INK;
+        ctx.lineWidth = Math.max(1, radius * 0.03);
+        FOREST_TREES.forEach(([ux, uy, height]) => {
+            drawConifer(ctx, cx + ux * radius, cy + uy * radius, radius * height);
+        });
+    },
+
+    brick(ctx, cx, cy, radius) {
+        // Courses of a wall: every other row shifted half a brick.
+        ctx.fillStyle = TEXTURE_INK;
+        const brickWidth = radius * 0.34;
+        const brickHeight = radius * 0.13;
+        BRICK_COURSES.forEach(([uy, shift]) => {
+            for (let column = -2; column <= 2; column += 1) {
+                const x = cx + (column + shift) * brickWidth * 1.15;
+                ctx.fillRect(x - brickWidth / 2, cy + uy * radius, brickWidth, brickHeight);
+            }
+        });
+    },
+
+    ore(ctx, cx, cy, radius) {
+        ctx.strokeStyle = TEXTURE_INK;
+        ctx.lineWidth = Math.max(1, radius * 0.045);
+        MOUNTAIN_RIDGES.forEach(([ux, uy, width]) => {
+            strokeUnitPath(ctx, cx, cy, radius, [
+                [ux - width, uy], [ux, uy - width * 0.8], [ux + width, uy]
+            ]);
+        });
+    },
+
+    wheat(ctx, cx, cy, radius) {
+        // Furrows. Straight lines, because a field read as anything else at
+        // this size turned into noise behind the token.
+        ctx.strokeStyle = TEXTURE_INK;
+        ctx.lineWidth = Math.max(1, radius * 0.05);
+        FURROWS.forEach(uy => {
+            strokeUnitPath(ctx, cx, cy, radius, [[-0.85, uy], [0.85, uy]]);
+        });
+        ctx.strokeStyle = TEXTURE_HIGHLIGHT;
+        FURROWS.forEach(uy => {
+            strokeUnitPath(ctx, cx, cy, radius, [[-0.85, uy + 0.07], [0.85, uy + 0.07]]);
+        });
+    },
+
+    sheep(ctx, cx, cy, radius) {
+        ctx.fillStyle = TEXTURE_HIGHLIGHT;
+        TUFTS.forEach(([ux, uy]) => {
+            ctx.beginPath();
+            ctx.arc(cx + ux * radius, cy + uy * radius, radius * 0.085, Math.PI, 0);
+            ctx.fill();
+        });
+        ctx.strokeStyle = TEXTURE_INK;
+        ctx.lineWidth = Math.max(1, radius * 0.035);
+        TUFTS.forEach(([ux, uy]) => {
+            strokeUnitPath(ctx, cx, cy, radius,
+                [[ux - 0.10, uy + 0.02], [ux + 0.10, uy + 0.02]]);
+        });
+    },
+
+    desert(ctx, cx, cy, radius) {
+        // Sand: short dashes with a stipple between them. Arcs were tried and
+        // read as a mouth under the sun symbol.
+        ctx.strokeStyle = TEXTURE_INK;
+        ctx.lineWidth = Math.max(1, radius * 0.05);
+        DUNES.forEach(([ux, uy]) => {
+            strokeUnitPath(ctx, cx, cy, radius, [[ux - 0.22, uy], [ux + 0.22, uy]]);
+        });
+        ctx.fillStyle = TEXTURE_INK;
+        DUNES.forEach(([ux, uy]) => {
+            ctx.beginPath();
+            ctx.arc(cx + (ux + 0.34) * radius, cy + (uy - 0.12) * radius, radius * 0.03, 0, Math.PI * 2);
+            ctx.arc(cx + (ux - 0.34) * radius, cy + (uy + 0.12) * radius, radius * 0.03, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    },
+
+    ocean(ctx, cx, cy, radius) {
+        // Barely there on purpose: the sea is a frame, not a subject.
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
+        ctx.lineWidth = Math.max(1, radius * 0.045);
+        WAVES.forEach(uy => {
+            ctx.beginPath();
+            ctx.moveTo(cx - radius * 0.5, cy + uy * radius);
+            ctx.quadraticCurveTo(cx - radius * 0.25, cy + (uy - 0.12) * radius,
+                                 cx, cy + uy * radius);
+            ctx.quadraticCurveTo(cx + radius * 0.25, cy + (uy + 0.12) * radius,
+                                 cx + radius * 0.5, cy + uy * radius);
+            ctx.stroke();
+        });
+    }
+};
+
+/**
+ * A single conifer: a stacked triangle over a trunk.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Base x
+ * @param {number} y - Base y
+ * @param {number} height - Overall height in pixels
+ */
+function drawConifer(ctx, x, y, height) {
+    const half = height * 0.34;
+    ctx.beginPath();
+    ctx.moveTo(x, y - height);
+    ctx.lineTo(x + half, y - height * 0.35);
+    ctx.lineTo(x + half * 0.45, y - height * 0.35);
+    ctx.lineTo(x + half * 0.9, y);
+    ctx.lineTo(x - half * 0.9, y);
+    ctx.lineTo(x - half * 0.45, y - height * 0.35);
+    ctx.lineTo(x - half, y - height * 0.35);
+    ctx.closePath();
+    ctx.fill();
+}
+
+/**
+ * Draw the geometric symbol for one resource, centred on (x, y).
+ *
+ * Shared by the tile texture and the harbour badges on purpose: a harbour is
+ * then labelled in the same vocabulary as the terrain it trades, which is one
+ * shape to learn instead of two. Uses the current fill and stroke styles.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Centre y
+ * @param {number} size - Half-extent in pixels
+ * @param {string} resource - 'wood', 'brick', 'sheep', 'wheat', 'ore' or 'desert'
+ */
+function drawResourceGlyph(ctx, x, y, size, resource) {
+    ctx.lineWidth = Math.max(1, size * 0.22);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (resource === 'wood') {
+        drawConifer(ctx, x, y + size, size * 2);
+        return;
+    }
+
+    if (resource === 'brick') {
+        const width = size * 0.9;
+        const height = size * 0.62;
+        ctx.fillRect(x - width, y, width * 0.92, height);
+        ctx.fillRect(x + width * 0.08, y, width * 0.92, height);
+        ctx.fillRect(x - width * 0.46, y - height * 1.15, width * 0.92, height);
+        return;
+    }
+
+    if (resource === 'ore') {
+        // A cut stone. Deliberately not the five-sided outline this started
+        // as: that silhouette is a knight's shield, and the two appeared
+        // within a hex of each other on the board.
+        ctx.beginPath();
+        ctx.moveTo(x, y - size);
+        ctx.lineTo(x + size * 0.95, y);
+        ctx.lineTo(x, y + size);
+        ctx.lineTo(x - size * 0.95, y);
+        ctx.closePath();
+        ctx.fill();
+        return;
+    }
+
+    if (resource === 'wheat') {
+        // An ear of grain: a stalk with three pairs of grains.
+        ctx.beginPath();
+        ctx.moveTo(x, y + size);
+        ctx.lineTo(x, y - size);
+        for (let step = 0; step < 3; step += 1) {
+            const grainY = y - size + step * size * 0.62;
+            ctx.moveTo(x, grainY + size * 0.34);
+            ctx.lineTo(x - size * 0.62, grainY);
+            ctx.moveTo(x, grainY + size * 0.34);
+            ctx.lineTo(x + size * 0.62, grainY);
+        }
+        ctx.stroke();
+        return;
+    }
+
+    if (resource === 'sheep') {
+        // A sheep in profile: a fleecy body, a head off to one side and two
+        // legs. The head is what keeps it from reading as a bush, which is
+        // what a bare cluster of discs did next to the forest tiles.
+        ctx.beginPath();
+        ctx.arc(x - size * 0.45, y - size * 0.1, size * 0.45, 0, Math.PI * 2);
+        ctx.arc(x + size * 0.15, y - size * 0.1, size * 0.45, 0, Math.PI * 2);
+        ctx.arc(x - size * 0.15, y - size * 0.5, size * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x + size * 0.72, y + size * 0.1, size * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x - size * 0.5, y + size * 0.3);
+        ctx.lineTo(x - size * 0.5, y + size * 0.95);
+        ctx.moveTo(x + size * 0.2, y + size * 0.3);
+        ctx.lineTo(x + size * 0.2, y + size * 0.95);
+        ctx.stroke();
+        return;
+    }
+
+    if (resource === 'desert') {
+        // A sun. Drawn without the dune it once sat over: a disc above a
+        // single arc is a face, and that is all anyone saw.
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.46, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        for (let ray = 0; ray < 8; ray += 1) {
+            const angle = ray * Math.PI / 4;
+            ctx.moveTo(x + Math.cos(angle) * size * 0.68, y + Math.sin(angle) * size * 0.68);
+            ctx.lineTo(x + Math.cos(angle) * size * 0.98, y + Math.sin(angle) * size * 0.98);
+        }
+        ctx.stroke();
     }
 }
 
@@ -125,30 +515,40 @@ function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlig
  */
 function drawNumberToken(ctx, centerX, centerY, number, isHighlighted = false) {
     const tokenRadius = 12;
-    
+
     ctx.beginPath();
     ctx.arc(centerX, centerY, tokenRadius, 0, Math.PI * 2);
+    // A self-contained pair rather than theme tokens: the disc sits on six
+    // different terrain fills, so its contrast has to come from the disc
+    // itself. Near-white under near-black is ~15:1 in either theme.
     ctx.fillStyle = isHighlighted ? '#f1c40f' : BOARD_CONFIG.colors.numberCircle;
     ctx.fill();
     ctx.strokeStyle = isHighlighted ? '#f39c12' : BOARD_CONFIG.colors.border;
     ctx.lineWidth = 1;
     ctx.stroke();
-    
+
     ctx.font = 'bold 14px Arial';
-    ctx.fillStyle = isHighlighted ? '#2c3e50' : BOARD_CONFIG.colors.numberText;
+    // 6 and 8 in red is how the tokens are printed, and it is the one piece of
+    // colour a player reads at a glance. #a52222 on the disc is 5.9:1, so it
+    // is not carrying the information alone either - the digit still says it.
+    const isHot = number === 6 || number === 8;
+    ctx.fillStyle = isHighlighted
+        ? '#2c3e50'
+        : (isHot ? '#a52222' : BOARD_CONFIG.colors.numberText);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(number.toString(), centerX, centerY);
 }
 
 /**
- * Get the color for a hex type.
- * 
+ * Get the color for a hex type, from the page's terrain tokens.
+ *
  * @param {string} hexType - Type of hex (ore, wheat, sheep, brick, wood, desert, ocean)
  * @returns {string} - Hex color code
  */
 function getHexColor(hexType) {
-    return BOARD_CONFIG.colors[hexType] || BOARD_CONFIG.colors.ocean;
+    const colors = readPalette();
+    return colors[hexType] || colors.ocean;
 }
 
 /**
@@ -184,47 +584,99 @@ function drawEdge(ctx, x1, y1, x2, y2) {
 }
 
 /**
- * Draw a port at a vertex position.
- * Port appears as a small harbor icon (anchor shape).
- * 
+ * Draw the harbour on one coastal edge.
+ *
+ * One marker per edge, out in the water it faces, with a line back to each of
+ * the two intersections it serves. Drawing it from `vertex.port` instead - as
+ * this did until harbours moved onto edges - paints the same harbour twice,
+ * once at each end, and tells the player nothing about which side it is on.
+ *
  * @param {CanvasRenderingContext2D} ctx - Canvas context
- * @param {number} x - X position
- * @param {number} y - Y position
+ * @param {object} pos - Edge geometry {x1, y1, x2, y2, centerX, centerY}
  * @param {object} port - Port info {type: "generic"/"resource", resource: string}
+ * @param {object} outward - Unit vector {x, y} pointing from the land to the sea
  */
-function drawPort(ctx, x, y, port) {
-    const size = 10;
-    
-    // Set color based on port type
-    if (port.type === 'generic') {
-        ctx.fillStyle = '#3498db'; // Blue for generic 3:1
-    } else {
-        ctx.fillStyle = '#e67e22'; // Orange for resource-specific 2:1
-    }
-    
-    // Draw anchor shape (circle with cross)
+function drawHarbour(ctx, pos, port, outward) {
+    const colors = readPalette();
+    const resource = port.type === 'resource' ? port.resource : null;
+    const fill = resource
+        ? colors[`port${resource.charAt(0).toUpperCase()}${resource.slice(1)}`]
+        : colors.portGeneric;
+    const ink = resource ? colors.onPort : colors.onGeneric;
+
+    const badgeX = pos.centerX + outward.x * HARBOUR_REACH;
+    const badgeY = pos.centerY + outward.y * HARBOUR_REACH;
+
+    ctx.save();
+
+    // Mooring lines to both ends of the edge, so which side of which
+    // intersection this harbour serves is never a guess.
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(x, y, size/2, 0, Math.PI * 2);
+    ctx.moveTo(pos.x1, pos.y1);
+    ctx.lineTo(badgeX, badgeY);
+    ctx.moveTo(pos.x2, pos.y2);
+    ctx.lineTo(badgeX, badgeY);
+    ctx.stroke();
+
+    // The plank, along the coast it belongs to. This is the part that is
+    // angled to the water's edge; the label above it stays upright, because a
+    // rotated "2:1" on the southern coastline would be upside down.
+    ctx.save();
+    ctx.translate(pos.centerX + outward.x * 5, pos.centerY + outward.y * 5);
+    ctx.rotate(Math.atan2(pos.y2 - pos.y1, pos.x2 - pos.x1));
+    ctx.fillStyle = fill;
+    ctx.fillRect(-11, -2, 22, 4);
+    ctx.restore();
+
+    const width = resource ? 32 : 24;
+    const height = 15;
+    roundedRectPath(ctx, badgeX - width / 2, badgeY - height / 2, width, height, 4);
+    ctx.fillStyle = fill;
     ctx.fill();
-    
-    // Draw inner dot
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Draw resource icon if specific port
-    if (port.type === 'resource' && port.resource) {
-        const resourceIcons = {
-            wood: '🌲',
-            brick: '🧱',
-            sheep: '🐑',
-            wheat: '🌾',
-            ore: '🪨'
-        };
-        ctx.font = '8px Arial';
-        ctx.fillText(resourceIcons[port.resource] || '', x - 5, y + 12);
+    // The badge floats on the open sea, so it carries its own outline rather
+    // than relying on the fill contrasting with whatever is behind it.
+    ctx.strokeStyle = 'rgba(10, 16, 24, 0.75)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = ink;
+    ctx.strokeStyle = ink;
+    if (resource) {
+        drawResourceGlyph(ctx, badgeX - width / 2 + 7, badgeY, 4.5, resource);
     }
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(resource ? '2:1' : '3:1', badgeX + (resource ? 6 : 0), badgeY + 0.5);
+
+    ctx.restore();
+}
+
+// How far out to sea the harbour badge sits, in pixels. Far enough to leave
+// the coastal edge free for a road, close enough to still read as attached.
+const HARBOUR_REACH = 24;
+
+/**
+ * Trace a rounded rectangle, leaving it as the current path.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Left
+ * @param {number} y - Top
+ * @param {number} width - Width
+ * @param {number} height - Height
+ * @param {number} radius - Corner radius
+ */
+function roundedRectPath(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
 }
 
 /**
@@ -266,6 +718,105 @@ function drawCity(ctx, x, y, playerColor) {
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.stroke();
+}
+
+/* -------------------------------------------------------------------------
+ * Knights (Cities & Knights)
+ *
+ * A knight stands on an intersection, which is also where a settlement or a
+ * city stands, so the two cannot both be drawn on the point. The knight moves
+ * off it when the intersection is built on and keeps a leader line back to it,
+ * which is unambiguous in a way that stacking is not.
+ *
+ * Rank and activation are drawn as shape, not only colour: rank is one, two or
+ * three chevrons, and an inactive knight has a grey body inside its owner's
+ * rim where an active one is filled with the owner's colour outright.
+ * ---------------------------------------------------------------------- */
+
+const KNIGHT_WIDTH = 16;
+const KNIGHT_HEIGHT = 19;
+const KNIGHT_OFFSET = 16;       // how far off a built-on vertex a knight steps
+const KNIGHT_INACTIVE_BODY = '#93a1b0';
+const KNIGHT_OUTLINE = '#0e141b';
+
+/**
+ * Draw one knight at a vertex.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} vertexX - Vertex x
+ * @param {number} vertexY - Vertex y
+ * @param {object} knight - {rank, active} from Knight.to_dict()
+ * @param {string} playerColor - Colour of the knight's owner
+ * @param {boolean} shareVertex - Whether a building already stands here
+ */
+function drawKnight(ctx, vertexX, vertexY, knight, playerColor, shareVertex) {
+    const owner = playerColor || '#888888';
+    const x = shareVertex ? vertexX + KNIGHT_OFFSET : vertexX;
+    const y = shareVertex ? vertexY - KNIGHT_OFFSET : vertexY;
+    const active = Boolean(knight.active);
+    const rank = Math.min(3, Math.max(1, knight.rank || 1));
+
+    ctx.save();
+    ctx.lineJoin = 'round';
+
+    if (shareVertex) {
+        ctx.strokeStyle = KNIGHT_OUTLINE;
+        ctx.lineWidth = 1.5;
+        // Started clear of the piece standing here, not at its centre: a
+        // leader drawn from the vertex crosses the building it is pointing
+        // away from, which is the obscuring this offset exists to avoid.
+        ctx.beginPath();
+        ctx.moveTo(vertexX + (x - vertexX) * 0.55, vertexY + (y - vertexY) * 0.55);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+    }
+
+    shieldPath(ctx, x, y);
+    ctx.fillStyle = active ? owner : KNIGHT_INACTIVE_BODY;
+    ctx.fill();
+    // The rim is always the owner's colour, so an inactive knight still says
+    // whose it is; the body is what says whether it can act.
+    ctx.strokeStyle = active ? KNIGHT_OUTLINE : owner;
+    ctx.lineWidth = active ? 1.5 : 3;
+    ctx.stroke();
+
+    // Chevrons: one for basic, two for strong, three for mighty. Drawn in the
+    // colour that contrasts with the body they sit on, not with the theme.
+    ctx.strokeStyle = active ? '#ffffff' : KNIGHT_OUTLINE;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    const pitch = 4.6;
+    const top = y - (rank - 1) * pitch / 2 - 3;
+    for (let index = 0; index < rank; index += 1) {
+        const chevronY = top + index * pitch;
+        ctx.beginPath();
+        ctx.moveTo(x - 4, chevronY + 2);
+        ctx.lineTo(x, chevronY - 1.4);
+        ctx.lineTo(x + 4, chevronY + 2);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+/**
+ * Trace a knight's shield, centred on (x, y).
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Centre y
+ */
+function shieldPath(ctx, x, y) {
+    const halfWidth = KNIGHT_WIDTH / 2;
+    const top = y - KNIGHT_HEIGHT / 2;
+    const bottom = y + KNIGHT_HEIGHT / 2;
+    ctx.beginPath();
+    ctx.moveTo(x - halfWidth, top);
+    ctx.lineTo(x + halfWidth, top);
+    ctx.lineTo(x + halfWidth, y + KNIGHT_HEIGHT * 0.12);
+    ctx.quadraticCurveTo(x + halfWidth * 0.85, bottom, x, bottom);
+    ctx.quadraticCurveTo(x - halfWidth * 0.85, bottom, x - halfWidth, y + KNIGHT_HEIGHT * 0.12);
+    ctx.closePath();
 }
 
 /**
@@ -656,9 +1207,16 @@ function drawGhost(ctx, layout, preview) {
                 drawCity(ctx, pos.x, pos.y, color);
             } else if (preview.kind === 'settlement') {
                 drawSettlement(ctx, pos.x, pos.y, color);
+            } else if (preview.kind === 'knight' || preview.kind === 'knight_move') {
+                ctx.setLineDash([]);
+                shieldPath(ctx, pos.x, pos.y);
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.setLineDash([5, 4]);
             } else {
-                // Knights and walls have no board art of their own yet, so a
-                // ring says "here" without claiming to be a piece.
+                // A city wall has no board art of its own yet, so a ring says
+                // "here" without claiming to be a piece.
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, 9, 0, Math.PI * 2);
                 ctx.fill();
@@ -768,7 +1326,8 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
         const isLand = hex.type !== 'ocean';
         const isHighlighted = highlightNumber !== null && hex.number === highlightNumber;
         
-        drawHex(ctx, pos.x, pos.y, hexRadius - 2, getHexColor(hex.type), hex.number, isLand, isHighlighted);
+        drawHex(ctx, pos.x, pos.y, hexRadius - 2, getHexColor(hex.type), hex.number, isLand,
+                isHighlighted, hex.type);
     }
     
     // Draw robber if present
@@ -798,21 +1357,23 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
         }
     }
 
-    // Draw ports on vertices
-    for (const key in vertices) {
-        const vertex = vertices[key];
-        const pos = vertexPositions[key];
-        
-        if (vertex.port) {
-            drawPort(ctx, pos.x, pos.y, vertex.port);
+    // Harbours belong to coastal edges. `vertex.port` mirrors the same harbour
+    // onto both of its intersections for compatibility, so drawing from there
+    // draws every harbour twice - 18 markers for the 9 in the box.
+    for (const key in edges) {
+        const edge = edges[key];
+        const pos = edgePositions[key];
+
+        if (pos && edge.port) {
+            drawHarbour(ctx, pos, edge.port, seawardFrom(edge, pos, hexPositions));
         }
     }
-    
+
     // Draw buildings on top of roads
     for (const key in vertices) {
         const vertex = vertices[key];
         const pos = vertexPositions[key];
-        
+
         if (vertex.building) {
             const playerColor = playerColors[vertex.building.player] || null;
             if (vertex.building.type === 'settlement') {
@@ -820,6 +1381,21 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
             } else if (vertex.building.type === 'city') {
                 drawCity(ctx, pos.x, pos.y, playerColor);
             }
+        }
+    }
+
+    // Knights last of the pieces: they step off a built-on intersection, so
+    // they have to know what is already standing there.
+    const knightsByPlayer = (boardData.cities_knights || {}).knights || {};
+    for (const owner in knightsByPlayer) {
+        const playerColor = playerColors[owner] || null;
+        for (const knight of knightsByPlayer[owner]) {
+            const pos = vertexPositions[knight.vertex];
+            if (!pos) {
+                continue;
+            }
+            const occupied = Boolean((vertices[knight.vertex] || {}).building);
+            drawKnight(ctx, pos.x, pos.y, knight, playerColor, occupied);
         }
     }
 
@@ -831,6 +1407,42 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     ctx.restore();
 
     return { canvas, hexPositions, vertexPositions };
+}
+
+/**
+ * The direction from the island out to the open water, for a coastal edge.
+ *
+ * A coastal edge lists exactly one hex as a neighbour - the ocean ring carries
+ * no vertices or edges of its own - so the land side is simply the side that
+ * hex is on. The fallback keeps a marker pointing somewhere sane if a payload
+ * ever arrives without the neighbour list.
+ *
+ * @param {object} edge - Edge data from the server
+ * @param {object} pos - Edge geometry from the layout
+ * @param {object} hexPositions - Hex key to {x, y}
+ * @returns {object} - Unit vector {x, y}
+ */
+function seawardFrom(edge, pos, hexPositions) {
+    const landKeys = (edge.neighbors || {}).hexes || [];
+    let sumX = 0;
+    let sumY = 0;
+    let counted = 0;
+    for (const key of landKeys) {
+        const land = hexPositions[key];
+        if (land) {
+            sumX += land.x;
+            sumY += land.y;
+            counted += 1;
+        }
+    }
+    if (!counted) {
+        return { x: 0, y: -1 };
+    }
+
+    const dx = pos.centerX - sumX / counted;
+    const dy = pos.centerY - sumY / counted;
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: dx / length, y: dy / length };
 }
 
 /**
