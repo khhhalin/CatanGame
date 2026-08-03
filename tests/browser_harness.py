@@ -37,10 +37,25 @@ HEADED = os.environ.get("CATAN_TEST_HEADED") == "1"
 SLOW_MO = int(os.environ.get("CATAN_TEST_SLOWMO", "0"))
 RECORD_VIDEO = os.environ.get("CATAN_TEST_VIDEO") == "1"
 
+# The owner plays in Zen, which is Firefox-based, but every suite here has only
+# ever run in Chromium. This switch lets the same suites be pointed at Gecko:
+#   CATAN_TEST_BROWSER=firefox
+# The default stays chromium deliberately - the existing runs are the baseline
+# and must keep behaving exactly as they did.
+BROWSER = os.environ.get("CATAN_TEST_BROWSER", "chromium")
 
-def launch_browser(playwright):
-    """Launch Chromium, honouring the watch-it-play environment switches."""
-    return playwright.chromium.launch(headless=not HEADED, slow_mo=SLOW_MO)
+
+def launch_browser(playwright, browser=None):
+    """Launch the configured engine, honouring the watch-it-play switches.
+
+    `browser` overrides CATAN_TEST_BROWSER, so a cross-browser suite can pin
+    itself to Firefox without the whole run being switched over.
+    """
+    name = browser or BROWSER
+    engine = getattr(playwright, name, None)
+    if engine is None:
+        raise ValueError(f"unknown browser {name!r}; expected chromium or firefox")
+    return engine.launch(headless=not HEADED, slow_mo=SLOW_MO)
 
 
 def free_port():

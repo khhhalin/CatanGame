@@ -15,7 +15,7 @@
 
     <div id="cdn-error" class="cdn-error hidden" role="alert">
         Could not load the Socket.IO library, so the game cannot connect.
-        Check your network and reload the page.
+        Reload the page.
     </div>
 
     <div class="container">
@@ -526,8 +526,12 @@
         </div>
     </div>
 
-    <!-- A blocked CDN would otherwise leave a blank game with no explanation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"
+    <!-- Served from our own static tree, not a CDN: the game has to work
+         offline and must not depend on a third party at runtime. See the
+         header of the vendored file for the version and how to upgrade it.
+         The onerror stays: a failed load would otherwise leave a blank game
+         with no explanation. -->
+    <script src="{{ url_for('static', filename='js/vendor/socket.io.min.js') }}"
             onerror="document.getElementById('cdn-error').classList.remove('hidden')"></script>
     <script src="{{ url_for('static', filename='js/board-renderer.js') }}"></script>
     <!-- The client is ES modules with main.js as the only entry point. Module
