@@ -803,7 +803,6 @@ export function updateGameUI(boardData) {
         // when both sides are fixed and one of them is arbitrary.
         setupPlayerName.textContent = currentPlayerName;
 
-
         const actionText = setupAction === 'road' ? 'placing road' : 'placing settlement';
         setupActionText.textContent = actionText;
     } else {

@@ -369,10 +369,29 @@ def test_popover_opens_closes_and_returns_focus_from_the_keyboard(
                 host.page.wait_for_selector(f"#{popover_id}:not(.hidden)", timeout=5000)
                 assert host.page.get_attribute(f"#{chip_id}", "aria-expanded") == "true"
 
-                # Not a trap: Tab moves on, and the popover's own controls are
-                # reachable rather than being skipped over.
+                # Reachable, not merely un-trapped. Tab landing anywhere other
+                # than the chip would satisfy "no trap" even if the popover's
+                # own controls were skipped entirely - which is the failure that
+                # matters, because the no-scroll layout moved whole panels in
+                # here and a keyboard user who cannot tab into one has lost the
+                # panel rather than a shortcut. The panel follows its chip in
+                # the document, so sequential focus order reaches it.
                 host.page.keyboard.press("Tab")
-                assert host.page.evaluate("() => document.activeElement.id") != chip_id
+                assert host.page.evaluate(
+                    "id => document.getElementById(id).contains(document.activeElement)",
+                    popover_id,
+                ), f"Tab from #{chip_id} did not reach into #{popover_id}"
+
+                # And out again the other side: focus must not be held inside.
+                for _ in range(12):
+                    host.page.keyboard.press("Tab")
+                    if not host.page.evaluate(
+                        "id => document.getElementById(id).contains(document.activeElement)",
+                        popover_id,
+                    ):
+                        break
+                else:
+                    raise AssertionError(f"focus is trapped inside #{popover_id}")
 
                 host.page.keyboard.press("Escape")
                 host.page.wait_for_selector(f"#{popover_id}.hidden", state="attached")
