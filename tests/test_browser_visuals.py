@@ -175,6 +175,15 @@ INK_BOUNDS = """
 """
 
 
+# The rules the Cities & Knights preset ticks. Named here rather than
+# passing the retired `cities_and_knights` flag, which only still works
+# because saves and old clients are migrated.
+CITIES_AND_KNIGHTS = {"commodities": True, "city_improvements": True, "metropolis": True,
+     "knights": True, "barbarians": True, "city_walls": True,
+     "progress_cards": True, "setup_second_city": True,
+     "victory_target": 13}
+
+
 def start_table(browser, url, rules=None):
     """Two joined players with a game running, on a map of our choosing."""
     alice = Player(browser, url, "Alice")
@@ -224,7 +233,7 @@ def large_board(browser, tmp_path_factory):
 @pytest.fixture(scope="module")
 def knights_board(browser, tmp_path_factory):
     proc, url = start_server(tmp_path_factory.mktemp("visuals-ck"))
-    alice, _ = start_table(browser, url, {"cities_and_knights": True})
+    alice, _ = start_table(browser, url, CITIES_AND_KNIGHTS)
     yield alice
     stop_server(proc)
 

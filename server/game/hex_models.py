@@ -14,7 +14,7 @@ and algebraic neighbor relationships.
 class Hex:
     """
     Represents a single hex tile on the Catan board.
-    
+
     Attributes:
         key (str): Unique identifier in "x,y,z" format from cube coordinates.
                    Example: "3,-3,0" for the center hex in a radius-1 board.
@@ -24,11 +24,11 @@ class Hex:
                               None for desert and ocean tiles.
         neighbors (list): List of adjacent hex keys.
     """
-    
+
     def __init__(self, key: str, hex_type: str, number: int | None):
         """
         Initialize a Hex object.
-        
+
         Args:
             key: Unique coordinate key in "x,y,z" format
             hex_type: Resource type or special tile type
@@ -43,28 +43,28 @@ class Hex:
 class Vertex:
     """
     Represents a corner where 3 hexes meet.
-    
+
     Vertices are the positions where settlements and cities can be built.
     Each vertex touches exactly 3 hexes and has 3 adjacent edges.
-    
+
     Attributes:
         key (str): Unique identifier in "x,y,z" cube coordinate format.
                    Note: Vertices have no coordinate divisible by 3.
-        building (dict or None): Contains {"type": "settlement"/"city", 
+        building (dict or None): Contains {"type": "settlement"/"city",
                                     "player": player_name} if occupied.
         port (dict or None): Contains port info if this vertex is a port:
             - "type": "generic" (3:1) or resource type (2:1)
             - "resource": for resource-specific ports: "wood", "brick", "sheep", "wheat", "ore"
         neighbors (dict): Dictionary with keys:
             - "hexes": List of 3 adjacent hex keys
-            - "edges": List of 3 adjacent edge keys  
+            - "edges": List of 3 adjacent edge keys
             - "vertices": List of adjacent vertex keys
     """
-    
+
     def __init__(self, key: str):
         """
         Initialize a Vertex object.
-        
+
         Args:
             key: Unique coordinate key in "x,y,z" format
         """
@@ -81,10 +81,10 @@ class Vertex:
 class Edge:
     """
     Represents an edge between two hexes.
-    
+
     Edges are the positions where roads can be built.
     Each edge is shared by exactly 2 hexes and connects 2 vertices.
-    
+
     Attributes:
         key (str): Unique identifier in "x,y,z" cube coordinate format.
                    Note: Edges have exactly one coordinate divisible by 3.
@@ -98,11 +98,11 @@ class Edge:
             - "edges": List of adjacent edge keys
             - "vertices": List of 2 adjacent vertex keys
     """
-    
+
     def __init__(self, key: str):
         """
         Initialize an Edge object.
-        
+
         Args:
             key: Unique coordinate key in "x,y,z" format
         """

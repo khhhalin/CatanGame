@@ -37,6 +37,12 @@ FAKE_KNIGHTS = """
 """
 
 
+CITIES_AND_KNIGHTS = {"commodities": True, "city_improvements": True, "metropolis": True,
+     "knights": True, "barbarians": True, "city_walls": True,
+     "progress_cards": True, "setup_second_city": True,
+     "victory_target": 13}
+
+
 def set_rules(player, rules):
     """Set lobby rules over the real socket.
 
@@ -130,7 +136,7 @@ def main():
             proc, url = start_server(data_dir(f"{stage}-ck-{name}"))
             try:
                 shoot(browser, url, f"{stage}-ck-{name}", size,
-                      {"cities_and_knights": True}, knights=True)
+                      CITIES_AND_KNIGHTS, knights=True)
             finally:
                 stop_server(proc)
 

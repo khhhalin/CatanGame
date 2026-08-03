@@ -34,7 +34,9 @@ line-length = 100
 quote-style = "preserve"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# W catches trailing whitespace, which slipped in unnoticed until a
+# whole-file diff was needed to see it.
+select = ["E", "F", "I", "UP", "B", "W"]
 
 [tool.mypy]
 python_version = "3.13"
