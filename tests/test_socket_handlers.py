@@ -906,10 +906,11 @@ class TestChatAndEventLog:
         a.get_received()
 
         a.emit('chat_message', {'text': '/help'})
-        result = events(a, 'command_result')
-        assert result
-        assert '/restart' in result[-1]['message']
-        assert '/add' in result[-1]['message']
+        entries = [e['entry'] for e in events(a, 'event_logged')]
+        chat = [e for e in entries if e['kind'] == 'chat']
+        assert chat, "/help should broadcast a chat entry"
+        assert '/restart' in chat[-1]['text']
+        assert '/add' in chat[-1]['text']
 
     def test_unknown_command_is_rejected(self):
         self._fresh()

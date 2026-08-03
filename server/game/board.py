@@ -377,14 +377,21 @@ class BoardBuilder:
         """Assign ports to 9 coastal edges (evenly distributed).
 
         Ports sit on the coastline rather than on a vertex, so they
-        serve either of the harbour's two vertices.
+        serve either of the harbour's two vertices. Both endpoints
+        of a port edge must be coastal vertices (touching the sea).
         """
-        coastal = [
-            key
-            for key, edge_obj in self.edges.items()
-            if sum(1 for h in edge_obj.neighbors.get("hexes", []) if self.hexes[h].type != "ocean")
-            == 1
-        ]
+        coastal = []
+        for edge_key, edge_obj in self.edges.items():
+            hex_neighbors = edge_obj.neighbors.get("hexes", [])
+            land_count = sum(1 for h in hex_neighbors if self.hexes[h].type != "ocean")
+            if land_count != 1:
+                continue
+            verts = edge_obj.neighbors.get("vertices", [])
+            if len(verts) != 2:
+                continue
+            if any(len(self.vertices[v].neighbors.get("hexes", [])) >= 3 for v in verts):
+                continue
+            coastal.append(edge_key)
 
         if len(coastal) < 9:
             port_edges = coastal

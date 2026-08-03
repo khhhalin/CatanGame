@@ -25,7 +25,7 @@ def _run_command(command, name):
         return
     cmd = parts[0].lower().lstrip('/')
     if cmd == 'help':
-        emit('command_result', {'message': 'Commands: /restart  /add <resource> [count]  /help'})
+        log_event('chat', 'Commands: /restart  /add <resource> [count]  /help', player=name)
     elif cmd == 'restart':
         end_game_locked(name)
     elif cmd == 'add':
