@@ -36,6 +36,41 @@ def test_resource_hex_distribution_matches_standard_catan(fresh_game):
     }
 
 
+def test_number_tokens_are_the_eighteen_in_the_box(fresh_game):
+    """The token set is fixed: 2 and 12 once, everything else twice.
+
+    The pool used to be weighted by dice probability (five 6s, five 8s) and
+    held 30 tokens for 18 slots, so the dealt board ran hot and often had no
+    2 or 12 at all.
+    """
+    numbers = sorted(
+        hex_obj.number
+        for hex_obj in fresh_game.hexes.values()
+        if hex_obj.type not in ('ocean', 'desert')
+    )
+    assert numbers == [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
+
+
+def test_every_numbered_hex_has_a_token_and_the_desert_has_none(fresh_game):
+    for hex_obj in fresh_game.hexes.values():
+        if hex_obj.type in ('ocean', 'desert'):
+            assert hex_obj.number is None
+        else:
+            assert hex_obj.number is not None
+
+
+def test_the_token_set_is_the_same_for_every_seed():
+    """Only placement is random; a weighted pool would vary the set per run."""
+    for seed in range(10):
+        game = Game(["A", "B"], [], rng=random.Random(seed))
+        numbers = sorted(
+            h.number for h in game.hexes.values() if h.type not in ('ocean', 'desert')
+        )
+        assert numbers == [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12], (
+            f"seed {seed} dealt {numbers}"
+        )
+
+
 def test_distribution_is_identical_across_seeds(fresh_game):
     """The mix is fixed; only placement is random. A 20-entry resource list
     silently dropped one tile's type, which varied per run."""

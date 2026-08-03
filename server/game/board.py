@@ -14,6 +14,10 @@ from game.hex_models import Edge, Hex, Vertex
 
 logger = logging.getLogger(__name__)
 
+# The number tokens in the base-game box: 18 of them, 2 and 12 once each and
+# every other number twice. A 7 is the robber's roll and never sits on a hex.
+NUMBER_TOKENS = (2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12)
+
 
 class BoardBuilder:
     """Everything that turns a radius into a populated board."""
@@ -205,10 +209,17 @@ class BoardBuilder:
         # Shuffle for random placement
         self.rng.shuffle(resource_types)
 
-        # Number tokens (2-12, excluding 7)
-        # Each number appears with frequency based on real dice probability:
-        # 2,12: 1 each, 3,11: 2 each, 4,10: 3 each, 5,9: 4 each, 6,8: 5 each
-        number_tokens = [2, 12] * 1 + [3, 11] * 2 + [4, 10] * 3 + [5, 9] * 4 + [6, 8] * 5
+        # The 18 number tokens in the box: 2 and 12 once each, everything else
+        # twice, and no 7. The old list weighted the pool by dice probability
+        # (5 sixes, 5 eights, 1 two) and held 30 tokens for 18 slots, so 12 were
+        # left unused in the stack and the tokens that did get dealt ran hot —
+        # around three 6s and three 8s on an average board, and often no 2 or 12
+        # at all. The pips printed on a token already encode the odds; the *set*
+        # does not.
+        number_tokens = list(NUMBER_TOKENS)
+        assert len(number_tokens) == len(resource_types) - resource_types.count("desert"), (
+            "one token per numbered land hex; the desert takes none"
+        )
         self.rng.shuffle(number_tokens)
         number_tokens_stack = list(number_tokens)  # Copy for popping
 
