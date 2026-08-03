@@ -121,7 +121,8 @@ YOLO_STORAGE_KEY = "catan.yoloMode"
 class Player:
     """One browser tab, with its console errors collected."""
 
-    def __init__(self, browser, url, name, viewport=None, yolo=False):
+    def __init__(self, browser, url, name, viewport=None, yolo=False,
+                 color_scheme=None):
         self.name = name
         self.errors = []
         # Every helper below has to know which of the two flows this tab is on:
@@ -130,6 +131,10 @@ class Player:
         self.yolo = yolo
         size = viewport or {"width": 1600, "height": 1000}
         options = {"viewport": size}
+        # The app has no theme control: light and dark come from
+        # prefers-color-scheme, so this is the only way to see the dark theme.
+        if color_scheme:
+            options["color_scheme"] = color_scheme
         if RECORD_VIDEO:
             options["record_video_dir"] = os.path.join(VIDEO_DIR, name)
             options["record_video_size"] = size

@@ -338,8 +338,13 @@ button:disabled {
     overflow-wrap: anywhere;
 }
 
+/* The accent fill was set without its paired foreground, so the row kept the
+   list's default `--text` and landed at 3.35:1 light / 2.13:1 dark - a WCAG AA
+   failure on the one row the player most needs to find, their own. Every other
+   accent fill in this file states `--on-accent`; this one had been missed. */
 .user-list li.current-user {
     background-color: var(--accent);
+    color: var(--on-accent);
     font-weight: bold;
 }
 

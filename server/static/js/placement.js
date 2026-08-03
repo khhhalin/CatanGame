@@ -14,7 +14,7 @@
 
 import { markDirty } from './board.js';
 import { ckEnabled, handleCkVertexTap } from './cities-knights.js';
-import { boardCanvas, gameBoard, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
+import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
 
@@ -26,6 +26,29 @@ const YOLO_STORAGE_KEY = 'catan.yoloMode';
 // the board box, which clips.
 const CONFIRM_OFFSET_Y = 34;
 const CONFIRM_MARGIN = 6;
+
+// What the ✓/✗ is asking about, said out loud. The board itself is one canvas
+// with a single label, so a pin on it is invisible to assistive tech and the
+// kind of piece is the only part of the target worth naming - "vertex V12"
+// tells a player nothing they can act on.
+const PLACEMENT_NOUNS = {
+    settlement: 'Settlement',
+    road: 'Road',
+    city: 'City',
+    robber: 'Robber',
+    city_wall: 'City wall',
+    knight: 'Knight',
+    knight_move: 'Knight move',
+};
+
+// What the announcement last said, so aiming at the same spot twice does not
+// repeat itself into the live region.
+let lastAnnounced = '';
+
+// Where focus was before the confirmation took it, so dismissing gives it back
+// rather than dropping it on the body - which would send the next Tab to the
+// top of the page.
+let focusBeforeConfirm = null;
 
 let yoloMode = readYoloPreference();
 
@@ -435,13 +458,13 @@ function syncConfirmControl() {
 
     const pending = viewState.placement.pending;
     if (!pending) {
-        placementConfirm.classList.add('hidden');
+        hideConfirmControl();
         return;
     }
 
     const point = anchorFor(pending);
     if (!point) {
-        placementConfirm.classList.add('hidden');
+        hideConfirmControl();
         return;
     }
 
@@ -460,7 +483,86 @@ function syncConfirmControl() {
 
     placementConfirm.style.left = `${Math.round(left)}px`;
     placementConfirm.style.top = `${Math.round(top)}px`;
+
+    const wasShowing = !placementConfirm.classList.contains('hidden');
     placementConfirm.classList.remove('hidden');
+    announcePending(pending);
+    if (!wasShowing) {
+        takeConfirmFocus();
+    }
+}
+
+/**
+ * Put the pending placement into the live region.
+ *
+ * Re-aiming replaces the selection rather than raising a second one, so the
+ * text is repeated only when it actually changed - otherwise every hover-sized
+ * re-render would read the same sentence out again.
+ *
+ * @param {object} pending - {kind, key, blocked}
+ */
+function announcePending(pending) {
+    if (!placementAnnounce) {
+        return;
+    }
+    const noun = PLACEMENT_NOUNS[pending.kind] || 'Placement';
+    // Blocked is otherwise carried only by the ghost's colour, which is exactly
+    // the half of the message a screen reader cannot get at.
+    const status = pending.blocked
+        ? `${noun} selected, but not allowed here.`
+        : `${noun} selected.`;
+    const message = `${status} Press Enter to confirm, or Escape to cancel.`;
+    if (message === lastAnnounced) {
+        return;
+    }
+    lastAnnounced = message;
+    placementAnnounce.textContent = message;
+}
+
+/**
+ * Move focus onto ✓ as the confirmation appears.
+ *
+ * Deliberately conditional. Focus is the player's, not ours: someone part-way
+ * through a chat message must not have their next keystroke land on a button
+ * that places a settlement. Everywhere else - the canvas, a build button,
+ * nothing at all - taking it is what makes the confirmation reachable without
+ * a mouse, and Enter/Escape then mean the obvious thing.
+ */
+function takeConfirmFocus() {
+    const active = document.activeElement;
+    const typing = active instanceof HTMLElement
+        && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
+    if (typing || !placementConfirmYes) {
+        return;
+    }
+    focusBeforeConfirm = active;
+    placementConfirmYes.focus();
+}
+
+/**
+ * Hide the ✓/✗ and hand focus back to whatever had it.
+ *
+ * Without the hand-back, answering the confirmation leaves focus on a button
+ * that no longer exists on screen, and the next Tab starts again from the top
+ * of the document.
+ */
+function hideConfirmControl() {
+    if (placementConfirm.classList.contains('hidden')) {
+        return;
+    }
+    const returning = placementConfirm.contains(document.activeElement);
+    placementConfirm.classList.add('hidden');
+    lastAnnounced = '';
+    if (placementAnnounce) {
+        placementAnnounce.textContent = '';
+    }
+    if (returning) {
+        // The canvas is the fallback because it is where the placement came
+        // from and it is focusable in its own right.
+        const target = focusBeforeConfirm?.isConnected ? focusBeforeConfirm : boardCanvas;
+        target?.focus();
+    }
+    focusBeforeConfirm = null;
 }
 
 /**

@@ -73,6 +73,8 @@ export const placementConfirm = document.getElementById('placement-confirm');
 export const placementConfirmYes = document.getElementById('placement-confirm-yes');
 export const placementConfirmNo = document.getElementById('placement-confirm-no');
 export const yoloToggle = document.getElementById('yolo-mode-toggle');
+// The ✓/✗ is raised by a canvas click, which announces nothing on its own.
+export const placementAnnounce = document.getElementById('placement-announce');
 
 // Cities & Knights. These panels exist in the template but stay hidden unless
 // the running game has the expansion switched on.

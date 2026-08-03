@@ -13,6 +13,14 @@
     <!-- Single non-blocking surface for errors and notices -->
     <div id="notice-region" class="notice-region" role="status" aria-live="polite"></div>
 
+    <!-- The ✓/✗ over the board is raised by a canvas click, and a canvas
+         announces nothing, so without this a screen-reader user is left
+         waiting on a confirmation they were never told about. Its own region
+         rather than #notice-region: that one is visible, and a toast on every
+         board click would bury the notices that matter. Outside .container so
+         it cannot participate in the board box's layout. -->
+    <div id="placement-announce" class="visually-hidden" role="status" aria-live="polite"></div>
+
     <div id="cdn-error" class="cdn-error hidden" role="alert">
         Could not load the Socket.IO library, so the game cannot connect.
         Reload the page.

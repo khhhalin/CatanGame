@@ -100,15 +100,29 @@ function place(panel, trigger) {
 
 /**
  * Close whatever is open. Safe to call when nothing is.
+ *
+ * `restoreFocus` is for the deliberate dismissals - Escape, and the × in the
+ * popover head. Both can be reached from the keyboard, and both otherwise
+ * leave focus on an element that has just been display:none'd, which drops it
+ * on the body and sends the next Tab back to the top of the page. It is off by
+ * default because the other callers - opening a second popover, a pointerdown
+ * somewhere else - are cases where focus belongs wherever the player just put
+ * it, not back on the chip.
+ *
+ * @param {boolean} restoreFocus - Hand focus back to the trigger
  */
-export function closePopover() {
+export function closePopover(restoreFocus = false) {
     if (!openTrigger) {
         return;
     }
-    const panel = panelFor(openTrigger);
+    const trigger = openTrigger;
+    const panel = panelFor(trigger);
     panel?.classList.add('hidden');
-    openTrigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-expanded', 'false');
     openTrigger = null;
+    if (restoreFocus) {
+        trigger.focus();
+    }
 }
 
 /**
@@ -172,8 +186,11 @@ document.querySelectorAll('.fold-chip[aria-controls]').forEach(chip => {
     chip.addEventListener('click', () => togglePopover(chip));
 });
 
+// The × is inside the panel it closes, so it is about to be display:none'd
+// along with it - focus has to go somewhere, and the chip that opened it is
+// the only sensible place.
 document.querySelectorAll('[data-close-popover]').forEach(button => {
-    button.addEventListener('click', closePopover);
+    button.addEventListener('click', () => closePopover(true));
 });
 
 // `pointerdown` rather than `click`, and deliberately without
@@ -194,12 +211,13 @@ document.addEventListener('keydown', (event) => {
     // Escape also cancels a pending board placement; the popover is the
     // shallower of the two, so it goes first and stops there.
     if (event.key === 'Escape' && openTrigger) {
-        const trigger = openTrigger;
-        closePopover();
-        trigger.focus();
+        closePopover(true);
         event.stopPropagation();
     }
 }, true);
 
-// A popover is pinned in viewport coordinates, so a resize strands it.
-window.addEventListener('resize', closePopover);
+// A popover is pinned in viewport coordinates, so a resize strands it. Wrapped
+// rather than passed directly: a listener is handed the Event as its first
+// argument, which would read as `restoreFocus` and yank focus onto the chip
+// every time the window moved.
+window.addEventListener('resize', () => closePopover());
