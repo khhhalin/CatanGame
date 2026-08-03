@@ -107,10 +107,23 @@ AUDIT_JS = r"""
       .map((n) => n.textContent.trim())
       .join(" ");
     if (!ownText) continue;
-    if (parseFloat(cs.opacity) < 0.95) continue;
+    // Decorative glyphs hidden from assistive tech and duplicated by a real
+    // text label next to them are icons, not text. Everything visible that is
+    // NOT aria-hidden still has to pass.
+    if (el.closest('[aria-hidden="true"]')) continue;
 
     const fg = parseColor(cs.color);
     if (!fg || fg.a === 0) continue;
+
+    // Opacity anywhere up the tree fades the text against whatever is behind
+    // it. Skipping faded elements (the first version of this check) excused
+    // precisely the cases where contrast is worst.
+    let opacity = 1;
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
+      opacity *= parseFloat(getComputedStyle(a).opacity) || 1;
+    }
+    fg.a *= opacity;
+    if (fg.a <= 0.02) continue;
 
     let bg = null, node = el, imaged = false;
     while (node) {

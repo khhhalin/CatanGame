@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player scoreboard — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   PLAYER SCOREBOARD — three densities of the same data.
+   ---------------------------------------------------------------------------
+   The scoreboard answers three questions at once: whose turn is it, who is
+   winning, and what does each player hold. Rules that hold across all three
+   variants here:
+
+     - Turn is never signalled by colour alone. The current player gets a
+       filled left bar AND the word "playing", because every player already
+       owns a colour and a fifth one for "active" is unreadable.
+     - Card counts are public information in Catan; card identities are not.
+       The counts are shown as one number, never as fake face-down cards,
+       which read as if you could look at them.
+     - Every number is tabular (--font-num) so a score ticking 9 -> 10 does
+       not shift the column.
+   ========================================================================== */
+
+.panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+
+.panel__title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.panel__meta {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-faint);
+}
+
+.panel__body { padding: var(--space-2); }
+
+/* =============================================== A — rail list (narrow col) */
+
+.rail-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+
+.rail-row {
+    display: grid;
+    grid-template-columns: 0.35rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid transparent;
+}
+
+.rail-row[aria-current="true"] {
+    background: var(--info-soft);
+    border-color: color-mix(in srgb, var(--info) 50%, transparent);
+}
+
+.rail-row__bar {
+    width: 0.35rem;
+    height: 100%;
+    min-height: 1.9rem;
+    border-radius: var(--radius-pill);
+    background: var(--pc);
+}
+
+.rail-row__name {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.rail-row__name > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tag {
+    flex: none;
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--info-soft);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+}
+
+.tag--off { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-muted); }
+
+.rail-row__meta {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+}
+
+.rail-row__vp {
+    font-family: var(--font-num);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    line-height: 1;
+    text-align: right;
+}
+
+.rail-row__vp small {
+    display: block;
+    font-family: var(--font-ui);
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    color: var(--text-faint);
+}
+
+/* ============================================= B — wide table (main column) */
+
+.score-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+
+.score-table th {
+    text-align: left;
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    font-weight: 700;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.score-table td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    vertical-align: middle;
+}
+
+.score-table tbody tr:last-child td { border-bottom: 0; }
+.score-table tbody tr:hover { background: var(--surface-2); }
+
+.score-table tr[aria-current="true"] td { background: var(--info-soft); }
+.score-table tr[aria-current="true"] td:first-child { box-shadow: inset 3px 0 0 var(--info); }
+
+.num { font-family: var(--font-num); text-align: right; }
+.num-head { text-align: right; }
+
+.who { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+
+.who__pip {
+    flex: none;
+    width: 0.85rem; height: 0.85rem;
+    border-radius: 3px;
+    background: var(--pc);
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+}
+
+.who__name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.badges { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+
+.badge {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    white-space: nowrap;
+}
+
+/* A victory-point bar, not a percentage: the win target is the scale. */
+.vp-bar {
+    display: grid;
+    grid-template-columns: 2ch minmax(4rem, 1fr);
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.vp-bar__n { font-family: var(--font-num); font-weight: 700; text-align: right; }
+
+.vp-bar__track {
+    height: 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+/* display:block is load-bearing. The fill is a <span> whose parent is not a
+   flex or grid container, so without it the element stays inline and both
+   width and height are ignored - the bar renders as an empty grey track and
+   looks like a data bug rather than a CSS one. */
+.vp-bar__fill {
+    display: block;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: var(--pc);
+}
+
+/* ================================== C — turn-order strip (narrow / portrait) */
+
+.turn-strip {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    padding: var(--space-2);
+    /* Six players on a phone would squash to nothing; scroll instead. */
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+}
+
+.turn-chip {
+    min-width: 6.5rem;
+    display: grid;
+    gap: 2px;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--pc);
+}
+
+.turn-chip[aria-current="true"] {
+    background: var(--info-soft);
+    border-color: color-mix(in srgb, var(--info) 50%, transparent);
+    border-top-color: var(--pc);
+}
+
+.turn-chip__name { font-size: var(--text-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-chip__vp { font-family: var(--font-num); font-size: var(--text-xl); font-weight: 700; line-height: 1.1; }
+.turn-chip__meta { font-size: var(--text-2xs); color: var(--text-muted); }
+
+.demo-col { display: grid; gap: var(--space-4); align-content: start; }
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Player scoreboard</h1>
+        <p>Three densities of the same state — a narrow rail list, a wide table
+            and a horizontal turn strip — sharing one set of rules about how
+            turn, score and public card counts are shown.</p>
+    </header>
+
+    <section class="demo-section">
+        <h2>A · rail list — 13–15rem column</h2>
+        <div class="demo-stage" style="max-width: 17rem;">
+            <section class="panel">
+                <h3 class="panel__title">Players <span class="panel__meta">win at 10</span></h3>
+                <div class="panel__body">
+                    <ul class="rail-list">
+                        <li class="rail-row" aria-current="true" style="--pc: var(--player-2);">
+                            <span class="rail-row__bar"></span>
+                            <span class="min0">
+                                <span class="rail-row__name"><span>Marek</span><span class="tag">Playing</span></span>
+                                <span class="rail-row__meta">8 cards · 3 knights</span>
+                            </span>
+                            <span class="rail-row__vp">7<small>VP</small></span>
+                        </li>
+                        <li class="rail-row" style="--pc: var(--player-1);">
+                            <span class="rail-row__bar"></span>
+                            <span class="min0">
+                                <span class="rail-row__name"><span>Kalina</span></span>
+                                <span class="rail-row__meta">5 cards · 1 knight</span>
+                            </span>
+                            <span class="rail-row__vp">6<small>VP</small></span>
+                        </li>
+                        <li class="rail-row" style="--pc: var(--player-3);">
+                            <span class="rail-row__bar"></span>
+                            <span class="min0">
+                                <span class="rail-row__name"><span>Ewa</span></span>
+                                <span class="rail-row__meta">11 cards · 1 knight</span>
+                            </span>
+                            <span class="rail-row__vp">5<small>VP</small></span>
+                        </li>
+                        <li class="rail-row" style="--pc: var(--player-4);">
+                            <span class="rail-row__bar"></span>
+                            <span class="min0">
+                                <span class="rail-row__name"><span>Tomasz</span><span class="tag tag--off">Away</span></span>
+                                <span class="rail-row__meta">3 cards · 4 knights</span>
+                            </span>
+                            <span class="rail-row__vp">5<small>VP</small></span>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">"Away" is a disconnected player. It reads as a word
+            as well as a dimmed tag — a greyed-out row alone is indistinguishable
+            from a rendering glitch.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>B · wide table — end-of-game or a wide layout</h2>
+        <div class="demo-stage">
+            <section class="panel" style="max-width: 56rem;">
+                <h3 class="panel__title">Scoreboard <span class="panel__meta">round 14 · win at 10</span></h3>
+                <table class="score-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Player</th>
+                            <th scope="col">Victory points</th>
+                            <th scope="col" class="num-head">Cards</th>
+                            <th scope="col" class="num-head">Knights</th>
+                            <th scope="col" class="num-head">Longest road</th>
+                            <th scope="col">Holds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr aria-current="true" style="--pc: var(--player-2);">
+                            <td><span class="who"><span class="who__pip"></span><span class="who__name">Marek</span><span class="tag">Playing</span></span></td>
+                            <td><span class="vp-bar"><span class="vp-bar__n">7</span><span class="vp-bar__track"><span class="vp-bar__fill" style="width: 70%;"></span></span></span></td>
+                            <td class="num">8</td>
+                            <td class="num">3</td>
+                            <td class="num">4</td>
+                            <td><span class="badges"><span class="badge">Largest army</span></span></td>
+                        </tr>
+                        <tr style="--pc: var(--player-1);">
+                            <td><span class="who"><span class="who__pip"></span><span class="who__name">Kalina</span></span></td>
+                            <td><span class="vp-bar"><span class="vp-bar__n">6</span><span class="vp-bar__track"><span class="vp-bar__fill" style="width: 60%;"></span></span></span></td>
+                            <td class="num">5</td>
+                            <td class="num">1</td>
+                            <td class="num">6</td>
+                            <td><span class="badges"><span class="badge">Longest road</span><span class="badge">Harbormaster</span></span></td>
+                        </tr>
+                        <tr style="--pc: var(--player-3);">
+                            <td><span class="who"><span class="who__pip"></span><span class="who__name">Ewa</span></span></td>
+                            <td><span class="vp-bar"><span class="vp-bar__n">5</span><span class="vp-bar__track"><span class="vp-bar__fill" style="width: 50%;"></span></span></span></td>
+                            <td class="num">11</td>
+                            <td class="num">1</td>
+                            <td class="num">3</td>
+                            <td></td>
+                        </tr>
+                        <tr style="--pc: var(--player-4);">
+                            <td><span class="who"><span class="who__pip"></span><span class="who__name">Tomasz</span><span class="tag tag--off">Away</span></span></td>
+                            <td><span class="vp-bar"><span class="vp-bar__n">5</span><span class="vp-bar__track"><span class="vp-bar__fill" style="width: 50%;"></span></span></span></td>
+                            <td class="num">3</td>
+                            <td class="num">4</td>
+                            <td class="num">5</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+        <p class="demo-note">A real <code>&lt;table&gt;</code> with <code>scope</code>
+            on the headers: a screen reader then reads "Ewa, cards, 11" instead of
+            a bare number. The victory-point bar is scaled to the win target, so
+            its length means something.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>C · turn strip — portrait / above the board</h2>
+        <div class="demo-stage">
+            <section class="panel">
+                <h3 class="panel__title">Turn order <span class="panel__meta">Marek → Kalina → Ewa → Tomasz</span></h3>
+                <div class="turn-strip">
+                    <div class="turn-chip" aria-current="true" style="--pc: var(--player-2);">
+                        <span class="turn-chip__name">Marek</span>
+                        <span class="turn-chip__vp">7</span>
+                        <span class="turn-chip__meta">Playing · 8 cards</span>
+                    </div>
+                    <div class="turn-chip" style="--pc: var(--player-1);">
+                        <span class="turn-chip__name">Kalina</span>
+                        <span class="turn-chip__vp">6</span>
+                        <span class="turn-chip__meta">Next · 5 cards</span>
+                    </div>
+                    <div class="turn-chip" style="--pc: var(--player-3);">
+                        <span class="turn-chip__name">Ewa</span>
+                        <span class="turn-chip__vp">5</span>
+                        <span class="turn-chip__meta">11 cards</span>
+                    </div>
+                    <div class="turn-chip" style="--pc: var(--player-4);">
+                        <span class="turn-chip__name">Tomasz</span>
+                        <span class="turn-chip__vp">5</span>
+                        <span class="turn-chip__meta">Away · 3 cards</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">Fixed minimum chip width plus horizontal scroll:
+            a six-player game on a phone scrolls rather than shrinking every
+            name to two characters.</p>
+    </section>
+</main>
+</body>
+</html>

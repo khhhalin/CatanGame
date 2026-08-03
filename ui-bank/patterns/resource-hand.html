@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resource hand &amp; bank — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   RESOURCE HAND & BANK
+   ---------------------------------------------------------------------------
+   Three treatments of the player's own resources plus the bank's supply.
+
+   Resource identity is carried by a colour band AND the resource name, always
+   both. Emoji alone (the current app uses 🌲🧱🐑🌾🪨) renders differently on
+   every platform, is announced as "deciduous tree" by a screen reader, and
+   gives a colour-blind player nothing extra - so emoji here is decoration
+   with aria-hidden, and the word is the label.
+
+   The counts are tabular figures: a hand ticking 9 -> 10 must not shift the
+   card next to it.
+   ========================================================================== */
+
+.panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+
+.panel__title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.panel__meta {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-faint);
+}
+
+.panel__body { padding: var(--space-3); }
+
+/* ================================================== A — compact count strip */
+
+/* auto-fit rather than repeat(5): the same strip takes the three Cities &
+   Knights commodities without a second rule. */
+.count-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(3.5rem, 1fr));
+    gap: var(--space-2);
+}
+
+.count {
+    display: grid;
+    justify-items: center;
+    gap: 1px;
+    padding: var(--space-2) var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-bottom: 3px solid var(--rc);
+}
+
+.count__n { font-family: var(--font-num); font-weight: 700; font-size: var(--text-lg); line-height: 1; }
+
+/* A zero is signalled by a hollow, dashed chip and a faint number, never by
+   fading the whole chip: opacity on the container drags its label below AA
+   too, which is exactly what the contrast check flagged here. */
+.count--zero {
+    background: transparent;
+    border-style: dashed;
+    border-bottom-color: var(--border-strong);
+}
+
+.count--zero .count__n { color: var(--text-faint); }
+
+/* ==================================================== B — playing-card hand */
+
+/* The gap is sized by the badges, not by taste. The count pill and the
+   selection tick each hang ~7px outside the card, so anything under ~16px of
+   gap makes one card's count collide with the next card's tick. */
+.hand {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+}
+
+/* A real card face, because "select 3 cards to discard" needs something to
+   click that is unambiguously one card. The stack count sits on the card
+   rather than beside it so a 12-card hand stays one row. */
+.rescard {
+    position: relative;
+    width: 4.75rem;
+    min-height: 6.25rem;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: var(--space-2) var(--space-1) var(--space-1);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: linear-gradient(160deg,
+        color-mix(in srgb, var(--rc) 22%, var(--surface-1)),
+        var(--surface-1) 70%);
+    box-shadow: var(--shadow-1);
+    text-align: center;
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.rescard:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+
+.rescard__swatch {
+    height: 0.4rem;
+    border-radius: var(--radius-pill);
+    background: var(--rc);
+    margin: 0 var(--space-1);
+}
+
+.rescard__glyph { font-size: 1.5rem; line-height: 1.4; }
+
+.rescard__name {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+
+.rescard__n {
+    position: absolute;
+    top: -0.45rem;
+    right: -0.45rem;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    display: grid;
+    place-items: center;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--rc);
+    color: var(--on-resource);
+    font-family: var(--font-num);
+    font-weight: 700;
+    font-size: var(--text-xs);
+    border: 2px solid var(--surface-1);
+}
+
+/* Selection is a border and a tick, not just a lift: a hovered card and a
+   selected card must not look the same in a screenshot or to a still eye. */
+.rescard[aria-pressed="true"] {
+    /* above its neighbours so the tick is never clipped by the next card */
+    z-index: 1;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow-2);
+    transform: translateY(-3px);
+}
+
+.rescard[aria-pressed="true"]::after {
+    content: "✓";
+    position: absolute;
+    top: -0.45rem;
+    left: -0.45rem;
+    width: 1.4rem; height: 1.4rem;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    border: 2px solid var(--surface-1);
+}
+
+/* Dimming with `opacity` is the obvious way to render an empty slot and the
+   wrong one: it drags every child - label, count, glyph - below AA at once,
+   which the contrast check catches immediately. Mute the parts explicitly
+   instead, and only the decorative aria-hidden glyph gets faded. */
+.rescard--empty {
+    cursor: not-allowed;
+    background: var(--surface-2);
+    border-style: dashed;
+}
+
+.rescard--empty .rescard__swatch { background: var(--border-strong); }
+.rescard--empty .rescard__glyph { opacity: 0.45; }
+.rescard--empty .rescard__name { color: var(--text-faint); }
+
+.rescard--empty .rescard__n {
+    background: var(--surface-3);
+    color: var(--text-muted);
+    border-color: var(--surface-1);
+}
+
+.discard-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-top: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--warn-soft);
+    font-size: var(--text-sm);
+}
+
+.discard-bar strong { font-family: var(--font-num); }
+
+/* ============================================================= C — the bank */
+
+.bank { display: grid; gap: var(--space-2); }
+
+.bank-row {
+    display: grid;
+    grid-template-columns: 0.5rem 5.5rem minmax(4rem, 1fr) 3ch;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+}
+
+.bank-row__pip { width: 0.5rem; height: 1.1rem; border-radius: var(--radius-pill); background: var(--rc); }
+.bank-row__n { font-family: var(--font-num); text-align: right; font-weight: 700; }
+
+/* The supply bar is the point of the bank panel: "17 brick" means nothing,
+   "17 of 19" means the brick will not run out this turn. */
+.bank-row__track {
+    height: 0.45rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+/* display:block, or this inline <span> ignores width and the supply bar is
+   permanently empty. */
+.bank-row__fill { display: block; height: 100%; background: var(--rc); border-radius: var(--radius-pill); }
+
+.bank-row--low .bank-row__n { color: var(--text); }
+.bank-row--out .bank-row__n { color: var(--bad); }
+
+.bank-note {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--bad);
+    background: var(--bad-soft);
+    font-size: var(--text-sm);
+}
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Disabled is a real visual state, not just a blocked click: muted surface
+   plus a not-allowed cursor. Kept off `opacity` so the label stays at AA. */
+.btn:disabled {
+    background: var(--surface-3);
+    border-color: var(--border);
+    /* --text-muted, not --text-faint: faint on surface-3 lands at 4.1:1 in
+       the dark theme. WCAG exempts inactive controls, but a button you are
+       meant to read the label of should still be readable. */
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Resource hand &amp; bank</h1>
+        <p>The player's own cards at two densities, plus the bank's supply with
+            the one number that matters — how close a resource is to running out.</p>
+    </header>
+
+    <section class="demo-section">
+        <h2>A · count strip — for a 14–20rem panel</h2>
+        <div class="demo-stage demo-grid-2">
+            <section class="panel">
+                <h3 class="panel__title">Your resources <span class="panel__meta">8 cards</span></h3>
+                <div class="panel__body">
+                    <div class="count-strip">
+                        <span class="count" style="--rc: var(--res-wood);"><span class="count__n">3</span><span class="count__l">Wood</span></span>
+                        <span class="count" style="--rc: var(--res-brick);"><span class="count__n">2</span><span class="count__l">Brick</span></span>
+                        <span class="count count--zero" style="--rc: var(--res-sheep);"><span class="count__n">0</span><span class="count__l">Sheep</span></span>
+                        <span class="count" style="--rc: var(--res-wheat);"><span class="count__n">2</span><span class="count__l">Wheat</span></span>
+                        <span class="count" style="--rc: var(--res-ore);"><span class="count__n">1</span><span class="count__l">Ore</span></span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3 class="panel__title">Your commodities <span class="panel__meta">Cities &amp; Knights</span></h3>
+                <div class="panel__body">
+                    <div class="count-strip">
+                        <span class="count" style="--rc: var(--com-cloth);"><span class="count__n">2</span><span class="count__l">Cloth</span></span>
+                        <span class="count" style="--rc: var(--com-coin);"><span class="count__n">4</span><span class="count__l">Coin</span></span>
+                        <span class="count count--zero" style="--rc: var(--com-paper);"><span class="count__n">0</span><span class="count__l">Paper</span></span>
+                    </div>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">The same <code>auto-fit</code> grid takes five
+            resources or three commodities with no second rule.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>B · card hand with a discard selection</h2>
+        <div class="demo-stage">
+            <section class="panel">
+                <h3 class="panel__title">Your hand <span class="panel__meta">8 cards · limit 7</span></h3>
+                <div class="panel__body">
+                    <div class="hand">
+                        <button type="button" class="rescard" aria-pressed="true" style="--rc: var(--res-wood);">
+                            <span class="rescard__swatch"></span>
+                            <span class="rescard__glyph" aria-hidden="true">🌲</span>
+                            <span class="rescard__name">Wood</span>
+                            <span class="rescard__n">3</span>
+                        </button>
+                        <button type="button" class="rescard" aria-pressed="true" style="--rc: var(--res-brick);">
+                            <span class="rescard__swatch"></span>
+                            <span class="rescard__glyph" aria-hidden="true">🧱</span>
+                            <span class="rescard__name">Brick</span>
+                            <span class="rescard__n">2</span>
+                        </button>
+                        <button type="button" class="rescard rescard--empty" disabled style="--rc: var(--res-sheep);">
+                            <span class="rescard__swatch"></span>
+                            <span class="rescard__glyph" aria-hidden="true">🐑</span>
+                            <span class="rescard__name">Sheep</span>
+                            <span class="rescard__n">0</span>
+                        </button>
+                        <button type="button" class="rescard" style="--rc: var(--res-wheat);">
+                            <span class="rescard__swatch"></span>
+                            <span class="rescard__glyph" aria-hidden="true">🌾</span>
+                            <span class="rescard__name">Wheat</span>
+                            <span class="rescard__n">2</span>
+                        </button>
+                        <button type="button" class="rescard" style="--rc: var(--res-ore);">
+                            <span class="rescard__swatch"></span>
+                            <span class="rescard__glyph" aria-hidden="true">🪨</span>
+                            <span class="rescard__name">Ore</span>
+                            <span class="rescard__n">1</span>
+                        </button>
+                    </div>
+                    <div class="discard-bar">
+                        <span>Kalina rolled 7 — discard <strong>4</strong> of your 8 cards. <strong>2</strong> chosen.</span>
+                        <button type="button" class="btn btn--primary" disabled>Discard 4</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">Cards are <code>&lt;button aria-pressed&gt;</code>,
+            so selection is keyboard-operable and announced. Selected state uses
+            a ring and a tick, never the lift alone — hover and selected would
+            otherwise be identical.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>C · bank supply</h2>
+        <div class="demo-stage" style="max-width: 28rem;">
+            <section class="panel">
+                <h3 class="panel__title">Bank <span class="panel__meta">19 of each at the start</span></h3>
+                <div class="panel__body">
+                    <div class="bank">
+                        <div class="bank-row" style="--rc: var(--res-wood);">
+                            <span class="bank-row__pip"></span><span>Wood</span>
+                            <span class="bank-row__track"><span class="bank-row__fill" style="width: 100%;"></span></span>
+                            <span class="bank-row__n">19</span>
+                        </div>
+                        <div class="bank-row" style="--rc: var(--res-brick);">
+                            <span class="bank-row__pip"></span><span>Brick</span>
+                            <span class="bank-row__track"><span class="bank-row__fill" style="width: 89%;"></span></span>
+                            <span class="bank-row__n">17</span>
+                        </div>
+                        <div class="bank-row" style="--rc: var(--res-sheep);">
+                            <span class="bank-row__pip"></span><span>Sheep</span>
+                            <span class="bank-row__track"><span class="bank-row__fill" style="width: 74%;"></span></span>
+                            <span class="bank-row__n">14</span>
+                        </div>
+                        <div class="bank-row bank-row--low" style="--rc: var(--res-wheat);">
+                            <span class="bank-row__pip"></span><span>Wheat</span>
+                            <span class="bank-row__track"><span class="bank-row__fill" style="width: 11%;"></span></span>
+                            <span class="bank-row__n">2</span>
+                        </div>
+                        <div class="bank-row bank-row--out" style="--rc: var(--res-ore);">
+                            <span class="bank-row__pip"></span><span>Ore</span>
+                            <span class="bank-row__track"><span class="bank-row__fill" style="width: 0%;"></span></span>
+                            <span class="bank-row__n">0</span>
+                        </div>
+                    </div>
+                    <p class="bank-note">The bank is out of ore. Nobody collects
+                        ore until some is paid back in.</p>
+                </div>
+            </section>
+        </div>
+        <p class="demo-note">Exhaustion is stated in words, not signalled by a
+            red number alone — running out of a resource silently changes what
+            a dice roll pays you, and players will otherwise think it is a bug.</p>
+    </section>
+</main>
+</body>
+</html>

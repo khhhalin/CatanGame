@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cards &amp; timers — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   CARDS & TIMERS
+   ---------------------------------------------------------------------------
+   Development cards, trade-offer cards, and the countdown treatments they
+   depend on.
+
+   The countdown is the interesting part. Three rules:
+
+     - The remaining seconds are ALWAYS present as text. A ring or a bar alone
+       is unreadable at a glance and invisible to a screen reader.
+     - The animation is a single CSS transition on a custom property or a
+       transform, driven by one JS write per second, not a rAF loop. A trade
+       list with six live offers must not run six animation loops.
+     - Under prefers-reduced-motion the bar stops sweeping and only the number
+       changes. A shrinking bar in the corner of the eye is exactly the kind of
+       motion the preference exists to suppress.
+   ========================================================================== */
+
+.panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+
+.panel__title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.panel__body { padding: var(--space-3); display: grid; gap: var(--space-3); }
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.btn:hover { background: var(--surface-3); }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn--primary:hover { background: var(--accent-hover); }
+.btn--good { background: var(--good); border-color: var(--good); color: var(--on-status); }
+.btn--sm { padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ================================================== development card faces */
+
+.dev-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+    gap: var(--space-3);
+}
+
+/* An <article>, not a <button>. The card carries a real <button> in its
+   footer; a button inside a button is invalid and the inner one is
+   unreachable by keyboard. */
+.devcard {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    text-align: left;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    /* The tint is the card's identity; the surface underneath keeps the body
+       text on a known background so contrast is not a lottery. */
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--cc) 20%, var(--surface-1)) 0 2.75rem,
+                                 var(--surface-1) 2.75rem);
+    box-shadow: var(--shadow-1);
+    font: inherit;
+    color: var(--text);
+    transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.devcard:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+
+.devcard__kind {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.devcard__name { font-size: var(--text-lg); font-weight: 700; line-height: var(--leading-tight); }
+.devcard__text { font-size: var(--text-sm); color: var(--text-muted); margin: 0; }
+
+/* A fixed minimum so a card whose footer holds a button and one whose footer
+   holds a pill still rule off at the same height across a row. */
+.devcard__foot {
+    min-height: 2.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border);
+}
+
+.devcard__n {
+    font-family: var(--font-num);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+/* Not-yet-playable cards stay fully legible and say WHY. Greying a card out
+   with no reason is the single most common source of "the button is broken". */
+.devcard--locked .devcard__name { color: var(--text-muted); }
+
+.lock-note {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-2xs);
+    color: var(--text);
+    background: var(--warn-soft);
+    border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+    border-radius: var(--radius-pill);
+    padding: 0 var(--space-2);
+}
+
+/* Muted explicitly rather than with opacity, for the same reason as the
+   empty resource card: a faded box fades its text below AA too. */
+.devcard--played { background: var(--surface-2); }
+.devcard--played .devcard__name { color: var(--text-muted); }
+
+/* ======================================================== trade offer cards */
+
+.offer-list { display: grid; gap: var(--space-3); }
+
+.offer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    /* The action column (ring + two buttons) is taller than the deal, so
+       without this the deal sticks to the top and leaves a visible hole. */
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--pc);
+    background: var(--surface-1);
+    box-shadow: var(--shadow-1);
+}
+
+.offer__who {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+}
+
+.offer__who b { font-size: var(--text-md); color: var(--pc); }
+.offer__ago { font-size: var(--text-2xs); color: var(--text-faint); font-family: var(--font-num); }
+
+/* give -> want on one line, so the whole deal is one glance. */
+.offer__deal {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-top: var(--space-2);
+}
+
+.offer__arrow { color: var(--text-faint); font-size: var(--text-lg); }
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--rc);
+    font-size: var(--text-sm);
+}
+
+.chip b { font-family: var(--font-num); }
+
+.offer__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--space-2);
+    min-width: 8rem;
+}
+
+.offer--mine { border-left-color: var(--border-strong); background: var(--surface-2); }
+
+.offer__replies {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border);
+    font-size: var(--text-sm);
+}
+
+.reply {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+
+.reply--yes { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.reply--no  { background: var(--bad-soft);  border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.reply--wait { background: var(--surface-3); border-color: var(--border-strong); color: var(--text-muted); }
+
+/* ================================================================= timers */
+
+/* 1 - pill. The default. Two lines of CSS, always legible, no motion at all. */
+.timer-pill {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.timer-pill b { font-family: var(--font-num); font-size: var(--text-sm); color: var(--text); }
+.timer-pill--warn { background: var(--warn-soft); color: var(--text); }
+.timer-pill--danger { background: var(--bad-soft); color: var(--text); }
+
+/* 2 - depleting bar under a card. --left is written once a second by JS. */
+.timer-bar {
+    height: 0.3rem;
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.timer-bar__fill {
+    display: block;
+    height: 100%;
+    width: calc(var(--left, 1) * 100%);
+    background: var(--good);
+    border-radius: var(--radius-pill);
+    transition: width 1s linear;
+}
+
+.timer-bar--warn .timer-bar__fill { background: var(--warn); }
+.timer-bar--danger .timer-bar__fill { background: var(--bad); }
+
+/* 3 - ring. conic-gradient, no SVG, no library. Costs one repaint a second. */
+.timer-ring {
+    position: relative;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: conic-gradient(var(--ring, var(--good)) calc(var(--left, 1) * 360deg),
+                               var(--surface-3) 0);
+    transition: background 1s linear;
+}
+
+.timer-ring::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    background: var(--surface-1);
+}
+
+.timer-ring span {
+    position: relative;
+    font-family: var(--font-num);
+    font-weight: 700;
+    font-size: var(--text-md);
+}
+
+.timer-ring--warn { --ring: var(--warn); }
+.timer-ring--danger { --ring: var(--bad); }
+
+/* A depleting bar in peripheral vision is exactly what this preference is
+   for. The number keeps counting; only the sweep stops. */
+@media (prefers-reduced-motion: reduce) {
+    .timer-bar__fill, .timer-ring { transition: none; }
+}
+
+.timer-row { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+    .offer { grid-template-columns: minmax(0, 1fr); }
+    .offer__actions { grid-row: auto; flex-direction: row; }
+}
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Cards &amp; timers</h1>
+        <p>Development card faces, incoming and outgoing trade offers, and the
+            three countdown treatments they use.</p>
+    </header>
+
+    <section class="demo-section">
+        <h2>Development cards</h2>
+        <div class="demo-stage">
+            <div class="dev-grid">
+                <article class="devcard" style="--cc: var(--info);">
+                    <span class="devcard__kind">Knight</span>
+                    <span class="devcard__name">Knight</span>
+                    <p class="devcard__text">Move the robber and steal one card. Three played claims Largest Army.</p>
+                    <span class="devcard__foot"><span class="devcard__n">×2 in hand</span><button type="button" class="btn btn--sm btn--primary">Play</button></span>
+                </article>
+
+                <article class="devcard" style="--cc: var(--good);">
+                    <span class="devcard__kind">Progress</span>
+                    <span class="devcard__name">Road Building</span>
+                    <p class="devcard__text">Place two roads for free, wherever you could normally build one.</p>
+                    <span class="devcard__foot"><span class="devcard__n">×1 in hand</span><button type="button" class="btn btn--sm btn--primary">Play</button></span>
+                </article>
+
+                <article class="devcard devcard--locked" style="--cc: var(--accent);">
+                    <span class="devcard__kind">Progress</span>
+                    <span class="devcard__name">Monopoly</span>
+                    <p class="devcard__text">Name one resource. Every other player hands you all of theirs.</p>
+                    <span class="devcard__foot"><span class="devcard__n">×1 in hand</span><span class="lock-note">Bought this turn</span></span>
+                </article>
+
+                <article class="devcard devcard--played" style="--cc: var(--com-cloth);">
+                    <span class="devcard__kind">Victory point</span>
+                    <span class="devcard__name">Library</span>
+                    <p class="devcard__text">Worth 1 victory point. Counted automatically — nothing to play.</p>
+                    <span class="devcard__foot"><span class="devcard__n">×1 in hand</span><span class="lock-note">Scores itself</span></span>
+                </article>
+            </div>
+        </div>
+        <p class="demo-note">"Bought this turn" is stated on the card. A card
+            that is merely dimmed produces a support question every single game.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>Trade offers</h2>
+        <div class="demo-stage">
+            <div class="offer-list">
+
+                <article class="offer" style="--pc: var(--player-1);">
+                    <div class="min0">
+                        <div class="offer__who"><b>Kalina</b> offers you <span class="offer__ago">12s ago</span></div>
+                        <div class="offer__deal">
+                            <span class="chip" style="--rc: var(--res-wood);"><b>2</b> Wood</span>
+                            <span class="chip" style="--rc: var(--res-brick);"><b>1</b> Brick</span>
+                            <span class="offer__arrow" aria-hidden="true">→</span>
+                            <span class="chip" style="--rc: var(--res-ore);"><b>1</b> Ore</span>
+                        </div>
+                        <div class="timer-bar timer-bar--warn" style="--left: 0.35; margin-top: var(--space-3);"
+                             role="img" aria-label="21 seconds left to answer">
+                            <div class="timer-bar__fill"></div>
+                        </div>
+                    </div>
+                    <div class="offer__actions">
+                        <div class="timer-ring timer-ring--warn" style="--left: 0.35;" aria-hidden="true"><span>21</span></div>
+                        <button type="button" class="btn btn--good btn--sm">Accept</button>
+                        <button type="button" class="btn btn--sm">Decline</button>
+                    </div>
+                </article>
+
+                <article class="offer" style="--pc: var(--player-3);">
+                    <div class="min0">
+                        <div class="offer__who"><b>Ewa</b> offers you <span class="offer__ago">just now</span></div>
+                        <div class="offer__deal">
+                            <span class="chip" style="--rc: var(--res-sheep);"><b>3</b> Sheep</span>
+                            <span class="offer__arrow" aria-hidden="true">→</span>
+                            <span class="chip" style="--rc: var(--res-wheat);"><b>1</b> Wheat</span>
+                            <span class="chip" style="--rc: var(--res-ore);"><b>1</b> Ore</span>
+                        </div>
+                        <div class="timer-bar" style="--left: 0.9; margin-top: var(--space-3);"
+                             role="img" aria-label="54 seconds left to answer">
+                            <div class="timer-bar__fill"></div>
+                        </div>
+                    </div>
+                    <div class="offer__actions">
+                        <div class="timer-ring" style="--left: 0.9;" aria-hidden="true"><span>54</span></div>
+                        <button type="button" class="btn btn--good btn--sm">Accept</button>
+                        <button type="button" class="btn btn--sm">Decline</button>
+                    </div>
+                </article>
+
+                <article class="offer offer--mine">
+                    <div class="min0">
+                        <div class="offer__who"><b style="color: var(--text);">Your offer</b> to the table <span class="offer__ago">38s ago</span></div>
+                        <div class="offer__deal">
+                            <span class="chip" style="--rc: var(--res-ore);"><b>1</b> Ore</span>
+                            <span class="offer__arrow" aria-hidden="true">→</span>
+                            <span class="chip" style="--rc: var(--res-wood);"><b>2</b> Wood</span>
+                        </div>
+                    </div>
+                    <div class="offer__actions">
+                        <span class="timer-pill timer-pill--danger">Expires <b>0:07</b></span>
+                        <button type="button" class="btn btn--sm">Withdraw</button>
+                    </div>
+                    <div class="offer__replies">
+                        <span class="reply reply--yes">Marek accepts</span>
+                        <span class="reply reply--no">Ewa declines</span>
+                        <span class="reply reply--wait">Tomasz thinking…</span>
+                    </div>
+                </article>
+            </div>
+        </div>
+        <p class="demo-note">An offer you made shows every player's answer as it
+            arrives, so you are not guessing whether anyone has seen it. Incoming
+            offers put the ring next to the Accept button — the countdown and the
+            thing it constrains belong together.</p>
+    </section>
+
+    <section class="demo-section">
+        <h2>Countdown treatments</h2>
+        <div class="demo-stage">
+            <div class="timer-row">
+                <span class="timer-pill">Turn <b>1:42</b></span>
+                <span class="timer-pill timer-pill--warn">Dice <b>0:09</b></span>
+                <span class="timer-pill timer-pill--danger">Discard <b>0:04</b></span>
+
+                <span class="timer-ring" style="--left: 0.75;" role="img" aria-label="45 seconds left"><span>45</span></span>
+                <span class="timer-ring timer-ring--warn" style="--left: 0.35;" role="img" aria-label="21 seconds left"><span>21</span></span>
+                <span class="timer-ring timer-ring--danger" style="--left: 0.1;" role="img" aria-label="6 seconds left"><span>6</span></span>
+
+                <span style="display: grid; gap: var(--space-1); min-width: 12rem;">
+                    <span class="timer-pill timer-pill--warn" style="justify-self: start;">Round <b>0:24</b></span>
+                    <span class="timer-bar timer-bar--warn" style="--left: 0.2;"><span class="timer-bar__fill"></span></span>
+                </span>
+            </div>
+        </div>
+        <p class="demo-note">Colour follows the same three steps everywhere:
+            neutral, <code>--warn</code> under ~40%, <code>--bad</code> under
+            ~15%. The seconds are always spelled out, so the colour is a
+            reinforcement and never the message.</p>
+    </section>
+</main>
+</body>
+</html>
