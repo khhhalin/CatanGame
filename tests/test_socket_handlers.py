@@ -1130,3 +1130,108 @@ class TestBarbarianClock:
 
         assert knight.acted_this_turn is False
         assert knight.activated_this_turn is False
+
+
+class TestSeafarersOverTheWire:
+    """The ship and pirate events at the boundary a browser talks to.
+
+    The engine tests cover the rules; what is checked here is that a client
+    can reach them at all, that a table which never took the rule is told so,
+    and that a made-up payload cannot get past the handler.
+    """
+
+    def _sea_game(self, socket_app, preset='seafarers'):
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        if preset:
+            a.emit('set_rules', {'preset': preset})
+        a.emit('start_game')
+
+        game = state.session().game
+        game.game_phase = 'playing'
+        game.start_turn()
+        a.get_received()
+        b.get_received()
+        return a, b, game
+
+    def _coastal_settlement(self, game, player_name):
+        """Stand a building where a ship can put out to sea from."""
+        for vertex_key in sorted(game.vertices):
+            vertex = game.vertices[vertex_key]
+            sea = [key for key in vertex.neighbors['edges'] if game.is_sea_edge(key)]
+            if vertex.neighbors['hexes'] and sea and not vertex.building:
+                vertex.building = {'type': 'settlement', 'player': player_name}
+                game.get_player(player_name).settlements.append(vertex_key)
+                return vertex_key, sorted(sea)[0]
+        raise AssertionError('no coastal intersection on this board')
+
+    def test_the_sea_reaches_the_client(self, socket_app):
+        a, _b, _game = self._sea_game(socket_app)
+        a.emit('request_state')
+        board = events(a, 'game_state')[-1]['board']
+
+        assert board['rules']['ships'] is True
+        assert board['pirate_hex'] is None
+        assert any(edge['ship'] is None for edge in board['edges'].values())
+
+    def test_a_client_can_build_a_ship(self, socket_app):
+        a, _b, game = self._sea_game(socket_app)
+        acting = game.players[game.current_player_index].name
+        _vertex, edge_key = self._coastal_settlement(game, acting)
+        game.get_player(acting).resources = {'wood': 1, 'sheep': 1}
+
+        a.emit('build_ship', {'name': acting, 'edge': edge_key})
+
+        assert game.edges[edge_key].ship == {'player': acting, 'built_turn': game.turn_count}
+
+    def test_a_table_without_ships_is_told_which_rule_is_missing(self, socket_app):
+        a, _b, game = self._sea_game(socket_app, preset=None)
+        acting = game.players[game.current_player_index].name
+
+        a.emit('build_ship', {'name': acting, 'edge': next(iter(game.edges))})
+
+        assert last_error(a)['code'] == 'RULE_NOT_IN_PLAY'
+
+    def test_a_ship_cannot_be_built_by_naming_someone_elses_turn(self, socket_app):
+        a, _b, game = self._sea_game(socket_app)
+        acting = game.players[game.current_player_index].name
+        waiting = game.players[(game.current_player_index + 1) % len(game.players)].name
+        _vertex, edge_key = self._coastal_settlement(game, acting)
+        game.get_player(waiting).resources = {'wood': 1, 'sheep': 1}
+
+        a.emit('build_ship', {'name': waiting, 'edge': edge_key})
+
+        assert game.edges[edge_key].ship is None
+        assert last_error(a)['code'] == 'NOT_YOUR_TURN'
+
+    def test_a_junk_payload_is_dropped_rather_than_crashing_the_handler(self, socket_app):
+        a, _b, game = self._sea_game(socket_app)
+        acting = game.players[game.current_player_index].name
+
+        a.emit('build_ship', {'name': acting, 'edge': None})
+        a.emit('move_ship', {'name': acting, 'from_edge': 'nowhere'})
+        a.emit('move_pirate', {'name': acting, 'hex': ['not', 'a', 'key']})
+
+        assert not any(edge.ship for edge in game.edges.values())
+        assert game.pirate_hex is None
+
+    def test_the_pirate_moves_and_offers_the_same_choice_the_robber_does(self, socket_app):
+        a, _b, game = self._sea_game(socket_app)
+        acting = game.players[game.current_player_index].name
+        victim = game.players[(game.current_player_index + 1) % len(game.players)].name
+        _vertex, edge_key = self._coastal_settlement(game, victim)
+        game.edges[edge_key].ship = {'player': victim, 'built_turn': 0}
+        game.get_player(victim).ships.append(edge_key)
+        game.get_player(victim).resources = {'ore': 1}
+        game.must_move_robber = True
+
+        sea_hex = next(
+            key for key in game.edges[edge_key].neighbors['hexes']
+            if game.hexes[key].type == 'ocean'
+        )
+        a.emit('move_pirate', {'name': acting, 'hex': sea_hex})
+
+        assert game.pirate_hex == sea_hex
+        assert events(a, 'choose_victim')[-1]['victims'] == [victim]
