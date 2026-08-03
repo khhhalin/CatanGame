@@ -34,7 +34,7 @@ def _dev_cards_disabled(game) -> bool:
     """
     if not game.rules['progress_cards']:
         return False
-    reject('WRONG_MODE', 'This table uses progress cards, not development cards')
+    reject('DEV_CARDS_NOT_IN_PLAY', 'This table uses progress cards, not development cards')
     return True
 
 

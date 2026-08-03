@@ -529,6 +529,54 @@ class TestLobbyRules:
         assert 'City improvements' in error['message'], "name what is missing"
         assert state.session().game is None, "nothing was started"
 
+    def test_an_old_client_still_gets_the_game_it_asked_for(self, socket_app):
+        """A browser cached from before the decomposition sends one boolean."""
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.emit('set_rules', {'rules': {'cities_and_knights': True}})
+        a.emit('start_game')
+
+        game = state.session().game
+        assert game is not None, "the translated set is coherent enough to start"
+        assert game.rules['knights'] is True
+        assert game.rules['commodities'] is True
+        assert 'cities_and_knights' not in game.rules
+
+    def test_a_bought_victory_point_card_can_win_on_the_spot(self, socket_app):
+        """With the card counting in hand, nothing else happens afterwards to
+        notice the win — the purchase itself has to announce it."""
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.emit('set_rules', {'rules': {
+            'victory_point_cards_count_in_hand': True,
+            'victory_target': 5,
+            # A deck of nothing else, so the draw is the card under test.
+            'dev_knights': 0, 'dev_road_building': 0,
+            'dev_invention': 0, 'dev_monopoly': 0,
+        }})
+        a.emit('start_game')
+
+        game = state.session().game
+        game.game_phase = "playing"
+        game.start_turn()
+        game.set_dice_rolled()
+        name = game.players[game.current_player_index].name
+        buyer = a if name == 'A' else b
+        game.get_player(name).settlements = ['v1', 'v2', 'v3', 'v4']
+        game.get_player(name).resources = {'sheep': 1, 'wheat': 1, 'ore': 1}
+        a.get_received()
+        b.get_received()
+
+        buyer.emit('buy_dev_card', {'name': name})
+
+        won = events(a, 'game_won')
+        assert won and won[-1]['player'] == name
+        assert won[-1]['victory_points'] == 5
+
     def test_the_board_payload_carries_the_rules(self, socket_app):
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)

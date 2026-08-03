@@ -263,7 +263,7 @@ class TestOverTheWire:
         client.emit('buy_dev_card', {'name': name})
 
         errors = [m['args'][0] for m in client.get_received() if m['name'] == 'error']
-        assert errors[-1]['code'] == 'WRONG_MODE'
+        assert errors[-1]['code'] == 'DEV_CARDS_NOT_IN_PLAY'
 
     def test_a_card_can_be_played_through_the_handler(self, ck_clients):
         client, name = self._current(ck_clients)
