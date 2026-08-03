@@ -72,6 +72,9 @@ def handle_build_ship(data):
         logger.info("ship player=%s edge=%s", name, edge_key)
         log_event('build', f"{name} built a ship", player=name)
         bump_and_broadcast()
+        # A ship can complete the Longest Trade Route, and that card is worth
+        # two points, so building one can end the game.
+        announce_victory(name)
 
 
 @socketio.on('move_ship')

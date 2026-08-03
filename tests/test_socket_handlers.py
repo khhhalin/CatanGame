@@ -8,6 +8,7 @@ import pytest
 import state
 from extensions import socketio
 from game import rules as rules_module
+from seafarers_board import build_ships_along, ship_path
 
 
 @pytest.fixture
@@ -1235,3 +1236,41 @@ class TestSeafarersOverTheWire:
 
         assert game.pirate_hex == sea_hex
         assert events(a, 'choose_victim')[-1]['victims'] == [victim]
+
+    def test_a_client_can_move_a_ship(self, socket_app):
+        """The one action with no equivalent in the base game, so nothing else
+        proves the event is wired up at all."""
+        a, _b, game = self._sea_game(socket_app)
+        acting = game.players[game.current_player_index].name
+        vertex, from_edge = self._coastal_settlement(game, acting)
+        game.edges[from_edge].ship = {'player': acting, 'built_turn': game.turn_count - 1}
+        game.get_player(acting).ships.append(from_edge)
+        to_edge = next(
+            key for key in sorted(game.vertices[vertex].neighbors['edges'])
+            if key != from_edge and game.is_sea_edge(key)
+        )
+
+        a.emit('move_ship', {'name': acting, 'from_edge': from_edge, 'to_edge': to_edge})
+
+        assert game.edges[from_edge].ship is None
+        assert game.edges[to_edge].ship['player'] == acting
+
+    def test_a_ship_that_claims_the_trade_route_ends_the_game(self, socket_app):
+        """The Longest Trade Route is worth two points, so the fifth ship of a
+        route can be the winning move. Nothing else tells the table it is over:
+        the win is announced from the handler, not drawn from the board."""
+        a, _b, game = self._sea_game(socket_app)
+        acting = game.players[game.current_player_index].name
+        vertex, _first = self._coastal_settlement(game, acting)
+
+        route, _vertices = ship_path(game, vertex, 5)
+        build_ships_along(game, acting, route[:-1])
+        player = game.get_player(acting)
+        player.resources = {'wood': 1, 'sheep': 1}
+        # Two short of the target, so only the card can carry them over it.
+        player.victory_points = game.rules['victory_target'] - 2
+
+        a.emit('build_ship', {'name': acting, 'edge': route[-1]})
+
+        assert game.longest_road_holder == acting
+        assert events(a, 'game_won')[-1]['player'] == acting

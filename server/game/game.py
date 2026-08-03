@@ -636,6 +636,24 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         return points
 
+    def public_victory_points(self, player_name: str) -> int:
+        """A player's total as the whole table is allowed to see it.
+
+        `victory_points_for` is the authority on scoring, so the scoreboard has
+        to come from it or the optional rules award points nobody can see. The
+        one thing it knows that the table may not is a Victory Point card still
+        in hand, which stays secret until it wins the game, so that part comes
+        back off here.
+        """
+        player = self.get_player(player_name)
+        if player is None:
+            return 0
+
+        points = self.victory_points_for(player_name)
+        if self.rules['victory_point_cards_count_in_hand']:
+            points -= player.dev_cards['victory_point']['count']
+        return points
+
     def get_board_data(self, viewer: str = None) -> dict:
         """
         Serialize board data for sending to client.
@@ -684,14 +702,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         for player in self.players:
             my_offers[player.name] = self.trade_manager.get_my_offers(player.name)
 
+        players = []
+        for player in self.players:
+            shown = player.to_dict(self.longest_road_holder, self.largest_army_holder, viewer)
+            # A Player counts its own buildings and the two base-game cards and
+            # knows nothing of the optional rules. The browser draws its
+            # scoreboard from this number, so it has to be the public total.
+            shown['victory_points'] = self.public_victory_points(player.name)
+            players.append(shown)
+
         return {
             'hexes': hexes,
             'vertices': vertices,
             'edges': edges,
-            'players': [
-                p.to_dict(self.longest_road_holder, self.largest_army_holder, viewer)
-                for p in self.players
-            ],
+            'players': players,
             'bank': self.bank.get_all(),
             'rules': self.rules,
             'cities_knights': self.ck.to_dict(viewer) if self.ck else None,

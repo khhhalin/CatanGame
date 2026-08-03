@@ -138,6 +138,20 @@ class TestScoring:
         assert result['island_points'] == 2
         assert sea_game.island_points['Alice'] == 2
 
+    def test_the_special_points_show_in_the_player_list(self, sea_game):
+        """The scoreboard a browser draws comes from `players`, not from the
+        engine's own total, so points that never reach it are points the owner
+        cannot see they have won."""
+        centre = split_the_board(sea_game)
+        self._alice_started_on_the_outer_island(sea_game, centre)
+        sea_game.record_island_settlement('Alice', vertex_on(sea_game, centre), award=True)
+
+        shown = next(
+            player for player in sea_game.get_board_data(viewer='Alice')['players']
+            if player['name'] == 'Alice'
+        )
+        assert shown['victory_points'] == 2
+
     def test_a_table_without_the_rule_scores_no_island_points(self):
         game = seafarers_game(island_victory_points=False)
         centre = split_the_board(game)
