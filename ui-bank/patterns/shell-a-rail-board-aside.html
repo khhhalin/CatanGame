@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shell A — rail / board / aside — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* ===========================================================================
+   SHELL A — three viewport-locked columns: rail, board, aside.
+   ---------------------------------------------------------------------------
+   The whole app is exactly one viewport tall and never scrolls as a page.
+   Every variable-length list scrolls inside its own panel. The board column
+   is the only track that takes leftover space, in BOTH axes - which is the
+   entire fix for dead space under the board:
+
+     1. <body> is a grid with rows `auto 1fr`, and the shell row has
+        `min-height: 0` so it may shrink below its content.
+     2. The board column is a grid with rows `minmax(min-board, 1fr) auto`.
+        The console is `auto` and sits at the bottom; the board eats the rest.
+     3. The canvas is `position: absolute; inset: 0` inside a
+        `position: relative` box, so it can never impose its own intrinsic
+        size on the layout. Its drawing buffer is sized from the box by a
+        ResizeObserver instead.
+
+   Without (3) a canvas keeps its 300x150 default aspect and the browser
+   leaves the difference blank - which is what "dead space below the board"
+   actually is.
+   ========================================================================== */
+
+html, body { height: 100%; }
+
+body {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    /* dvh, not vh: mobile browser chrome otherwise hides the console. */
+    height: 100dvh;
+    overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.topbar__brand {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--accent);
+    margin: 0;
+}
+
+.topbar__spacer { flex: 1 1 auto; }
+
+.turn-cue {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    background: var(--info-soft);
+    color: var(--text);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    border: 1px solid color-mix(in srgb, var(--info) 40%, transparent);
+}
+
+.turn-cue__dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: var(--player-2);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--player-2) 25%, transparent);
+}
+
+.conn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.conn::before {
+    content: "";
+    width: 0.5rem; height: 0.5rem;
+    border-radius: 50%;
+    background: var(--good);
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem; height: 2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--text-md);
+    cursor: pointer;
+}
+
+.icon-btn:hover { background: var(--surface-3); }
+
+/* ------------------------------------------------------------------ shell */
+
+.shell {
+    display: grid;
+    grid-template-columns: var(--panel-rail) minmax(0, 1fr) var(--panel-aside);
+    grid-template-areas: "rail board aside";
+    gap: var(--space-3);
+    padding: var(--space-3);
+    /* The load-bearing line. Without it this row sizes to its tallest child
+       and the whole page grows a scrollbar instead of the panels scrolling. */
+    min-height: 0;
+    min-width: 0;
+}
+
+.rail  { grid-area: rail;  }
+.stage { grid-area: board; }
+.aside { grid-area: aside; }
+
+.rail, .aside {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-height: 0;
+    min-width: 0;
+}
+
+.stage {
+    display: grid;
+    grid-template-rows: minmax(var(--shell-min-board), 1fr) auto;
+    gap: var(--space-3);
+    min-height: 0;
+    min-width: 0;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+}
+
+.panel__title {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.panel__count {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    letter-spacing: 0;
+    color: var(--text-faint);
+    text-transform: none;
+}
+
+.panel__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* The rail is ONE scroll column and its panels size to their content.
+   Giving each panel a flex ratio instead looked tidy in a mockup and wrong in
+   practice: a four-player scoreboard in a track sized for six leaves a hole
+   inside the panel, which reads as a rendering bug. Slack now falls outside
+   the panels, where it is just background. */
+.rail {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+    padding-right: 2px;
+}
+
+.rail > .panel { flex: 0 0 auto; }
+.rail .panel__body { overflow: visible; }
+
+/* ------------------------------------------------------------- scoreboard */
+
+.score-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+
+.score-row {
+    display: grid;
+    grid-template-columns: 0.4rem 1fr auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid transparent;
+}
+
+.score-row[aria-current="true"] {
+    border-color: color-mix(in srgb, var(--info) 55%, transparent);
+    background: var(--info-soft);
+}
+
+.score-row__flag {
+    width: 0.4rem;
+    height: 1.6rem;
+    border-radius: var(--radius-pill);
+    background: var(--pc, var(--player-1));
+}
+
+.score-row__name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.score-row__meta {
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+    font-family: var(--font-num);
+}
+
+.score-row__vp {
+    font-family: var(--font-num);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* ------------------------------------------------------------- dev cards */
+
+.dev-deck {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-bottom: var(--space-2);
+}
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.btn:hover { background: var(--surface-3); }
+
+.btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
+
+.btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.btn--danger { background: var(--bad); border-color: var(--bad); color: var(--on-status); }
+
+.btn--sm { padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.dev-list { display: grid; gap: var(--space-1); }
+
+.dev-chip {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    font-size: var(--text-sm);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border-left: 3px solid var(--accent);
+}
+
+.dev-chip__n { font-family: var(--font-num); color: var(--text-muted); font-size: var(--text-xs); }
+.dev-chip--locked { border-left-color: var(--border-strong); color: var(--text-muted); }
+
+.rule-line {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    padding: var(--space-1) 0;
+    border-bottom: 1px dashed var(--border);
+}
+
+.rule-line:last-child { border-bottom: 0; }
+.rule-line span:last-child { font-family: var(--font-num); color: var(--text-muted); }
+
+/* ------------------------------------------------------------------ board */
+
+/* position: relative + overflow: hidden is what lets the canvas be absolute.
+   The height comes entirely from the grid track above. */
+.board {
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.board__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+}
+
+.board__canvas:focus-visible { outline-offset: -4px; }
+
+.board__controls {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: var(--z-board-overlay);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.board__controls .icon-btn {
+    background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    backdrop-filter: blur(6px);
+}
+
+/* A status strip floating over the board rather than pushing it: an
+   indicator that appears mid-turn must not resize the drawing buffer. */
+.board__status {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    z-index: var(--z-board-overlay);
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    background: var(--warn-soft);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
+/* ---------------------------------------------------------------- console */
+
+.console {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+}
+
+.console__group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-right: var(--space-2);
+    border-right: 1px solid var(--border);
+}
+
+.console__group:last-child { border-right: 0; padding-right: 0; }
+.console__spacer { flex: 1 1 auto; }
+
+.dice {
+    display: flex;
+    gap: var(--space-1);
+}
+
+.die {
+    width: 1.9rem; height: 1.9rem;
+    display: grid; place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    font-family: var(--font-num);
+    font-weight: 700;
+    font-size: var(--text-md);
+}
+
+.timer {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+}
+
+.timer b { font-family: var(--font-num); font-size: var(--text-sm); color: var(--text); }
+.timer--warn { background: var(--warn-soft); }
+.timer--warn b { color: var(--text); }
+
+/* ------------------------------------------------------- resources / bank */
+
+.res-strip {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-1);
+}
+
+.res {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: var(--space-1) 0;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border-bottom: 3px solid var(--rc, var(--res-wood));
+}
+
+.res__n { font-family: var(--font-num); font-weight: 700; font-size: var(--text-md); line-height: 1; }
+.res__l { font-size: var(--text-2xs); color: var(--text-muted); }
+.res--zero .res__n { color: var(--text-faint); }
+
+.res-strip { max-width: 34rem; }
+
+/* Same 5 columns as the hand above, so a bank count sits directly under the
+   resource it counts instead of being a free-floating string of numbers. */
+.bank-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-1);
+    max-width: 34rem;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border);
+}
+
+.bank-row__label {
+    grid-column: 1 / -1;
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin-bottom: 2px;
+}
+
+.bank-row span:not(.bank-row__label) {
+    text-align: center;
+    font-family: var(--font-num);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------- tabs/log */
+
+#panel-side { flex: 1 1 auto; }
+
+.tabs {
+    flex: none;
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-1) 0;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.tab {
+    font: inherit;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
+
+.tab__badge {
+    display: inline-block;
+    margin-left: var(--space-1);
+    min-width: 1.15rem;
+    padding: 0 0.25rem;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+}
+
+.log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* margin-top:auto on the first row, not justify-content:flex-end: the latter
+   makes the top of an overflowing list unreachable in a scroll container. */
+.log__row:first-child { margin-top: auto; }
+
+.log__row {
+    display: grid;
+    grid-template-columns: 3.6rem minmax(0, 1fr);
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+    padding: var(--space-1) 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.log__row:last-child { border-bottom: 0; }
+
+.log__time {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+    padding-top: 0.15em;
+}
+
+.log__who { font-weight: 700; color: var(--pc, var(--text)); }
+.log__row--sys .log__text { color: var(--text-muted); }
+
+.chat-form {
+    flex: none;
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-top: 1px solid var(--border);
+}
+
+.chat-form input {
+    font: inherit;
+    font-size: var(--text-sm);
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+}
+
+.chat-form input::placeholder { color: var(--text-faint); }
+
+/* ------------------------------------------------------------- responsive */
+
+/* Below three usable columns the aside folds under the board and the page
+   becomes scrollable. Note the board keeps a viewport-relative height so it
+   does not collapse to --shell-min-board on a tall phone. */
+@media (max-width: 1180px) {
+    body { height: auto; min-height: 100dvh; overflow: auto; }
+
+    .shell {
+        grid-template-columns: var(--panel-rail) minmax(0, 1fr);
+        grid-template-areas:
+            "rail board"
+            "aside aside";
+    }
+
+    .stage { grid-template-rows: minmax(clamp(20rem, 48vh, 34rem), 1fr) auto; }
+    .rail, .aside { max-height: none; }
+    .log { max-height: 18rem; }
+    #panel-players, #panel-dev, #panel-rules { flex: 0 0 auto; }
+    .panel__body { max-height: 22rem; }
+}
+
+@media (max-width: 820px) {
+    .shell {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "board" "rail" "aside";
+    }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+    <h1 class="topbar__brand">Catan</h1>
+    <span class="turn-cue"><span class="turn-cue__dot"></span>Marek's turn — build or trade</span>
+    <span class="topbar__spacer"></span>
+    <span class="conn">Connected · 4 players</span>
+    <button type="button" class="icon-btn" id="theme-btn" aria-label="Switch colour theme" title="Switch colour theme">◐</button>
+</header>
+
+<div class="shell">
+
+    <!-- ------------------------------------------------------------ rail -->
+    <div class="rail">
+        <section class="panel" id="panel-players">
+            <h2 class="panel__title">Players <span class="panel__count">win at 10</span></h2>
+            <div class="panel__body">
+                <ul class="score-list">
+                    <li class="score-row" style="--pc: var(--player-2);" aria-current="true">
+                        <span class="score-row__flag"></span>
+                        <span class="min0">
+                            <span class="score-row__name">Marek</span><br>
+                            <span class="score-row__meta">8 cards · 3 knights</span>
+                        </span>
+                        <span class="score-row__vp">7</span>
+                    </li>
+                    <li class="score-row" style="--pc: var(--player-1);">
+                        <span class="score-row__flag"></span>
+                        <span class="min0">
+                            <span class="score-row__name">Kalina</span><br>
+                            <span class="score-row__meta">5 cards · longest road</span>
+                        </span>
+                        <span class="score-row__vp">6</span>
+                    </li>
+                    <li class="score-row" style="--pc: var(--player-3);">
+                        <span class="score-row__flag"></span>
+                        <span class="min0">
+                            <span class="score-row__name">Ewa</span><br>
+                            <span class="score-row__meta">11 cards · 1 knight</span>
+                        </span>
+                        <span class="score-row__vp">5</span>
+                    </li>
+                    <li class="score-row" style="--pc: var(--player-4);">
+                        <span class="score-row__flag"></span>
+                        <span class="min0">
+                            <span class="score-row__name">Tomasz</span><br>
+                            <span class="score-row__meta">3 cards · largest army</span>
+                        </span>
+                        <span class="score-row__vp">5</span>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="panel" id="panel-dev">
+            <h2 class="panel__title">Development <span class="panel__count">18 left</span></h2>
+            <div class="panel__body">
+                <div class="dev-deck">
+                    <span>Cost: 1 sheep · 1 wheat · 1 ore</span>
+                </div>
+                <button type="button" class="btn btn--primary" style="width: 100%; margin-bottom: var(--space-2);">Buy card</button>
+                <div class="dev-list">
+                    <div class="dev-chip">Knight <span class="dev-chip__n">×2</span></div>
+                    <div class="dev-chip">Road Building <span class="dev-chip__n">×1</span></div>
+                    <div class="dev-chip dev-chip--locked">Monopoly <span class="dev-chip__n">new</span></div>
+                    <div class="dev-chip">Victory Point <span class="dev-chip__n">×1</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" id="panel-rules">
+            <h2 class="panel__title">House rules</h2>
+            <div class="panel__body">
+                <div class="rule-line"><span>Victory points</span><span>10</span></div>
+                <div class="rule-line"><span>Hand limit on a 7</span><span>7</span></div>
+                <div class="rule-line"><span>Longest Road min</span><span>5</span></div>
+                <div class="rule-line"><span>Friendly Robber</span><span>on</span></div>
+                <div class="rule-line"><span>Bank per resource</span><span>19</span></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ----------------------------------------------------------- board -->
+    <div class="stage">
+        <div class="board" id="board">
+            <canvas class="board__canvas" id="board-canvas" tabindex="0"
+                    role="img" aria-label="Catan board: 19 hexes, robber on the desert"></canvas>
+            <div class="board__status">Robber on the desert — 7 was rolled twice this round</div>
+            <div class="board__controls">
+                <button type="button" class="icon-btn" aria-label="Zoom in" title="Zoom in">+</button>
+                <button type="button" class="icon-btn" aria-label="Zoom out" title="Zoom out">−</button>
+                <button type="button" class="icon-btn" aria-label="Fit board to view" title="Fit board to view">⤢</button>
+            </div>
+        </div>
+
+        <div class="console">
+            <div class="console__group">
+                <button type="button" class="btn btn--primary">Roll dice</button>
+                <span class="dice"><span class="die">5</span><span class="die">3</span></span>
+            </div>
+            <div class="console__group">
+                <button type="button" class="btn">Settlement</button>
+                <button type="button" class="btn">Road</button>
+                <button type="button" class="btn">City</button>
+            </div>
+            <div class="console__group">
+                <span class="timer">Turn <b>1:42</b></span>
+                <span class="timer timer--warn">Dice <b>0:09</b></span>
+            </div>
+            <span class="console__spacer"></span>
+            <div class="console__group">
+                <button type="button" class="btn">End turn</button>
+                <button type="button" class="btn btn--danger btn--sm">End game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ----------------------------------------------------------- aside -->
+    <div class="aside">
+        <section class="panel">
+            <h2 class="panel__title">Your hand <span class="panel__count">8 / 7 limit</span></h2>
+            <div class="panel__body">
+                <div class="res-strip">
+                    <span class="res" style="--rc: var(--res-wood);"><span class="res__n">3</span><span class="res__l">Wood</span></span>
+                    <span class="res" style="--rc: var(--res-brick);"><span class="res__n">2</span><span class="res__l">Brick</span></span>
+                    <span class="res res--zero" style="--rc: var(--res-sheep);"><span class="res__n">0</span><span class="res__l">Sheep</span></span>
+                    <span class="res" style="--rc: var(--res-wheat);"><span class="res__n">2</span><span class="res__l">Wheat</span></span>
+                    <span class="res" style="--rc: var(--res-ore);"><span class="res__n">1</span><span class="res__l">Ore</span></span>
+                </div>
+                <div class="bank-row">
+                    <span class="bank-row__label">Bank has</span>
+                    <span>19</span><span>17</span><span>14</span><span>11</span><span>15</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" id="panel-side">
+            <div class="tabs" role="tablist" aria-label="Side panels">
+                <button type="button" class="tab" role="tab" aria-selected="true" id="tab-log" aria-controls="pane-log">Game log</button>
+                <button type="button" class="tab" role="tab" aria-selected="false" id="tab-trade" aria-controls="pane-trade">Trade <span class="tab__badge">2</span></button>
+            </div>
+            <div class="log" role="log" id="pane-log" aria-labelledby="tab-log">
+                <div class="log__row log__row--sys"><span class="log__time">21:02:11</span><span class="log__text">Ewa placed a settlement on the 6 / 9 / 4 corner.</span></div>
+                <div class="log__row log__row--sys"><span class="log__time">21:02:40</span><span class="log__text">Tomasz rolled 9. Kalina collected 2 wood.</span></div>
+                <div class="log__row" style="--pc: var(--player-1);"><span class="log__time">21:03:04</span><span class="log__text"><span class="log__who">Kalina</span> anyone got ore? I'll pay two wood</span></div>
+                <div class="log__row log__row--sys"><span class="log__time">21:03:19</span><span class="log__text">Marek bought a development card.</span></div>
+                <div class="log__row" style="--pc: var(--player-4);"><span class="log__time">21:03:41</span><span class="log__text"><span class="log__who">Tomasz</span> not a chance, I need it for the city</span></div>
+                <div class="log__row log__row--sys"><span class="log__time">21:04:02</span><span class="log__text">Kalina rolled 7. The robber must move.</span></div>
+                <div class="log__row log__row--sys"><span class="log__time">21:04:10</span><span class="log__text">Ewa discarded 5 cards to the bank.</span></div>
+                <div class="log__row log__row--sys"><span class="log__time">21:04:33</span><span class="log__text">Kalina moved the robber to the desert and stole 1 card from Ewa.</span></div>
+                <div class="log__row" style="--pc: var(--player-3);"><span class="log__time">21:04:51</span><span class="log__text"><span class="log__who">Ewa</span> rude</span></div>
+                <div class="log__row log__row--sys"><span class="log__time">21:05:08</span><span class="log__text">Marek upgraded a settlement to a city. Marek now has 7 victory points.</span></div>
+            </div>
+            <form class="chat-form" onsubmit="return false;">
+                <label class="visually-hidden" for="chat-input">Chat message</label>
+                <input id="chat-input" type="text" placeholder="Say something…" maxlength="300" autocomplete="off">
+                <button type="submit" class="btn btn--sm">Send</button>
+            </form>
+        </section>
+    </div>
+</div>
+
+<script>
+/* Demo-only board painter. The real app has board-renderer.js; what matters
+   here is the sizing contract: the canvas never contributes to layout, its
+   buffer is derived from the box, and a ResizeObserver re-derives it. */
+(function () {
+    const box = document.getElementById("board");
+    const canvas = document.getElementById("board-canvas");
+    const ctx = canvas.getContext("2d");
+
+    const TERRAIN = ["wood","sheep","wheat","brick","ore","wood","wheat","sheep","desert",
+                     "ore","wheat","wood","brick","sheep","wood","ore","wheat","sheep","brick"];
+    const NUMBERS = [11,12,9,4,6,5,10,3,null,8,4,11,5,6,3,9,10,8,2];
+    const FILL = { wood:"--terrain-wood", brick:"--terrain-brick", sheep:"--terrain-sheep",
+                   wheat:"--terrain-wheat", ore:"--terrain-ore", desert:"--terrain-desert" };
+
+    const COORDS = [];
+    for (let r = -2; r <= 2; r++) {
+        for (let q = Math.max(-2, -2 - r); q <= Math.min(2, 2 - r); q++) COORDS.push([q, r]);
+    }
+
+    const TOWNS = [[0,-2,0],[ -1,0,2],[1,1,4],[-2,1,3],[2,-1,1],[0,1,5],[1,-1,0]];
+    const ROADS = [[0,-2,0],[-1,0,2],[1,1,3],[-2,1,4],[2,-1,1],[0,1,0],[0,0,2]];
+    const PCOL = ["--player-1","--player-2","--player-3","--player-4"];
+
+    const v = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+    function corner(cx, cy, R, i) {
+        const a = Math.PI / 180 * (60 * i + 30);
+        return [cx + R * Math.cos(a), cy + R * Math.sin(a)];
+    }
+
+    function draw() {
+        const w = box.clientWidth, h = box.clientHeight;
+        if (!w || !h) return;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+
+        const R = Math.min(w / (Math.sqrt(3) * 5.6), h / 8.6);
+        const cx = w / 2, cy = h / 2;
+        const px = (q, r) => [cx + Math.sqrt(3) * R * (q + r / 2), cy + 1.5 * R * r];
+
+        ctx.lineJoin = "round";
+        COORDS.forEach(([q, r], i) => {
+            const [x, y] = px(q, r);
+            ctx.beginPath();
+            for (let k = 0; k < 6; k++) {
+                const [ax, ay] = corner(x, y, R * 0.97, k);
+                k ? ctx.lineTo(ax, ay) : ctx.moveTo(ax, ay);
+            }
+            ctx.closePath();
+            ctx.fillStyle = v(FILL[TERRAIN[i]]);
+            ctx.fill();
+            ctx.strokeStyle = v("--bg-sunken");
+            ctx.lineWidth = Math.max(2, R * 0.05);
+            ctx.stroke();
+
+            const n = NUMBERS[i];
+            if (n) {
+                const hot = n === 6 || n === 8;
+                ctx.beginPath();
+                ctx.arc(x, y, R * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = v("--surface-1");
+                ctx.fill();
+                ctx.strokeStyle = hot ? v("--bad") : v("--border-strong");
+                ctx.lineWidth = hot ? 2.5 : 1.5;
+                ctx.stroke();
+                ctx.fillStyle = hot ? v("--bad") : v("--text");
+                ctx.font = `700 ${Math.round(R * 0.34)}px ui-monospace, monospace`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(String(n), x, y);
+            } else {
+                ctx.beginPath();
+                ctx.arc(x, y - R * 0.05, R * 0.22, 0, Math.PI * 2);
+                ctx.fillStyle = v("--text");
+                ctx.fill();
+            }
+        });
+
+        ROADS.forEach(([q, r, e], i) => {
+            const [x, y] = px(q, r);
+            const [x1, y1] = corner(x, y, R * 0.97, e);
+            const [x2, y2] = corner(x, y, R * 0.97, (e + 1) % 6);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = v(PCOL[i % 4]);
+            ctx.lineWidth = Math.max(4, R * 0.16);
+            ctx.lineCap = "round";
+            ctx.stroke();
+        });
+
+        TOWNS.forEach(([q, r, c], i) => {
+            const [x, y] = px(q, r);
+            const [tx, ty] = corner(x, y, R * 0.97, c);
+            const s = R * 0.24;
+            ctx.beginPath();
+            ctx.moveTo(tx - s, ty + s);
+            ctx.lineTo(tx - s, ty - s * 0.2);
+            ctx.lineTo(tx, ty - s);
+            ctx.lineTo(tx + s, ty - s * 0.2);
+            ctx.lineTo(tx + s, ty + s);
+            ctx.closePath();
+            ctx.fillStyle = v(PCOL[i % 4]);
+            ctx.fill();
+            ctx.strokeStyle = v("--bg-sunken");
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        });
+    }
+
+    new ResizeObserver(() => requestAnimationFrame(draw)).observe(box);
+    draw();
+
+    document.getElementById("theme-btn").addEventListener("click", () => {
+        const root = document.documentElement;
+        const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+        const now = root.dataset.theme || (dark ? "dark" : "light");
+        root.dataset.theme = now === "dark" ? "light" : "dark";
+        draw();
+    });
+})();
+</script>
+</body>
+</html>
