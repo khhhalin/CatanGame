@@ -30,73 +30,26 @@ def handle_next_turn(data):
     if state.current_game is None or state.current_game.game_state != "started":
         return
 
-    # Check if player must move robber first
-    if state.current_game.must_move_robber:
-        reject('MUST_MOVE_ROBBER', 'You must move the robber first')
-        return
-
-    # Check if player must choose victim first
-    if state.current_game.must_choose_victim:
-        reject('MUST_CHOOSE_VICTIM', 'You must choose a victim to steal from')
-        return
-
-    # Check if player must discard first
-    requester = data.get('name')
-    if requester in state.current_game.players_needing_discard:
-        reject('MUST_DISCARD', 'You must discard resources first')
-        return
-
-    # Don't allow manual turn advancement during setup phase
-    if state.current_game.game_phase == "setup":
-        reject('WRONG_PHASE', 'Cannot skip turn during setup phase')
-        return
-
     with game_lock:
-        current_player = state.current_game.players[state.current_game.current_player_index]
-        current_player_name = current_player.name if current_player else None
-
-        # The seat's own player normally ends the turn. Once the round timer has
-        # run out anyone may advance it, so an absent player cannot stall the table.
-        if requester != current_player_name and not state.current_game.is_round_expired():
-            reject('NOT_YOUR_TURN', f'Only {current_player_name} can advance the turn')
+        result = state.current_game.advance_turn(data.get('name'))
+        if not result['success']:
+            reject(result['code'], result['error'])
             return
 
-        _advance_turn()
+        _announce_turn(result['current_player'])
 
 
-def _advance_turn():
-    """Move to the next player and reset the turn timers. Caller holds game_lock."""
-    state.current_game.current_player_index = (state.current_game.current_player_index + 1) % len(
-        state.current_game.players
-    )
-    state.current_game.turn_count += 1
-    new_current_player = state.current_game.players[state.current_game.current_player_index]
-    new_current_player_name = new_current_player.name if new_current_player else None
-
-    # A new turn clears any follow-up the previous player never used, so an
-    # unspent Invention cannot be redeemed two turns later.
-    state.current_game.pending_invention = None
-    state.current_game.pending_monopoly = None
-    state.current_game.free_roads_remaining = 0
-
-    # Reset turn timer
-    state.current_game.start_turn()
-    if state.current_game.ck:
-        # Clears each knight's per-turn flags. Without it a knight that acts
-        # once stays spent for the rest of the game.
-        state.current_game.ck.start_turn()
-
-    logger.info(
-        "turn changed to=%s turn=%s", new_current_player_name, state.current_game.turn_count
-    )
-    log_event('turn', f"{new_current_player_name}'s turn", player=new_current_player_name)
+def _announce_turn(current_player_name):
+    """Tell everyone whose turn it now is. Caller holds game_lock."""
+    logger.info("turn changed to=%s turn=%s", current_player_name, state.current_game.turn_count)
+    log_event('turn', f"{current_player_name}'s turn", player=current_player_name)
 
     socketio.emit(
         'turn_changed',
         {
             'players': state.current_game.get_player_names(),
             'observers': state.current_game.observers,
-            'current_player': new_current_player_name,
+            'current_player': current_player_name,
             'dice_roll_time': state.current_game.get_dice_roll_time_remaining(),
             'round_time': state.current_game.get_round_time_remaining(),
             'has_rolled_dice': state.current_game.has_rolled_dice,
@@ -139,11 +92,6 @@ def handle_roll_dice(data):
     if state.current_game is None or state.current_game.game_state != "started":
         return
 
-    # Don't allow dice rolling during setup phase
-    if state.current_game.game_phase == "setup":
-        reject('WRONG_PHASE', 'Cannot roll dice during setup phase')
-        return
-
     try:
         name = require_str(data.get('name'), 'name')
     except InvalidPayload as exc:
@@ -151,47 +99,32 @@ def handle_roll_dice(data):
         return
 
     with game_lock:
-        current_player = state.current_game.players[state.current_game.current_player_index]
-        if current_player.name != name:
-            reject('NOT_YOUR_TURN', f'Only {current_player.name} can roll dice')
+        result = state.current_game.roll_dice(name)
+        if not result['success']:
+            reject(result['code'], result['error'])
             return
 
-        if state.current_game.has_rolled_dice:
-            reject('ALREADY_ROLLED', 'You have already rolled this turn')
-            return
-
-        _apply_dice_roll(name)
+        _announce_dice_roll(name, result)
 
 
-def _resolve_event_die(red_die):
-    """Roll the C&K event die and act on it. Caller holds game_lock.
-
-    Three of its six faces advance the barbarian ship; the other three open a
-    city gate for one discipline, which is what lets players draw progress
-    cards (the red production die decides who qualifies).
-    """
-    ck = state.current_game.ck
-    event = state.current_game.roll_event_die()
-    ck.last_event = event
-    ck.last_red_die = red_die
-
-    if event != ck_module.EVENT_BARBARIAN:
+def _announce_event_die(event):
+    """Report the C&K event die outcome. Caller holds game_lock."""
+    if not event['barbarian']:
         # A city gate. Progress card draws are not wired up yet, so record it
         # for the client and move on rather than silently doing nothing.
-        log_event('dice', f"City gate: {event} (red die {red_die})")
+        log_event('dice', f"City gate: {event['face']} (red die {event['red_die']})")
         return
 
-    arrived = ck.advance_barbarians()
-    if not arrived:
-        remaining = ck_module.BARBARIAN_TRACK_LENGTH - ck.barbarian_position
+    if not event['arrived']:
+        remaining = ck_module.BARBARIAN_TRACK_LENGTH - event['position']
         log_event(
             'dice',
-            f"The barbarians advance ({ck.barbarian_position}/"
+            f"The barbarians advance ({event['position']}/"
             f"{ck_module.BARBARIAN_TRACK_LENGTH}) - {remaining} to go",
         )
         return
 
-    result = state.current_game.resolve_barbarian_attack()
+    result = event['attack']
     logger.info("barbarian attack: %s", result)
 
     if result['won']:
@@ -220,43 +153,20 @@ def _resolve_event_die(red_die):
     socketio.emit('barbarian_attack', result)
 
 
-def _apply_dice_roll(name):
-    """Roll, distribute, and broadcast. Caller holds game_lock."""
-    # Rolled through the game's own generator so a test can script the sequence
-    # and so production uses a source that cannot be reconstructed from
-    # observed outcomes.
-    dice1 = state.current_game.rng.randint(1, 6)
-    dice2 = state.current_game.rng.randint(1, 6)
-    total = dice1 + dice2
-
-    # Mark dice as rolled
-    state.current_game.set_dice_rolled()
+def _announce_dice_roll(name, result):
+    """Report a roll the engine has already applied. Caller holds game_lock."""
+    dice1, dice2, total = result['dice1'], result['dice2'], result['total']
 
     logger.info("roll player=%s dice=%s+%s total=%s", name, dice1, dice2, total)
     log_event('dice', f"{name} rolled {dice1} + {dice2} = {total}", player=name, total=total)
 
-    # Cities & Knights rolls a third die, and it is resolved *before*
-    # production. Without this the barbarian ship never moves and knights have
-    # nothing to defend against.
-    if state.current_game.ck:
-        _resolve_event_die(dice2)
-
-    # Set must_move_robber if 7 is rolled (resources not distributed)
-    if total == 7:
-        # C&K: until the barbarians have attacked once, a 7 does not move the
-        # robber — but the discard rule still applies.
-        if not state.current_game.ck or state.current_game.ck.barbarians_have_attacked:
-            state.current_game.must_move_robber = True
-        state.current_game.check_discard_required()
-        state.current_game.distribute_resources(total)  # This will skip distribution
-    else:
-        state.current_game.distribute_resources(total)
+    if result['event']:
+        _announce_event_die(result['event'])
 
     # Who must discard and how much is public: it is derived from hand sizes,
     # which every player can already see.
-    if state.current_game.players_needing_discard:
-        for player_name, amount in state.current_game.players_needing_discard.items():
-            socketio.emit('discard_required', {'player': player_name, 'amount': amount})
+    for player_name, amount in result['discards'].items():
+        socketio.emit('discard_required', {'player': player_name, 'amount': amount})
 
     socketio.emit('dice_rolled', {'player': name, 'dice1': dice1, 'dice2': dice2, 'total': total})
 
@@ -305,11 +215,13 @@ def _turn_watchdog():
                     and state.current_game.is_dice_roll_expired()
                 ):
                     logger.info("dice timer expired, auto-rolling for %s", current_player.name)
-                    _apply_dice_roll(current_player.name)
+                    result = state.current_game.roll_dice(current_player.name)
+                    if result['success']:
+                        _announce_dice_roll(current_player.name, result)
                     continue
 
                 if state.current_game.has_rolled_dice and state.current_game.is_round_expired():
                     logger.info("round timer expired, advancing past %s", current_player.name)
-                    _advance_turn()
+                    _announce_turn(state.current_game.force_advance_turn())
         except Exception:
             logger.exception("turn watchdog error")

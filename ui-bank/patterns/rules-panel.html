@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rule selector — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* ===========================================================================
+   RULE SELECTOR — a dense settings list with mixed control types.
+   ---------------------------------------------------------------------------
+   The lobby has ~17 rules in three groups, mixing booleans with bounded
+   integers, and each carries a name, a one-line summary and a rulebook
+   citation. Two decisions carry the pattern:
+
+     - One row template for both control types. A boolean row and a number row
+       differ only in what sits in the last grid column, so the name/summary
+       column stays aligned down the whole list. A separate layout per type is
+       what makes settings screens look ragged.
+     - The summary is always visible, never a tooltip. "Is that really the
+       official rule?" is the question this panel exists to answer, and a
+       hover tooltip answers it for nobody on a touch screen.
+   ========================================================================== */
+
+/* Capped width on purpose. Left to fill a 1920px lobby the switch ends up
+   half a metre from the rule it belongs to and the eye cannot connect them.
+   ~50rem keeps the control inside the same visual unit as its description. */
+.rules {
+    max-width: 50rem;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: 34rem;
+    box-shadow: var(--shadow-1);
+}
+
+.rules__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border);
+}
+
+.rules__head h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+}
+
+.rules__summary {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.rules__scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+/* --------------------------------------------------------------- groups */
+
+.rule-group { border-bottom: 1px solid var(--border); }
+.rule-group:last-child { border-bottom: 0; }
+
+/* Sticky group headers: with 17 rows the reader loses track of whether the
+   number they are editing is core or a variant. */
+.rule-group__head {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.rule-group__hint {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-faint);
+}
+
+/* ----------------------------------------------------------------- rows */
+
+.rule {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-3);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.rule:last-child { border-bottom: 0; }
+.rule:hover { background: var(--surface-2); }
+
+.rule__name {
+    font-size: var(--text-md);
+    font-weight: 600;
+    margin: 0;
+}
+
+.rule__summary {
+    margin: 2px 0 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    max-width: 62ch;
+}
+
+.rule__source {
+    display: inline-block;
+    margin-top: var(--space-1);
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+}
+
+.rule__control { display: flex; align-items: center; gap: var(--space-2); }
+
+/* A rule whose value differs from the box default gets a marker, so a player
+   joining a lobby can see at a glance what has been meddled with. */
+.rule__changed {
+    display: inline-block;
+    margin-left: var(--space-2);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+/* :has() tints a row whose checkbox is on. Progressive enhancement only -
+   the checkbox itself is still the state, so a browser without :has() (any
+   pre-2023 build) simply shows an untinted but fully working row. */
+.rule:has(input[type="checkbox"]:checked) {
+    background: color-mix(in srgb, var(--accent-soft) 60%, transparent);
+}
+
+/* ---------------------------------------------------------- switch input */
+
+/* A real <input type="checkbox"> restyled, not a div with a click handler:
+   Space toggles it, forms serialise it and screen readers announce it. */
+.switch {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: 2.75rem;
+    height: 1.5rem;
+}
+
+.switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.switch__track {
+    pointer-events: none;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    transition: background var(--dur-med) var(--ease);
+}
+
+.switch__track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 50%;
+    background: var(--surface-1);
+    box-shadow: var(--shadow-1);
+    transition: transform var(--dur-med) var(--ease);
+}
+
+.switch input:checked + .switch__track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .switch__track::after { transform: translateX(1.2rem); }
+.switch input:focus-visible + .switch__track { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled + .switch__track { opacity: 0.45; }
+
+/* ---------------------------------------------------------- number input */
+
+.stepper {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-2);
+}
+
+.stepper button {
+    font: inherit;
+    font-size: var(--text-md);
+    width: 2rem;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.stepper button:hover { background: var(--surface-3); }
+
+.stepper input {
+    font: inherit;
+    font-family: var(--font-num);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    width: 3.25rem;
+    text-align: center;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text);
+    padding: var(--space-1) 0;
+    /* The spinners duplicate the buttons and cannot be hit on touch. */
+    -moz-appearance: textfield;
+}
+
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.rule__range {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- footer */
+
+.rules__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    padding: var(--space-3);
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.locked-note {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--info-soft);
+    border-left: 3px solid var(--info);
+    font-size: var(--text-sm);
+}
+
+.btn {
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-1);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn--primary:hover { background: var(--accent-hover); }
+
+/* At narrow widths the control drops under the description instead of
+   squeezing the text into a 12-character column. */
+@media (max-width: 620px) {
+    .rule { grid-template-columns: minmax(0, 1fr); }
+    .rule__control { justify-content: flex-start; }
+}
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Rule selector</h1>
+        <p>The lobby's house-rules panel: three groups, booleans and bounded
+            integers in one aligned list, each with its rulebook citation.</p>
+    </header>
+
+    <section class="demo-section">
+        <div class="rules">
+            <div class="rules__head">
+                <h2>House rules</h2>
+                <span class="rules__summary">3 changed from the box defaults · everyone in the lobby sees these</span>
+            </div>
+
+            <div class="rules__scroll">
+
+                <section class="rule-group">
+                    <h3 class="rule-group__head">Expansion <span class="rule-group__hint">turns on a whole rule set</span></h3>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Cities &amp; Knights <span class="rule__changed">changed</span></p>
+                            <p class="rule__summary">Cities produce commodities as well as resources, which buy city
+                                improvements on three tracks. Knights defend Catan from the barbarians.
+                                Wins at 13 points instead of 10.</p>
+                            <span class="rule__source">Cities &amp; Knights (full expansion)</span>
+                        </div>
+                        <div class="rule__control">
+                            <label class="switch">
+                                <input type="checkbox" checked aria-describedby="r-ck-sum">
+                                <span class="switch__track"></span>
+                                <span class="visually-hidden">Cities &amp; Knights</span>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rule-group">
+                    <h3 class="rule-group__head">Variants <span class="rule-group__hint">single published house rules</span></h3>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Friendly Robber</p>
+                            <p class="rule__summary">The robber may not be placed on a hex touching a settlement of a
+                                player who has only 2 victory points.</p>
+                            <span class="rule__source">Traders &amp; Barbarians (variant)</span>
+                        </div>
+                        <div class="rule__control">
+                            <label class="switch">
+                                <input type="checkbox">
+                                <span class="switch__track"></span>
+                                <span class="visually-hidden">Friendly Robber</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Harbormaster <span class="rule__changed">changed</span></p>
+                            <p class="rule__summary">Settlements on a harbour are worth 1 harbour point and cities 2.
+                                The first player to 3 points takes a card worth 2 victory points, and it moves to
+                                anyone who later has more. The target to win goes up by 1.</p>
+                            <span class="rule__source">Traders &amp; Barbarians (variant)</span>
+                        </div>
+                        <div class="rule__control">
+                            <label class="switch">
+                                <input type="checkbox" checked>
+                                <span class="switch__track"></span>
+                                <span class="visually-hidden">Harbormaster</span>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rule-group">
+                    <h3 class="rule-group__head">Core numbers <span class="rule-group__hint">printed on the box, normally fixed</span></h3>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Victory points to win <span class="rule__changed">changed</span></p>
+                            <p class="rule__summary">How many victory points end the game. Seafarers scenarios use
+                                12–14, Cities &amp; Knights uses 13.</p>
+                            <span class="rule__source">Base game (10); expansions raise it</span>
+                        </div>
+                        <div class="rule__control">
+                            <span class="rule__range">5–20</span>
+                            <div class="stepper">
+                                <button type="button" aria-label="Decrease victory points to win">−</button>
+                                <label class="visually-hidden" for="victory-target">Victory points to win</label>
+                                <input id="victory-target" type="number" value="13" min="5" max="20">
+                                <button type="button" aria-label="Increase victory points to win">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Hand limit on a 7</p>
+                            <p class="rule__summary">Hold more than this when a 7 is rolled and you discard half,
+                                rounded down.</p>
+                            <span class="rule__source">Base game (7); city walls raise it in Cities &amp; Knights</span>
+                        </div>
+                        <div class="rule__control">
+                            <span class="rule__range">5–20</span>
+                            <div class="stepper">
+                                <button type="button" aria-label="Decrease hand limit">−</button>
+                                <label class="visually-hidden" for="hand-limit">Hand limit on a 7</label>
+                                <input id="hand-limit" type="number" value="7" min="5" max="20">
+                                <button type="button" aria-label="Increase hand limit">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Longest Road minimum</p>
+                            <p class="rule__summary">The shortest road that can claim the Longest Road card.</p>
+                            <span class="rule__source">Base game (5 segments)</span>
+                        </div>
+                        <div class="rule__control">
+                            <span class="rule__range">2–15</span>
+                            <div class="stepper">
+                                <button type="button" aria-label="Decrease Longest Road minimum">−</button>
+                                <label class="visually-hidden" for="longest-road">Longest Road minimum</label>
+                                <input id="longest-road" type="number" value="5" min="2" max="15">
+                                <button type="button" aria-label="Increase Longest Road minimum">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Bank cards per resource</p>
+                            <p class="rule__summary">How many cards of each resource the bank starts with. When it
+                                runs out, nobody collects that resource.</p>
+                            <span class="rule__source">Base game (19 of each resource)</span>
+                        </div>
+                        <div class="rule__control">
+                            <span class="rule__range">5–99</span>
+                            <div class="stepper">
+                                <button type="button" aria-label="Decrease bank cards per resource">−</button>
+                                <label class="visually-hidden" for="bank-limit">Bank cards per resource</label>
+                                <input id="bank-limit" type="number" value="19" min="5" max="99">
+                                <button type="button" aria-label="Increase bank cards per resource">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rule">
+                        <div class="min0">
+                            <p class="rule__name">Knight cards in the deck</p>
+                            <p class="rule__summary">How many Knight development cards the deck holds.</p>
+                            <span class="rule__source">Base game (14 of 25)</span>
+                        </div>
+                        <div class="rule__control">
+                            <span class="rule__range">0–40</span>
+                            <div class="stepper">
+                                <button type="button" aria-label="Decrease knight cards">−</button>
+                                <label class="visually-hidden" for="dev-knights">Knight cards in the deck</label>
+                                <input id="dev-knights" type="number" value="14" min="0" max="40">
+                                <button type="button" aria-label="Increase knight cards">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="rules__foot">
+                <p class="locked-note">Kalina is the host — only she can change these, and they lock when the game starts.</p>
+                <button type="button" class="btn btn--primary">Start game</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Locked state</h2>
+        <div class="rules" style="max-height: none;">
+            <div class="rules__head">
+                <h2>House rules</h2>
+                <span class="rules__summary">A game is running — these are fixed until it ends.</span>
+            </div>
+            <div class="rules__scroll">
+                <div class="rule">
+                    <div class="min0">
+                        <p class="rule__name">Cities &amp; Knights</p>
+                        <p class="rule__summary">Wins at 13 points instead of 10.</p>
+                    </div>
+                    <div class="rule__control">
+                        <label class="switch">
+                            <input type="checkbox" checked disabled>
+                            <span class="switch__track"></span>
+                            <span class="visually-hidden">Cities &amp; Knights (locked)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="rule">
+                    <div class="min0">
+                        <p class="rule__name">Victory points to win</p>
+                        <p class="rule__summary">Set by the host before the game started.</p>
+                    </div>
+                    <div class="rule__control">
+                        <div class="stepper">
+                            <button type="button" disabled aria-label="Decrease (locked)">−</button>
+                            <label class="visually-hidden" for="vt-locked">Victory points to win (locked)</label>
+                            <input id="vt-locked" type="number" value="13" disabled>
+                            <button type="button" disabled aria-label="Increase (locked)">+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p class="demo-note">Locked rows keep the same layout and stay readable —
+            they are disabled, not hidden, because a player joining mid-game
+            still needs to know what they are playing.</p>
+    </section>
+</main>
+</body>
+</html>
