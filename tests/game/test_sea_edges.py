@@ -98,6 +98,20 @@ class TestWhatTheSeaAdds:
         assert data['pirate_hex'] is None, "the pirate starts beside the board"
         assert all('ship' in edge for edge in data['edges'].values())
 
+    def test_the_payload_says_which_sides_a_ship_may_lie_on(self):
+        """The renderer draws the placement targets from this, and a second
+        implementation of the rule in JavaScript is a second answer."""
+        game = game_with(SEAFARING)
+        data = game.get_board_data('Alice')
+
+        assert {key for key, edge in data['edges'].items() if edge['sea']} == {
+            key for key in game.edges if game.is_sea_edge(key)
+        }
+
+    def test_a_landlocked_board_offers_no_sea_side(self):
+        data = game_with({}).get_board_data('Alice')
+        assert not any(edge['sea'] for edge in data['edges'].values())
+
 
 class TestDeterminism:
     def test_two_boards_from_one_seed_are_identical(self):

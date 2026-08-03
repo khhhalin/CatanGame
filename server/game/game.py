@@ -714,6 +714,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             edge_data = {
                 'road': edge_obj.road,
                 'ship': edge_obj.ship,
+                # Whether a ship may lie here is a rule, not geometry: the
+                # renderer needs it to draw the placement targets, and working
+                # it out again in JavaScript is a second answer waiting to
+                # disagree with this one. False on every side without ships.
+                'sea': self.is_sea_edge(key),
                 'neighbors': edge_obj.neighbors,
             }
             # A harbour belongs to this coastal edge; both of its intersections
