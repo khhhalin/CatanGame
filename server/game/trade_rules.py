@@ -22,10 +22,11 @@ class TradeRules:
         at 3:1 or 2:1 keeps the better of the two.
         """
         ports = self.get_player_ports(player_name)
-        rate = min(self.rules['bank_trade_rate'], 3) if 'generic' in ports \
-            else self.rules['bank_trade_rate']
+        rate = self.rules['bank_trade_rate']
+        if 'generic' in ports:
+            rate = min(rate, self.rules['generic_harbour_rate'])
         if any(resource in ports for resource in offered):
-            rate = min(rate, 2)
+            rate = min(rate, self.rules['special_harbour_rate'])
         return rate
 
     def propose_trade(self, player_name: str, offered: dict, wanted: dict) -> dict:

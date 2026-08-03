@@ -154,6 +154,20 @@ RULES += [
          "Base game rulebook (4:1); expansions.md 856, 1479 (3:1 variants)",
          "How many identical cards the bank charges for one of your choice, "
          "before harbours. Harbours still improve on it."),
+    _int("generic_harbour_rate", "Any-resource harbour rate", 3, 2, 6,
+         "Base game rulebook (the 3:1 harbours)",
+         "What a settlement on a 3:1 harbour pays for one card of your "
+         "choice. A harbour never makes a trade worse, so the bank rate wins "
+         "if it is already better."),
+    _int("special_harbour_rate", "Matching harbour rate", 2, 1, 6,
+         "Base game rulebook (the five 2:1 harbours)",
+         "What a settlement on a 2:1 harbour pays, for that harbour's own "
+         "resource only."),
+    _int("city_production", "Cards a city collects", 2, 1, 4,
+         "Base game rulebook (a city collects 2 of a hex's resource)",
+         "How much a city takes from each of its hexes when their number is "
+         "rolled. A settlement always takes one. With commodities on, a city "
+         "on pasture, mountain or forest takes one of each instead."),
     _int("min_players", "Players needed to start", 2, 1, 6,
          "Base game rulebook (3); expansions.md 804 (Catan for Two)",
          "How many players must be in the lobby before a game can start. "
@@ -215,6 +229,18 @@ RULES += [
           "Whether the desert is a legal hex for the robber. Off, the robber "
           "must always sit on producing land, where it costs somebody "
           "something."),
+    _bool("victory_point_cards_count_in_hand", "Victory Point cards count in hand", False,
+          "Base game rulebook (a Victory Point card counts the moment you "
+          "hold it and is revealed on the winning turn)",
+          "A Victory Point card in your hand counts toward your total and can "
+          "end the game, without being played and without being shown to "
+          "anybody first. Off — how this server has always scored — a card "
+          "does nothing until its owner plays it face up."),
+    _bool("no_adjacent_red_numbers", "Keep 6s and 8s apart", False,
+          "Base game rulebook, variable setup; expansions.md 1509–1510",
+          "The rulebook's fix-up for a randomly dealt board: no two red "
+          "numbers — the 6s and 8s — may end up on neighbouring hexes, and "
+          "tokens are swapped until none do."),
     _bool("friendly_robber", "Friendly Robber", False,
           "Traders & Barbarians variant; expansions.md 756–763",
           "The robber may not be placed on a hex touching a settlement of a "
@@ -226,6 +252,13 @@ RULES += [
           "and it moves to anyone who later has more. The published variant "
           "suggests raising the target by 1 to keep the game the same length.",
           suggests_victory_target=11),
+    _int("robber_free_opening_rounds", "Robber-free opening rounds", 0, 0, 10,
+         "Cities & Knights rulebook (no robber until the first barbarian "
+         "attack); expansions.md 317",
+         "For this many rounds from the start, a 7 does not move the robber. "
+         "The discard is unaffected — an early 7 still costs a big hand half "
+         "its cards.",
+         group=VARIANT),
 ]
 
 
@@ -317,10 +350,16 @@ RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 # missing box would hand them a game they did not choose. `start_game` refuses
 # the combination and says what is missing.
 DEPENDENCIES = {
+    # The tracks are bought with cloth, coin and paper, and nothing else
+    # produces them.
     "city_improvements": ("commodities",),
     "metropolis": ("city_improvements",),
+    # Knights are the only defence; without them every attack is a loss.
     "barbarians": ("knights",),
-    "progress_cards": ("barbarians",),
+    # Dealt by the event die the barbarians bring, to whoever's improvement
+    # level beats the red die. Neither half is optional: with no tracks every
+    # player sits at level 0 and the deck is all but undealt.
+    "progress_cards": ("barbarians", "city_improvements"),
 }
 
 # The rules that need the expansion's own state object — its tracks, knight

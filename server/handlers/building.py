@@ -20,7 +20,7 @@ from handlers.phases import blocked_by_phase
 logger = logging.getLogger(__name__)
 
 
-def _announce_victory(name):
+def announce_victory(name):
     """Tell the table if that action just won the game."""
     session = state.session()
     points = session.game.claim_victory(name)
@@ -56,7 +56,7 @@ def handle_place_settlement(data):
     log_event('build', f"{name} built a {building_type}", player=name)
 
     bump_and_broadcast()
-    _announce_victory(name)
+    announce_victory(name)
 
 @socketio.on('place_road')
 def handle_place_road(data):
@@ -114,4 +114,4 @@ def handle_upgrade_city(data):
     log_event('build', f"{name} upgraded a settlement to a city", player=name)
 
     bump_and_broadcast()
-    _announce_victory(name)
+    announce_victory(name)

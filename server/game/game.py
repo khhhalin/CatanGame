@@ -569,6 +569,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             return 0
 
         points = player.get_victory_points(self.longest_road_holder, self.largest_army_holder)
+
+        # A held Victory Point card is secret, so this total is deliberately
+        # higher than the one every browser is shown: the card only becomes
+        # public on the turn it wins the game.
+        if self.rules['victory_point_cards_count_in_hand']:
+            points += player.dev_cards['victory_point']['count']
+
         if self.rules['harbormaster'] and self.harbormaster_holder == player_name:
             points += 2
 
@@ -684,7 +691,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                 continue
 
             building_type = vertex.building.get('type')
-            resource_amount = 2 if building_type == 'city' else 1
+            resource_amount = (
+                self.rules['city_production'] if building_type == 'city' else 1
+            )
 
             player_name = vertex.building.get('player')
             if not player_name:
@@ -860,9 +869,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         event = self._resolve_event_die(dice2) if self.rules['barbarians'] else None
 
         if total == 7:
-            # Until the barbarians have attacked once, a 7 does not move the
-            # robber — but the discard rule still applies.
-            if not self.rules['barbarians'] or self.ck.barbarians_have_attacked:
+            # Two rules can hold the robber back, and both leave the discard
+            # alone: the barbarians keep it off the board until their first
+            # attack, and an opening grace keeps it off for the first rounds.
+            barbarians_still_coming = (
+                self.rules['barbarians'] and not self.ck.barbarians_have_attacked
+            )
+            if not barbarians_still_coming and not self.in_robber_free_opening():
                 self.must_move_robber = True
             self.check_discard_required()
 
@@ -878,6 +891,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
             'event': event,
             'discards': dict(self.players_needing_discard),
         }
+
+    def in_robber_free_opening(self) -> bool:
+        """Whether a 7 rolled now leaves the robber where it is.
+
+        A round is one turn each, so the grace covers `rounds x players` turns.
+        `turn_count` starts at 0 and rises once per completed turn, which makes
+        it the count of turns already played.
+        """
+        rounds = self.rules['robber_free_opening_rounds']
+        return self.turn_count < rounds * len(self.players)
 
     def calculate_longest_road(self, player_name: str) -> int:
         """Calculate longest road for a player, respecting road blocks."""

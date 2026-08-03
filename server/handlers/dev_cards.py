@@ -19,6 +19,7 @@ from state import (
     reject,
 )
 
+from handlers.building import announce_victory
 from handlers.phases import blocked_by_phase
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,9 @@ def handle_buy_dev_card(data):
     # Which card was drawn goes to the buyer alone; everyone else learns
     # only that the deck shrank, via the board update.
     emit('dev_card_bought', {'card_type': result['card_type'], 'player': name})
+    # With "Victory Point cards count in hand" on, the card that was just drawn
+    # can be the winning point, and there is no later action to notice it.
+    announce_victory(name)
     bump_and_broadcast()
 
 @socketio.on('play_dev_card')

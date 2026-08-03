@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 # every other number twice. A 7 is the robber's roll and never sits on a hex.
 NUMBER_TOKENS = (2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12)
 
+# The tokens printed in red — the two likeliest rolls. The rulebook's variable
+# setup forbids them on neighbouring hexes; the "Keep 6s and 8s apart" rule is
+# what enforces it here.
+RED_NUMBERS = (6, 8)
+
+# A cap on the swap loop below. Every pass fixes one hex and each fix is a swap
+# with a hex that has no red neighbour, so a legal board is reached in far fewer
+# passes than there are tokens; the cap only stops a pathological layout (one a
+# hand-written island could produce) from spinning forever.
+MAX_RED_SEPARATION_PASSES = 200
+
 # The 9 harbour pieces in the base-game box: 4 generic 3:1 harbours and one 2:1
 # harbour per resource, since the almanac allows "only 1 special harbor for each
 # type of resource".
@@ -271,6 +282,12 @@ class BoardBuilder:
         # Step 4: Build all neighbor relationships
         self._build_neighbor_relationships(land_hex_keys)
 
+        # Step 4b: separate the red numbers, if the table asked for it. It runs
+        # here rather than in _create_hexes because it needs to know which hexes
+        # touch which, and that is what the previous step just worked out.
+        if self.rules['no_adjacent_red_numbers']:
+            self._separate_red_numbers()
+
         # Step 5: Hang the harbours off the coast
         self._assign_ports()
 
@@ -342,6 +359,52 @@ class BoardBuilder:
             # Place robber on the first desert tile
             if hex_type == "desert" and self.robber_hex is None:
                 self.robber_hex = key
+
+    def _separate_red_numbers(self):
+        """Swap number tokens until no two red numbers touch.
+
+        The rulebook's own remedy for a fully random token layout: a 6 or an 8
+        that landed next to another one is exchanged with a hex holding a
+        milder number, keeping the pool of tokens exactly as the box has it.
+        The hex it moves to is picked with the game's own generator, so a seed
+        still replays the same board.
+        """
+        numbered = sorted(key for key, hex_obj in self.hexes.items() if hex_obj.number is not None)
+
+        def is_red(key: str) -> bool:
+            return self.hexes[key].number in RED_NUMBERS
+
+        for _ in range(MAX_RED_SEPARATION_PASSES):
+            crowded = [
+                key for key in numbered
+                if is_red(key) and any(is_red(n) for n in self.hexes[key].neighbors)
+            ]
+            if not crowded:
+                return
+
+            moving = crowded[0]
+            candidates = [key for key in numbered if not is_red(key)]
+            self.rng.shuffle(candidates)
+            for candidate in candidates:
+                # `moving` is about to become mild, so it does not count against
+                # the hex the red number is heading for.
+                if any(n != moving and is_red(n) for n in self.hexes[candidate].neighbors):
+                    continue
+                self.hexes[moving].number, self.hexes[candidate].number = (
+                    self.hexes[candidate].number, self.hexes[moving].number
+                )
+                break
+            else:
+                # Nowhere left to put it: the island is too small or too tightly
+                # packed for the constraint. Say so rather than loop, and leave
+                # the board playable.
+                logger.warning(
+                    "no free hex to move the red number off %s; leaving it adjacent", moving
+                )
+                return
+
+        logger.warning("gave up separating red numbers after %d passes",
+                       MAX_RED_SEPARATION_PASSES)
 
     def _generate_vertices_and_edges(self, hex_keys: set):
         """
