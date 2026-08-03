@@ -64,6 +64,46 @@ class TestWhatCountsAsAnIsland:
         assert sea_game.island_of_vertex(sea_vertex) is None
 
 
+class TestReachingANewIsland:
+    def test_a_shipping_route_can_found_a_settlement_where_it_lands(self, sea_game):
+        """expansions.md 48: "When a player's shipping route reaches a
+        coastline, that player may build a settlement on that coast even if it
+        lies on a new island."
+
+        The rule the whole expansion exists for. Without it a second island can
+        be sailed to and never landed on, and an island map stays unplayable.
+        """
+        centre = split_the_board(sea_game)
+        landing = vertex_on(sea_game, centre)
+        sea_edge = next(
+            key for key in sorted(sea_game.vertices[landing].neighbors['edges'])
+            if sea_game.is_sea_edge(key)
+        )
+        sea_game.edges[sea_edge].ship = {'player': 'Alice', 'built_turn': 0}
+        sea_game.get_player('Alice').ships.append(sea_edge)
+        sea_game.get_player('Alice').resources = {
+            'wood': 1, 'brick': 1, 'wheat': 1, 'sheep': 1,
+        }
+
+        result = sea_game.place_settlement('Alice', landing)
+        assert result['success'], result['error']
+        assert sea_game.vertices[landing].building['player'] == 'Alice'
+
+    def test_an_opponents_ship_founds_nobody_elses_settlement(self, sea_game):
+        centre = split_the_board(sea_game)
+        landing = vertex_on(sea_game, centre)
+        sea_edge = next(
+            key for key in sorted(sea_game.vertices[landing].neighbors['edges'])
+            if sea_game.is_sea_edge(key)
+        )
+        sea_game.edges[sea_edge].ship = {'player': 'Bob', 'built_turn': 0}
+        sea_game.get_player('Alice').resources = {
+            'wood': 1, 'brick': 1, 'wheat': 1, 'sheep': 1,
+        }
+
+        assert sea_game.place_settlement('Alice', landing)['code'] == 'INVALID_PLACEMENT'
+
+
 class TestScoring:
     def _alice_started_on_the_outer_island(self, game, centre):
         outer_hex = next(

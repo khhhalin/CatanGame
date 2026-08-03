@@ -447,9 +447,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             )
 
         if not in_setup:
-            if not self._touches_own_road(player_name, vertex_key):
+            if not self._touches_own_route(player_name, vertex_key):
                 return refused(
-                    'INVALID_PLACEMENT', 'Settlement must be connected to your own road'
+                    'INVALID_PLACEMENT',
+                    'Settlement must be connected to your own road or shipping route'
+                    if self.rules['ships']
+                    else 'Settlement must be connected to your own road',
                 )
             if not self.can_afford(player_name, 'settlement'):
                 return refused('INSUFFICIENT_RESOURCES', self._cost_message('settlement'))
@@ -597,6 +600,31 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         for edge_key in vertex.neighbors.get('edges', []):
             edge = self.edges.get(edge_key)
             if edge and edge.road and edge.road.get('player') == player_name:
+                return True
+        return False
+
+    def _touches_own_route(self, player_name: str, vertex_key: str) -> bool:
+        """Whether a building here would join this player's own network.
+
+        Roads and ships both, because "a shipping route functions exactly like
+        a road network for the purpose of expansion" and "when a player's
+        shipping route reaches a coastline, that player may build a settlement
+        on that coast even if it lies on a new island" — the rule the whole
+        expansion exists for, and the only way a second island is ever settled.
+
+        Knights keep to `_touches_own_road`: they march, they do not sail.
+        """
+        if self._touches_own_road(player_name, vertex_key):
+            return True
+        if not self.rules['ships']:
+            return False
+
+        vertex = self.vertices.get(vertex_key)
+        if vertex is None:
+            return False
+        for edge_key in vertex.neighbors.get('edges', []):
+            edge = self.edges.get(edge_key)
+            if edge and edge.ship and edge.ship.get('player') == player_name:
                 return True
         return False
 
