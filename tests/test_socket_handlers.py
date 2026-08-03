@@ -171,8 +171,7 @@ class TestDiscardOverTheWire:
         game.check_discard_required()
         bank_before = dict(game.bank.resources)
 
-        alice.emit('discard_resources',
-                   {'name': 'Alice', 'resources': {'wood': 54, 'ore': -50}})
+        alice.emit('discard_resources', {'name': 'Alice', 'resources': {'wood': 54, 'ore': -50}})
 
         assert last_error(alice)['code'] == 'INVALID_PAYLOAD'
         assert game.get_player('Alice').resources == {'wood': 8}
@@ -205,9 +204,13 @@ class TestErrorsAreTargetedAndCoded:
 
     def test_malformed_payloads_do_not_crash_the_handler(self, clients):
         alice, _ = clients
-        for bad in [{}, {'name': 123}, {'name': 'Alice', 'resources': 'nope'},
-                    {'name': 'Alice', 'resources': {'wood': 'x'}},
-                    {'name': 'Alice', 'resources': {'wood': True}}]:
+        for bad in [
+            {},
+            {'name': 123},
+            {'name': 'Alice', 'resources': 'nope'},
+            {'name': 'Alice', 'resources': {'wood': 'x'}},
+            {'name': 'Alice', 'resources': {'wood': True}},
+        ]:
             alice.emit('use_invention', bad)
             assert last_error(alice) is not None, f"no reply for {bad}"
         assert alice.is_connected()
@@ -279,8 +282,9 @@ class TestConcurrentJoins:
         def join(client, name):
             client.emit('join', {'name': name, 'role': 'player'})
 
-        threads = [threading.Thread(target=join, args=(c, n))
-                   for c, n in zip(clients, names, strict=True)]
+        threads = [
+            threading.Thread(target=join, args=(c, n)) for c, n in zip(clients, names, strict=True)
+        ]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -299,9 +303,7 @@ class TestLobbyPresence:
     """
 
     def _seed_remembered_users(self, names):
-        state.save_users(
-            [{'name': n, 'role': 'player', 'color': '#fff'} for n in names]
-        )
+        state.save_users([{'name': n, 'role': 'player', 'color': '#fff'} for n in names])
 
     def test_joining_an_empty_lobby_is_allowed_despite_remembered_players(self):
         state.current_game = None
@@ -401,8 +403,10 @@ class TestNameCollision:
         second.emit('join', {'name': 'A', 'role': 'player'})
 
         assert last_error(second)['code'] == 'NAME_TAKEN'
-        assert state.socket_viewers.get(second.eio_sid) is None or \
-            list(state.socket_viewers.values()).count('A') == 1
+        assert (
+            state.socket_viewers.get(second.eio_sid) is None
+            or list(state.socket_viewers.values()).count('A') == 1
+        )
 
     def test_explicit_takeover_is_allowed(self):
         self._fresh()
@@ -458,6 +462,7 @@ class TestLobbyRules:
 
     def _fresh(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -569,14 +574,17 @@ class TestLobbyRules:
         for vertex_key, vertex in game.vertices.items():
             if vertex.building:
                 continue
-            land = [h for h in vertex.neighbors.get('hexes', [])
-                    if game.hexes.get(h) and game.hexes[h].type not in ('ocean', 'desert')]
+            land = [
+                h
+                for h in vertex.neighbors.get('hexes', [])
+                if game.hexes.get(h) and game.hexes[h].type not in ('ocean', 'desert')
+            ]
             if land:
                 vertex.building = {'type': 'settlement', 'player': victim.name}
                 victim.settlements.append(vertex_key)
                 protected_hex = land[0]
                 break
-        victim.settlements.append('second')      # 2 victory points exactly
+        victim.settlements.append('second')  # 2 victory points exactly
         a.get_received()
 
         a.emit('move_robber', {'name': acting, 'hex': protected_hex})
@@ -651,6 +659,7 @@ class TestStartingAGame:
 
     def _fresh(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -727,6 +736,7 @@ class TestStartingAGame:
 class TestChatAndEventLog:
     def _fresh(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -826,6 +836,90 @@ class TestChatAndEventLog:
         a.emit('request_log', {'after_id': 'nonsense'})
         assert events(a, 'log_history'), "falls back to everything rather than erroring"
 
+    def test_restart_ends_the_game(self):
+        self._fresh()
+        a = app_module.socketio.test_client(app_module.app)
+        b = app_module.socketio.test_client(app_module.app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.emit('start_game')
+        a.get_received()
+        b.get_received()
+        assert state.current_game is not None
+
+        a.emit('chat_message', {'text': '/restart'})
+        assert state.current_game is None
+        assert events(a, 'game_ended'), "everyone sees the game end"
+        assert events(b, 'game_ended')
+
+    def test_add_gives_resources_to_the_player(self):
+        self._fresh()
+        a = app_module.socketio.test_client(app_module.app)
+        b = app_module.socketio.test_client(app_module.app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.get_received()
+        b.get_received()
+        a.emit('start_game')
+        a.get_received()
+        b.get_received()
+        assert state.current_game is not None, "game should have started"
+        gs = state.current_game.game_state
+        assert gs == "started", f"game_state={gs}"
+
+        a.emit('chat_message', {'text': '/add wood 3'})
+        result = events(a, 'command_result')
+        assert result, "sender gets a command result"
+        assert 'Added 3 wood' in result[-1]['message']
+        player = state.current_game.get_player('A')
+        assert player.resources.get('wood', 0) == 3
+
+    def test_add_rejects_unknown_resource(self):
+        self._fresh()
+        a = app_module.socketio.test_client(app_module.app)
+        b = app_module.socketio.test_client(app_module.app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.emit('start_game')
+        a.get_received()
+        b.get_received()
+
+        a.emit('chat_message', {'text': '/add gold 3'})
+        assert last_error(a)['code'] == 'INVALID_PAYLOAD'
+
+    def test_add_requires_a_started_game(self):
+        self._fresh()
+        a = app_module.socketio.test_client(app_module.app)
+        b = app_module.socketio.test_client(app_module.app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.get_received()
+        b.get_received()
+
+        a.emit('chat_message', {'text': '/add wood 3'})
+        assert last_error(a)['code'] == 'NO_GAME'
+
+    def test_help_lists_commands(self):
+        self._fresh()
+        a = app_module.socketio.test_client(app_module.app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        a.get_received()
+
+        a.emit('chat_message', {'text': '/help'})
+        result = events(a, 'command_result')
+        assert result
+        assert '/restart' in result[-1]['message']
+        assert '/add' in result[-1]['message']
+
+    def test_unknown_command_is_rejected(self):
+        self._fresh()
+        a = app_module.socketio.test_client(app_module.app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        a.get_received()
+
+        a.emit('chat_message', {'text': '/fly'})
+        assert last_error(a)['code'] == 'UNKNOWN_COMMAND'
+
 
 class TestHandlersToleratePayloads:
     """Socket.IO passes whatever the client emitted straight to the handler.
@@ -837,12 +931,18 @@ class TestHandlersToleratePayloads:
     """
 
     NO_PAYLOAD_EVENTS = [
-        'request_users', 'request_rules', 'request_state',
-        'end_game', 'start_game', 'refresh_board', 'request_log',
+        'request_users',
+        'request_rules',
+        'request_state',
+        'end_game',
+        'start_game',
+        'refresh_board',
+        'request_log',
     ]
 
     def _joined_client(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -878,6 +978,7 @@ class TestServerErrorReporting:
     def test_an_unexpected_error_carries_a_reference(self, monkeypatch):
         """A player should be able to quote a code that finds the traceback."""
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -893,6 +994,7 @@ class TestServerErrorReporting:
         # helpers by value, so replacing state.emit_user_list would not affect
         # the already-bound name inside the handler.
         from handlers import lobby
+
         monkeypatch.setattr(lobby, 'emit_user_list', boom)
         client.emit('request_users')
 
@@ -906,6 +1008,7 @@ class TestServerErrorReporting:
 class TestCitiesKnightsOverTheWire:
     def _ck_game(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -930,6 +1033,7 @@ class TestCitiesKnightsOverTheWire:
 
     def test_the_base_game_sends_no_expansion_state(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -955,11 +1059,14 @@ class TestCitiesKnightsOverTheWire:
             expected = game.setup_building_type()
 
             vertex = next(
-                key for key, v in game.vertices.items()
+                key
+                for key, v in game.vertices.items()
                 if not v.building
-                and not any(game.vertices[n].building
-                            for n in v.neighbors.get('vertices', [])
-                            if n in game.vertices)
+                and not any(
+                    game.vertices[n].building
+                    for n in v.neighbors.get('vertices', [])
+                    if n in game.vertices
+                )
             )
             a.emit('place_settlement', {'name': who, 'vertex': vertex})
             assert game.vertices[vertex].building['type'] == expected, (
@@ -968,7 +1075,8 @@ class TestCitiesKnightsOverTheWire:
             placed.append(expected)
 
             edge = next(
-                key for key, e in game.edges.items()
+                key
+                for key, e in game.edges.items()
                 if not e.road and vertex in e.neighbors.get('vertices', [])
             )
             a.emit('place_road', {'name': who, 'edge': edge})
@@ -1013,8 +1121,9 @@ class TestCitiesKnightsOverTheWire:
         a, _ = self._ck_game()
         game = state.current_game
         game.game_phase = "playing"
-        other = next(p.name for p in game.players
-                     if p.name != game.players[game.current_player_index].name)
+        other = next(
+            p.name for p in game.players if p.name != game.players[game.current_player_index].name
+        )
         a.get_received()
 
         a.emit('buy_improvement', {'name': other, 'track': 'trade'})
@@ -1022,6 +1131,7 @@ class TestCitiesKnightsOverTheWire:
 
     def test_the_actions_are_refused_in_the_base_game(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -1055,6 +1165,7 @@ class TestBarbarianClock:
 
     def _playing_ck_game(self):
         import game.rules as rules_module
+
         state.current_game = None
         state.socket_viewers.clear()
         state.lobby_rules = rules_module.defaults()
@@ -1122,7 +1233,7 @@ class TestBarbarianClock:
 
         rolls = iter([3, 4])
         game.rng.randint = lambda lo, hi: next(rolls, 3)
-        game.rng.choice = lambda seq: seq[-1]      # a city gate, not a barbarian
+        game.rng.choice = lambda seq: seq[-1]  # a city gate, not a barbarian
         a.emit('roll_dice', {'name': acting})
 
         assert game.must_move_robber
@@ -1131,6 +1242,7 @@ class TestBarbarianClock:
         """ck.start_turn() was never called, so a knight that acted once was
         spent for the rest of the game."""
         from game import cities_knights as ck
+
         a, game = self._playing_ck_game()
         knight = ck.Knight('v1')
         knight.active = True

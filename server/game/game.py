@@ -395,7 +395,11 @@ class Game(BoardBuilder):
         return True
 
     def get_player_ports(self, player_name: str) -> dict:
-        """Get all ports accessible to a player based on their settlements/cities."""
+        """Get all ports accessible to a player based on their settlements/cities.
+
+        A port on an edge applies to any building on either of the edge's
+        two endpoint vertices.
+        """
         player = self.get_player(player_name)
         if not player:
             return {}
@@ -403,12 +407,17 @@ class Game(BoardBuilder):
         ports = {}
         for vertex_key in player.settlements + player.cities:
             vertex = self.vertices.get(vertex_key)
-            if vertex and vertex.port:
-                port_type = vertex.port.get("type")
+            if not vertex:
+                continue
+            for edge_key in vertex.neighbors.get("edges", []):
+                edge = self.edges.get(edge_key)
+                if not edge or not edge.port:
+                    continue
+                port_type = edge.port.get("type")
                 if port_type == "generic":
                     ports["generic"] = True
                 elif port_type == "resource":
-                    resource = vertex.port.get("resource")
+                    resource = edge.port.get("resource")
                     ports[resource] = True
 
         return ports
@@ -428,12 +437,22 @@ class Game(BoardBuilder):
             points = 0
             for vertex_key in player.settlements:
                 vertex = self.vertices.get(vertex_key)
-                if vertex and vertex.port:
-                    points += 1
+                if not vertex:
+                    continue
+                for edge_key in vertex.neighbors.get("edges", []):
+                    edge = self.edges.get(edge_key)
+                    if edge and edge.port:
+                        points += 1
+                        break
             for vertex_key in player.cities:
                 vertex = self.vertices.get(vertex_key)
-                if vertex and vertex.port:
-                    points += 2
+                if not vertex:
+                    continue
+                for edge_key in vertex.neighbors.get("edges", []):
+                    edge = self.edges.get(edge_key)
+                    if edge and edge.port:
+                        points += 2
+                        break
             self.harbor_points[player.name] = points
 
         best = max(self.harbor_points.values(), default=0)
@@ -837,14 +856,20 @@ class Game(BoardBuilder):
 
         vertices = {}
         for key, vertex_obj in self.vertices.items():
-            vertex_data = {'building': vertex_obj.building, 'neighbors': vertex_obj.neighbors}
-            if vertex_obj.port:
-                vertex_data['port'] = vertex_obj.port
-            vertices[key] = vertex_data
+            vertices[key] = {
+                'building': vertex_obj.building,
+                'neighbors': vertex_obj.neighbors,
+            }
 
         edges = {}
         for key, edge_obj in self.edges.items():
-            edges[key] = {'road': edge_obj.road, 'neighbors': edge_obj.neighbors}
+            edge_data = {
+                'road': edge_obj.road,
+                'neighbors': edge_obj.neighbors,
+            }
+            if edge_obj.port:
+                edge_data['port'] = edge_obj.port
+            edges[key] = edge_data
 
         # Clean up expired trades
         self.trade_manager.cleanup_expired()
@@ -1232,7 +1257,10 @@ class Game(BoardBuilder):
 
         logger.debug(
             "Player %s used Monopoly on %s: stole %s from %s",
-            player_name, resource_type, stolen_count, stolen_from
+            player_name,
+            resource_type,
+            stolen_count,
+            stolen_from,
         )
         return {'success': True, 'stolen_count': stolen_count, 'stolen_from': stolen_from}
 
@@ -1441,7 +1469,9 @@ class Game(BoardBuilder):
                 if longest_holder:
                     logger.debug(
                         "Longest Road! %s now has %s roads (took from %s)",
-                        longest_holder, max_length, old_holder
+                        longest_holder,
+                        max_length,
+                        old_holder,
                     )
 
     def update_largest_army(self):
@@ -1465,5 +1495,7 @@ class Game(BoardBuilder):
                 if army_holder:
                     logger.debug(
                         "Largest Army! %s now has %s knights (took from %s)",
-                        army_holder, max_knights, old_holder
+                        army_holder,
+                        max_knights,
+                        old_holder,
                     )

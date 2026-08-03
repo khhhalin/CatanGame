@@ -31,9 +31,9 @@ class TestBoardSurvives:
 
     def test_ports_come_back(self, tmp_path):
         game = a_game()
-        before = {k: v.port for k, v in game.vertices.items() if v.port}
+        before = {k: e.port for k, e in game.edges.items() if e.port}
         after = round_trip(game, tmp_path)
-        assert {k: v.port for k, v in after.vertices.items() if v.port} == before
+        assert {k: e.port for k, e in after.edges.items() if e.port} == before
         assert before, "the board should have ports at all"
 
     def test_buildings_and_roads_come_back(self, tmp_path):

@@ -374,64 +374,57 @@ class BoardBuilder:
                         vertex_obj.neighbors["vertices"].append(connected_vertex_key)
 
     def _assign_ports(self):
-        """Assign ports to 9 vertices on the edge of the map (evenly distributed)."""
+        """Assign ports to 9 coastal edges (evenly distributed).
 
-        # Find all edge vertices - vertices that don't have 3 adjacent hexes
-        edge_vertices = []
-        for vertex_key, vertex_obj in self.vertices.items():
-            hex_neighbors = vertex_obj.neighbors.get("hexes", [])
-            if len(hex_neighbors) < 3:
-                edge_vertices.append(vertex_key)
+        Ports sit on the coastline rather than on a vertex, so they
+        serve either of the harbour's two vertices.
+        """
+        coastal = [
+            key
+            for key, edge_obj in self.edges.items()
+            if sum(1 for h in edge_obj.neighbors.get("hexes", []) if self.hexes[h].type != "ocean")
+            == 1
+        ]
 
-        edge_vertices = list(set(edge_vertices))
-
-        if len(edge_vertices) < 9:
-            logger.debug(f"Warning: Only {len(edge_vertices)} edge vertices found")
-            port_vertices = edge_vertices[:9] if edge_vertices else []
+        if len(coastal) < 9:
+            port_edges = coastal
         else:
-            # Sort edge vertices by angle to distribute evenly around the board
-            def get_vertex_angle(vertex_key):
-                """Get approximate angle for sorting vertices."""
-                coords = self._parse_key(vertex_key)
-                x, y, z = coords
-                # Use atan2 to get angle from center
-                # Project 3D coord to 2D
-                px = x + 0.5 * z
-                py = 0.866 * z  # sqrt(3)/2
-                import math
+            import math
 
+            def edge_angle(key):
+                """Get approximate angle for sorting edges."""
+                ex, ey, ez = self._parse_key(key)
+                px = ex + 0.5 * ez
+                py = 0.866 * ez
                 return math.atan2(py, px)
 
-            # Sort by angle
-            edge_vertices.sort(key=get_vertex_angle)
+            coastal.sort(key=edge_angle)
+            step = len(coastal) / 9
+            port_edges = [coastal[int(i * step)] for i in range(9)]
 
-            # Select 9 evenly spaced vertices
-            step = len(edge_vertices) / 9
-            port_vertices = [edge_vertices[int(i * step)] for i in range(9)]
-
-        self.rng.shuffle(port_vertices)
+        self.rng.shuffle(port_edges)
 
         # Port types: 4 generic (3:1), 5 resource-specific (2:1)
         port_types = ["generic"] * 4 + ["wood", "brick", "sheep", "wheat", "ore"]
         self.rng.shuffle(port_types)
 
-        # Assign ports to vertices
-        for i, vertex_key in enumerate(port_vertices):
-            if vertex_key in self.vertices:
-                vertex_obj = self.vertices[vertex_key]
+        # Assign ports to edges
+        for i, edge_key in enumerate(port_edges):
+            if edge_key in self.edges:
+                edge_obj = self.edges[edge_key]
                 resource_type = port_types[i]
 
                 if resource_type == "generic":
-                    vertex_obj.port = {"type": "generic"}
+                    edge_obj.port = {"type": "generic"}
                 else:
-                    vertex_obj.port = {"type": "resource", "resource": resource_type}
+                    edge_obj.port = {"type": "resource", "resource": resource_type}
 
         # Count ports for debug
         generic_count = sum(
-            1 for v in self.vertices.values() if v.port and v.port.get("type") == "generic"
+            1 for e in self.edges.values() if e.port and e.port.get("type") == "generic"
         )
         resource_count = sum(
-            1 for v in self.vertices.values() if v.port and v.port.get("type") == "resource"
+            1 for e in self.edges.values() if e.port and e.port.get("type") == "resource"
         )
         logger.debug(
             f"Ports assigned: {generic_count} generic (3:1), {resource_count} resource (2:1)"

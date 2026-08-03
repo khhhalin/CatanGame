@@ -51,7 +51,9 @@ def _ck_state(ck) -> dict | None:
         'knights': {
             name: [
                 {
-                    'vertex': k.vertex, 'rank': k.rank, 'active': k.active,
+                    'vertex': k.vertex,
+                    'rank': k.rank,
+                    'active': k.active,
                     'acted_this_turn': k.acted_this_turn,
                     'activated_this_turn': k.activated_this_turn,
                 }
@@ -104,7 +106,7 @@ def serialize(game: Game) -> dict:
         'dev_cards_deck': game.bank.dev_cards_deck,
         # Board: only what was decided, not the derived graph.
         'hexes': {k: {'type': h.type, 'number': h.number} for k, h in game.hexes.items()},
-        'ports': {k: v.port for k, v in game.vertices.items() if v.port},
+        'ports': {k: e.port for k, e in game.edges.items() if e.port},
         'buildings': {k: v.building for k, v in game.vertices.items() if v.building},
         'roads_on_edges': {k: e.road for k, e in game.edges.items() if e.road},
         'cities_knights': _ck_state(game.ck),
@@ -139,14 +141,13 @@ def deserialize(data: dict, config=None) -> Game:
         # cannot read and is worth complaining about.
         raise NotASaveFile("file has no save_version; not a Catan save")
     if data['save_version'] != SAVE_VERSION:
-        raise ValueError(
-            f"save version {data['save_version']} is not {SAVE_VERSION}"
-        )
+        raise ValueError(f"save version {data['save_version']} is not {SAVE_VERSION}")
 
     names = [p['name'] for p in data['players']]
     colors = {p['name']: p['color'] for p in data['players']}
-    game = Game(names, list(data.get('observers', [])), colors,
-                config=config, rules=data.get('rules'))
+    game = Game(
+        names, list(data.get('observers', [])), colors, config=config, rules=data.get('rules')
+    )
 
     # Board decisions
     for key, saved in data.get('hexes', {}).items():
@@ -155,11 +156,13 @@ def deserialize(data: dict, config=None) -> Game:
             hex_obj.type = saved['type']
             hex_obj.number = saved['number']
     for vertex in game.vertices.values():
-        vertex.port = None
         vertex.building = None
+    for edge in game.edges.values():
+        edge.port = None
+        edge.road = None
     for key, port in data.get('ports', {}).items():
-        if key in game.vertices:
-            game.vertices[key].port = port
+        if key in game.edges:
+            game.edges[key].port = port
     for key, building in data.get('buildings', {}).items():
         if key in game.vertices:
             game.vertices[key].building = building
@@ -184,14 +187,31 @@ def deserialize(data: dict, config=None) -> Game:
         player.knights_played = saved.get('knights_played', 0)
 
     # Turn and phase
-    for field in ('current_player_index', 'game_state', 'game_phase', 'setup_turn',
-                  'setup_action', 'last_setup_settlement', 'turn_count',
-                  'has_rolled_dice', 'robber_hex', 'must_move_robber',
-                  'must_choose_victim', 'robber_victims', 'players_needing_discard',
-                  'free_roads_remaining', 'pending_invention', 'pending_monopoly',
-                  'state_version', 'longest_road_holder', 'largest_army_holder',
-                  'longest_road_length', 'harbormaster_holder', 'harbor_points',
-                  'player_settlements'):
+    for field in (
+        'current_player_index',
+        'game_state',
+        'game_phase',
+        'setup_turn',
+        'setup_action',
+        'last_setup_settlement',
+        'turn_count',
+        'has_rolled_dice',
+        'robber_hex',
+        'must_move_robber',
+        'must_choose_victim',
+        'robber_victims',
+        'players_needing_discard',
+        'free_roads_remaining',
+        'pending_invention',
+        'pending_monopoly',
+        'state_version',
+        'longest_road_holder',
+        'largest_army_holder',
+        'longest_road_length',
+        'harbormaster_holder',
+        'harbor_points',
+        'player_settlements',
+    ):
         if field in data:
             setattr(game, field, data[field])
 
@@ -204,8 +224,7 @@ def deserialize(data: dict, config=None) -> Game:
         game.ck.improvements = saved_ck.get('improvements', {})
         game.ck.city_walls = saved_ck.get('city_walls', {})
         game.ck.metropolis = saved_ck.get('metropolis', game.ck.metropolis)
-        game.ck.metropolis_vertex = saved_ck.get('metropolis_vertex',
-                                                 game.ck.metropolis_vertex)
+        game.ck.metropolis_vertex = saved_ck.get('metropolis_vertex', game.ck.metropolis_vertex)
         game.ck.barbarian_position = saved_ck.get('barbarian_position', 0)
         game.ck.barbarians_have_attacked = saved_ck.get('barbarians_have_attacked', False)
         game.ck.defender_cards = saved_ck.get('defender_cards', {})

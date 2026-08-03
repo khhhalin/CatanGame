@@ -1,7 +1,6 @@
 """Joining, the lobby roster, house rules, and starting or ending a game."""
 
 import logging
-import os
 
 import state
 from extensions import socketio
@@ -15,11 +14,11 @@ from game.validation import (
 )
 from state import (
     MAX_PLAYERS,
-    SAVE_FILE,
     abuse_tracker,
     config,
     emit_rules,
     emit_user_list,
+    end_game_locked,
     game_lock,
     get_random_color,
     get_user_by_name,
@@ -55,14 +54,19 @@ def handle_join(data):
     # player — which reads as "every browser became A".
     if not data.get('takeover'):
         holder = next(
-            (sid for sid, viewer in socket_viewers.items()
-             if viewer == name and sid != request.sid),
+            (
+                sid
+                for sid, viewer in socket_viewers.items()
+                if viewer == name and sid != request.sid
+            ),
             None,
         )
         if holder is not None:
-            reject('NAME_TAKEN',
-                   f'"{name}" is already connected. Pick a different name, '
-                   f'or confirm to take over their seat.')
+            reject(
+                'NAME_TAKEN',
+                f'"{name}" is already connected. Pick a different name, '
+                f'or confirm to take over their seat.',
+            )
             return
 
     role = data.get('role', 'observer')
@@ -98,8 +102,7 @@ def handle_join(data):
             # counts twice.
             present = set(socket_viewers.values()) - {name}
             player_count = sum(
-                1 for u in users
-                if u.get('role') == 'player' and u.get('name') in present
+                1 for u in users if u.get('role') == 'player' and u.get('name') in present
             )
             if player_count >= MAX_PLAYERS:
                 return None, 'full'
@@ -116,8 +119,11 @@ def handle_join(data):
     # present, which then made its own name look taken on the retry.
     socket_viewers[request.sid] = name
 
-    if state.current_game is not None and state.current_game.game_state == "started" \
-            and not state.current_game.is_player(name):
+    if (
+        state.current_game is not None
+        and state.current_game.game_state == "started"
+        and not state.current_game.is_player(name)
+    ):
         state.current_game.add_observer(name)
 
     logger.info("join name=%s role=%s sid=%s", name, role, request.sid)
@@ -133,17 +139,20 @@ def handle_join(data):
     # selection without having to know to request it.
     emit_rules(to_sender_only=True)
 
+
 @socketio.on('request_users')
 def handle_request_users(data=None):
     if rate_limited():
         return
     emit_user_list()
 
+
 @socketio.on('request_rules')
 def handle_request_rules(data=None):
     if rate_limited():
         return
     emit_rules(to_sender_only=True)
+
 
 @socketio.on('set_rules')
 def handle_set_rules(data):
@@ -168,12 +177,14 @@ def handle_set_rules(data):
     log_event('rules', f"{viewer_for()} changed the house rules", player=viewer_for())
     emit_rules()
 
+
 @socketio.on('request_state')
 def handle_request_state(data=None):
     if rate_limited():
         return
     """Explicit resync. Replies to the asking socket, never the room."""
     send_state_snapshot()
+
 
 @socketio.on('end_game')
 def handle_end_game(data=None):
@@ -183,32 +194,24 @@ def handle_end_game(data=None):
 
     Without this there is no way out of a game at all: a game that is
     abandoned, or left half-finished because everyone closed their tab, keeps
-    `state.current_game` alive forever, so `start_game` refuses and every new arrival
-    is dropped into a match nobody is playing.
+    `state.current_game` alive forever, so `start_game` refuses and every new
+    arrival is dropped into a match nobody is playing.
 
-    Any player at the table may call it — this is a friendly game, and the
+    Any player at the game can call it — this is a friendly game, and the
     alternative is restarting the server.
     """
 
-    with game_lock:
-        if state.current_game is None or state.current_game.game_state != "started":
-            reject('NO_GAME', 'There is no game to end')
-            return
+    if state.current_game is None or state.current_game.game_state != "started":
+        reject('NO_GAME', 'There is no game to end')
+        return
 
-        if viewer_for() is None:
-            reject('NOT_IN_LOBBY', 'Join before ending the game')
-            return
+    actor = viewer_for()
+    if actor is None:
+        reject('NOT_IN_LOBBY', 'Join before ending the game')
+        return
 
-        logger.info("game ended by %s (was: %s)", viewer_for(),
-                    state.current_game.get_player_names())
-        log_event('game', f"{viewer_for()} ended the game", player=viewer_for())
-        state.current_game = None
-        if os.path.exists(SAVE_FILE):
-            os.remove(SAVE_FILE)
+    end_game_locked(actor)
 
-    socketio.emit('game_ended', {'by': viewer_for()})
-    emit_user_list()
-    emit_rules()
 
 @socketio.on('start_game')
 def handle_start_game(data=None):
@@ -221,6 +224,7 @@ def handle_start_game(data=None):
             return
 
         _start_game_locked()
+
 
 def _start_game_locked():
 
@@ -238,29 +242,41 @@ def _start_game_locked():
 
     minimum = state.lobby_rules['min_players']
     if len(players) < minimum:
-        reject('NOT_ENOUGH_PLAYERS',
-               f'Need at least {minimum} player{"s" if minimum != 1 else ""} to start '
-               f'({len(players)} in the lobby)')
+        reject(
+            'NOT_ENOUGH_PLAYERS',
+            f'Need at least {minimum} player{"s" if minimum != 1 else ""} to start '
+            f'({len(players)} in the lobby)',
+        )
         return
 
-    state.current_game = Game(players, observers, player_colors, config=config,
-                        rules=state.lobby_rules)
+    state.current_game = Game(
+        players, observers, player_colors, config=config, rules=state.lobby_rules
+    )
     state.current_game.start()
     state.current_game.update_harbormaster()
-    logger.info("game started players=%s observers=%s rules=%s",
-                players, observers, state.current_game.rules)
+    logger.info(
+        "game started players=%s observers=%s rules=%s",
+        players,
+        observers,
+        state.current_game.rules,
+    )
     log_event('game', f"Game started with {', '.join(players)}")
     save_game()
     emit_rules()
 
     current_player = state.current_game.players[state.current_game.current_player_index]
     for sid, name in list(socket_viewers.items()):
-        emit('game_started', {
-            'players': state.current_game.get_player_names(),
-            'observers': state.current_game.observers,
-            'current_player': current_player.name if current_player else None,
-            'board': state.current_game.get_board_data(viewer=name)
-        }, to=sid)
+        emit(
+            'game_started',
+            {
+                'players': state.current_game.get_player_names(),
+                'observers': state.current_game.observers,
+                'current_player': current_player.name if current_player else None,
+                'board': state.current_game.get_board_data(viewer=name),
+            },
+            to=sid,
+        )
+
 
 @socketio.on('disconnect')
 def handle_disconnect(reason=None):

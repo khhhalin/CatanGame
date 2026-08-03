@@ -66,6 +66,7 @@ event_log = EventLog()
 # changed mid-game would invalidate decisions players had already made.
 lobby_rules = rules_module.defaults()
 
+
 def restore_saved_game():
     """Bring back an interrupted game on startup.
 
@@ -84,8 +85,13 @@ def restore_saved_game():
     if restored is None:
         return
     current_game = restored
-    logger.info("restored game: players=%s phase=%s turn=%s",
-                restored.get_player_names(), restored.game_phase, restored.turn_count)
+    logger.info(
+        "restored game: players=%s phase=%s turn=%s",
+        restored.get_player_names(),
+        restored.game_phase,
+        restored.turn_count,
+    )
+
 
 COLOR_PALETTE = [
     '#3498db',  # Blue
@@ -104,12 +110,14 @@ def get_random_color():
     """Get a random color from the palette."""
     return random.choice(COLOR_PALETTE)
 
+
 def load_users():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE) as f:
             data = json.load(f)
             return data.get('users', [])
     return []
+
 
 def save_users(users):
     """Write the user list atomically.
@@ -127,6 +135,7 @@ def save_users(users):
         os.fsync(f.fileno())
     os.replace(temp_path, DATA_FILE)
 
+
 def update_users(mutate):
     """Read, modify, and write the user list as one atomic unit.
 
@@ -143,17 +152,20 @@ def update_users(mutate):
             save_users(users)
         return result
 
+
 def reject(code, message):
     """Send a rejection to the client whose action failed, and log it.
 
     Every rejected action gets a reply — a client that hears nothing cannot
     tell rejection from a dropped connection, and leaves its button spinning.
     """
-    logger.warning("rejected %s from sid=%s: %s (%s)", request.event.get('message'),
-                   request.sid, message, code)
+    logger.warning(
+        "rejected %s from sid=%s: %s (%s)", request.event.get('message'), request.sid, message, code
+    )
     # Sender only. One player's illegal move is not the table's business, and
     # what they tried to do leaks what they hold.
     emit('error', {'code': code, 'message': message})
+
 
 def rate_limited() -> bool:
     """Whether this event should be dropped. Call at the top of a handler.
@@ -170,8 +182,7 @@ def rate_limited() -> bool:
 
     if args and payload_too_large(args[0] if args else None):
         logger.warning("oversized payload for %s from sid=%s", event, sid)
-        emit('error', {'code': 'PAYLOAD_TOO_LARGE',
-                       'message': 'That message was too large.'})
+        emit('error', {'code': 'PAYLOAD_TOO_LARGE', 'message': 'That message was too large.'})
         return True
 
     if rate_limiter.allow(key, limit=limit_for(event)):
@@ -179,22 +190,31 @@ def rate_limited() -> bool:
 
     wait = rate_limiter.retry_after(key, limit=limit_for(event))
     strikes = abuse_tracker.record_violation(sid)
-    logger.warning("rate limited %s from sid=%s viewer=%s (strike %s, retry in %.1fs)",
-                   event, sid, socket_viewers.get(sid), strikes, wait)
+    logger.warning(
+        "rate limited %s from sid=%s viewer=%s (strike %s, retry in %.1fs)",
+        event,
+        sid,
+        socket_viewers.get(sid),
+        strikes,
+        wait,
+    )
 
     if abuse_tracker.should_disconnect(sid):
         logger.warning("disconnecting sid=%s for sustained flooding", sid)
-        emit('error', {'code': 'RATE_LIMITED',
-                       'message': 'Too many requests - disconnecting.'})
+        emit('error', {'code': 'RATE_LIMITED', 'message': 'Too many requests - disconnecting.'})
         disconnect()
         return True
 
-    emit('error', {
-        'code': 'RATE_LIMITED',
-        'message': f'Slow down - try again in {wait:.1f}s.',
-        'details': {'retry_after': wait},
-    })
+    emit(
+        'error',
+        {
+            'code': 'RATE_LIMITED',
+            'message': f'Slow down - try again in {wait:.1f}s.',
+            'details': {'retry_after': wait},
+        },
+    )
     return True
+
 
 def log_event(kind, text, player=None, **details):
     """Record something that happened and push it to everyone.
@@ -206,9 +226,11 @@ def log_event(kind, text, player=None, **details):
     socketio.emit('event_logged', {'entry': entry})
     return entry
 
+
 def viewer_for(sid=None):
     """The player name a socket is currently viewing as, if any."""
     return socket_viewers.get(sid or request.sid)
+
 
 def broadcast_board(extra=None):
     """Send the board to every connected socket, filtered per recipient.
@@ -228,6 +250,7 @@ def broadcast_board(extra=None):
             payload.update(extra)
         emit('board_updated', payload, to=sid)
 
+
 def save_game():
     """Write the game to disk so a restart does not lose it.
 
@@ -243,6 +266,7 @@ def save_game():
         # A failed save must never take the live game down with it.
         logger.exception("could not save the game to %s", SAVE_FILE)
 
+
 def bump_and_broadcast(extra=None):
     """Record that state changed, then push it to everyone."""
     if current_game is not None:
@@ -251,10 +275,38 @@ def bump_and_broadcast(extra=None):
         if problems:
             # Validation and application disagree — the rules are not actually
             # being enforced where we think they are. Loud, with context.
-            logger.error("INVARIANT VIOLATION after %s: %s",
-                         request.event.get('message') if request else '?', problems)
+            logger.error(
+                "INVARIANT VIOLATION after %s: %s",
+                request.event.get('message') if request else '?',
+                problems,
+            )
         save_game()
     broadcast_board(extra)
+
+
+def end_game_locked(by):
+    """Abandon the current game and return everyone to the lobby.
+
+    Shared by the `end_game` event and the in-game `/restart` command: both
+    must tear the running game down exactly the same way, or one path leaves
+    a half-reset server behind.
+    """
+    global current_game
+    with game_lock:
+        if current_game is None or current_game.game_state != "started":
+            reject('NO_GAME', 'There is no game to end')
+            return
+
+        logger.info("game ended by %s (was: %s)", by, current_game.get_player_names())
+        log_event('game', f"{by} ended the game", player=by)
+        current_game = None
+        if os.path.exists(SAVE_FILE):
+            os.remove(SAVE_FILE)
+
+    socketio.emit('game_ended', {'by': by})
+    emit_user_list()
+    emit_rules()
+
 
 def get_user_by_name(users, name):
     for user in users:
@@ -262,8 +314,10 @@ def get_user_by_name(users, name):
             return user
     return None
 
+
 def remove_user_by_name(users, name):
     return [u for u in users if u.get('name') != name]
+
 
 def lobby_users():
     """The users actually present right now.
@@ -279,6 +333,7 @@ def lobby_users():
     """
     present = set(socket_viewers.values())
     return [u for u in load_users() if u.get('name') in present]
+
 
 def emit_rules(to_sender_only=False):
     """Publish the rule catalogue and the current selection.
@@ -297,6 +352,7 @@ def emit_rules(to_sender_only=False):
     else:
         socketio.emit('rules_changed', payload)
 
+
 def send_state_snapshot():
     """Send the full current state to the requesting socket only."""
     if current_game is None or current_game.game_state != "started":
@@ -304,21 +360,28 @@ def send_state_snapshot():
         return
 
     current_player = current_game.players[current_game.current_player_index]
-    emit('game_state', {
-        'in_game': True,
-        'players': current_game.get_player_names(),
-        'observers': current_game.observers,
-        'current_player': current_player.name if current_player else None,
-        'board': current_game.get_board_data(viewer=viewer_for())
-    })
+    emit(
+        'game_state',
+        {
+            'in_game': True,
+            'players': current_game.get_player_names(),
+            'observers': current_game.observers,
+            'current_player': current_player.name if current_player else None,
+            'board': current_game.get_board_data(viewer=viewer_for()),
+        },
+    )
+
 
 def emit_user_list():
     users = lobby_users()
     players = [u for u in users if u.get('role') == 'player']
     observers = [u for u in users if u.get('role') == 'observer']
-    socketio.emit('user_list', {
-        'players': players,
-        'observers': observers,
-        'min_players': lobby_rules['min_players'],
-        'max_players': MAX_PLAYERS,
-    })
+    socketio.emit(
+        'user_list',
+        {
+            'players': players,
+            'observers': observers,
+            'min_players': lobby_rules['min_players'],
+            'max_players': MAX_PLAYERS,
+        },
+    )

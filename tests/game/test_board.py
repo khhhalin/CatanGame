@@ -31,8 +31,12 @@ def test_resource_hex_distribution_matches_standard_catan(fresh_game):
         if hex_obj.type != 'ocean':
             counts[hex_obj.type] = counts.get(hex_obj.type, 0) + 1
     assert counts == {
-        'wood': 4, 'wheat': 4, 'sheep': 4,
-        'brick': 3, 'ore': 3, 'desert': 1,
+        'wood': 4,
+        'wheat': 4,
+        'sheep': 4,
+        'brick': 3,
+        'ore': 3,
+        'desert': 1,
     }
 
 
@@ -46,8 +50,12 @@ def test_distribution_is_identical_across_seeds(fresh_game):
             if hex_obj.type != 'ocean':
                 counts[hex_obj.type] = counts.get(hex_obj.type, 0) + 1
         assert counts == {
-            'wood': 4, 'wheat': 4, 'sheep': 4,
-            'brick': 3, 'ore': 3, 'desert': 1,
+            'wood': 4,
+            'wheat': 4,
+            'sheep': 4,
+            'brick': 3,
+            'ore': 3,
+            'desert': 1,
         }, f"seed {seed} produced {counts}"
 
 
@@ -66,8 +74,9 @@ def test_same_seed_produces_the_same_board():
     """Determinism is what makes every other test reproducible."""
     first = Game(["A", "B"], [], rng=random.Random(999))
     second = Game(["A", "B"], [], rng=random.Random(999))
-    assert {k: (h.type, h.number) for k, h in first.hexes.items()} == \
-           {k: (h.type, h.number) for k, h in second.hexes.items()}
+    assert {k: (h.type, h.number) for k, h in first.hexes.items()} == {
+        k: (h.type, h.number) for k, h in second.hexes.items()
+    }
 
 
 def test_vertices_and_edges_are_generated(fresh_game):
@@ -101,7 +110,7 @@ def test_the_whole_board_is_reproducible_across_processes():
         "'hexes': sorted((k, h.type, h.number) for k, h in g.hexes.items()),"
         "'vertices': sorted(g.vertices),"
         "'edges': sorted(g.edges),"
-        "'ports': sorted((k, str(v.port)) for k, v in g.vertices.items() if v.port),"
+        "'ports': sorted((k, str(e.port)) for k, e in g.edges.items() if e.port),"
         "}))"
     )
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -109,8 +118,14 @@ def test_the_whole_board_is_reproducible_across_processes():
     runs = []
     for seed in ("0", "1"):
         env = dict(os.environ, PYTHONHASHSEED=seed)
-        out = subprocess.run([sys.executable, "-c", script], capture_output=True,
-                             text=True, cwd=root, env=env, check=True)
+        out = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=root,
+            env=env,
+            check=True,
+        )
         # Board generation still prints progress, so take the last line.
         runs.append(json.loads(out.stdout.strip().splitlines()[-1]))
 

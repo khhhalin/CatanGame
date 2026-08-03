@@ -59,7 +59,9 @@ class TestVictoryTarget:
 
 
 class TestHandLimit:
-    def test_default_limit_is_seven(self, ):
+    def test_default_limit_is_seven(
+        self,
+    ):
         game = make_game()
         game.get_player('Alice').resources = {'wood': 8}
         game.check_discard_required()
@@ -129,10 +131,12 @@ class TestHarbormaster:
         for vertex_key, vertex in game.vertices.items():
             if placed >= count:
                 break
-            if vertex.port and vertex.building is None:
-                vertex.building = {'type': 'settlement', 'player': owner}
-                game.get_player(owner).settlements.append(vertex_key)
-                placed += 1
+            if vertex.building is None:
+                has_port = any(game.edges.get(ek).port for ek in vertex.neighbors.get("edges", []))
+                if has_port:
+                    vertex.building = {'type': 'settlement', 'player': owner}
+                    game.get_player(owner).settlements.append(vertex_key)
+                    placed += 1
         assert placed == count, f"board had only {placed} free harbour vertices"
 
     def test_does_nothing_when_disabled(self):
@@ -188,6 +192,28 @@ class TestHarbormaster:
         self._give_harbor_settlements(game, 'Bob', 4)
         game.update_harbormaster()
         assert game.harbormaster_holder == 'Bob'
+
+    def test_ports_are_on_edges_not_vertices(self):
+        """Ports must live on edges so they apply to both endpoint vertices."""
+        game = make_game({'harbormaster': True})
+        port_edges = [e for e in game.edges.values() if e.port is not None]
+        assert len(port_edges) == 9, "standard board has 9 ports"
+
+    def test_get_player_ports_uses_edges(self):
+        """A settlement on a vertex adjacent to a port edge counts."""
+        game = make_game({'harbormaster': True})
+        # Find a vertex adjacent to a port edge.
+        port_vertex = None
+        for edge in game.edges.values():
+            if edge.port:
+                port_vertex = edge.neighbors['vertices'][0]
+                break
+        assert port_vertex is not None
+        player = game.get_player('Alice')
+        player.settlements.append(port_vertex)
+        game.vertices[port_vertex].building = {'type': 'settlement', 'player': 'Alice'}
+        ports = game.get_player_ports('Alice')
+        assert ports, "a settlement on a port vertex should grant a port"
 
 
 class TestRulesReachTheClient:
@@ -251,19 +277,34 @@ class TestCoreKnobs:
         assert game.largest_army_holder is None
 
     def test_the_dev_card_deck_is_configurable(self):
-        game = make_game({'dev_knights': 3, 'dev_victory_points': 1,
-                          'dev_road_building': 0, 'dev_invention': 0,
-                          'dev_monopoly': 0})
+        game = make_game(
+            {
+                'dev_knights': 3,
+                'dev_victory_points': 1,
+                'dev_road_building': 0,
+                'dev_invention': 0,
+                'dev_monopoly': 0,
+            }
+        )
         assert game.bank.dev_cards_deck == {
-            'knight': 3, 'victory_point': 1,
-            'two_roads': 0, 'invention': 0, 'monopoly': 0,
+            'knight': 3,
+            'victory_point': 1,
+            'two_roads': 0,
+            'invention': 0,
+            'monopoly': 0,
         }
         assert game.bank.total_dev_cards_remaining() == 4
 
     def test_a_card_type_can_be_removed_entirely(self):
-        game = make_game({'dev_knights': 0, 'dev_victory_points': 0,
-                          'dev_road_building': 0, 'dev_invention': 0,
-                          'dev_monopoly': 5})
+        game = make_game(
+            {
+                'dev_knights': 0,
+                'dev_victory_points': 0,
+                'dev_road_building': 0,
+                'dev_invention': 0,
+                'dev_monopoly': 5,
+            }
+        )
         drawn = {game.bank.draw_dev_card() for _ in range(5)}
         assert drawn == {'monopoly'}
 
@@ -273,5 +314,8 @@ class TestCoreKnobs:
 
     def test_every_rule_declares_a_group(self):
         for rule in rules_module.catalogue():
-            assert rule['group'] in (rules_module.CORE, rules_module.EXPANSION,
-                                     rules_module.VARIANT), rule['id']
+            assert rule['group'] in (
+                rules_module.CORE,
+                rules_module.EXPANSION,
+                rules_module.VARIANT,
+            ), rule['id']

@@ -618,16 +618,16 @@ function renderBoard(boardData, canvasId, highlightNumber = null) {
         }
     }
 
-    // Draw ports on vertices
-    for (const key in vertices) {
-        const vertex = vertices[key];
-        const pos = vertexPositions[key];
-        
-        if (vertex.port) {
-            drawPort(ctx, pos.x, pos.y, vertex.port);
+    // Draw ports on edges (at the midpoint of the harbour)
+    for (const key in edges) {
+        const edge = edges[key];
+        const pos = edgePositions[key];
+
+        if (edge.port && pos) {
+            drawPort(ctx, (pos.x1 + pos.x2) / 2, (pos.y1 + pos.y2) / 2, edge.port);
         }
     }
-    
+
     // Draw buildings on top of roads
     for (const key in vertices) {
         const vertex = vertices[key];
