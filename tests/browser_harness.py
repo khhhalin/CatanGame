@@ -49,7 +49,7 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def start_server(data_dir):
+def start_server(data_dir, seed=None):
     """A real gunicorn server on its own port and its own data directory.
 
     Returns (process, url). The caller owns shutdown.
@@ -64,6 +64,11 @@ def start_server(data_dir):
         # invalidates any assertion about who did what.
         CATAN_CONFIG="development",
     )
+    # A seeded server replays the same board and the same dice every run. A
+    # test that plays a whole game is otherwise a coin toss: it passed, then
+    # stalled a player short of winning, on identical code.
+    if seed is not None:
+        env["CATAN_SEED"] = str(seed)
     proc = subprocess.Popen(
         [sys.executable, "-m", "gunicorn", "-w", "1", "--threads", "50",
          "-b", f"127.0.0.1:{port}", "wsgi:app"],
@@ -486,6 +491,37 @@ def build_settlement(player, candidates):
     return vertex_key
 
 
+def legal_city_vertices(board, player_name):
+    """The player's own settlements, which are what a city upgrades."""
+    return [
+        key for key, vertex in sorted(board["vertices"].items())
+        if (vertex.get("building") or {}).get("player") == player_name
+        and (vertex.get("building") or {}).get("type") == 'settlement'
+    ]
+
+
+def build_city(player, candidates):
+    """Upgrade a settlement. See build_road for why the button comes first."""
+    player.page.click("#upgrade-city-btn")
+    vertex_key = first_clickable(player, 'vertex', candidates)
+    if not vertex_key:
+        raise AssertionError(f"no clickable settlement among {len(candidates)}")
+    before = player.page.evaluate(
+        "owner => Object.values(window.__catanDebug.getBoard().vertices)"
+        ".filter(v => (v.building || {}).player === owner"
+        "          && v.building.type === 'city').length",
+        player.name,
+    )
+    click_vertex(player, vertex_key)
+    player.page.wait_for_function(
+        "([owner, before]) => Object.values(window.__catanDebug.getBoard().vertices)"
+        ".filter(v => (v.building || {}).player === owner"
+        "          && v.building.type === 'city').length > before",
+        arg=[player.name, before], timeout=8000,
+    )
+    return vertex_key
+
+
 def bank_trade(player, give_resource, give_count, want_resource):
     """Trade surplus to the bank through the real trade dialog.
 
@@ -567,6 +603,16 @@ def spend_what_you_can(player):
     # A refused build is not a test failure: the server is the authority on
     # legality, and a bot that mispredicts it should lose a turn, not abort the
     # game. The end-of-game assertions catch a bot that never builds.
+    # Cities first: a city is a victory point with no placement constraint at
+    # all, and it spends the ore and wheat that otherwise pile up unused while
+    # the bot waits for wood and brick it may never see.
+    if can_afford(me, CITY_COST):
+        placed = _try(build_city, player, legal_city_vertices(board, player.name))
+        if placed:
+            built.append(("city", placed))
+            board = player.board()
+            me = next(p for p in board["players"] if p["is_you"])
+
     if can_afford(me, SETTLEMENT_COST):
         placed = _try(build_settlement, player, legal_settlement_vertices(board, player.name))
         if placed:
@@ -583,7 +629,12 @@ def spend_what_you_can(player):
     # Nothing affordable: turn a surplus into the missing card so the game can
     # actually progress. Aim at whichever target is closer to being paid for.
     if not built:
-        target = SETTLEMENT_COST if legal_settlement_vertices(board, player.name) else ROAD_COST
+        if legal_city_vertices(board, player.name):
+            target = CITY_COST
+        elif legal_settlement_vertices(board, player.name):
+            target = SETTLEMENT_COST
+        else:
+            target = ROAD_COST
         _trade_towards(player, target)
 
     return built
@@ -625,5 +676,20 @@ def play_one_turn(actor, everyone):
 
     resolve_robber(actor)
     built = spend_what_you_can(actor)
-    end_turn(actor)
+
+    # A winning build ends the game, so there is no next turn to advance to.
+    # Without this the bot wins and then hangs waiting for a turn change that
+    # correctly never comes.
+    if not game_is_over(actor):
+        end_turn(actor)
     return built
+
+
+def game_is_over(player):
+    """Whether this tab has been told the game ended.
+
+    Read from the notice a human would see rather than from board state: the
+    banner is the only thing that announces a winner, so testing it is testing
+    the thing that matters.
+    """
+    return any("GAME OVER" in notice.upper() for notice in player.notices())

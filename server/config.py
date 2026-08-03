@@ -22,6 +22,11 @@ class Config:
     DICE_ROLL_SECONDS = 15
     ROUND_SECONDS = 120
 
+    # Fix the shuffles and the dice to a reproducible sequence. Unset in
+    # normal play; set it to replay a game exactly, which is what makes an
+    # end-to-end test a gate rather than a coin toss.
+    GAME_SEED = os.environ.get("CATAN_SEED")
+
     # Runtime state lives outside the repo tree in deployment.
     DATA_DIR = os.environ.get(
         "CATAN_DATA_DIR",

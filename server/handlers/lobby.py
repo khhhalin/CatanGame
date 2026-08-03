@@ -2,6 +2,7 @@
 
 import logging
 import os
+import random
 
 import state
 from extensions import socketio
@@ -243,8 +244,10 @@ def _start_game_locked():
                f'({len(players)} in the lobby)')
         return
 
+    seed = getattr(session.config, 'GAME_SEED', None)
     session.game = Game(players, observers, player_colors, config=session.config,
-                        rules=session.lobby_rules)
+                        rules=session.lobby_rules,
+                        rng=random.Random(seed) if seed else None)
     session.game.start()
     session.game.update_harbormaster()
     logger.info("game started players=%s observers=%s rules=%s",

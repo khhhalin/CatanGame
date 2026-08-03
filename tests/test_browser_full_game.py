@@ -41,10 +41,15 @@ MAX_TURNS = 120
 VICTORY_TARGET = 5
 LONGEST_ROAD_MINIMUM = 2
 
+# Fixed board and dice. Unseeded, this test is a coin toss — it reached a
+# winner, then stalled a point short on identical code — and a gate that
+# passes two runs in three is not a gate.
+GAME_SEED = 20260803
+
 
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
-    proc, url = start_server(tmp_path_factory.mktemp("full-game-data"))
+    proc, url = start_server(tmp_path_factory.mktemp("full-game-data"), seed=GAME_SEED)
     yield url
     stop_server(proc)
 
