@@ -14,18 +14,44 @@ a half-written save that fails to parse on the next start.
 """
 
 import json
+import logging
 import os
 
 from game import cities_knights as ck_module
 from game.game import Game
 
+logger = logging.getLogger(__name__)
+
 # Bumped when the shape below changes incompatibly. A save from an older
 # version is ignored rather than half-loaded into a mismatched Game.
+#
+# Not bumped when hex sides became one Edge each: the shape is unchanged and
+# every old edge key still names a real side, so those saves are translated on
+# load instead. Refusing them would have thrown away games in progress to fix a
+# bug the players did not cause.
 SAVE_VERSION = 1
 
 
 class NotASaveFile(Exception):
     """The file exists but was never written by us."""
+
+
+def _edges_on_board(game: Game, keys) -> list:
+    """Saved edge keys mapped onto the sides this board actually holds.
+
+    A save written while an inland side had two names carries whichever name
+    the writer happened to use, and half of those are no longer keys of the
+    board. Unknown keys are dropped, and two names for one side collapse to a
+    single entry.
+    """
+    mapped = []
+    for key in keys:
+        edge_key = game.canonical_edge_key(key)
+        if edge_key is None:
+            logger.warning("saved edge %s is not on this board; dropping it", key)
+        elif edge_key not in mapped:
+            mapped.append(edge_key)
+    return mapped
 
 
 def _player_state(player) -> dict:
@@ -170,16 +196,28 @@ def deserialize(data: dict, config=None) -> Game:
     # still load: the vertices above are what the trade rules read, so such a
     # game keeps the harbours it was played with.
     for key, port in data.get('edge_ports', {}).items():
-        if key in game.edges:
-            game.edges[key].port = port
+        edge_key = game.canonical_edge_key(key)
+        if edge_key is not None:
+            game.edges[edge_key].port = port
     for key, building in data.get('buildings', {}).items():
         if key in game.vertices:
             game.vertices[key].building = building
     for edge in game.edges.values():
         edge.road = None
-    for key, road in data.get('roads_on_edges', {}).items():
-        if key in game.edges:
-            game.edges[key].road = road
+    for key, road in sorted(data.get('roads_on_edges', {}).items()):
+        edge_key = game.canonical_edge_key(key)
+        if edge_key is None:
+            logger.warning("saved road on %s is not a side of this board; dropping it", key)
+            continue
+        # A save written while a side had two names can hold a road under each
+        # of them — a position the physical game cannot represent. One of the
+        # two has to go, and which one is arbitrary, so say so loudly.
+        if game.edges[edge_key].road is not None:
+            logger.warning(
+                "saved road on %s is the hex side %s already holds; dropping it", key, edge_key
+            )
+            continue
+        game.edges[edge_key].road = road
 
     # Players
     for saved in data['players']:
@@ -191,7 +229,7 @@ def deserialize(data: dict, config=None) -> Game:
         player.dev_cards = saved.get('dev_cards', player.dev_cards)
         player.settlements = list(saved.get('settlements', []))
         player.cities = list(saved.get('cities', []))
-        player.roads = list(saved.get('roads', []))
+        player.roads = _edges_on_board(game, saved.get('roads', []))
         player.victory_points = saved.get('victory_points', 0)
         player.knights_played = saved.get('knights_played', 0)
 

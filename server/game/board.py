@@ -184,6 +184,56 @@ class BoardBuilder:
         parts = key.split(',')
         return int(parts[0]), int(parts[1]), int(parts[2])
 
+    def _edge_twin(self, x: int, y: int, z: int) -> tuple:
+        """The other cube coordinate naming this same hex side.
+
+        Hex centres sit 3 apart, so a shared side has no lattice midpoint: each
+        of the two hexes it separates names the side from its own centre, one
+        step out. The two names therefore differ by exactly one edge direction
+        — the one that, subtracted, lands on a hex centre — and no other
+        direction can qualify because the six are all distinct modulo 3.
+
+        Args:
+            x, y, z: An edge coordinate (exactly one divisible by 3)
+
+        Returns:
+            Tuple of (x, y, z) for the twin coordinate
+        """
+        for dx, dy, dz in self.EDGE_DIRECTIONS:
+            if (x - dx) % 3 == 0 and (y - dy) % 3 == 0 and (z - dz) % 3 == 0:
+                return x + dx, y + dy, z + dz
+        raise ValueError(f"{x},{y},{z} is not an edge coordinate")
+
+    def _edge_key(self, x: int, y: int, z: int) -> str:
+        """The one key for a hex side, whichever of its two hexes named it.
+
+        Both names identify the same strip of land, so the board keeps the
+        lower of the pair and nothing else. Without this the board held two
+        Edge objects per inland side and two players could each build a road on
+        it, one under each name.
+
+        Args:
+            x, y, z: Either of the side's two edge coordinates
+
+        Returns:
+            String in format "x,y,z"
+        """
+        return self._hex_key(*min((x, y, z), self._edge_twin(x, y, z)))
+
+    def canonical_edge_key(self, key: str) -> str | None:
+        """This board's key for a hex side, given any name for it.
+
+        Public because a save written before a side had a single key names half
+        of its roads and harbours by the twin coordinate the board no longer
+        holds, and loading such a game has to translate. Returns None when the
+        key names nothing on this board.
+        """
+        try:
+            canonical = self._edge_key(*self._parse_key(key))
+        except (IndexError, ValueError):
+            return None
+        return canonical if canonical in self.edges else None
+
     def _generate_board(self):
         """
         Generate the complete Catan board.
@@ -318,9 +368,10 @@ class BoardBuilder:
                 vertex_key = self._hex_key(hx + vx, hy + vy, hz + vz)
                 vertex_keys.add(vertex_key)
 
-            # Generate 6 edges for this hex
+            # Generate 6 edges for this hex. Canonicalised, so the side this
+            # hex shares with its neighbour is the same Edge for both of them.
             for ex, ey, ez in self.EDGE_DIRECTIONS:
-                edge_key = self._hex_key(hx + ex, hy + ey, hz + ez)
+                edge_key = self._edge_key(hx + ex, hy + ey, hz + ez)
                 edge_keys.add(edge_key)
 
         # Create Vertex objects
@@ -360,9 +411,11 @@ class BoardBuilder:
                 if vertex_key in self.vertices:
                     self.vertices[vertex_key].neighbors["hexes"].append(hex_key)
 
-            # Edges
+            # Edges. An inland side is reached from both of its hexes and so
+            # collects both; a coastal one is only ever reached from the land,
+            # which is the signature the harbours are placed from.
             for ex, ey, ez in self.EDGE_DIRECTIONS:
-                edge_key = self._hex_key(hx + ex, hy + ey, hz + ez)
+                edge_key = self._edge_key(hx + ex, hy + ey, hz + ez)
                 if edge_key in self.edges:
                     self.edges[edge_key].neighbors["hexes"].append(hex_key)
 
@@ -412,7 +465,9 @@ class BoardBuilder:
                 div_count = sum(1 for c in (cx, cy, cz) if c % 3 == 0)
                 if div_count != 1:
                     continue
-                edge_key = self._hex_key(cx, cy, cz)
+                # Both names of a side turn up among the candidates, and both
+                # canonicalise to the one key the board holds.
+                edge_key = self._edge_key(cx, cy, cz)
                 if edge_key in self.edges:
                     if edge_key not in vertex_obj.neighbors["edges"]:
                         vertex_obj.neighbors["edges"].append(edge_key)
@@ -443,21 +498,15 @@ class BoardBuilder:
         """The coastal edges, walked as a ring around the island.
 
         A coastal edge is a hex side with land on one side and open sea on the
-        other, which shows up as its two intersections having exactly one land
-        hex in common. Asking the edge for its own adjacent hexes will not do
-        it: an inland path is represented by two Edge objects, one belonging to
-        each of the hexes it separates, and each of those knows only its own.
+        other, and since a side is one Edge that knows both of its hexes, it
+        can say so itself: only the land is generated, so a coastal side ends
+        up with a single hex where an inland one has two.
         """
-        coastal = []
-        for edge_key in sorted(self.edges):
-            ends = self.edges[edge_key].neighbors["vertices"]
-            if len(ends) != 2:
-                continue
-            shared = set(self.vertices[ends[0]].neighbors["hexes"]).intersection(
-                self.vertices[ends[1]].neighbors["hexes"]
-            )
-            if len(shared) == 1:
-                coastal.append(edge_key)
+        coastal = [
+            edge_key
+            for edge_key in sorted(self.edges)
+            if len(self.edges[edge_key].neighbors["hexes"]) == 1
+        ]
 
         if not coastal:
             return []

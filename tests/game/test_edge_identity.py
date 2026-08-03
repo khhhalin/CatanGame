@@ -10,7 +10,7 @@ one strip of land, one on each name.
 import random
 
 import pytest
-
+from game import persistence
 from game.game import Game
 
 
@@ -40,6 +40,14 @@ def a_shared_path(game) -> tuple:
     raise AssertionError("board has no inland path")
 
 
+def twin_key(game, edge_key) -> str:
+    """The name for this side that the board no longer holds.
+
+    What a save written before the fix could just as easily have used.
+    """
+    return game._hex_key(*game._edge_twin(*game._parse_key(edge_key)))
+
+
 def give_settlement(game, player_name, vertex_key):
     game.vertices[vertex_key].building = {'type': 'settlement', 'player': player_name}
     game.get_player(player_name).settlements.append(vertex_key)
@@ -64,9 +72,14 @@ class TestOneEdgePerPath:
         """19 hexes of 6 sides with the 42 inland ones shared: 114 - 42 = 72."""
         assert len(fresh_game.edges) == 72
 
-    def test_an_intersection_meets_exactly_three_paths(self, fresh_game):
+    def test_an_intersection_meets_no_more_than_three_paths(self, fresh_game):
+        """Three inland; a corner of the coast has one or two of its three
+        sides out in the sea, where nothing is generated."""
         for key, vertex in fresh_game.vertices.items():
-            assert len(vertex.neighbors['edges']) == 3, key
+            paths = len(vertex.neighbors['edges'])
+            assert 2 <= paths <= 3, key
+            if len(vertex.neighbors['hexes']) == 3:
+                assert paths == 3, key
 
     def test_a_path_runs_between_exactly_two_intersections(self, fresh_game):
         for key, edge in fresh_game.edges.items():
@@ -119,6 +132,62 @@ class TestOneRoadPerPath:
                 playing_game.edges[edge_key].neighbors['vertices']
             ):
                 assert not playing_game.build_road(name, key)['success']
+
+
+class TestSavesWrittenBeforeTheFix:
+    """Half of the edge keys in an older save name a side by the twin the board
+    no longer holds. Those games must still come back, roads and all."""
+
+    def test_a_road_saved_under_the_other_name_comes_back(self, fresh_game):
+        edge_key, _near, _far = a_shared_path(fresh_game)
+        fresh_game.edges[edge_key].road = {'player': 'Bob'}
+        fresh_game.get_player('Bob').roads.append(edge_key)
+
+        data = persistence.serialize(fresh_game)
+        old_name = twin_key(fresh_game, edge_key)
+        assert old_name != edge_key
+        data['roads_on_edges'] = {old_name: {'player': 'Bob'}}
+        data['players'][1]['roads'] = [old_name]
+
+        restored = persistence.deserialize(data)
+        assert restored.edges[edge_key].road == {'player': 'Bob'}
+        assert restored.get_player('Bob').roads == [edge_key]
+
+    def test_a_harbour_saved_under_the_other_name_comes_back(self, fresh_game):
+        edge_key = next(key for key, edge in sorted(fresh_game.edges.items()) if edge.port)
+        port = fresh_game.edges[edge_key].port
+
+        data = persistence.serialize(fresh_game)
+        data['edge_ports'] = {twin_key(fresh_game, edge_key): port}
+
+        restored = persistence.deserialize(data)
+        assert restored.edges[edge_key].port == port
+
+    def test_two_roads_saved_on_one_side_collapse_to_one(self, fresh_game):
+        """The exploit's leftovers: an old save can hold a road under each name
+        of one side. That is a position the physical game cannot represent, so
+        one of them is dropped rather than resurrected."""
+        edge_key, _near, _far = a_shared_path(fresh_game)
+        data = persistence.serialize(fresh_game)
+        data['roads_on_edges'] = {
+            edge_key: {'player': 'Alice'},
+            twin_key(fresh_game, edge_key): {'player': 'Bob'},
+        }
+        data['players'][0]['roads'] = [edge_key]
+        data['players'][1]['roads'] = [twin_key(fresh_game, edge_key)]
+
+        restored = persistence.deserialize(data)
+        roads = [key for key, edge in restored.edges.items() if edge.road]
+        assert roads == [edge_key]
+        assert not restored.check_invariants()
+
+    def test_a_player_owning_both_names_of_one_side_owns_one_road(self, fresh_game):
+        edge_key, _near, _far = a_shared_path(fresh_game)
+        data = persistence.serialize(fresh_game)
+        data['players'][0]['roads'] = [edge_key, twin_key(fresh_game, edge_key)]
+
+        restored = persistence.deserialize(data)
+        assert restored.get_player('Alice').roads == [edge_key]
 
 
 class TestLongestRoadCountsPhysicalPaths:
