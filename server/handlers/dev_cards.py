@@ -19,6 +19,8 @@ from state import (
     reject,
 )
 
+from handlers.phases import blocked_by_phase
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +35,9 @@ def handle_buy_dev_card(data):
     try:
         name = require_str(data.get('name'), 'name')
     except InvalidPayload:
+        return
+
+    if blocked_by_phase(name):
         return
 
     result = session.game.buy_dev_card(name)
@@ -58,6 +63,9 @@ def handle_play_dev_card(data):
         card_type = require_choice(data.get('card_type'), 'card_type', DEV_CARD_TYPES)
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
+        return
+
+    if blocked_by_phase(name):
         return
 
     result = session.game.play_dev_card(name, card_type)

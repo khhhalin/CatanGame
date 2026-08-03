@@ -15,6 +15,8 @@ from state import (
     reject,
 )
 
+from handlers.phases import blocked_by_phase
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +41,9 @@ def handle_place_settlement(data):
         name = require_str(data.get('name'), 'name')
         vertex_key = require_str(data.get('vertex'), 'vertex')
     except InvalidPayload:
+        return
+
+    if blocked_by_phase(name):
         return
 
     result = session.game.place_settlement(name, vertex_key)
@@ -67,6 +72,9 @@ def handle_place_road(data):
     except InvalidPayload:
         return
 
+    if blocked_by_phase(name):
+        return
+
     result = session.game.build_road(name, edge_key)
     if not result['success']:
         reject(result['code'], result['error'])
@@ -92,6 +100,9 @@ def handle_upgrade_city(data):
         name = require_str(data.get('name'), 'name')
         vertex_key = require_str(data.get('vertex'), 'vertex')
     except InvalidPayload:
+        return
+
+    if blocked_by_phase(name):
         return
 
     result = session.game.upgrade_city(name, vertex_key)

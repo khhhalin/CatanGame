@@ -15,6 +15,8 @@ from state import (
     reject,
 )
 
+from handlers.phases import blocked_by_phase
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,11 @@ def _ck_action(data, method_name, *extra_keys):
         current_player = session.game.players[session.game.current_player_index]
         if current_player.name != name:
             reject('NOT_YOUR_TURN', f'Only {current_player.name} can do that')
+            return None
+
+        # None of these are legal while the robber or a discard is outstanding,
+        # and the engine methods below carry no phase check of their own.
+        if blocked_by_phase(name):
             return None
 
         result = getattr(session.game, method_name)(name, *args)

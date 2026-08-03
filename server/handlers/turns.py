@@ -74,6 +74,12 @@ def handle_set_color(data):
         reject(exc.code, exc.message)
         return
 
+    # Same reason as the lobby: two players in one colour make the board
+    # unreadable. Mid-game there is nowhere sensible to reassign to, so refuse.
+    if any(p.color == color and p.name != name for p in session.game.players):
+        reject('COLOR_TAKEN', 'Another player already has that colour')
+        return
+
     if session.game.set_player_color(name, color):
         socketio.emit('player_color_changed', {'name': name, 'color': color})
 

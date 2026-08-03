@@ -15,6 +15,7 @@ from game.validation import (
     require_str,
 )
 from state import (
+    COLOR_PALETTE,
     MAX_PLAYERS,
     SAVE_FILE,
     emit_rules,
@@ -33,6 +34,25 @@ from state import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _colors_in_use(users, exclude=None) -> set:
+    """Colours held by people who are actually connected, ignoring one name.
+
+    Presence rather than the whole of users.json, for the same reason
+    `lobby_users` uses it: the file remembers everyone who has ever played, and
+    their colours are not in use.
+    """
+    present = set(state.session().viewers.values()) - {exclude}
+    return {u.get('color') for u in users if u.get('name') in present and u.get('color')}
+
+
+def _free_color(taken: set) -> str:
+    """A palette colour nobody is using; falls back to any if all are taken."""
+    for palette_color in COLOR_PALETTE:
+        if palette_color not in taken:
+            return palette_color
+    return get_random_color()
 
 
 @socketio.on('join')
@@ -88,6 +108,14 @@ def handle_join(data):
 
         if not chosen_color:
             chosen_color = get_random_color()
+
+        # Two players in the same colour make the board unreadable, and the
+        # remembered colour in users.json means it happens without anyone
+        # choosing it. Reassign rather than refuse: the join itself is fine,
+        # only the colour is not, and a rejected join has no obvious recovery.
+        taken = _colors_in_use(users, exclude=name)
+        if chosen_color in taken:
+            chosen_color = _free_color(taken)
 
         if role == 'player':
             # Count seats held by people who are actually connected, excluding

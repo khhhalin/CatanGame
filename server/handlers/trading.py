@@ -15,6 +15,8 @@ from state import (
     reject,
 )
 
+from handlers.phases import blocked_by_phase
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,20 @@ def handle_propose_trade(data):
         wanted = clean_resource_counts(data.get('wanted'), 'wanted')
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
+        return
+
+    # 1 ore for 1 ore is not a trade. Any overlap between the two sides is the
+    # same nonsense in a longer form — the shared part cancels out, so what is
+    # really being offered is not what the table (or the bank rate) is shown.
+    overlap = sorted(set(offered) & set(wanted))
+    if overlap:
+        reject(
+            'INVALID_TRADE',
+            f"You cannot trade {' or '.join(overlap)} for itself",
+        )
+        return
+
+    if blocked_by_phase(name):
         return
 
     logger.info("trade proposed by=%s offered=%s wanted=%s", name, offered, wanted)
