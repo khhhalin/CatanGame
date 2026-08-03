@@ -18,6 +18,18 @@ os.environ["CATAN_DATA_DIR"] = tempfile.mkdtemp(prefix="catan-test-")
 from game.game import Game  # noqa: E402
 
 
+@pytest.fixture
+def socket_app():
+    """An app of its own for one test, built from the testing config.
+
+    Going through the factory is what keeps tests from sharing one app: each
+    one gets its own configuration rather than whatever the first import
+    happened to build.
+    """
+    from app import create_app
+    return create_app('testing')
+
+
 @pytest.fixture(autouse=True)
 def clean_user_file():
     """Start every test from an empty lobby."""

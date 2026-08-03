@@ -4,34 +4,27 @@ The socket handlers live in `handlers/`, grouped by the part of the game they
 serve; shared state and helpers live in `state.py`. This module only builds the
 app, attaches the extension, and pulls the handler modules in so their
 `@socketio.on` decorators run.
+
+Nothing here runs at import time: the app is built by `create_app()` so a test
+can ask for its own app, with its own configuration and its own game session,
+instead of every test sharing whatever the first import happened to build.
 """
 
 import logging
 import uuid
 
 import state
-from config import get_config
+from config import Config, get_config
 from extensions import socketio
 from flask import Flask, render_template, request
 from flask_socketio import emit
 
-logger = logging.getLogger(__name__)
-
-config = get_config()
-
-app = Flask(__name__)
-app.config.from_object(config)
-app.config['SECRET_KEY'] = config.secret_key()
-
-# Pinned rather than auto-detected: auto-detection picks whichever greenlet
-# library happens to be installed, so a transitive dependency could silently
-# change the concurrency model between dev and prod.
-socketio.init_app(app, async_mode='threading')
-
 # Importing these registers every handler as a side effect of the decorators.
 # Without the import the events simply do not exist, with no error to say so —
-# which is why they are named here rather than discovered dynamically.
-from handlers import (  # noqa: E402,F401  (imported for their side effects)
+# which is why they are named here rather than discovered dynamically. They
+# register against the unbound `socketio`, so this costs nothing until a
+# factory call binds it to an app.
+from handlers import (  # noqa: F401  (imported for their side effects)
     building,
     chat,
     cities_knights,
@@ -42,15 +35,34 @@ from handlers import (  # noqa: E402,F401  (imported for their side effects)
     turns,
 )
 
-# Re-exported so the entry points and tests can keep importing from `app`.
-# The mutable state itself lives in `state`.
-restore_saved_game = state.restore_saved_game
-_turn_watchdog = turns._turn_watchdog
+logger = logging.getLogger(__name__)
 
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+def create_app(config=None):
+    """Build an app. `config` is a config name, a Config subclass, or None.
+
+    None resolves through CATAN_CONFIG, so production and a plain `python
+    app.py` need no argument while a test can ask for `create_app('testing')`.
+    """
+    config_class = config if isinstance(config, type) and issubclass(config, Config) \
+        else get_config(config)
+
+    app = Flask(__name__)
+    # Config first: extensions read app.config during init_app and silently
+    # fall back to defaults if the values are not there yet.
+    app.config.from_object(config_class)
+    app.config['SECRET_KEY'] = config_class.secret_key()
+
+    # Pinned rather than auto-detected: auto-detection picks whichever greenlet
+    # library happens to be installed, so a transitive dependency could silently
+    # change the concurrency model between dev and prod.
+    socketio.init_app(app, async_mode='threading')
+
+    @app.route('/')
+    def index():
+        return render_template('index.html')
+
+    return app
 
 
 @socketio.on_error_default
@@ -96,6 +108,7 @@ if __name__ == '__main__':
         level=logging.INFO,
         format='%(asctime)s %(levelname)-8s %(name)s: %(message)s',
     )
+    dev_app = create_app()
     state.restore_saved_game()
     socketio.start_background_task(turns._turn_watchdog)
-    socketio.run(app, host='127.0.0.1', port=5000, debug=app.config['DEBUG'])
+    socketio.run(dev_app, host='127.0.0.1', port=5000, debug=dev_app.config['DEBUG'])

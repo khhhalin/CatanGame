@@ -14,7 +14,10 @@ sticky load balancer, and move game state out of memory first.
 import logging
 import logging.config
 
-from app import _turn_watchdog, app, restore_saved_game, socketio
+import state
+from app import create_app
+from extensions import socketio
+from handlers.turns import _turn_watchdog
 
 logging.config.dictConfig({
     'version': 1,
@@ -30,8 +33,10 @@ logging.config.dictConfig({
     'root': {'level': 'INFO', 'handlers': ['console']},
 })
 
+app = create_app()
+
 # Bring back an interrupted game before accepting connections.
-restore_saved_game()
+state.restore_saved_game()
 
 socketio.start_background_task(_turn_watchdog)
 
