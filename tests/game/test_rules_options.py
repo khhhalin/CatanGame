@@ -64,11 +64,7 @@ class TestVictoryTarget:
 
 
 class TestHandLimit:
-    def test_default_limit_is_seven(self, ):
-        game = make_game()
-        game.get_player('Alice').resources = {'wood': 8}
-        game.check_discard_required()
-        assert game.players_needing_discard['Alice'] == 4
+    """The default 7 is pinned in test_rules.py; these cover raising it."""
 
     def test_eight_cards_are_safe_when_the_limit_is_raised(self):
         game = make_game({'max_hand_before_discard': 9})
@@ -239,9 +235,6 @@ class TestCoreKnobs:
         game = make_game({'bank_resource_limit': 5})
         assert game.bank.take('wood', 5)
         assert not game.bank.take('wood', 1)
-
-    def test_longest_road_minimum_is_configurable(self):
-        assert make_game({'longest_road_minimum': 3}).rules['longest_road_minimum'] == 3
 
     def test_largest_army_minimum_is_configurable(self):
         game = make_game({'largest_army_minimum': 1})

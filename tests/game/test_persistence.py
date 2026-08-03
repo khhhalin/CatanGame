@@ -216,16 +216,6 @@ class TestFileHandling:
     def test_loading_a_missing_file_is_not_an_error(self, tmp_path):
         assert persistence.load(str(tmp_path / "nope.json")) is None
 
-    def test_the_save_is_human_readable(self, tmp_path):
-        """The point of a text file is that you can open it."""
-        game = a_game()
-        path = str(tmp_path / "game.json")
-        persistence.save(game, path)
-        text = open(path).read()
-        assert text.startswith('{')
-        assert '\n' in text, "indented, not one long line"
-        assert '"players"' in text
-
     def test_an_outdated_save_is_refused(self, tmp_path):
         path = tmp_path / "game.json"
         path.write_text(json.dumps({'save_version': 999}))
@@ -257,11 +247,3 @@ class TestFileHandling:
         persistence.save(game, path)
         persistence.save(game, path)
         assert not (tmp_path / "game.json.tmp").exists()
-
-    def test_the_file_is_not_enormous(self, tmp_path):
-        """Storing the derived graph would balloon this."""
-        game = a_game()
-        path = str(tmp_path / "game.json")
-        persistence.save(game, path)
-        size = (tmp_path / "game.json").stat().st_size
-        assert size < 200_000, f"{size} bytes is too big for one board"

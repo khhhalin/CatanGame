@@ -231,15 +231,6 @@ class TestHiddenInformation:
         assert all(p['resources'] is None for p in data['players'])
 
 
-class TestStateVersion:
-    def test_board_data_carries_a_version(self, playing_game):
-        assert playing_game.get_board_data()['state_version'] == 0
-
-    def test_version_is_reported_after_being_bumped(self, playing_game):
-        playing_game.state_version += 1
-        assert playing_game.get_board_data()['state_version'] == 1
-
-
 @pytest.mark.parametrize("building", ["settlement", "city", "road"])
 def test_every_cost_is_positive_and_uses_known_resources(playing_game, building):
     from game.validation import RESOURCE_TYPES

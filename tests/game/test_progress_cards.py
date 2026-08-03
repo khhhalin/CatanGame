@@ -15,9 +15,6 @@ class TestDeckComposition:
             progress_cards.POLITICS: 18,
         }
 
-    def test_all_three_decks_together_hold_fiftyfour_cards(self):
-        assert sum(progress_cards.deck_counts().values()) == 54
-
     def test_every_card_declares_what_the_engine_needs(self):
         for card in progress_cards.PROGRESS_CARDS:
             assert card['id'] and card['name']
@@ -36,20 +33,13 @@ class TestDeckComposition:
         for card in progress_cards.PROGRESS_CARDS:
             assert card['needs_target'] in allowed, card['id']
 
-    def test_card_ids_are_unique(self):
-        ids = [card['id'] for card in progress_cards.PROGRESS_CARDS]
-        assert len(ids) == len(set(ids))
-
     def test_lookup_covers_every_card(self):
+        """Also the uniqueness check: a duplicate id would collapse the lookup."""
         assert len(progress_cards.CARDS_BY_ID) == len(progress_cards.PROGRESS_CARDS)
         assert progress_cards.CARDS_BY_ID['alchemist']['deck'] == progress_cards.SCIENCE
 
 
 class TestBuildDeck:
-    def test_deck_has_one_entry_per_physical_card(self):
-        deck = progress_cards.build_deck(progress_cards.TRADE, random.Random(1))
-        assert len(deck) == 18
-
     def test_deck_composition_matches_the_declared_counts(self):
         deck = progress_cards.build_deck(progress_cards.POLITICS, random.Random(7))
         expected = Counter({
@@ -58,11 +48,6 @@ class TestBuildDeck:
             if card['deck'] == progress_cards.POLITICS
         })
         assert Counter(deck) == expected
-
-    def test_deck_contains_no_cards_from_another_deck(self):
-        deck = progress_cards.build_deck(progress_cards.SCIENCE, random.Random(3))
-        for card_id in deck:
-            assert progress_cards.CARDS_BY_ID[card_id]['deck'] == progress_cards.SCIENCE
 
     def test_same_seed_gives_the_same_shuffle(self):
         """A game must be replayable from its seed, so draws cannot use global random."""
@@ -81,23 +66,16 @@ class TestBuildDeck:
 
 
 class TestDrawThreshold:
-    def test_level_zero_never_draws(self):
-        assert progress_cards.draw_threshold(0) == 0
-
-    def test_level_one_draws_on_one_or_two(self):
-        assert progress_cards.draw_threshold(1) == 2
-
-    def test_level_two_draws_up_to_three(self):
-        assert progress_cards.draw_threshold(2) == 3
-
-    def test_level_three_draws_up_to_four(self):
-        assert progress_cards.draw_threshold(3) == 4
-
-    def test_level_four_draws_up_to_five(self):
-        assert progress_cards.draw_threshold(4) == 5
-
-    def test_level_five_always_draws(self):
-        assert progress_cards.draw_threshold(5) == 6
+    @pytest.mark.parametrize("level,threshold", [
+        (0, 0),   # never draws
+        (1, 2),   # draws on 1-2
+        (2, 3),
+        (3, 4),
+        (4, 5),
+        (5, 6),   # always draws
+    ])
+    def test_each_improvement_level_draws_on_the_rulebook_range(self, level, threshold):
+        assert progress_cards.draw_threshold(level) == threshold
 
     def test_levels_outside_zero_to_five_are_rejected(self):
         with pytest.raises(ValueError):

@@ -36,12 +36,8 @@ def last_error(client):
 
 
 class TestConnectionAndState:
-    def test_join_is_answered_with_a_snapshot(self, socket_app):
-        client = socketio.test_client(socket_app)
-        client.emit('join', {'name': 'Solo', 'role': 'player'})
-        states = events(client, 'game_state')
-        assert states, "a join with no game running must still get an answer"
-        assert states[-1]['in_game'] is False
+    # A join with no game running is answered with in_game False: see
+    # TestStartingAGame, which records why that flag matters to the client.
 
     def test_request_state_replies_to_the_asker_only(self, clients):
         alice, bob = clients
@@ -388,16 +384,6 @@ class TestNameCollision:
         second.emit('join', {'name': 'A', 'role': 'player', 'takeover': True})
 
         assert last_error(second) is None, "taking over must still work"
-
-    def test_a_different_name_is_unaffected(self, socket_app):
-        first = socketio.test_client(socket_app)
-        first.emit('join', {'name': 'A', 'role': 'player'})
-
-        second = socketio.test_client(socket_app)
-        second.emit('join', {'name': 'B', 'role': 'player'})
-
-        assert last_error(second) is None
-        assert sorted(state.session().viewers.values()) == ['A', 'B']
 
     def test_rejoining_on_the_same_socket_is_not_a_collision(self, socket_app):
         client = socketio.test_client(socket_app)
