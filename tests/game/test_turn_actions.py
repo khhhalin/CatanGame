@@ -20,14 +20,7 @@ def a_land_hex(game):
 
 
 def an_ocean_hex(game):
-    """Turn a hex into water.
-
-    The board generator never actually emits ocean hexes (see _is_ocean in
-    board.py), so the type is forced here to reach the rule itself.
-    """
-    key = a_land_hex(game)
-    game.hexes[key].type = 'ocean'
-    return key
+    return next(key for key, hex_obj in game.hexes.items() if hex_obj.type == 'ocean')
 
 
 def vertex_on(game, hex_key):

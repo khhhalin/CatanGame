@@ -115,3 +115,30 @@ def test_the_whole_board_is_reproducible_across_processes():
         runs.append(json.loads(out.stdout.strip().splitlines()[-1]))
 
     assert runs[0] == runs[1], "the same seed must build the same board in any process"
+
+
+def test_the_board_has_a_ring_of_ocean_around_the_land(fresh_game):
+    """Ocean tiles must actually exist.
+
+    `_is_ocean` classified them with the *edge* rule (exactly one coordinate
+    divisible by 3) while generation only ever visits hex coordinates (all
+    three divisible by 3), so no tile ever matched and the board was 19 land
+    hexes floating in nothing.
+    """
+    ocean = [h for h in fresh_game.hexes.values() if h.type == 'ocean']
+    # edge_radius 3 around a radius-2 land board: the ring at distance 3.
+    assert len(ocean) == 18
+    assert all(h.number is None for h in ocean)
+
+
+def test_ocean_tiles_carry_no_buildable_intersections(fresh_game):
+    """The ocean is scenery: every vertex still belongs to land only.
+
+    Vertices and edges are generated from the land hexes alone, so the ocean
+    ring cannot be settled on and the coastline vertices — the ones that carry
+    harbours — keep their fewer-than-three-hexes signature.
+    """
+    ocean_keys = {k for k, h in fresh_game.hexes.items() if h.type == 'ocean'}
+    for vertex in fresh_game.vertices.values():
+        assert not ocean_keys.intersection(vertex.neighbors.get('hexes', []))
+    assert sum(1 for v in fresh_game.vertices.values() if v.port) == 9

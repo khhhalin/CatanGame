@@ -99,9 +99,15 @@ class BoardBuilder:
 
     def _is_ocean(self, x: int, y: int, z: int) -> bool:
         """
-        Check if coordinates represent an ocean (edge) tile.
+        Check if coordinates represent an ocean tile.
 
         Ocean tiles are within edge_radius but outside hex_radius.
+
+        A tile is a tile whatever it is made of, so an ocean hex is classified
+        by the *hex* rule (all three coordinates divisible by 3), not the edge
+        rule. Requiring exactly one divisible coordinate meant no coordinate the
+        generation loop visits could ever be ocean, and the board came out as
+        19 land hexes with no water at all.
 
         Args:
             x, y, z: Cube coordinates
@@ -112,14 +118,12 @@ class BoardBuilder:
         if x + y + z != 0:
             return False
 
-        # Must have exactly one coordinate divisible by 3 (edge classification)
-        coords_divisible = sum(1 for c in (x, y, z) if c % 3 == 0)
-        if coords_divisible != 1:
+        if x % 3 != 0 or y % 3 != 0 or z % 3 != 0:
             return False
 
-        # Check if within edge radius but outside land
-        max_coord = max(abs(x), abs(y), abs(z))
-        return max_coord <= self.edge_radius * 3 and not self._is_valid_hex(x, y, z)
+        # The ring (or rings) between the land and the edge of the map.
+        distance = max(abs(x // 3), abs(y // 3), abs(z // 3))
+        return self.hex_radius < distance <= self.edge_radius
 
     def _generate_board(self):
         """
@@ -132,7 +136,8 @@ class BoardBuilder:
         4. Assigns resource types and numbers randomly
         """
         # Step 1: Generate all hex keys
-        all_hex_keys = set()
+        land_hex_keys = set()
+        ocean_hex_keys = set()
 
         # Generate all possible coordinates within edge_radius
         # We iterate through a cube and filter based on our rules
@@ -142,18 +147,21 @@ class BoardBuilder:
                 z = -x - y
                 if -r <= z <= r:
                     if self._is_valid_hex(x, y, z):
-                        all_hex_keys.add(self._hex_key(x, y, z))
+                        land_hex_keys.add(self._hex_key(x, y, z))
                     elif self._is_ocean(x, y, z):
-                        all_hex_keys.add(self._hex_key(x, y, z))
+                        ocean_hex_keys.add(self._hex_key(x, y, z))
 
         # Step 2: Create hex objects with resource types and numbers
-        self._create_hexes(all_hex_keys)
+        self._create_hexes(land_hex_keys | ocean_hex_keys)
 
-        # Step 3: Generate vertices and edges from hexes
-        self._generate_vertices_and_edges(all_hex_keys)
+        # Step 3: Generate vertices and edges from the land only. The ocean ring
+        # is scenery: giving it intersections would let a player settle on the
+        # water and would rob the coastline vertices of the "fewer than three
+        # hexes" signature the harbours are placed from.
+        self._generate_vertices_and_edges(land_hex_keys)
 
         # Step 4: Build all neighbor relationships
-        self._build_neighbor_relationships()
+        self._build_neighbor_relationships(land_hex_keys)
 
         # Step 5: Assign ports to edge vertices
         self._assign_ports()
@@ -269,11 +277,15 @@ class BoardBuilder:
         for key in sorted(edge_keys):
             self.edges[key] = Edge(key)
 
-    def _build_neighbor_relationships(self):
+    def _build_neighbor_relationships(self, land_hex_keys: set):
         """
         Build all neighbor relationships between hexes, vertices, and edges.
 
         Uses algebraic rules from hex.md to derive neighbors without lookup tables.
+
+        Args:
+            land_hex_keys: The land hexes. Vertices and edges are attached to
+                these only, because the ocean ring carries no buildings.
         """
         # Build hex -> hex neighbors
         for hex_key, hex_obj in self.hexes.items():
@@ -285,7 +297,7 @@ class BoardBuilder:
                     hex_obj.neighbors.append(neighbor_key)
 
         # Build hex -> vertices and hex -> edges neighbors
-        for hex_key in self.hexes:
+        for hex_key in sorted(land_hex_keys):
             hx, hy, hz = self._parse_key(hex_key)
 
             # Vertices
