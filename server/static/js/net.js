@@ -5,7 +5,7 @@
 // the full set of server events is this file's table of contents.
 
 import { markDirty, setHighlight } from './board.js';
-import { renderCitiesKnights } from './cities-knights.js';
+import { describeLastAttack, noteBarbarianAttack, renderCitiesKnights } from './cities-knights.js';
 import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, turnSound, userScreen, victimModal } from './dom.js';
 import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
 import { handleNameTaken, renderActiveRules, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
@@ -263,9 +263,17 @@ socket.on('event_die', (data) => {
     renderCitiesKnights();
 });
 
+// The attack is resolved server-side inside `roll_dice` - there is no phase in
+// which a player is asked which city to give up, and the engine picks the
+// weakest defender itself. So the only honest thing the client can do is say
+// what happened, loudly, and go on restating it in the barbarian panel: this
+// message arrives once and no later payload repeats it.
 socket.on('barbarian_attack', (data) => {
-    console.log('Barbarian attack:', data);
-    renderCitiesKnights();
+    noteBarbarianAttack(data);
+    const summary = describeLastAttack();
+    if (summary) {
+        showNotice(summary, data?.won ? 'success' : 'error');
+    }
 });
 
 socket.on('progress_card_played', (data) => {

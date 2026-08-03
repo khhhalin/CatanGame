@@ -238,7 +238,10 @@ button:hover:not(:disabled) {
    the specific tokens instead. */
 button:disabled {
     background-color: var(--muted-fill);
-    color: var(--text-faint);
+    /* `--text-faint` here is 4.13:1 on the dark theme's `--surface-3` and fails
+       AA. Muted rather than faint: 7.5:1 light, 5.7:1 dark, and the flat grey
+       fill is what marks the button disabled anyway - the label never was. */
+    color: var(--text-muted);
     border-color: transparent;
     box-shadow: none;
     cursor: not-allowed;
@@ -1144,7 +1147,7 @@ button:disabled {
 
 #buy-dev-card-btn:disabled {
     background-color: var(--muted-fill);
-    color: var(--text-faint);
+    color: var(--text-muted);
     cursor: not-allowed;
 }
 
@@ -1971,7 +1974,7 @@ button:disabled {
     background-color: var(--muted-fill);
     /* Never `opacity` for a disabled state: it fades the label with the box
        and takes it below AA every time. Mute the specific tokens instead. */
-    color: var(--text-faint);
+    color: var(--text-muted);
     cursor: not-allowed;
 }
 

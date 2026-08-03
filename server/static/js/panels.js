@@ -863,13 +863,19 @@ export function updateConsoleVisibility() {
     updateButtonColors();
     renderTurnIndicator();
 
-    // Show/hide trade button based on turn
-    if (getRole() !== 'observer' && isMyTurn()) {
-        proposeTradeBtn.style.display = 'inline-block';
-    } else {
-        proposeTradeBtn.style.display = 'none';
+    // Greyed with the reason on it, not hidden. A control that vanishes and
+    // comes back is the third language this client spoke for "you cannot do
+    // that" - alongside greying out and erroring on click - and the tester's
+    // complaint was that there were three.
+    if (proposeTradeBtn) {
+        const reason = getRole() === 'observer'
+            ? 'Observers cannot trade'
+            : (isMyTurn() ? '' : `It is ${getCurrentPlayer()}'s turn`);
+        proposeTradeBtn.disabled = Boolean(reason);
+        proposeTradeBtn.title = reason || 'Offer resources to the other players';
     }
-    
+
+
     if (getRole() === 'observer') {
         gameConsole.classList.add('hidden');
     } else if (isMyTurn()) {

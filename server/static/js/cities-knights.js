@@ -1,5 +1,5 @@
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
-import { barbarianChipValue, barbarianDefense, barbarianPanel, barbarianStatus, barbarianTrack, buildKnightBtn, buildWallBtn, devCardsPanel, gameBoard, gameScreen, improvementTracks, improvementsChipValue, improvementsPanel, knightHint, knightList, knightsChipValue, knightsPanel, moveKnightBtn, placeRoadBtn, placeSettlementBtn, progressCardsChipValue, progressCardsPanel, progressHandDiv, upgradeCityBtn } from './dom.js';
+import { barbarianChipValue, barbarianDefense, barbarianLastAttack, barbarianPanel, barbarianStatus, barbarianTrack, buildKnightBtn, buildWallBtn, devCardsPanel, gameBoard, gameScreen, improvementTracks, improvementsChipValue, improvementsPanel, knightHint, knightList, knightsChipValue, knightsPanel, moveKnightBtn, placeRoadBtn, placeSettlementBtn, progressCardsChipValue, progressCardsPanel, progressHandDiv, upgradeCityBtn } from './dom.js';
 import { findMyPlayer } from './panels.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, viewState } from './state.js';
@@ -118,6 +118,52 @@ function myKnightAt(vertexKey) {
 
 function myWallCount() {
     return getBoard()?.cities_knights?.city_walls?.[viewState.identity.name] || 0;
+}
+
+// --------------------------------------------------------- the last attack
+//
+// `resolve_barbarian_attack` runs synchronously inside `roll_dice` and picks
+// the pillaged city itself; there is no pending-choice phase and no server
+// event that asks a player to give one up. What the client can do - and did
+// not - is say what happened. The result arrives once, on `barbarian_attack`,
+// and no later payload repeats it, so it is latched here and restated in the
+// barbarian panel until the next one lands.
+
+let lastAttack = null;
+
+/**
+ * Record the outcome of a barbarian attack for the panel to restate.
+ *
+ * @param {object} data - The `barbarian_attack` payload
+ */
+export function noteBarbarianAttack(data) {
+    lastAttack = data && typeof data === 'object' ? data : null;
+    renderCitiesKnights();
+}
+
+/**
+ * The last attack in one sentence, or '' if there has not been one.
+ *
+ * @returns {string}
+ */
+export function describeLastAttack() {
+    if (!lastAttack) {
+        return '';
+    }
+    const score = `⚔️${lastAttack.defence} vs 🏛️${lastAttack.attack}`;
+    if (lastAttack.won) {
+        const defenders = lastAttack.defenders || [];
+        if (defenders.length === 0) {
+            return `Last attack: repelled, ${score}, with nobody to reward`;
+        }
+        return defenders.length === 1
+            ? `Last attack: repelled, ${score} — ${defenders[0]} took Defender of Catan`
+            : `Last attack: repelled, ${score} — ${defenders.join(' and ')} tied and drew a card`;
+    }
+    const pillaged = lastAttack.pillaged || [];
+    return pillaged.length > 0
+        ? `Last attack: lost, ${score} — ${pillaged.join(', ')} lost a city`
+        : `Last attack: lost, ${score} — no city could be pillaged`;
 }
 
 const TRACK_ORDER = ['trade', 'politics', 'science'];
@@ -299,6 +345,7 @@ export function renderCitiesKnights() {
     if (!enabled) {
         viewState.knightMoveFrom = null;
         pendingCkPlacement = null;
+        lastAttack = null;
         return;
     }
 
@@ -379,6 +426,15 @@ function renderBarbarianTrack() {
     }
     barbarianDefense.className = strength < cities ? 'ck-note danger' : 'ck-note';
     barbarianDefense.textContent = notes.join(' · ');
+
+    if (barbarianLastAttack) {
+        const summary = describeLastAttack();
+        barbarianLastAttack.textContent = summary;
+        const lost = summary && lastAttack?.won === false;
+        barbarianLastAttack.className = summary
+            ? (lost ? 'ck-note danger' : 'ck-note')
+            : 'ck-note hidden';
+    }
 
     // The folded line. The ship's position is the expansion's clock and the
     // knights-versus-cities comparison is the only thing anyone can do about

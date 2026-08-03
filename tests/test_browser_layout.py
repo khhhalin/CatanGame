@@ -34,6 +34,9 @@ from browser_harness import (
     edges_next_to,
     launch_browser,
     legal_setup_vertices,
+    resolve_discard,
+    resolve_robber,
+    roll_dice,
     start_server,
 )
 from browser_harness import (
@@ -565,6 +568,43 @@ class TestBaseGameFits:
         player.page.wait_for_function(
             "() => document.getElementById('trade-panel').classList.contains('hidden')",
             timeout=3000,
+        )
+
+    def test_the_round_clock_appears_on_every_tab_once_the_dice_are_up(self, base_table):
+        """Two bugs a tester filed, and they had one cause.
+
+        The round countdown never appeared after the dice clock ran out, and the
+        two clocks disagreed between players. Both came of counting locally on a
+        ticker that only ran on the current player's own tab. Both numbers are
+        derived from `dice_roll_time` / `round_time` in the board payload now, so
+        every tab subtracts from the same server figure.
+
+        Deliberately asserted on the *other* player's tab as well: that is the
+        one where nothing ever moved.
+        """
+        board = base_table[0].board()
+        actor = next(p for p in base_table if p.name == board["current_player"])
+        if not board.get("has_rolled_dice"):
+            roll_dice(actor)
+            for player in base_table:
+                resolve_discard(player)
+            resolve_robber(actor)
+
+        readings = []
+        for player in base_table:
+            player.page.wait_for_function(
+                "() => /Round: \\d+s/.test(document.getElementById('round-timer').textContent)",
+                timeout=6000,
+            )
+            text = player.page.inner_text("#round-timer")
+            readings.append((player.name, int(text.split(":")[1].strip().rstrip("s"))))
+            assert player.page.inner_text("#dice-timer") == "Dice: rolled", (
+                f"{player.name} still shows a dice countdown after the roll"
+            )
+
+        seconds = [value for _, value in readings]
+        assert max(seconds) - min(seconds) <= 2, (
+            f"the tabs disagree about the round clock: {readings}"
         )
 
     def test_no_console_errors_were_logged(self, base_table):

@@ -80,6 +80,7 @@ export const barbarianPanel = document.getElementById('barbarian-panel');
 export const barbarianTrack = document.getElementById('barbarian-track');
 export const barbarianStatus = document.getElementById('barbarian-status');
 export const barbarianDefense = document.getElementById('barbarian-defense');
+export const barbarianLastAttack = document.getElementById('barbarian-last-attack');
 export const improvementsPanel = document.getElementById('improvements-panel');
 export const improvementTracks = document.getElementById('improvement-tracks');
 export const knightsPanel = document.getElementById('knights-panel');
