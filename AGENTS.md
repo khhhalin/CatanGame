@@ -203,3 +203,23 @@ Document custom events when implementing:
 renders from the server's catalogue, so no front-end change is needed. Then read
 `game.rules['your_id']` wherever it applies, and add a test in
 `tests/game/test_rules_options.py`.
+
+Three standing rules about the registry:
+
+- **There are no modes.** An expansion is listed as the individual rules it is made
+  of, and no engine code asks "is expansion X on" — it asks for the one rule that
+  governs the behaviour in front of it. A table that wants knights and barbarians
+  without commodities must be able to have exactly that. `PRESETS` ticks a named
+  set of rules in one click; nothing anywhere records which preset was used.
+- **Never add a rule nothing reads.** A setting the engine ignores is worse than no
+  setting: the lobby shows it, the table agrees on it, and the game does not play
+  it. If you cannot implement it, leave it out of `RULES`.
+- **A rule may suggest a victory target; only the table sets one.** Nothing may
+  add to or overwrite `victory_target` at construction — that bug was reported as
+  "10 vp needed setting got overridden". Put the suggestion in the rule's
+  `suggests_victory_target` and in the preset that ticks it.
+- **Dependencies are refused, never quietly satisfied.** A rule that cannot act
+  alone (a metropolis with no improvement tracks) declares what it needs in
+  `DEPENDENCIES`; `start_game` refuses the combination and names what is missing.
+  Switching the missing rule on for the table would hand them a game they did not
+  agree to.
