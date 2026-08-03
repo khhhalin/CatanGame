@@ -330,11 +330,14 @@ def emit_rules(to_sender_only=False):
 
     The catalogue travels with the selection so the lobby can render itself
     from the server's registry — adding a rule server-side makes it appear in
-    every client with no front-end change.
+    every client with no front-end change. The presets ride along for the same
+    reason: each one is a named set of individual rules the lobby can offer as
+    a one-click shortcut.
     """
     live = session()
     payload = {
         'catalogue': rules_module.catalogue(),
+        'presets': rules_module.presets(),
         'selected': live.lobby_rules,
         'locked': live.game is not None and live.game.game_state == "started",
     }

@@ -1,12 +1,13 @@
-"""Cities & Knights: commodities, city improvements, knights, barbarians.
+"""Cities & Knights state: improvement tracks, knights, walls, barbarians.
 
-C&K is a mode rather than a tweak — it replaces development cards, adds a third
-die, changes what cities produce, and adds a whole second economy. Keeping it in
-its own module means the base game stays readable, and a base-game reader never
-has to page past rules that do not apply to them.
+Keeping it in its own module means the base game stays readable, and a
+base-game reader never has to page past rules that do not apply to them.
 
-The Game owns a `CitiesKnights` instance only when the rule is on, so every
-C&K code path is behind one `if game.ck` check.
+This is a state container, not a mode. The Game builds one whenever any rule
+that needs somewhere to keep tracks, knight tokens, wall counts, the barbarian
+ship or the progress decks is on — see `rules.EXPANSION_STATE_RULES`. Whether
+a given mechanic actually happens is decided by that mechanic's own rule, never
+by the presence of this object.
 """
 
 from game import progress_cards
@@ -127,9 +128,21 @@ class Knight:
 
 
 class CitiesKnights:
-    """All Cities & Knights state for one game."""
+    """All Cities & Knights state for one game.
 
-    def __init__(self):
+    The three sizes are passed in rather than read from the constants above
+    because the lobby can change them; the constants remain what the box holds.
+    """
+
+    def __init__(
+        self,
+        barbarian_track_length: int = BARBARIAN_TRACK_LENGTH,
+        progress_hand_limit: int = PROGRESS_HAND_LIMIT,
+        max_city_walls: int = MAX_CITY_WALLS,
+    ):
+        self.barbarian_track_length = barbarian_track_length
+        self.progress_hand_limit = progress_hand_limit
+        self.max_city_walls = max_city_walls
         # player -> {track: level}
         self.improvements = {}
         # player -> list[Knight]
@@ -173,7 +186,7 @@ class CitiesKnights:
         return self.progress_hands.setdefault(player_name, [])
 
     def hand_is_full(self, player_name: str) -> bool:
-        return len(self.hand_of(player_name)) >= PROGRESS_HAND_LIMIT
+        return len(self.hand_of(player_name)) >= self.progress_hand_limit
 
     def draw_progress_card(self, deck_name: str, rng) -> str | None:
         """Take the top card of a deck, or None once it is exhausted."""
@@ -295,7 +308,7 @@ class CitiesKnights:
     def advance_barbarians(self) -> bool:
         """Move the ship one space. True when it has arrived."""
         self.barbarian_position += 1
-        if self.barbarian_position >= BARBARIAN_TRACK_LENGTH:
+        if self.barbarian_position >= self.barbarian_track_length:
             return True
         return False
 
@@ -336,7 +349,7 @@ class CitiesKnights:
             "metropolis": self.metropolis,
             "metropolis_vertex": self.metropolis_vertex,
             "barbarian_position": self.barbarian_position,
-            "barbarian_track_length": BARBARIAN_TRACK_LENGTH,
+            "barbarian_track_length": self.barbarian_track_length,
             "barbarians_have_attacked": self.barbarians_have_attacked,
             "last_event": self.last_event,
             "last_red_die": self.last_red_die,

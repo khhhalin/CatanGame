@@ -173,15 +173,21 @@ class RobberRules:
     def robber_is_allowed(self, hex_key: str) -> bool:
         """Whether the robber may be moved onto this hex.
 
-        Friendly Robber (Traders & Barbarians): a hex touching a settlement of
-        a player on only 2 victory points is off limits, so the player who is
+        Two rules can refuse one. "Robber may sit on the desert", turned off,
+        keeps it on producing land where it costs somebody something. Friendly
+        Robber (Traders & Barbarians) puts a hex touching a settlement of a
+        player on only 2 victory points off limits, so the player who is
         furthest behind cannot be kicked while they are down.
         """
-        if not self.rules['friendly_robber']:
-            return True
-
         if hex_key not in self.hexes:
             return False
+
+        if not self.rules['robber_may_return_to_desert']:
+            if self.hexes[hex_key].type == 'desert':
+                return False
+
+        if not self.rules['friendly_robber']:
+            return True
 
         # A Hex only knows its neighbouring hexes, so walk the vertices and ask
         # each one which hexes it touches — the same direction get_robber_victims
@@ -202,8 +208,13 @@ class RobberRules:
     def friendly_robber_fallback(self) -> str | None:
         """Where the robber goes when Friendly Robber leaves nowhere legal.
 
-        The rule sends it to the desert in that case.
+        The rule sends it to the desert in that case — unless the table has
+        also barred the desert, which leaves nowhere at all and is answered
+        with None rather than a hex the watchdog would then be refused.
         """
+        if not self.rules['robber_may_return_to_desert']:
+            return None
+
         for key, hex_obj in self.hexes.items():
             if hex_obj.type == 'desert':
                 return key
@@ -218,7 +229,7 @@ class RobberRules:
             # Commodities count toward the limit; each city wall raises it by 2.
             total_cards = player.total_cards()
             limit = base_limit
-            if self.ck:
+            if self.rules['city_walls'] and self.ck is not None:
                 limit += self.ck.city_wall_bonus(player.name)
             if total_cards > limit:
                 discard_amount = total_cards // 2

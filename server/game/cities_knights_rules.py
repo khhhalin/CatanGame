@@ -8,11 +8,24 @@ is a mixin on Game rather than methods on CitiesKnights.
 
 from game import cities_knights as ck_module
 from game import progress_cards
+from game import rules as rules_module
 from game.validation import COMMODITY_TYPES, RESOURCE_TYPES
 
 
 class CitiesKnightsRules:
-    """Improvements, knights, city walls, the barbarians, and progress cards."""
+    """Improvements, knights, city walls, the barbarians, and progress cards.
+
+    Each action below is gated on its own house rule, not on the expansion as
+    a whole: a table that agreed to knights and barbarians without commodities
+    gets exactly that, and asking for an improvement is refused by name.
+    """
+
+    def _rule_is_off(self, rule_id: str) -> dict | None:
+        """A refusal naming the rule that would have to be on, or None."""
+        if self.rules[rule_id] and self.ck is not None:
+            return None
+        name = rules_module.RULES_BY_ID[rule_id]['name']
+        return {'success': False, 'error': f'"{name}" is not one of this table\'s rules'}
 
     def buy_improvement(self, player_name: str, track: str, discount: int = 0) -> dict:
         """Buy the next level on a city improvement track.
@@ -23,8 +36,9 @@ class CitiesKnightsRules:
         Returns {'success': bool, 'error': str, 'level': int,
                  'metropolis': bool, 'took_from': str|None}.
         """
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('city_improvements')
+        if refusal is not None:
+            return refusal
         if track not in ck_module.IMPROVEMENT_TRACKS:
             return {'success': False, 'error': 'Unknown improvement track'}
 
@@ -54,10 +68,12 @@ class CitiesKnightsRules:
         self.ck.improvements[player_name][track] += 1
         new_level = self.ck.improvements[player_name][track]
 
-        # Claiming a metropolis needs a city that is not already one.
+        # Claiming a metropolis needs a city that is not already one. A table
+        # that took the tracks without the metropolis rule buys levels for
+        # their abilities alone, and level 4 awards nothing.
         took_from = None
         gained_metropolis = False
-        if new_level >= ck_module.METROPOLIS_LEVEL:
+        if self.rules['metropolis'] and new_level >= ck_module.METROPOLIS_LEVEL:
             free_city = next((v for v in player.cities if not self.ck.is_metropolis(v)), None)
             if free_city or self.ck.metropolis[track] == player_name:
                 took_from = self.ck.claim_metropolis(player_name, track, free_city)
@@ -77,8 +93,9 @@ class CitiesKnightsRules:
         A knight must sit on a vacant intersection touching one of the owner's
         roads. The settlement distance rule does not apply to knights.
         """
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('knights')
+        if refusal is not None:
+            return refusal
 
         player = self.get_player(player_name)
         vertex = self.vertices.get(vertex_key)
@@ -107,8 +124,9 @@ class CitiesKnightsRules:
 
     def activate_knight(self, player_name: str, vertex_key: str) -> dict:
         """Pay grain to make a knight active. It may not act this turn."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('knights')
+        if refusal is not None:
+            return refusal
 
         player = self.get_player(player_name)
         owner, knight = self.ck.knight_at(vertex_key)
@@ -128,8 +146,9 @@ class CitiesKnightsRules:
 
     def promote_knight(self, player_name: str, vertex_key: str) -> dict:
         """Raise a knight one rank. Mighty needs the Fortress."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('knights')
+        if refusal is not None:
+            return refusal
 
         player = self.get_player(player_name)
         owner, knight = self.ck.knight_at(vertex_key)
@@ -148,8 +167,9 @@ class CitiesKnightsRules:
 
     def move_knight(self, player_name: str, from_vertex: str, to_vertex: str) -> dict:
         """Move an active knight along the owner's roads, displacing if stronger."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('knights')
+        if refusal is not None:
+            return refusal
 
         owner, knight = self.ck.knight_at(from_vertex)
         if knight is None or owner != player_name:
@@ -217,14 +237,18 @@ class CitiesKnightsRules:
 
     def build_city_wall(self, player_name: str, vertex_key: str) -> dict:
         """Two brick for +2 hand limit on a 7. Max three per player."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('city_walls')
+        if refusal is not None:
+            return refusal
 
         player = self.get_player(player_name)
         if player is None or vertex_key not in player.cities:
             return {'success': False, 'error': 'You have no city there'}
-        if self.ck.city_walls.get(player_name, 0) >= ck_module.MAX_CITY_WALLS:
-            return {'success': False, 'error': 'You have used all three city walls'}
+        if self.ck.city_walls.get(player_name, 0) >= self.ck.max_city_walls:
+            return {
+                'success': False,
+                'error': f'You have used all {self.ck.max_city_walls} city walls',
+            }
         if not self._can_pay(player, ck_module.CITY_WALL_COST):
             return {'success': False, 'error': 'A city wall costs 2 brick'}
 
@@ -407,8 +431,9 @@ class CitiesKnightsRules:
         checks its shape, and the per-card method below checks it against the
         board.
         """
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
+        refusal = self._rule_is_off('progress_cards')
+        if refusal is not None:
+            return refusal
 
         card = progress_cards.CARDS_BY_ID.get(card_id)
         if card is None:
@@ -562,8 +587,11 @@ class CitiesKnightsRules:
         player = self.get_player(player_name)
         if player is None or target not in player.cities:
             return {'success': False, 'error': 'You have no city there'}
-        if self.ck.city_walls.get(player_name, 0) >= ck_module.MAX_CITY_WALLS:
-            return {'success': False, 'error': 'You have used all three city walls'}
+        if self.ck.city_walls.get(player_name, 0) >= self.ck.max_city_walls:
+            return {
+                'success': False,
+                'error': f'You have used all {self.ck.max_city_walls} city walls',
+            }
 
         self.ck.city_walls[player_name] = self.ck.city_walls.get(player_name, 0) + 1
         return {'success': True, 'vertex': target}

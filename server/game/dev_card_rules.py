@@ -138,7 +138,8 @@ class DevCardRules:
             return (False, 'You must roll the dice first')
 
         if (
-            card_data['purchase_turn'] is not None
+            self.rules['dev_card_hold_a_turn']
+            and card_data['purchase_turn'] is not None
             and self.turn_count - card_data['purchase_turn'] < 1
         ):
             return (False, 'Cannot play card in the same turn it was purchased')

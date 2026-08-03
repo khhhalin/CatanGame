@@ -17,8 +17,13 @@ class TurnClock:
     """Starting the game, advancing turns, and the dice/round timers."""
 
     def start(self):
-        """Start the game and shuffle player order."""
-        self.rng.shuffle(self.players)
+        """Start the game, seating the players in the chosen order.
+
+        Shuffling is what "roll the dice for the starting player" amounts to;
+        a table that wants to replay a start keeps the order they joined in.
+        """
+        if self.rules['turn_order'] == 'random':
+            self.rng.shuffle(self.players)
         self.game_state = "started"
         self.start_turn()
         logger.debug("\n=== Game started! ===")
@@ -71,7 +76,7 @@ class TurnClock:
         self.free_roads_remaining = 0
 
         self.start_turn()
-        if self.ck:
+        if self.rules['knights'] and self.ck is not None:
             # Clears each knight's per-turn flags. Without it a knight that acts
             # once stays spent for the rest of the game.
             self.ck.start_turn()

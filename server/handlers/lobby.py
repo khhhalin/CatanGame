@@ -189,7 +189,18 @@ def handle_set_rules(data):
         reject('NOT_IN_LOBBY', 'Join before changing the rules')
         return
 
-    session.lobby_rules = rules_module.coerce(data.get('rules'))
+    # A preset is a shortcut, not a mode: it names a set of individual rules to
+    # tick, and what lands in `lobby_rules` is that set. Nothing records which
+    # preset was used, and every rule in it stays separately switchable.
+    preset_id = data.get('preset')
+    if preset_id is not None:
+        chosen = rules_module.preset_rules(preset_id)
+        if chosen is None:
+            reject('UNKNOWN_PRESET', f'There is no "{preset_id}" preset')
+            return
+        session.lobby_rules = chosen
+    else:
+        session.lobby_rules = rules_module.coerce(data.get('rules'))
     logger.info("rules set by %s: %s", viewer_for(), session.lobby_rules)
     log_event('rules', f"{viewer_for()} changed the house rules", player=viewer_for())
     emit_rules()
@@ -264,6 +275,15 @@ def _start_game_locked():
     for u in users:
         if u.get('role') == 'player' and u.get('color'):
             player_colors[u.get('name')] = u.get('color')
+
+    # Some rules cannot do anything without another: a metropolis needs the
+    # improvement tracks that award one, progress cards need the event die the
+    # barbarians bring. Say so and refuse rather than tick the missing box —
+    # switching on a rule nobody agreed to is a different game.
+    problems = rules_module.dependency_problems(session.lobby_rules)
+    if problems:
+        reject('INCOHERENT_RULES', 'These rules do not work together: ' + '; '.join(problems))
+        return
 
     minimum = session.lobby_rules['min_players']
     if len(players) < minimum:

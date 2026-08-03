@@ -27,13 +27,13 @@ logger = logging.getLogger(__name__)
 def _dev_cards_disabled(game) -> bool:
     """Whether this game uses development cards at all.
 
-    Cities & Knights replaces them outright with progress cards, which are
-    drawn on a city gate rather than bought (expansions.md 303, 427). Leaving
-    the deck buyable let a C&K table play two card systems at once.
+    Progress cards replace them outright: they are drawn on a city gate rather
+    than bought (expansions.md 303, 427). Leaving the deck buyable let a table
+    with progress cards play two card systems at once.
     """
-    if game.ck is None:
+    if not game.rules['progress_cards']:
         return False
-    reject('WRONG_MODE', 'Cities & Knights uses progress cards, not development cards')
+    reject('WRONG_MODE', 'This table uses progress cards, not development cards')
     return True
 
 

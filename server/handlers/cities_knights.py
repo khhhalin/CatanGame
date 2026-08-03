@@ -6,6 +6,7 @@ import state
 from extensions import socketio
 from flask_socketio import emit
 from game import progress_cards
+from game import rules as rules_module
 from game.cities_knights import COMMODITY_TYPES, IMPROVEMENT_TRACKS
 from game.validation import (
     RESOURCE_TYPES,
@@ -25,18 +26,27 @@ from handlers.phases import blocked_by_phase
 logger = logging.getLogger(__name__)
 
 
-def _ck_action(data, method_name, *extra_keys):
+def _rule_is_off(game, rule_id: str) -> bool:
+    """Reject and report when the table never agreed to this rule."""
+    if game.rules[rule_id]:
+        return False
+    name = rules_module.RULES_BY_ID[rule_id]['name']
+    reject('RULE_NOT_IN_PLAY', f'"{name}" is not one of this table\'s rules')
+    return True
+
+
+def _ck_action(data, rule_id, method_name, *extra_keys):
     """Shared plumbing for the Cities & Knights actions.
 
     They all look the same: validate the payload, check it is that player's
     turn, call one engine method under the lock, then broadcast. Doing it once
-    keeps the six handlers below to their actual rules.
+    keeps the six handlers below to their actual rules. `rule_id` is the house
+    rule this action needs, so a table that did not take it is told which one.
     """
     session = state.session()
     if session.game is None or session.game.game_state != "started":
         return None
-    if session.game.ck is None:
-        reject('WRONG_MODE', 'Cities & Knights is not enabled for this game')
+    if _rule_is_off(session.game, rule_id):
         return None
 
     try:
@@ -70,7 +80,7 @@ def handle_buy_improvement(data):
     if rate_limited():
         return
     """Advance one city improvement track by a level."""
-    outcome = _ck_action(data, 'buy_improvement', 'track')
+    outcome = _ck_action(data, 'city_improvements', 'buy_improvement', 'track')
     if not outcome:
         return
     name, result = outcome
@@ -87,7 +97,7 @@ def handle_buy_improvement(data):
 def handle_build_knight(data):
     if rate_limited():
         return
-    outcome = _ck_action(data, 'build_knight', 'vertex')
+    outcome = _ck_action(data, 'knights', 'build_knight', 'vertex')
     if outcome:
         log_event('build', f"{outcome[0]} built a knight", player=outcome[0])
 
@@ -95,7 +105,7 @@ def handle_build_knight(data):
 def handle_activate_knight(data):
     if rate_limited():
         return
-    outcome = _ck_action(data, 'activate_knight', 'vertex')
+    outcome = _ck_action(data, 'knights', 'activate_knight', 'vertex')
     if outcome:
         log_event('build', f"{outcome[0]} activated a knight", player=outcome[0])
 
@@ -103,7 +113,7 @@ def handle_activate_knight(data):
 def handle_promote_knight(data):
     if rate_limited():
         return
-    outcome = _ck_action(data, 'promote_knight', 'vertex')
+    outcome = _ck_action(data, 'knights', 'promote_knight', 'vertex')
     if outcome:
         log_event('build', f"{outcome[0]} promoted a knight", player=outcome[0])
 
@@ -111,7 +121,7 @@ def handle_promote_knight(data):
 def handle_move_knight(data):
     if rate_limited():
         return
-    outcome = _ck_action(data, 'move_knight', 'from_vertex', 'to_vertex')
+    outcome = _ck_action(data, 'knights', 'move_knight', 'from_vertex', 'to_vertex')
     if not outcome:
         return
     name, result = outcome
@@ -124,7 +134,7 @@ def handle_move_knight(data):
 def handle_build_city_wall(data):
     if rate_limited():
         return
-    outcome = _ck_action(data, 'build_city_wall', 'vertex')
+    outcome = _ck_action(data, 'city_walls', 'build_city_wall', 'vertex')
     if outcome:
         log_event('build', f"{outcome[0]} built a city wall", player=outcome[0])
 
@@ -176,8 +186,7 @@ def handle_play_progress_card(data):
         return
     if session.game is None or session.game.game_state != "started":
         return
-    if session.game.ck is None:
-        reject('WRONG_MODE', 'Cities & Knights is not enabled for this game')
+    if _rule_is_off(session.game, 'progress_cards'):
         return
 
     try:
@@ -216,7 +225,7 @@ def handle_request_progress_hand(data):
     session = state.session()
     if rate_limited():
         return
-    if session.game is None or session.game.ck is None:
+    if session.game is None or not session.game.rules['progress_cards']:
         return
 
     try:

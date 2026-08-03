@@ -57,10 +57,31 @@ class TestVictoryTarget:
     def test_target_is_configurable(self):
         assert make_game({'victory_target': 14}).victory_points_to_win == 14
 
-    def test_harbormaster_raises_the_target_by_one(self):
-        """The official variant compensates for the extra 2-point card."""
+    def test_harbormaster_does_not_rewrite_an_explicit_target(self):
+        """Reported: "10 vp needed setting got overridden".
+
+        Harbormaster used to add 1 to whatever the lobby chose, so a table
+        that agreed on 10 played to 11 with nothing on screen saying so. The
+        variant's suggestion now lives in its preset, where it can be seen and
+        changed.
+        """
         game = make_game({'victory_target': 10, 'harbormaster': True})
-        assert game.victory_points_to_win == 11
+        assert game.victory_points_to_win == 10
+
+    def test_the_cities_and_knights_preset_does_not_rewrite_it_either(self):
+        """The same bug from the other side: the expansion forced 13."""
+        rules = rules_module.preset_rules('cities_and_knights')
+        rules['victory_target'] = 10
+        assert make_game(rules).victory_points_to_win == 10
+
+    def test_a_preset_is_where_a_suggested_target_lives(self):
+        """A rule may suggest a length; only a preset ever sets it."""
+        assert make_game(
+            rules_module.preset_rules('cities_and_knights')
+        ).victory_points_to_win == 13
+        assert make_game(
+            rules_module.preset_rules('traders_and_barbarians')
+        ).victory_points_to_win == 11
 
 
 class TestHandLimit:

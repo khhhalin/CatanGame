@@ -17,10 +17,13 @@ class TradeRules:
         """Cards the player must give per card received, given their harbours.
 
         A 2:1 harbour only helps with its own resource, the 3:1 harbour helps
-        with anything, and without either it is the standard 4:1.
+        with anything, and without either it is the table's bank rate — 4:1 in
+        the base game. A harbour never makes a trade worse, so a table playing
+        at 3:1 or 2:1 keeps the better of the two.
         """
         ports = self.get_player_ports(player_name)
-        rate = 3 if 'generic' in ports else 4
+        rate = min(self.rules['bank_trade_rate'], 3) if 'generic' in ports \
+            else self.rules['bank_trade_rate']
         if any(resource in ports for resource in offered):
             rate = min(rate, 2)
         return rate

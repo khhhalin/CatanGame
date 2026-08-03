@@ -121,28 +121,33 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         self.dice_roll_time_limit = getattr(config, 'DICE_ROLL_SECONDS', 15)
         self.round_time_limit = getattr(config, 'ROUND_SECONDS', 120)
 
-        # Harbormaster adds a 2-point card, so the official variant raises the
-        # target by one to keep the game the same length.
+        # Exactly what the table set, and nothing else. Rules that suit a
+        # different length say so in the catalogue (`suggests_victory_target`)
+        # and the preset that ticks them sets it, so the lobby can see and
+        # change the number. Adding to it here instead rewrote an explicit
+        # choice — a table that asked for 10 got 11, or 13, with no clue why.
         self.victory_points_to_win = self.rules['victory_target']
-        if self.rules['harbormaster']:
-            self.victory_points_to_win += 1
-        # C&K is a longer game and sets its own target, overriding the lobby's.
-        if self.rules['cities_and_knights']:
-            self.victory_points_to_win = 13
 
         # Harbormaster: holder of the special card, or None.
         self.harbormaster_holder = None
         self.harbor_points = {}  # player name -> harbour points
 
-        # Cities & Knights lives behind one attribute: None in the base game,
-        # so every C&K branch is a single `if self.ck` check.
         # Piece supplies, overridable from the lobby.
         self.MAX_SETTLEMENTS = self.rules['max_settlements']
         self.MAX_CITIES = self.rules['max_cities']
         self.MAX_ROADS = self.rules['max_roads']
 
-        self.ck = ck_module.CitiesKnights() if self.rules['cities_and_knights'] else None
-        if self.ck:
+        # Somewhere to keep improvement tracks, knights, walls, the barbarian
+        # ship and the progress decks — built when any rule needs it. Its
+        # presence is not a rule: what actually happens is decided by the
+        # individual rule that governs it.
+        self.ck = None
+        if rules_module.needs_expansion_state(self.rules):
+            self.ck = ck_module.CitiesKnights(
+                barbarian_track_length=self.rules['barbarian_track_length'],
+                progress_hand_limit=self.rules['progress_hand_limit'],
+                max_city_walls=self.rules['max_city_walls'],
+            )
             for player in self.players:
                 self.ck.register(player.name)
         self.turn_start_time = None  # timestamp when turn started
@@ -286,11 +291,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
     def setup_building_type(self) -> str:
         """What the current setup placement builds.
 
-        Cities & Knights replaces the second starting settlement with a city,
-        so a player begins with one settlement and one city rather than two
-        settlements. Everything else about setup is unchanged.
+        With "start with a city" on, the second starting settlement is a city
+        instead, so a player begins with one settlement and one city rather
+        than two settlements. Everything else about setup is unchanged.
         """
-        if self.ck and self.setup_turn >= len(self.players):
+        if self.rules['setup_second_city'] and self.setup_turn >= len(self.players):
             return 'city'
         return 'settlement'
 
@@ -567,11 +572,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
         if self.rules['harbormaster'] and self.harbormaster_holder == player_name:
             points += 2
 
-        if self.ck:
-            # A metropolis makes its city worth 4 instead of 2, so it adds 2 on
-            # top of what the city already scored.
-            points += 2 * self.ck.metropolis_count(player_name)
-            points += self.ck.defender_cards.get(player_name, 0)
+        if self.ck is not None:
+            if self.rules['metropolis']:
+                # A metropolis makes its city worth 4 instead of 2, so it adds
+                # 2 on top of what the city already scored.
+                points += 2 * self.ck.metropolis_count(player_name)
+            if self.rules['barbarians']:
+                points += self.ck.defender_cards.get(player_name, 0)
 
         return points
 
@@ -698,12 +705,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                 if hex_obj.number != dice_total or hex_obj.type in ('desert', 'ocean'):
                     continue
 
-                # Cities & Knights: a city on pasture, mountain or forest yields
-                # one resource plus one commodity instead of two resources.
-                # Fields and hills have no commodity, so a city there still
-                # produces two, exactly as in the base game.
+                # With commodities on, a city on pasture, mountain or forest
+                # yields one resource plus one commodity instead of two
+                # resources. Fields and hills have no commodity, so a city
+                # there still produces two, exactly as in the base game.
                 commodity = None
-                if self.ck and building_type == 'city':
+                if self.rules['commodities'] and building_type == 'city':
                     commodity = ck_module.COMMODITY_FROM_TERRAIN.get(hex_obj.type)
 
                 take_resources = 1 if commodity else resource_amount
@@ -755,10 +762,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
                     player.resources[hex_obj.type] = player.resources.get(hex_obj.type, 0) + 1
                     gained[hex_obj.type] = gained.get(hex_obj.type, 0) + 1
 
-                # C&K: the starting city yields "one resource and, where
-                # applicable, one commodity" from each adjacent hex — one of
-                # each, not the doubled production of a normal city turn.
-                if self.ck and is_city:
+                # The starting city yields "one resource and, where applicable,
+                # one commodity" from each adjacent hex — one of each, not the
+                # doubled production of a normal city turn.
+                if self.rules['commodities'] and is_city:
                     commodity = ck_module.COMMODITY_FROM_TERRAIN.get(hex_obj.type)
                     if commodity:
                         player.commodities[commodity] = player.commodities.get(commodity, 0) + 1
@@ -846,15 +853,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
         self.set_dice_rolled()
 
-        # Cities & Knights rolls a third die, and it is resolved *before*
+        # The barbarians bring a third die, and it is resolved *before*
         # production. Without this the barbarian ship never moves and knights
-        # have nothing to defend against.
-        event = self._resolve_event_die(dice2) if self.ck else None
+        # have nothing to defend against. The same die is what deals progress
+        # cards, which is why they depend on this rule.
+        event = self._resolve_event_die(dice2) if self.rules['barbarians'] else None
 
         if total == 7:
-            # C&K: until the barbarians have attacked once, a 7 does not move
-            # the robber — but the discard rule still applies.
-            if not self.ck or self.ck.barbarians_have_attacked:
+            # Until the barbarians have attacked once, a 7 does not move the
+            # robber — but the discard rule still applies.
+            if not self.rules['barbarians'] or self.ck.barbarians_have_attacked:
                 self.must_move_robber = True
             self.check_discard_required()
 
@@ -976,6 +984,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
     def update_longest_road(self):
         """Update longest road holder after road placement."""
+        if not self.rules['longest_road_card']:
+            return
+
         max_length = 0
         longest_holder = None
 
@@ -1004,6 +1015,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRul
 
     def update_largest_army(self):
         """Update largest army holder after playing knight."""
+        if not self.rules['largest_army_card']:
+            return
+
         max_knights = 0
         army_holder = None
 

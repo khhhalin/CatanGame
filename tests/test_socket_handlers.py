@@ -7,6 +7,7 @@ the boundary a browser actually talks to.
 import pytest
 import state
 from extensions import socketio
+from game import rules as rules_module
 
 
 @pytest.fixture
@@ -472,14 +473,61 @@ class TestLobbyRules:
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         b.emit('join', {'name': 'B', 'role': 'player'})
-        a.emit('set_rules', {'rules': {'friendly_robber': True, 'harbormaster': True}})
+        a.emit('set_rules', {'rules': {'friendly_robber': True, 'harbormaster': True,
+                                       'victory_target': 10}})
         a.emit('start_game')
 
         game = state.session().game
         assert game.rules['friendly_robber'] is True
         assert game.rules['harbormaster'] is True
-        # Harbormaster raises the target by one.
-        assert game.victory_points_to_win == 11
+        assert game.victory_points_to_win == 10, "the lobby's number, not a rule's opinion"
+
+    def test_a_preset_ticks_individual_rules(self, socket_app):
+        """A preset is a shortcut. What arrives is the rules, not a mode."""
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.get_received()
+
+        a.emit('set_rules', {'preset': 'cities_and_knights'})
+
+        selected = events(a, 'rules_changed')[-1]['selected']
+        assert selected == rules_module.preset_rules('cities_and_knights')
+        assert selected['knights'] is True
+        assert selected['commodities'] is True
+        assert 'cities_and_knights' not in selected
+
+    def test_the_presets_are_offered_alongside_the_catalogue(self, socket_app):
+        client = socketio.test_client(socket_app)
+        client.emit('join', {'name': 'A', 'role': 'player'})
+
+        payload = events(client, 'rules_changed')[-1]
+
+        assert [preset['id'] for preset in payload['presets']] == \
+            [preset['id'] for preset in rules_module.PRESETS]
+
+    def test_an_unknown_preset_is_refused(self, socket_app):
+        client = socketio.test_client(socket_app)
+        client.emit('join', {'name': 'A', 'role': 'player'})
+        client.emit('set_rules', {'preset': 'seafarers'})
+        assert last_error(client)['code'] == 'UNKNOWN_PRESET'
+
+    def test_a_rule_without_what_it_needs_refuses_the_start(self, socket_app):
+        """Metropolis with no improvement tracks can never award anything."""
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.emit('set_rules', {'rules': {'metropolis': True}})
+        a.get_received()
+
+        a.emit('start_game')
+
+        error = last_error(a)
+        assert error['code'] == 'INCOHERENT_RULES'
+        assert 'City improvements' in error['message'], "name what is missing"
+        assert state.session().game is None, "nothing was started"
 
     def test_the_board_payload_carries_the_rules(self, socket_app):
         a = socketio.test_client(socket_app)
@@ -815,7 +863,7 @@ class TestCitiesKnightsOverTheWire:
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         b.emit('join', {'name': 'B', 'role': 'player'})
-        a.emit('set_rules', {'rules': {'cities_and_knights': True}})
+        a.emit('set_rules', {'preset': 'cities_and_knights'})
         a.emit('start_game')
         a.get_received()
         b.get_received()
@@ -825,7 +873,8 @@ class TestCitiesKnightsOverTheWire:
         a, _ = self._ck_game(socket_app)
         a.emit('request_state')
         board = events(a, 'game_state')[-1]['board']
-        assert board['rules']['cities_and_knights'] is True
+        assert board['rules']['knights'] is True
+        assert board['rules']['commodities'] is True
         assert board['cities_knights'] is not None
         assert board['cities_knights']['barbarian_track_length'] == 7
 
@@ -926,7 +975,9 @@ class TestCitiesKnightsOverTheWire:
         a.get_received()
 
         a.emit('buy_improvement', {'name': 'A', 'track': 'trade'})
-        assert last_error(a)['code'] == 'WRONG_MODE'
+        error = last_error(a)
+        assert error['code'] == 'RULE_NOT_IN_PLAY'
+        assert 'City improvements' in error['message'], "name the rule that is missing"
 
     def test_a_malformed_ck_payload_does_not_crash(self, socket_app):
         a, _ = self._ck_game(socket_app)
@@ -951,7 +1002,7 @@ class TestBarbarianClock:
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         b.emit('join', {'name': 'B', 'role': 'player'})
-        a.emit('set_rules', {'rules': {'cities_and_knights': True}})
+        a.emit('set_rules', {'preset': 'cities_and_knights'})
         a.emit('start_game')
         game = state.session().game
         game.game_phase = "playing"
