@@ -158,7 +158,9 @@ def test_every_map_is_reproducible_across_processes():
     """Set iteration order varies between processes; the board must not.
 
     Same guarantee as for the standard board, checked for every layout at once
-    so a new map cannot quietly depend on hash order.
+    so a new map cannot quietly depend on hash order. The seafaring board is in
+    the list because it is the one that grew: the sea doubles the graph and
+    islands are found by flood fill, both of which walk sets of string keys.
     """
     import json
     import os
@@ -172,11 +174,14 @@ def test_every_map_is_reproducible_across_processes():
         "boards = {};"
         "\n"
         "for layout in ('random', 'beginner', 'large'):\n"
-        "    g = Game(['A','B'], [], rng=random.Random(99), rules={'board_layout': layout})\n"
-        "    boards[layout] = {"
+        "  for ships in (False, True):\n"
+        "    rules = {'board_layout': layout, 'ships': ships}\n"
+        "    g = Game(['A','B'], [], rng=random.Random(99), rules=rules)\n"
+        "    boards[layout + str(ships)] = {"
         "'hexes': sorted((k, h.type, h.number) for k, h in g.hexes.items()),"
         "'vertices': sorted(g.vertices),"
         "'edges': sorted(g.edges),"
+        "'islands': sorted(g.islands().items()),"
         "'ports': sorted((k, str(e.port)) for k, e in g.edges.items() if e.port),"
         "'robber': g.robber_hex}\n"
         "print(json.dumps(boards))"
