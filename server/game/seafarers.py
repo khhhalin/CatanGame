@@ -323,9 +323,11 @@ class SeafarersRules:
         to make the answer independent of iteration order.
         """
         vertex = self.vertices.get(vertex_key)
-        if vertex is None or not vertex.neighbors['hexes']:
+        if vertex is None:
             return None
-        return self.islands().get(min(vertex.neighbors['hexes']))
+        islands = self.islands()
+        touching = sorted(key for key in vertex.neighbors['hexes'] if key in islands)
+        return islands[touching[0]] if touching else None
 
     def record_island_settlement(self, player_name: str, vertex_key: str, award: bool) -> int:
         """Note that a player has reached an island, and score it if it is new.

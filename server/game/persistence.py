@@ -222,10 +222,12 @@ def deserialize(data: dict, config=None) -> Game:
         edge.ship = None
     for key, ship in sorted(data.get('ships_on_edges', {}).items()):
         edge_key = game.canonical_edge_key(key)
-        if edge_key is None:
-            # A save of a game played with ships, reloaded by a table that has
-            # since turned the rule off, has no sea sides to put them back on.
-            logger.warning("saved ship on %s is not a side of this board; dropping it", key)
+        # A game played with ships and reloaded by a table that has since
+        # turned the rule off has nowhere to put them: the open-water sides are
+        # not generated at all, and a coastal side without the rule is a place
+        # for a road. Dropping them beats restoring a ship nobody can move.
+        if edge_key is None or not game.is_sea_edge(edge_key):
+            logger.warning("saved ship on %s has no sea side on this board; dropping it", key)
             continue
         game.edges[edge_key].ship = ship
     for key, road in sorted(data.get('roads_on_edges', {}).items()):
