@@ -1,0 +1,58 @@
+/* Chrome for the demo pages only. None of this is part of a pattern -
+   it is the frame the pattern is displayed in. Do not copy it into the app. */
+
+.demo-page {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: var(--space-5) var(--space-4) var(--space-7);
+}
+
+.demo-head {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+
+.demo-head h1 {
+    font-size: var(--text-2xl);
+    line-height: var(--leading-tight);
+    margin: 0 0 var(--space-1);
+}
+
+.demo-head p {
+    margin: 0;
+    color: var(--text-muted);
+    max-width: 60ch;
+}
+
+.demo-section {
+    margin-bottom: var(--space-6);
+}
+
+.demo-section > h2 {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin: 0 0 var(--space-3);
+}
+
+.demo-note {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* Neutral stage so a pattern is judged on itself, not on the page bg. */
+.demo-stage {
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+}
+
+.demo-grid-2 {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+}

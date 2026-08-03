@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design tokens — Catan UI bank</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+.swatches {
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+}
+
+.swatch {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface-1);
+}
+
+.swatch__chip {
+    height: 3.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+.swatch__meta {
+    padding: var(--space-2);
+    border-top: 1px solid var(--border);
+}
+
+.swatch__name {
+    display: block;
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text);
+    word-break: break-all;
+}
+
+.swatch__use {
+    display: block;
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.scale-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    border-bottom: 1px dashed var(--border);
+}
+
+.scale-row:last-child { border-bottom: 0; }
+
+.scale-row__label {
+    flex: 0 0 8rem;
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+}
+
+.scale-row__bar {
+    height: 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+}
+
+.radii {
+    display: flex;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.radii figure {
+    margin: 0;
+    text-align: center;
+}
+
+.radii div {
+    width: 5rem;
+    height: 3.5rem;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    margin-bottom: var(--space-1);
+}
+
+.radii figcaption {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+}
+
+.type-sample { margin: 0 0 var(--space-2); line-height: var(--leading-tight); }
+.type-sample small {
+    font-family: var(--font-num);
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+    margin-left: var(--space-2);
+    font-weight: 400;
+}
+
+.elev {
+    display: flex;
+    gap: var(--space-5);
+    flex-wrap: wrap;
+}
+
+.elev div {
+    background: var(--surface-1);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+</style>
+</head>
+<body>
+<main class="demo-page">
+    <header class="demo-head">
+        <h1>Design tokens</h1>
+        <p>The whole vocabulary every other pattern in this bank draws from:
+            semantic colour, a 4px spacing scale, four radii, a fixed type
+            scale, and one z-index ladder. Rendered here in both themes.</p>
+    </header>
+
+    <section class="demo-section">
+        <h2>Surfaces &amp; text</h2>
+        <div class="swatches">
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--bg); color: var(--text);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--bg</span>
+                    <span class="swatch__use">page behind everything</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--bg-sunken); color: var(--text);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--bg-sunken</span>
+                    <span class="swatch__use">board well, log well</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--surface-1); color: var(--text);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--surface-1</span>
+                    <span class="swatch__use">panels, cards</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--surface-2); color: var(--text);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--surface-2</span>
+                    <span class="swatch__use">panel header, hover</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--surface-3); color: var(--text);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--surface-3</span>
+                    <span class="swatch__use">chips, inputs</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--surface-1); color: var(--text-muted);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--text-muted</span>
+                    <span class="swatch__use">labels, secondary</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--surface-1); color: var(--text-faint);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--text-faint</span>
+                    <span class="swatch__use">timestamps, hints</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--accent); color: var(--on-accent);">Aa</div>
+                <div class="swatch__meta"><span class="swatch__name">--accent</span>
+                    <span class="swatch__use">primary action</span></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Status</h2>
+        <div class="swatches">
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--info); color: var(--on-status);">Your turn</div>
+                <div class="swatch__meta"><span class="swatch__name">--info / --info-soft</span>
+                    <span class="swatch__use">turn cues, neutral notice</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--good); color: var(--on-status);">Trade accepted</div>
+                <div class="swatch__meta"><span class="swatch__name">--good / --good-soft</span>
+                    <span class="swatch__use">confirmations</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--warn); color: var(--on-status);">Discard 4</div>
+                <div class="swatch__meta"><span class="swatch__name">--warn / --warn-soft</span>
+                    <span class="swatch__use">timers, hand limit</span></div>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background: var(--bad); color: var(--on-status);">Barbarians land</div>
+                <div class="swatch__meta"><span class="swatch__name">--bad / --bad-soft</span>
+                    <span class="swatch__use">errors, robber</span></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Resources &amp; commodities</h2>
+        <div class="swatches">
+            <div class="swatch"><div class="swatch__chip" style="background: var(--res-wood); color: var(--on-resource);">Wood</div>
+                <div class="swatch__meta"><span class="swatch__name">--res-wood</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--res-brick); color: var(--on-resource);">Brick</div>
+                <div class="swatch__meta"><span class="swatch__name">--res-brick</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--res-sheep); color: var(--on-resource);">Sheep</div>
+                <div class="swatch__meta"><span class="swatch__name">--res-sheep</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--res-wheat); color: var(--on-resource);">Wheat</div>
+                <div class="swatch__meta"><span class="swatch__name">--res-wheat</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--res-ore); color: var(--on-resource);">Ore</div>
+                <div class="swatch__meta"><span class="swatch__name">--res-ore</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--com-cloth); color: var(--on-resource);">Cloth</div>
+                <div class="swatch__meta"><span class="swatch__name">--com-cloth</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--com-coin); color: var(--on-resource);">Coin</div>
+                <div class="swatch__meta"><span class="swatch__name">--com-coin</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--com-paper); color: var(--on-resource);">Paper</div>
+                <div class="swatch__meta"><span class="swatch__name">--com-paper</span></div></div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Player colours</h2>
+        <div class="swatches">
+            <div class="swatch"><div class="swatch__chip" style="background: var(--player-1); color: var(--on-player);">Kalina</div>
+                <div class="swatch__meta"><span class="swatch__name">--player-1</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--player-2); color: var(--on-player);">Marek</div>
+                <div class="swatch__meta"><span class="swatch__name">--player-2</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--player-3); color: var(--on-player);">Ewa</div>
+                <div class="swatch__meta"><span class="swatch__name">--player-3</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--player-4); color: var(--on-player);">Tomasz</div>
+                <div class="swatch__meta"><span class="swatch__name">--player-4</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--player-5); color: var(--on-player);">Ola</div>
+                <div class="swatch__meta"><span class="swatch__name">--player-5</span></div></div>
+            <div class="swatch"><div class="swatch__chip" style="background: var(--player-6); color: var(--on-player);">Piotr</div>
+                <div class="swatch__meta"><span class="swatch__name">--player-6</span></div></div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Spacing</h2>
+        <div class="demo-stage">
+            <div class="scale-row"><span class="scale-row__label">--space-1 · 4px</span><span class="scale-row__bar" style="width: var(--space-1);"></span></div>
+            <div class="scale-row"><span class="scale-row__label">--space-2 · 8px</span><span class="scale-row__bar" style="width: var(--space-2);"></span></div>
+            <div class="scale-row"><span class="scale-row__label">--space-3 · 12px</span><span class="scale-row__bar" style="width: var(--space-3);"></span></div>
+            <div class="scale-row"><span class="scale-row__label">--space-4 · 16px</span><span class="scale-row__bar" style="width: var(--space-4);"></span></div>
+            <div class="scale-row"><span class="scale-row__label">--space-5 · 24px</span><span class="scale-row__bar" style="width: var(--space-5);"></span></div>
+            <div class="scale-row"><span class="scale-row__label">--space-6 · 32px</span><span class="scale-row__bar" style="width: var(--space-6);"></span></div>
+            <div class="scale-row"><span class="scale-row__label">--space-7 · 48px</span><span class="scale-row__bar" style="width: var(--space-7);"></span></div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Radii &amp; elevation</h2>
+        <div class="demo-stage demo-grid-2">
+            <div class="radii">
+                <figure><div style="border-radius: var(--radius-sm);"></div><figcaption>--radius-sm</figcaption></figure>
+                <figure><div style="border-radius: var(--radius-md);"></div><figcaption>--radius-md</figcaption></figure>
+                <figure><div style="border-radius: var(--radius-lg);"></div><figcaption>--radius-lg</figcaption></figure>
+                <figure><div style="border-radius: var(--radius-pill);"></div><figcaption>--radius-pill</figcaption></figure>
+            </div>
+            <div class="elev">
+                <div style="box-shadow: var(--shadow-1);">--shadow-1<br>panels</div>
+                <div style="box-shadow: var(--shadow-2);">--shadow-2<br>popovers</div>
+                <div style="box-shadow: var(--shadow-3);">--shadow-3<br>modals</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="demo-section">
+        <h2>Type scale</h2>
+        <div class="demo-stage">
+            <p class="type-sample" style="font-size: var(--text-2xl); font-weight: 700;">Kalina wins with 13 points <small>--text-2xl</small></p>
+            <p class="type-sample" style="font-size: var(--text-xl); font-weight: 600;">Propose a trade <small>--text-xl</small></p>
+            <p class="type-sample" style="font-size: var(--text-lg); font-weight: 600;">Year of Plenty <small>--text-lg</small></p>
+            <p class="type-sample" style="font-size: var(--text-md);">Marek rolled 8 and collected 2 wheat and 1 ore. <small>--text-md (body)</small></p>
+            <p class="type-sample" style="font-size: var(--text-sm); color: var(--text-muted);">Bank: 19 wood · 17 brick · 14 sheep · 11 wheat · 15 ore <small>--text-sm</small></p>
+            <p class="type-sample" style="font-size: var(--text-xs); color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em;">City improvements <small>--text-xs</small></p>
+            <p class="type-sample" style="font-size: var(--text-2xs); color: var(--text-muted); font-family: var(--font-num);">21:04:37 <small>--text-2xs</small></p>
+        </div>
+        <p class="demo-note">Body size is fixed and only the two heading sizes
+            use <code>clamp()</code>. A fluid body size makes line breaks in the
+            event log reflow while you read it.</p>
+    </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,322 @@
+/* ui-bank design tokens.
+ *
+ * One file, no build step, no imports. Every pattern in the bank reads from
+ * here and nothing else, so a colour or spacing decision is changed in one
+ * place. The names are semantic (`--surface-2`, `--text-muted`) rather than
+ * literal (`--slate-700`): a pattern should never care what hue it is on.
+ *
+ * Themes: light is the default declaration, dark comes from
+ * `prefers-color-scheme`, and `data-theme` on <html> overrides both so a
+ * manual toggle can win in either direction. Any new colour token must be
+ * declared in all three blocks or the toggle will half-apply.
+ */
+
+:root {
+    color-scheme: light dark;
+
+    /* --- spacing: a 4px-based scale. Nothing in a pattern uses a raw px gap. */
+    --space-0: 0;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+
+    /* --- radii */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    --radius-pill: 999px;
+
+    /* --- type scale. Body stays fixed; only headings fluid, because a
+           fluid body size makes line lengths in the log jump on resize. */
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-num: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --text-2xs: 0.6875rem;  /* 11px - badges, counters only */
+    --text-xs: 0.75rem;     /* 12px - panel titles, meta */
+    --text-sm: 0.8125rem;   /* 13px - dense panel body */
+    --text-md: 0.9375rem;   /* 15px - default body */
+    --text-lg: 1.0625rem;   /* 17px - card titles */
+    --text-xl: clamp(1.15rem, 0.9rem + 0.6vw, 1.4rem);
+    --text-2xl: clamp(1.4rem, 1rem + 1.4vw, 2rem);
+    --leading-tight: 1.25;
+    --leading-normal: 1.5;
+
+    /* --- elevation */
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.10);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.14);
+    --shadow-3: 0 16px 40px rgb(0 0 0 / 0.28);
+
+    /* --- z-index: the whole stack, in one place, so nothing invents a 9999. */
+    --z-board-overlay: 10;
+    --z-sticky: 20;
+    --z-dropdown: 30;
+    --z-modal: 40;
+    --z-notice: 50;
+
+    /* --- motion. Every duration is filtered through the reduced-motion
+           block at the bottom, so honouring the preference is automatic for
+           anything that animates via these tokens. */
+    --dur-fast: 90ms;
+    --dur-med: 180ms;
+    --dur-slow: 320ms;
+    --ease: cubic-bezier(0.2, 0, 0.15, 1);
+
+    /* --- board sizing. The single knob that solves dead space below the
+           board: the board track is told to eat the leftover height rather
+           than sizing to a fixed aspect ratio. See shell patterns. */
+    --shell-min-board: 18rem;
+    --panel-rail: 14.5rem;
+    --panel-aside: 20rem;
+}
+
+/* ------------------------------------------------------------ light theme */
+
+:root,
+:root[data-theme="light"] {
+    --bg: #eef1f5;
+    --bg-sunken: #dde3ea;
+    --surface-1: #ffffff;
+    --surface-2: #f5f7fa;
+    --surface-3: #e7ebf1;
+    --border: #cbd3dd;
+    --border-strong: #a5b1c0;
+
+    --text: #16202b;
+    --text-muted: #3d4a5c;     /* 8.6:1 on --surface-1 */
+    --text-faint: #4f5c6e;     /* 5.3:1 on the darkest light surface */
+
+    --accent: #b5551a;         /* darkened Catan orange: AA on white */
+    --accent-hover: #91410f;
+    --accent-soft: #fbeadd;
+    --on-accent: #ffffff;
+
+    --info: #1a5fb4;
+    --info-soft: #e2ecfb;
+    --good: #1a6b3c;
+    --good-soft: #dff2e6;
+    --warn: #8a5a00;
+    --warn-soft: #fdf0d4;
+    --bad: #a52222;
+    --bad-soft: #fbe3e3;
+    --on-status: #ffffff;
+
+    --focus: #0b57d0;
+    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus) 45%, transparent);
+
+    /* Resource identity. Used as a 4px edge or a chip fill behind
+       --on-resource, never as a text colour on the page background. */
+    --res-wood: #2f6b3a;
+    --res-brick: #a4502a;
+    --res-sheep: #5c7d26;
+    --res-wheat: #8a6800;
+    --res-ore: #4d5b6b;
+    --on-resource: #ffffff;
+
+
+    /* Terrain fills for the board canvas. Deliberately NOT --res-*: those
+       carry text and are darkened for AA, which makes a large hex fill look
+       muddy. Nothing legible is ever painted directly on these - number
+       tokens sit on their own --surface-1 disc. */
+    --terrain-wood: #3f8f5a;
+    --terrain-brick: #c9663a;
+    --terrain-sheep: #8fbf4a;
+    --terrain-wheat: #e0b64a;
+    --terrain-ore: #8a9bb0;
+    --terrain-desert: #e6d9bb;
+
+    --com-cloth: #6d3f8f;
+    --com-coin: #8a6a12;
+    --com-paper: #146e73;
+
+    /* Dark enough to be used two ways: as a filled pip behind --on-player,
+       and as coloured text on any light surface (a chat name). The first
+       pass used lighter hues that only passed as fills. */
+    --player-1: #a04a12;
+    --player-2: #144e96;
+    --player-3: #145a32;
+    --player-4: #75235a;
+    --player-5: #654c0f;
+    --player-6: #12545c;
+    --on-player: #ffffff;
+}
+
+/* ------------------------------------------------------------- dark theme */
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #16202b;
+        --bg-sunken: #101922;
+        --surface-1: #1e2b39;
+        --surface-2: #26364a;
+        --surface-3: #2f4157;
+        --border: #35485f;
+        --border-strong: #4b6280;
+
+        --text: #eef3f8;
+        --text-muted: #b3c2d2;     /* 9.4:1 on --surface-1 */
+        --text-faint: #93a5b8;     /* 6.4:1 on --surface-1 */
+
+        --accent: #f0913c;
+        --accent-hover: #ffab5e;
+        --accent-soft: #3a2a18;
+        --on-accent: #1a1206;
+
+        --info: #6fb2f5;
+        --info-soft: #16304a;
+        --good: #5cd08a;
+        --good-soft: #12331f;
+        --warn: #f0bc55;
+        --warn-soft: #3a2e12;
+        --bad: #ff8a80;
+        --bad-soft: #40201d;
+        --on-status: #10171f;
+
+        --focus: #ffd54a;
+        --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus) 55%, transparent);
+
+        --res-wood: #4e9a5f;
+        --res-brick: #d4784a;
+        --res-sheep: #9ec24f;
+        --res-wheat: #e0b04a;
+        --res-ore: #93a7bd;
+        --on-resource: #10171f;
+
+
+        --terrain-wood: #3d8455;
+        --terrain-brick: #b45c33;
+        --terrain-sheep: #7ba63a;
+        --terrain-wheat: #c9973c;
+        --terrain-ore: #74879e;
+        --terrain-desert: #55503c;
+
+        --com-cloth: #c197e0;
+        --com-coin: #e0bd5c;
+        --com-paper: #63c6cc;
+
+        --player-1: #f0913c;
+        --player-2: #6fb2f5;
+        --player-3: #5cd08a;
+        --player-4: #e07ac0;
+        --player-5: #e0c15c;
+        --player-6: #5fd0d8;
+        --on-player: #10171f;
+    }
+}
+
+:root[data-theme="dark"] {
+    --bg: #16202b;
+    --bg-sunken: #101922;
+    --surface-1: #1e2b39;
+    --surface-2: #26364a;
+    --surface-3: #2f4157;
+    --border: #35485f;
+    --border-strong: #4b6280;
+
+    --text: #eef3f8;
+    --text-muted: #b3c2d2;
+    --text-faint: #93a5b8;
+
+    --accent: #f0913c;
+    --accent-hover: #ffab5e;
+    --accent-soft: #3a2a18;
+    --on-accent: #1a1206;
+
+    --info: #6fb2f5;
+    --info-soft: #16304a;
+    --good: #5cd08a;
+    --good-soft: #12331f;
+    --warn: #f0bc55;
+    --warn-soft: #3a2e12;
+    --bad: #ff8a80;
+    --bad-soft: #40201d;
+    --on-status: #10171f;
+
+    --focus: #ffd54a;
+    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus) 55%, transparent);
+
+    --res-wood: #4e9a5f;
+    --res-brick: #d4784a;
+    --res-sheep: #9ec24f;
+    --res-wheat: #e0b04a;
+    --res-ore: #93a7bd;
+    --on-resource: #10171f;
+
+
+    --terrain-wood: #3d8455;
+    --terrain-brick: #b45c33;
+    --terrain-sheep: #7ba63a;
+    --terrain-wheat: #c9973c;
+    --terrain-ore: #74879e;
+    --terrain-desert: #55503c;
+
+    --com-cloth: #c197e0;
+    --com-coin: #e0bd5c;
+    --com-paper: #63c6cc;
+
+    --player-1: #f0913c;
+    --player-2: #6fb2f5;
+    --player-3: #5cd08a;
+    --player-4: #e07ac0;
+    --player-5: #e0c15c;
+    --player-6: #5fd0d8;
+    --on-player: #10171f;
+}
+
+/* ------------------------------------------------------------ base + reset */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: var(--text-md);
+    line-height: var(--leading-normal);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Never removed. Every pattern relies on this rather than styling focus
+   per-component, so a new control is keyboard-visible by default. */
+:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    box-shadow: var(--focus-ring);
+    border-radius: var(--radius-sm);
+}
+
+/* Anything that holds text inside a flex or grid item needs this or a long
+   unbroken word pushes the page into horizontal scroll. */
+.min0 { min-width: 0; min-height: 0; }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --dur-fast: 1ms;
+        --dur-med: 1ms;
+        --dur-slow: 1ms;
+    }
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
+}
