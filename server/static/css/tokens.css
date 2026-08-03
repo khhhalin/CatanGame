@@ -129,6 +129,12 @@
     --terrain-ore: #8a9bb0;
     --terrain-desert: #e6d9bb;
 
+
+    /* app: the board's backdrop. Deliberately the same dark in both themes -
+       the canvas paints its own dark ocean, and a light box around it reads as
+       a rendering fault rather than a table. */
+    --board-backdrop: #101922;
+
     --com-cloth: #6d3f8f;
     --com-coin: #8a6a12;
     --com-paper: #146e73;
@@ -194,6 +200,8 @@
         --terrain-ore: #74879e;
         --terrain-desert: #55503c;
 
+        --board-backdrop: #101922;
+
         --com-cloth: #c197e0;
         --com-coin: #e0bd5c;
         --com-paper: #63c6cc;
@@ -253,6 +261,8 @@
     --terrain-wheat: #c9973c;
     --terrain-ore: #74879e;
     --terrain-desert: #55503c;
+
+    --board-backdrop: #101922;
 
     --com-cloth: #c197e0;
     --com-coin: #e0bd5c;

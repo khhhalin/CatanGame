@@ -345,9 +345,12 @@ button:hover {
     color: var(--text-faint);
 }
 
-/* Lobby house rules - sections and rows are built from the server catalogue */
-.rules-panel .panel-body {
-    max-height: min(26rem, 45vh);
+/* Lobby house rules - sections and rows are built from the server catalogue.
+   The panel takes the height the roster leaves and scrolls inside it, rather
+   than capping at a guessed 26rem and leaving the rest of the column blank. */
+.rules-panel {
+    flex: 1 1 auto;
+    min-height: 12rem;
 }
 
 .rules-locked-note {
@@ -535,7 +538,7 @@ button:hover {
 /* The box has a real height and it clips. The canvas below is taken out of
    flow inside it, so nothing in here can impose a size on the layout. */
 .game-board {
-    background-color: var(--sunken);
+    background-color: var(--board-backdrop);
     border: 1px solid var(--panel-border);
     border-radius: var(--radius);
     position: relative;
@@ -754,8 +757,10 @@ button:hover {
 #place-settlement-btn.active,
 #place-road-btn.active,
 #upgrade-city-btn.active {
-    border-color: var(--focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 45%, transparent);
+    /* Two rings, light then dark, because the fill underneath is the player's
+       own colour and could be anything. One ring in one token is invisible
+       against half the palette in one theme or the other. */
+    box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 5px var(--text);
 }
 
 #roll-dice-btn {
@@ -763,9 +768,16 @@ button:hover {
     font-size: var(--text-md);
 }
 
+/* Bounded in both directions and clipped, so "Waiting for Kalina..." and
+   "Next Turn" occupy the same width. A button that resizes on every turn
+   change rewraps the console, and a rewrapped console resizes the board. */
 #next-turn-btn {
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-sm);
+    width: 9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Destructive: ends the match for the whole table */
@@ -1651,8 +1663,7 @@ button:hover {
 .ck-action.active {
     background-color: var(--good);
     color: var(--on-status);
-    border-color: var(--focus);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 45%, transparent);
+    box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 5px var(--text);
 }
 
 .ck-buy:disabled,
@@ -1788,11 +1799,8 @@ button:hover {
         row-gap: var(--space-1);
     }
 
-    #next-turn-btn {
-        /* "Waiting for Kalina..." is much wider than "Next Turn"; without a
-           floor the console rewraps on every turn change, which resizes the
-           board box mid-game. */
-        min-width: 11rem;
+    #roll-dice-btn {
+        padding: var(--space-2) var(--space-3);
     }
 }
 
