@@ -15,7 +15,6 @@ from game.validation import (
 )
 from state import (
     bump_and_broadcast,
-    game_lock,
     rate_limited,
     reject,
 )
@@ -25,9 +24,10 @@ logger = logging.getLogger(__name__)
 
 @socketio.on('buy_dev_card')
 def handle_buy_dev_card(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -35,7 +35,7 @@ def handle_buy_dev_card(data):
     except InvalidPayload:
         return
 
-    result = state.current_game.buy_dev_card(name)
+    result = session.game.buy_dev_card(name)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -47,9 +47,10 @@ def handle_buy_dev_card(data):
 
 @socketio.on('play_dev_card')
 def handle_play_dev_card(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -59,7 +60,7 @@ def handle_play_dev_card(data):
         reject(exc.code, exc.message)
         return
 
-    result = state.current_game.play_dev_card(name, card_type)
+    result = session.game.play_dev_card(name, card_type)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -90,9 +91,10 @@ def handle_play_dev_card(data):
 
 @socketio.on('use_invention')
 def handle_use_invention(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -104,8 +106,8 @@ def handle_use_invention(data):
         reject(exc.code, exc.message)
         return
 
-    with game_lock:
-        result = state.current_game.use_invention(name, resources)
+    with session.lock:
+        result = session.game.use_invention(name, resources)
         if not result['success']:
             reject(result['code'], result['error'])
             return
@@ -115,9 +117,10 @@ def handle_use_invention(data):
 
 @socketio.on('use_monopoly')
 def handle_use_monopoly(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -127,8 +130,8 @@ def handle_use_monopoly(data):
         reject(exc.code, exc.message)
         return
 
-    with game_lock:
-        result = state.current_game.use_monopoly(name, resource_type)
+    with session.lock:
+        result = session.game.use_monopoly(name, resource_type)
         if not result['success']:
             reject(result['code'], result['error'])
             return

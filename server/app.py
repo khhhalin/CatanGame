@@ -58,6 +58,11 @@ def create_app(config=None):
     # change the concurrency model between dev and prod.
     socketio.init_app(app, async_mode='threading')
 
+    # A new app is a new server, so it gets an empty session: one game, one set
+    # of viewers, one event log. This is what lets a test start from a clean
+    # table rather than unsetting state module by module.
+    state.new_session(config_class)
+
     @app.route('/')
     def index():
         return render_template('index.html')
@@ -86,7 +91,7 @@ def handle_socket_error(exc):
     logger.exception(
         "unhandled error [%s] in event=%s sid=%s viewer=%s payload=%r",
         reference, event, getattr(request, 'sid', '?'),
-        state.socket_viewers.get(getattr(request, 'sid', None)), args,
+        state.session().viewers.get(getattr(request, 'sid', None)), args,
     )
 
     emit('error', {

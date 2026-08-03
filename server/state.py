@@ -1,9 +1,13 @@
-"""Shared server state and the helpers every handler needs.
+"""The game session and the helpers every handler needs.
 
-Handlers live in `handlers/` and import from here. Two names — `current_game`
-and `lobby_rules` — are *rebound* rather than mutated, so they must always be
-reached through this module (`state.current_game`), never imported by value, or
-a handler would keep looking at the game that was running when it was imported.
+Handlers live in `handlers/` and import from here. Everything that changes
+during a session — the game, the lobby's rule selection, who is watching, the
+history, the flood limiters — belongs to a `GameSession` reached through
+`state.session()`. It used to be a set of module globals, two of which were
+*rebound* rather than mutated, so every handler had to remember to spell them
+`state.current_game` or quietly keep looking at a finished game. Attributes on
+one object cannot go stale that way, and a test can build a fresh session
+instead of unsetting globals one by one.
 """
 
 import json
@@ -34,37 +38,75 @@ DATA_FILE = os.path.join(config.DATA_DIR, 'users.json')
 SAVE_FILE = os.path.join(config.DATA_DIR, 'game.json')
 MAX_PLAYERS = config.MAX_PLAYERS
 MIN_PLAYERS = config.MIN_PLAYERS
-current_game = None
 
-# Serializes validate-then-apply for the single game. Two events arriving in the
-# same tick would otherwise both validate against the pre-action state and both
-# apply — the last development card bought twice, a double-clicked road placed
-# twice.
-game_lock = threading.RLock()
-
-# Socket id -> the player name this connection joined as. This drives *which
-# private hand a socket is shown*, not authorization: acting as another player
-# is deliberately allowed here so the group can cover for someone mid-game.
-# Taking over means joining as them, which also switches the private view.
-socket_viewers = {}
-
-# Serializes writes to users.json.
+# Serializes writes to users.json. Not part of the session: the file outlives
+# every game, and a new session must not hand out a second lock on it.
 users_file_lock = threading.Lock()
 
-# Flood protection. One limiter covers every event, keyed by socket and event,
-# so a client cannot burn the server down with cheap-to-send, expensive-to-serve
-# messages like refresh_board.
-rate_limiter = RateLimiter()
-abuse_tracker = AbuseTracker()
 
-# Chat and game history. Survives games so the table can look back at what
-# happened; bounded internally so a long session cannot grow without limit.
-event_log = EventLog()
+class GameSession:
+    """One server's worth of mutable state.
 
-# Rules the lobby has selected for the next game. Anyone in the lobby can change
-# these; they are frozen into the Game when it starts, because a rule that
-# changed mid-game would invalidate decisions players had already made.
-lobby_rules = rules_module.defaults()
+    There is exactly one game per process — state lives in memory and the
+    deployment is a single worker (see wsgi.py) — so there is exactly one of
+    these. It exists so that the game and everything that travels with it are
+    attributes reached through `session()` rather than module globals that get
+    rebound underneath the handlers reading them.
+    """
+
+    def __init__(self, config=None):
+        self.config = config or get_config()
+        self.game = None
+
+        # Rules the lobby has selected for the next game. Anyone in the lobby
+        # can change these; they are frozen into the Game when it starts,
+        # because a rule that changed mid-game would invalidate decisions
+        # players had already made.
+        self.lobby_rules = rules_module.defaults()
+
+        # Socket id -> the player name this connection joined as. This drives
+        # *which private hand a socket is shown*, not authorization: acting as
+        # another player is deliberately allowed here so the group can cover
+        # for someone mid-game. Taking over means joining as them, which also
+        # switches the private view.
+        self.viewers = {}
+
+        # Chat and game history. Survives games so the table can look back at
+        # what happened; bounded internally so a long session cannot grow
+        # without limit.
+        self.event_log = EventLog()
+
+        # Serializes validate-then-apply for the single game. Two events
+        # arriving in the same tick would otherwise both validate against the
+        # pre-action state and both apply — the last development card bought
+        # twice, a double-clicked road placed twice.
+        self.lock = threading.RLock()
+
+        # Flood protection. One limiter covers every event, keyed by socket and
+        # event, so a client cannot burn the server down with cheap-to-send,
+        # expensive-to-serve messages like refresh_board.
+        self.rate_limiter = RateLimiter()
+        self.abuse_tracker = AbuseTracker()
+
+
+_session = GameSession()
+
+
+def session() -> GameSession:
+    """The session this process is serving. The one way in."""
+    return _session
+
+
+def new_session(config=None) -> GameSession:
+    """Start again from an empty session.
+
+    Called by the factory, so building an app means serving a fresh server —
+    which is what lets a test start from a clean table instead of unsetting
+    globals one at a time and hoping it remembered them all.
+    """
+    global _session
+    _session = GameSession(config)
+    return _session
 
 def restore_saved_game():
     """Bring back an interrupted game on startup.
@@ -72,7 +114,6 @@ def restore_saved_game():
     A corrupt or outdated save is reported and skipped rather than half-loaded:
     resuming a game whose invariants do not hold is worse than starting fresh.
     """
-    global current_game
     try:
         restored = persistence.load(SAVE_FILE, config=config)
     except persistence.NotASaveFile:
@@ -83,7 +124,7 @@ def restore_saved_game():
         return
     if restored is None:
         return
-    current_game = restored
+    session().game = restored
     logger.info("restored game: players=%s phase=%s turn=%s",
                 restored.get_player_names(), restored.game_phase, restored.turn_count)
 
@@ -174,15 +215,16 @@ def rate_limited() -> bool:
                        'message': 'That message was too large.'})
         return True
 
-    if rate_limiter.allow(key, limit=limit_for(event)):
+    limiters = session()
+    if limiters.rate_limiter.allow(key, limit=limit_for(event)):
         return False
 
-    wait = rate_limiter.retry_after(key, limit=limit_for(event))
-    strikes = abuse_tracker.record_violation(sid)
+    wait = limiters.rate_limiter.retry_after(key, limit=limit_for(event))
+    strikes = limiters.abuse_tracker.record_violation(sid)
     logger.warning("rate limited %s from sid=%s viewer=%s (strike %s, retry in %.1fs)",
-                   event, sid, socket_viewers.get(sid), strikes, wait)
+                   event, sid, limiters.viewers.get(sid), strikes, wait)
 
-    if abuse_tracker.should_disconnect(sid):
+    if limiters.abuse_tracker.should_disconnect(sid):
         logger.warning("disconnecting sid=%s for sustained flooding", sid)
         emit('error', {'code': 'RATE_LIMITED',
                        'message': 'Too many requests - disconnecting.'})
@@ -202,13 +244,13 @@ def log_event(kind, text, player=None, **details):
     Timestamps come from the log (server clock) — a client that owns the clock
     could otherwise forge history.
     """
-    entry = event_log.log(kind, text, player=player, **details)
+    entry = session().event_log.log(kind, text, player=player, **details)
     socketio.emit('event_logged', {'entry': entry})
     return entry
 
 def viewer_for(sid=None):
     """The player name a socket is currently viewing as, if any."""
-    return socket_viewers.get(sid or request.sid)
+    return session().viewers.get(sid or request.sid)
 
 def broadcast_board(extra=None):
     """Send the board to every connected socket, filtered per recipient.
@@ -217,12 +259,13 @@ def broadcast_board(extra=None):
     single broadcast sends identical bytes to everyone, and anything in those
     bytes is readable in DevTools no matter what the UI draws.
     """
-    if current_game is None:
+    live = session()
+    if live.game is None:
         return
-    for sid, name in list(socket_viewers.items()):
+    for sid, name in list(live.viewers.items()):
         payload = {
-            'board': current_game.get_board_data(viewer=name),
-            'log_last_id': event_log.last_id,
+            'board': live.game.get_board_data(viewer=name),
+            'log_last_id': live.event_log.last_id,
         }
         if extra:
             payload.update(extra)
@@ -235,19 +278,21 @@ def save_game():
     (only decided board state, not the derived graph) and this way there is no
     window in which the last move is missing.
     """
-    if current_game is None:
+    game = session().game
+    if game is None:
         return
     try:
-        persistence.save(current_game, SAVE_FILE)
+        persistence.save(game, SAVE_FILE)
     except Exception:
         # A failed save must never take the live game down with it.
         logger.exception("could not save the game to %s", SAVE_FILE)
 
 def bump_and_broadcast(extra=None):
     """Record that state changed, then push it to everyone."""
-    if current_game is not None:
-        current_game.state_version += 1
-        problems = current_game.check_invariants()
+    game = session().game
+    if game is not None:
+        game.state_version += 1
+        problems = game.check_invariants()
         if problems:
             # Validation and application disagree — the rules are not actually
             # being enforced where we think they are. Loud, with context.
@@ -277,7 +322,7 @@ def lobby_users():
     A player who drops mid-game keeps their seat: that roster is the Game
     object, not this list.
     """
-    present = set(socket_viewers.values())
+    present = set(session().viewers.values())
     return [u for u in load_users() if u.get('name') in present]
 
 def emit_rules(to_sender_only=False):
@@ -287,10 +332,11 @@ def emit_rules(to_sender_only=False):
     from the server's registry — adding a rule server-side makes it appear in
     every client with no front-end change.
     """
+    live = session()
     payload = {
         'catalogue': rules_module.catalogue(),
-        'selected': lobby_rules,
-        'locked': current_game is not None and current_game.game_state == "started",
+        'selected': live.lobby_rules,
+        'locked': live.game is not None and live.game.game_state == "started",
     }
     if to_sender_only:
         emit('rules_changed', payload)
@@ -299,17 +345,18 @@ def emit_rules(to_sender_only=False):
 
 def send_state_snapshot():
     """Send the full current state to the requesting socket only."""
-    if current_game is None or current_game.game_state != "started":
+    game = session().game
+    if game is None or game.game_state != "started":
         emit('game_state', {'in_game': False})
         return
 
-    current_player = current_game.players[current_game.current_player_index]
+    current_player = game.players[game.current_player_index]
     emit('game_state', {
         'in_game': True,
-        'players': current_game.get_player_names(),
-        'observers': current_game.observers,
+        'players': game.get_player_names(),
+        'observers': game.observers,
         'current_player': current_player.name if current_player else None,
-        'board': current_game.get_board_data(viewer=viewer_for())
+        'board': game.get_board_data(viewer=viewer_for())
     })
 
 def emit_user_list():
@@ -319,6 +366,6 @@ def emit_user_list():
     socketio.emit('user_list', {
         'players': players,
         'observers': observers,
-        'min_players': lobby_rules['min_players'],
+        'min_players': session().lobby_rules['min_players'],
         'max_players': MAX_PLAYERS,
     })

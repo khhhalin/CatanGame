@@ -12,7 +12,6 @@ from game.validation import (
 )
 from state import (
     bump_and_broadcast,
-    game_lock,
     log_event,
     rate_limited,
     reject,
@@ -25,13 +24,14 @@ logger = logging.getLogger(__name__)
 
 @socketio.on('next_turn')
 def handle_next_turn(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
-    with game_lock:
-        result = state.current_game.advance_turn(data.get('name'))
+    with session.lock:
+        result = session.game.advance_turn(data.get('name'))
         if not result['success']:
             reject(result['code'], result['error'])
             return
@@ -40,19 +40,20 @@ def handle_next_turn(data):
 
 
 def _announce_turn(current_player_name):
-    """Tell everyone whose turn it now is. Caller holds game_lock."""
-    logger.info("turn changed to=%s turn=%s", current_player_name, state.current_game.turn_count)
+    """Tell everyone whose turn it now is. Caller holds session.lock."""
+    session = state.session()
+    logger.info("turn changed to=%s turn=%s", current_player_name, session.game.turn_count)
     log_event('turn', f"{current_player_name}'s turn", player=current_player_name)
 
     socketio.emit(
         'turn_changed',
         {
-            'players': state.current_game.get_player_names(),
-            'observers': state.current_game.observers,
+            'players': session.game.get_player_names(),
+            'observers': session.game.observers,
             'current_player': current_player_name,
-            'dice_roll_time': state.current_game.get_dice_roll_time_remaining(),
-            'round_time': state.current_game.get_round_time_remaining(),
-            'has_rolled_dice': state.current_game.has_rolled_dice,
+            'dice_roll_time': session.game.get_dice_roll_time_remaining(),
+            'round_time': session.game.get_round_time_remaining(),
+            'has_rolled_dice': session.game.has_rolled_dice,
         },
     )
     bump_and_broadcast()
@@ -60,9 +61,10 @@ def _announce_turn(current_player_name):
 
 @socketio.on('set_color')
 def handle_set_color(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -72,7 +74,7 @@ def handle_set_color(data):
         reject(exc.code, exc.message)
         return
 
-    if state.current_game.set_player_color(name, color):
+    if session.game.set_player_color(name, color):
         socketio.emit('player_color_changed', {'name': name, 'color': color})
 
         def set_color(users):
@@ -87,9 +89,10 @@ def handle_set_color(data):
 
 @socketio.on('roll_dice')
 def handle_roll_dice(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -98,8 +101,8 @@ def handle_roll_dice(data):
         reject(exc.code, exc.message)
         return
 
-    with game_lock:
-        result = state.current_game.roll_dice(name)
+    with session.lock:
+        result = session.game.roll_dice(name)
         if not result['success']:
             reject(result['code'], result['error'])
             return
@@ -108,7 +111,7 @@ def handle_roll_dice(data):
 
 
 def _announce_event_die(event):
-    """Report the C&K event die outcome. Caller holds game_lock."""
+    """Report the C&K event die outcome. Caller holds session.lock."""
     if not event['barbarian']:
         # A city gate. Progress card draws are not wired up yet, so record it
         # for the client and move on rather than silently doing nothing.
@@ -154,7 +157,7 @@ def _announce_event_die(event):
 
 
 def _announce_dice_roll(name, result):
-    """Report a roll the engine has already applied. Caller holds game_lock."""
+    """Report a roll the engine has already applied. Caller holds session.lock."""
     dice1, dice2, total = result['dice1'], result['dice2'], result['total']
 
     logger.info("roll player=%s dice=%s+%s total=%s", name, dice1, dice2, total)
@@ -175,6 +178,7 @@ def _announce_dice_roll(name, result):
 
 @socketio.on('refresh_board')
 def handle_refresh_board(data=None):
+    session = state.session()
     if rate_limited():
         return
     """Resync for one client. Replies to the asker only.
@@ -182,9 +186,9 @@ def handle_refresh_board(data=None):
     This used to broadcast, and every client polled it on a one-second timer,
     so a single expiring trade produced N full board snapshots to N clients.
     """
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
-    emit('board_updated', {'board': state.current_game.get_board_data(viewer=viewer_for())})
+    emit('board_updated', {'board': session.game.get_board_data(viewer=viewer_for())})
 
 
 def _turn_watchdog():
@@ -197,31 +201,34 @@ def _turn_watchdog():
     while True:
         socketio.sleep(1)
         try:
-            with game_lock:
-                if state.current_game is None or state.current_game.game_state != "started":
+            # Fetched each pass rather than held: this task is started once at
+            # boot and outlives any single session.
+            session = state.session()
+            with session.lock:
+                if session.game is None or session.game.game_state != "started":
                     continue
-                if state.current_game.game_phase == "setup":
+                if session.game.game_phase == "setup":
                     continue
-                if state.current_game.must_move_robber or state.current_game.must_choose_victim:
+                if session.game.must_move_robber or session.game.must_choose_victim:
                     continue
-                if state.current_game.players_needing_discard:
+                if session.game.players_needing_discard:
                     continue
 
-                current_player = state.current_game.players[state.current_game.current_player_index]
+                current_player = session.game.players[session.game.current_player_index]
 
                 # Auto-roll first: a turn cannot advance before the dice are up.
                 if (
-                    not state.current_game.has_rolled_dice
-                    and state.current_game.is_dice_roll_expired()
+                    not session.game.has_rolled_dice
+                    and session.game.is_dice_roll_expired()
                 ):
                     logger.info("dice timer expired, auto-rolling for %s", current_player.name)
-                    result = state.current_game.roll_dice(current_player.name)
+                    result = session.game.roll_dice(current_player.name)
                     if result['success']:
                         _announce_dice_roll(current_player.name, result)
                     continue
 
-                if state.current_game.has_rolled_dice and state.current_game.is_round_expired():
+                if session.game.has_rolled_dice and session.game.is_round_expired():
                     logger.info("round timer expired, advancing past %s", current_player.name)
-                    _announce_turn(state.current_game.force_advance_turn())
+                    _announce_turn(session.game.force_advance_turn())
         except Exception:
             logger.exception("turn watchdog error")

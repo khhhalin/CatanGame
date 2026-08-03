@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 
 @socketio.on('propose_trade')
 def handle_propose_trade(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -35,7 +36,7 @@ def handle_propose_trade(data):
 
     logger.info("trade proposed by=%s offered=%s wanted=%s", name, offered, wanted)
 
-    result = state.current_game.propose_trade(name, offered, wanted)
+    result = session.game.propose_trade(name, offered, wanted)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -60,9 +61,10 @@ def handle_propose_trade(data):
 
 @socketio.on('accept_trade')
 def handle_accept_trade(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     name = data.get('name', '')
@@ -71,7 +73,7 @@ def handle_accept_trade(data):
     if not name or not offer_id:
         return
 
-    result = state.current_game.accept_trade(offer_id, name)
+    result = session.game.accept_trade(offer_id, name)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -83,9 +85,10 @@ def handle_accept_trade(data):
 
 @socketio.on('decline_trade')
 def handle_decline_trade(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     name = data.get('name', '')
@@ -94,16 +97,17 @@ def handle_decline_trade(data):
     if not name or not offer_id:
         return
 
-    if state.current_game.decline_trade(offer_id, name):
+    if session.game.decline_trade(offer_id, name):
         logger.info(f"Player {name} declined trade #{offer_id}")
         socketio.emit('trade_declined', {'offer_id': offer_id, 'player': name})
 
 
 @socketio.on('cancel_trade')
 def handle_cancel_trade(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     name = data.get('name', '')
@@ -112,7 +116,7 @@ def handle_cancel_trade(data):
     if not name or not offer_id:
         return
 
-    if state.current_game.cancel_trade(offer_id, name):
+    if session.game.cancel_trade(offer_id, name):
         logger.info(f"Player {name} cancelled trade #{offer_id}")
         socketio.emit('trade_cancelled', {'offer_id': offer_id})
         bump_and_broadcast()
@@ -120,9 +124,10 @@ def handle_cancel_trade(data):
 
 @socketio.on('complete_trade')
 def handle_complete_trade(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     name = data.get('name', '')
@@ -132,7 +137,7 @@ def handle_complete_trade(data):
     if not name or not offer_id:
         return
 
-    result = state.current_game.complete_trade(offer_id, name, selected_responder)
+    result = session.game.complete_trade(offer_id, name, selected_responder)
     if not result['success']:
         reject(result['code'], result['error'])
         return

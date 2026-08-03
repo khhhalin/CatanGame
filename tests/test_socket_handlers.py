@@ -12,8 +12,6 @@ from extensions import socketio
 @pytest.fixture
 def clients(socket_app):
     """Two connected clients in a started two-player game."""
-    state.current_game = None
-    state.socket_viewers.clear()
 
     alice = socketio.test_client(socket_app)
     bob = socketio.test_client(socket_app)
@@ -39,8 +37,6 @@ def last_error(client):
 
 class TestConnectionAndState:
     def test_join_is_answered_with_a_snapshot(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'Solo', 'role': 'player'})
         states = events(client, 'game_state')
@@ -54,23 +50,21 @@ class TestConnectionAndState:
         assert not events(bob, 'game_state'), "nobody else does"
 
     def test_empty_name_is_rejected_not_silently_dropped(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': '   '})
         assert last_error(client)['code'] == 'INVALID_PAYLOAD'
 
     def test_disconnect_drops_the_view_binding(self, clients):
         alice, _ = clients
-        before = len(state.socket_viewers)
+        before = len(state.session().viewers)
         alice.disconnect()
-        assert len(state.socket_viewers) == before - 1
+        assert len(state.session().viewers) == before - 1
 
 
 class TestHiddenInformationOverTheWire:
     def test_a_client_never_receives_an_opponents_hand(self, clients):
         alice, bob = clients
-        state.current_game.get_player('Bob').resources = {'wood': 5}
+        state.session().game.get_player('Bob').resources = {'wood': 5}
 
         alice.emit('request_state')
         board = events(alice, 'game_state')[-1]['board']
@@ -81,7 +75,7 @@ class TestHiddenInformationOverTheWire:
 
     def test_each_client_gets_its_own_view_of_the_same_broadcast(self, clients):
         alice, bob = clients
-        game = state.current_game
+        game = state.session().game
         game.get_player('Alice').resources = {'wood': 2}
         game.get_player('Bob').resources = {'ore': 3}
 
@@ -105,7 +99,7 @@ class TestDevCardFollowUpsRequireTheCard:
         """The exploit: use_invention had no turn check and no card check, so
         any client could drain the bank at any time."""
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         bank_before = dict(game.bank.resources)
 
         alice.emit('use_invention', {'name': 'Alice', 'resources': {'wood': 2}})
@@ -116,7 +110,7 @@ class TestDevCardFollowUpsRequireTheCard:
 
     def test_invention_with_a_pending_card_grants_exactly_two(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.pending_invention = 'Alice'
 
         alice.emit('use_invention', {'name': 'Alice', 'resources': {'wood': 2}})
@@ -126,7 +120,7 @@ class TestDevCardFollowUpsRequireTheCard:
 
     def test_invention_cannot_be_redeemed_twice(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.pending_invention = 'Alice'
 
         alice.emit('use_invention', {'name': 'Alice', 'resources': {'wood': 2}})
@@ -138,7 +132,7 @@ class TestDevCardFollowUpsRequireTheCard:
 
     def test_invention_asking_for_more_than_two_is_refused(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.pending_invention = 'Alice'
 
         alice.emit('use_invention', {'name': 'Alice', 'resources': {'wood': 19}})
@@ -148,7 +142,7 @@ class TestDevCardFollowUpsRequireTheCard:
 
     def test_monopoly_without_the_card_is_refused(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.get_player('Bob').resources = {'wood': 4}
 
         alice.emit('use_monopoly', {'name': 'Alice', 'resource_type': 'wood'})
@@ -158,7 +152,7 @@ class TestDevCardFollowUpsRequireTheCard:
 
     def test_monopoly_with_an_unknown_resource_is_refused(self, clients):
         alice, _ = clients
-        state.current_game.pending_monopoly = 'Alice'
+        state.session().game.pending_monopoly = 'Alice'
         alice.emit('use_monopoly', {'name': 'Alice', 'resource_type': 'gold'})
         assert last_error(alice)['code'] == 'INVALID_PAYLOAD'
 
@@ -166,7 +160,7 @@ class TestDevCardFollowUpsRequireTheCard:
 class TestDiscardOverTheWire:
     def test_negative_counts_are_refused_at_the_boundary(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.get_player('Alice').resources = {'wood': 8}
         game.check_discard_required()
         bank_before = dict(game.bank.resources)
@@ -180,7 +174,7 @@ class TestDiscardOverTheWire:
 
     def test_a_valid_discard_is_accepted(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.get_player('Alice').resources = {'wood': 8}
         game.check_discard_required()
 
@@ -216,7 +210,7 @@ class TestErrorsAreTargetedAndCoded:
 class TestPieceLimitsOverTheWire:
     def test_settlements_run_out(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
 
         # Turn order is shuffled, so ask who is actually up rather than
@@ -238,7 +232,7 @@ class TestActingAsAnotherPlayerStillWorks:
 
     def test_one_client_can_act_for_another_player(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
         game.start_turn()
         acting = game.players[game.current_player_index].name
@@ -249,7 +243,7 @@ class TestActingAsAnotherPlayerStillWorks:
 
     def test_taking_over_a_seat_switches_the_private_view(self, clients):
         alice, _ = clients
-        game = state.current_game
+        game = state.session().game
         game.get_player('Bob').resources = {'ore': 4}
 
         # Alice's socket rejoins as Bob to cover for him. Bob is still
@@ -269,9 +263,6 @@ class TestConcurrentJoins:
         """Read-modify-write on users.json: both joins used to read the old
         list, append themselves, and the second write dropped the first."""
         import threading
-
-        state.current_game = None
-        state.socket_viewers.clear()
 
         names = [f"P{i}" for i in range(4)]
         clients = [socketio.test_client(socket_app) for _ in names]
@@ -304,8 +295,6 @@ class TestLobbyPresence:
         )
 
     def test_joining_an_empty_lobby_is_allowed_despite_remembered_players(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         self._seed_remembered_users(['A', 'B', 'C', 'D'])
 
         client = socketio.test_client(socket_app)
@@ -320,8 +309,6 @@ class TestLobbyPresence:
         assert [p['name'] for p in lists[-1]['players']] == ['Ruba']
 
     def test_the_lobby_lists_only_connected_users(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         self._seed_remembered_users(['Ghost1', 'Ghost2'])
 
         client = socketio.test_client(socket_app)
@@ -332,8 +319,6 @@ class TestLobbyPresence:
         assert 'Ghost1' not in names and 'Ghost2' not in names
 
     def test_leaving_frees_the_seat(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
 
         joined = []
         for i in range(4):
@@ -352,8 +337,6 @@ class TestLobbyPresence:
         assert last_error(second) is None, "the freed seat must be reusable"
 
     def test_rejoining_under_the_same_name_does_not_consume_two_seats(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
 
         clients = []
         for i in range(4):
@@ -368,8 +351,6 @@ class TestLobbyPresence:
         assert last_error(again) is None, "reclaiming your own seat is not a new seat"
 
     def test_a_started_game_seats_only_present_players(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         self._seed_remembered_users(['Ghost1', 'Ghost2', 'Ghost3'])
 
         alice = socketio.test_client(socket_app)
@@ -378,8 +359,8 @@ class TestLobbyPresence:
         bob.emit('join', {'name': 'Bob', 'role': 'player'})
         alice.emit('start_game')
 
-        assert state.current_game is not None
-        seated = {p.name for p in state.current_game.players}
+        assert state.session().game is not None
+        seated = {p.name for p in state.session().game.players}
         assert seated == {'Alice', 'Bob'}, f"ghosts were dealt in: {seated}"
 
 
@@ -388,12 +369,7 @@ class TestNameCollision:
     as the first player and both would view that player's hand. Taking over a
     seat stays supported, but has to be asked for."""
 
-    def _fresh(self):
-        state.current_game = None
-        state.socket_viewers.clear()
-
     def test_joining_under_a_connected_name_is_refused(self, socket_app):
-        self._fresh()
         first = socketio.test_client(socket_app)
         first.emit('join', {'name': 'A', 'role': 'player'})
 
@@ -401,11 +377,10 @@ class TestNameCollision:
         second.emit('join', {'name': 'A', 'role': 'player'})
 
         assert last_error(second)['code'] == 'NAME_TAKEN'
-        assert state.socket_viewers.get(second.eio_sid) is None or \
-            list(state.socket_viewers.values()).count('A') == 1
+        assert state.session().viewers.get(second.eio_sid) is None or \
+            list(state.session().viewers.values()).count('A') == 1
 
     def test_explicit_takeover_is_allowed(self, socket_app):
-        self._fresh()
         first = socketio.test_client(socket_app)
         first.emit('join', {'name': 'A', 'role': 'player'})
 
@@ -415,7 +390,6 @@ class TestNameCollision:
         assert last_error(second) is None, "taking over must still work"
 
     def test_a_different_name_is_unaffected(self, socket_app):
-        self._fresh()
         first = socketio.test_client(socket_app)
         first.emit('join', {'name': 'A', 'role': 'player'})
 
@@ -423,10 +397,9 @@ class TestNameCollision:
         second.emit('join', {'name': 'B', 'role': 'player'})
 
         assert last_error(second) is None
-        assert sorted(state.socket_viewers.values()) == ['A', 'B']
+        assert sorted(state.session().viewers.values()) == ['A', 'B']
 
     def test_rejoining_on_the_same_socket_is_not_a_collision(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -436,14 +409,13 @@ class TestNameCollision:
 
     def test_four_browsers_keep_four_identities(self, socket_app):
         """The reported bug, end to end."""
-        self._fresh()
         clients = []
         for name in ['A', 'B', 'C', 'D']:
             c = socketio.test_client(socket_app)
             c.emit('join', {'name': name, 'role': 'player'})
             clients.append((name, c))
 
-        assert sorted(state.socket_viewers.values()) == ['A', 'B', 'C', 'D']
+        assert sorted(state.session().viewers.values()) == ['A', 'B', 'C', 'D']
 
         clients[0][1].emit('start_game')
         for name, client in clients:
@@ -456,14 +428,7 @@ class TestNameCollision:
 class TestLobbyRules:
     """The table picks house rules before starting; they freeze at start."""
 
-    def _fresh(self):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
-
     def test_the_catalogue_is_sent_with_the_selection(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -473,7 +438,6 @@ class TestLobbyRules:
         assert payload['catalogue']
 
     def test_joining_pushes_the_rules_without_asking(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
 
@@ -484,7 +448,6 @@ class TestLobbyRules:
         assert payload['locked'] is False
 
     def test_changing_a_rule_reaches_every_client(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -500,13 +463,11 @@ class TestLobbyRules:
             assert payload['selected']['victory_target'] == 12
 
     def test_a_non_member_cannot_change_the_rules(self, socket_app):
-        self._fresh()
         lurker = socketio.test_client(socket_app)
         lurker.emit('set_rules', {'rules': {'friendly_robber': True}})
         assert last_error(lurker)['code'] == 'NOT_IN_LOBBY'
 
     def test_rules_are_frozen_once_the_game_starts(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -518,10 +479,9 @@ class TestLobbyRules:
         a.emit('set_rules', {'rules': {'victory_target': 20}})
 
         assert last_error(a)['code'] == 'GAME_IN_PROGRESS'
-        assert state.current_game.victory_points_to_win == 12
+        assert state.session().game.victory_points_to_win == 12
 
     def test_the_chosen_rules_are_applied_to_the_game(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -529,14 +489,13 @@ class TestLobbyRules:
         a.emit('set_rules', {'rules': {'friendly_robber': True, 'harbormaster': True}})
         a.emit('start_game')
 
-        game = state.current_game
+        game = state.session().game
         assert game.rules['friendly_robber'] is True
         assert game.rules['harbormaster'] is True
         # Harbormaster raises the target by one.
         assert game.victory_points_to_win == 11
 
     def test_the_board_payload_carries_the_rules(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -550,7 +509,6 @@ class TestLobbyRules:
         assert board['rules']['friendly_robber'] is True
 
     def test_friendly_robber_is_enforced_on_the_wire(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -558,7 +516,7 @@ class TestLobbyRules:
         a.emit('set_rules', {'rules': {'friendly_robber': True}})
         a.emit('start_game')
 
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
         game.must_move_robber = True
         acting = game.players[game.current_player_index].name
@@ -590,8 +548,6 @@ class TestEndGame:
     lobby permanently and only a server restart clears it."""
 
     def _started(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -605,7 +561,7 @@ class TestEndGame:
         a, b = self._started(socket_app)
         a.emit('end_game')
 
-        assert state.current_game is None
+        assert state.session().game is None
         assert events(a, 'game_ended'), "the ender is told"
         assert events(b, 'game_ended'), "so is everyone else"
 
@@ -617,11 +573,9 @@ class TestEndGame:
         a.emit('start_game')
 
         assert last_error(a) is None, "the lobby must be usable again"
-        assert state.current_game is not None
+        assert state.session().game is not None
 
     def test_ending_with_no_game_is_refused(self, socket_app):
-        state.current_game = None
-        state.socket_viewers.clear()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -635,7 +589,7 @@ class TestEndGame:
         lurker.emit('end_game')
 
         assert last_error(lurker)['code'] == 'NOT_IN_LOBBY'
-        assert state.current_game is not None
+        assert state.session().game is not None
 
     def test_rules_unlock_after_the_game_ends(self, socket_app):
         a, _ = self._started(socket_app)
@@ -649,16 +603,9 @@ class TestEndGame:
 class TestStartingAGame:
     """The lobby must be startable, and say why when it is not."""
 
-    def _fresh(self):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
-
     def test_the_lobby_snapshot_says_no_game_is_running(self, socket_app):
         """The client keys the whole lobby/game screen split off this flag;
         without it, joining an empty lobby wedged the Start Game button."""
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
 
@@ -666,7 +613,6 @@ class TestStartingAGame:
         assert snapshot['in_game'] is False
 
     def test_the_lobby_is_told_how_many_players_are_needed(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
 
@@ -675,7 +621,6 @@ class TestStartingAGame:
         assert listing['max_players'] == 4
 
     def test_one_player_cannot_start_by_default(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -687,7 +632,6 @@ class TestStartingAGame:
 
     def test_lowering_the_minimum_allows_a_solo_game(self, socket_app):
         """Set min_players to 1 to try the board alone."""
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.emit('set_rules', {'rules': {'min_players': 1}})
@@ -696,11 +640,10 @@ class TestStartingAGame:
         client.emit('start_game')
 
         assert last_error(client) is None
-        assert state.current_game is not None
-        assert state.current_game.get_player_names() == ['A']
+        assert state.session().game is not None
+        assert state.session().game.get_player_names() == ['A']
 
     def test_the_minimum_is_reported_after_it_changes(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -713,7 +656,6 @@ class TestStartingAGame:
         assert listing['min_players'] == 1
 
     def test_observers_do_not_count_toward_the_minimum(self, socket_app):
-        self._fresh()
         player = socketio.test_client(socket_app)
         watcher = socketio.test_client(socket_app)
         player.emit('join', {'name': 'A', 'role': 'player'})
@@ -725,15 +667,7 @@ class TestStartingAGame:
 
 
 class TestChatAndEventLog:
-    def _fresh(self):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
-        state.event_log.clear() if hasattr(state.event_log, 'clear') else None
-
     def test_chatting_reaches_everyone(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -750,13 +684,11 @@ class TestChatAndEventLog:
             assert chat[-1]['player'] == 'A'
 
     def test_a_non_member_cannot_chat(self, socket_app):
-        self._fresh()
         lurker = socketio.test_client(socket_app)
         lurker.emit('chat_message', {'text': 'hi'})
         assert last_error(lurker)['code'] == 'NOT_IN_LOBBY'
 
     def test_an_empty_message_is_refused(self, socket_app):
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -766,7 +698,6 @@ class TestChatAndEventLog:
 
     def test_the_timestamp_comes_from_the_server(self, socket_app):
         """A client that owns the clock could otherwise forge history."""
-        self._fresh()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -777,7 +708,6 @@ class TestChatAndEventLog:
         assert entry['id'] != 999
 
     def test_game_actions_are_logged(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -790,7 +720,6 @@ class TestChatAndEventLog:
         assert 'game' in kinds, "starting a game is recorded"
 
     def test_a_reconnecting_client_can_catch_up(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         a.emit('chat_message', {'text': 'first'})
@@ -803,12 +732,11 @@ class TestChatAndEventLog:
         assert 'first' in texts and 'second' in texts
 
     def test_catch_up_returns_only_newer_entries(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         a.emit('chat_message', {'text': 'old'})
         a.get_received()
-        marker = state.event_log.last_id
+        marker = state.session().event_log.last_id
 
         a.emit('chat_message', {'text': 'new'})
         a.get_received()
@@ -818,7 +746,6 @@ class TestChatAndEventLog:
         assert texts == ['new']
 
     def test_a_bogus_after_id_is_tolerated(self, socket_app):
-        self._fresh()
         a = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         a.get_received()
@@ -842,10 +769,6 @@ class TestHandlersToleratePayloads:
     ]
 
     def _joined_client(self, socket_app):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
         client.get_received()
@@ -877,10 +800,6 @@ class TestHandlersToleratePayloads:
 class TestServerErrorReporting:
     def test_an_unexpected_error_carries_a_reference(self, socket_app, monkeypatch):
         """A player should be able to quote a code that finds the traceback."""
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
 
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})
@@ -905,10 +824,6 @@ class TestServerErrorReporting:
 
 class TestCitiesKnightsOverTheWire:
     def _ck_game(self, socket_app):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
 
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
@@ -929,10 +844,6 @@ class TestCitiesKnightsOverTheWire:
         assert board['cities_knights']['barbarian_track_length'] == 7
 
     def test_the_base_game_sends_no_expansion_state(self, socket_app):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -947,7 +858,7 @@ class TestCitiesKnightsOverTheWire:
     def test_the_second_setup_placement_builds_a_city(self, socket_app):
         """The reported gap: the second starting building stayed a settlement."""
         a, _ = self._ck_game(socket_app)
-        game = state.current_game
+        game = state.session().game
 
         placed = []
         for _round in range(len(game.players) * 2):
@@ -982,7 +893,7 @@ class TestCitiesKnightsOverTheWire:
 
     def test_buying_an_improvement_works(self, socket_app):
         a, _ = self._ck_game(socket_app)
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
         acting = game.players[game.current_player_index].name
         player = game.get_player(acting)
@@ -997,7 +908,7 @@ class TestCitiesKnightsOverTheWire:
 
     def test_an_unaffordable_improvement_says_why(self, socket_app):
         a, _ = self._ck_game(socket_app)
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
         acting = game.players[game.current_player_index].name
         game.get_player(acting).cities.append('a-city')
@@ -1011,7 +922,7 @@ class TestCitiesKnightsOverTheWire:
 
     def test_only_the_current_player_may_act(self, socket_app):
         a, _ = self._ck_game(socket_app)
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
         other = next(p.name for p in game.players
                      if p.name != game.players[game.current_player_index].name)
@@ -1021,10 +932,6 @@ class TestCitiesKnightsOverTheWire:
         assert last_error(a)['code'] == 'NOT_YOUR_TURN'
 
     def test_the_actions_are_refused_in_the_base_game(self, socket_app):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
@@ -1054,17 +961,13 @@ class TestBarbarianClock:
     """
 
     def _playing_ck_game(self, socket_app):
-        import game.rules as rules_module
-        state.current_game = None
-        state.socket_viewers.clear()
-        state.lobby_rules = rules_module.defaults()
         a = socketio.test_client(socket_app)
         b = socketio.test_client(socket_app)
         a.emit('join', {'name': 'A', 'role': 'player'})
         b.emit('join', {'name': 'B', 'role': 'player'})
         a.emit('set_rules', {'rules': {'cities_and_knights': True}})
         a.emit('start_game')
-        game = state.current_game
+        game = state.session().game
         game.game_phase = "playing"
         game.start_turn()
         a.get_received()

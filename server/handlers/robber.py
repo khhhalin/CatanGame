@@ -12,11 +12,9 @@ from game.validation import (
 )
 from state import (
     bump_and_broadcast,
-    game_lock,
     log_event,
     rate_limited,
     reject,
-    socket_viewers,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 @socketio.on('move_robber')
 def handle_move_robber(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -35,7 +34,7 @@ def handle_move_robber(data):
     except InvalidPayload:
         return
 
-    result = state.current_game.move_robber(name, hex_key)
+    result = session.game.move_robber(name, hex_key)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -49,9 +48,10 @@ def handle_move_robber(data):
 
 @socketio.on('discard_resources')
 def handle_discard_resources(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -61,8 +61,8 @@ def handle_discard_resources(data):
         reject(exc.code, exc.message)
         return
 
-    with game_lock:
-        result = state.current_game.discard(name, resources)
+    with session.lock:
+        result = session.game.discard(name, resources)
         if not result['success']:
             reject(result['code'], result['error'])
             return
@@ -74,9 +74,10 @@ def handle_discard_resources(data):
 
 @socketio.on('choose_robber_victim')
 def handle_choose_robber_victim(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -85,7 +86,7 @@ def handle_choose_robber_victim(data):
     except InvalidPayload:
         return
 
-    result = state.current_game.steal_from_victim(name, victim_name)
+    result = session.game.steal_from_victim(name, victim_name)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -96,7 +97,7 @@ def handle_choose_robber_victim(data):
         log_event('robber', f"{name} stole a card from {victim_name}", player=name)
         # Which resource moved is known only to the thief and the victim. The
         # table sees that a steal happened, not what it was.
-        for sid, viewer in list(socket_viewers.items()):
+        for sid, viewer in list(session.viewers.items()):
             payload = {'player': name, 'victim': victim_name}
             if viewer in (name, victim_name):
                 payload['resource'] = stolen

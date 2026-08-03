@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 def _announce_victory(name):
     """Tell the table if that action just won the game."""
-    points = state.current_game.claim_victory(name)
+    session = state.session()
+    points = session.game.claim_victory(name)
     if points is None:
         return
     socketio.emit('game_won', {'player': name, 'victory_points': points})
@@ -28,9 +29,10 @@ def _announce_victory(name):
 
 @socketio.on('place_settlement')
 def handle_place_settlement(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -39,7 +41,7 @@ def handle_place_settlement(data):
     except InvalidPayload:
         return
 
-    result = state.current_game.place_settlement(name, vertex_key)
+    result = session.game.place_settlement(name, vertex_key)
     if not result['success']:
         reject(result['code'], result['error'])
         return
@@ -53,9 +55,10 @@ def handle_place_settlement(data):
 
 @socketio.on('place_road')
 def handle_place_road(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -64,13 +67,13 @@ def handle_place_road(data):
     except InvalidPayload:
         return
 
-    result = state.current_game.build_road(name, edge_key)
+    result = session.game.build_road(name, edge_key)
     if not result['success']:
         reject(result['code'], result['error'])
         return
 
     if result['used_free_road']:
-        logger.info(f"Free road placed! Remaining: {state.current_game.free_roads_remaining}")
+        logger.info(f"Free road placed! Remaining: {session.game.free_roads_remaining}")
 
     logger.info("road player=%s edge=%s", name, edge_key)
     log_event('build', f"{name} built a road", player=name)
@@ -79,9 +82,10 @@ def handle_place_road(data):
 
 @socketio.on('upgrade_city')
 def handle_upgrade_city(data):
+    session = state.session()
     if rate_limited():
         return
-    if state.current_game is None or state.current_game.game_state != "started":
+    if session.game is None or session.game.game_state != "started":
         return
 
     try:
@@ -90,7 +94,7 @@ def handle_upgrade_city(data):
     except InvalidPayload:
         return
 
-    result = state.current_game.upgrade_city(name, vertex_key)
+    result = session.game.upgrade_city(name, vertex_key)
     if not result['success']:
         reject(result['code'], result['error'])
         return

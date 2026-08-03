@@ -10,7 +10,6 @@ from game.validation import (
 )
 from state import (
     bump_and_broadcast,
-    game_lock,
     log_event,
     rate_limited,
     reject,
@@ -26,9 +25,10 @@ def _ck_action(data, method_name, *extra_keys):
     turn, call one engine method under the lock, then broadcast. Doing it once
     keeps the six handlers below to their actual rules.
     """
-    if state.current_game is None or state.current_game.game_state != "started":
+    session = state.session()
+    if session.game is None or session.game.game_state != "started":
         return None
-    if state.current_game.ck is None:
+    if session.game.ck is None:
         reject('WRONG_MODE', 'Cities & Knights is not enabled for this game')
         return None
 
@@ -39,13 +39,13 @@ def _ck_action(data, method_name, *extra_keys):
         reject(exc.code, exc.message)
         return None
 
-    with game_lock:
-        current_player = state.current_game.players[state.current_game.current_player_index]
+    with session.lock:
+        current_player = session.game.players[session.game.current_player_index]
         if current_player.name != name:
             reject('NOT_YOUR_TURN', f'Only {current_player.name} can do that')
             return None
 
-        result = getattr(state.current_game, method_name)(name, *args)
+        result = getattr(session.game, method_name)(name, *args)
         if not result.get('success'):
             reject('ACTION_REJECTED', result.get('error', 'That is not allowed'))
             return None

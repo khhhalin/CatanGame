@@ -2,11 +2,11 @@
 
 import logging
 
+import state
 from extensions import socketio
 from flask_socketio import emit
 from game.event_log import sanitize_chat
 from state import (
-    event_log,
     log_event,
     rate_limited,
     reject,
@@ -36,10 +36,11 @@ def handle_chat_message(data):
 
 @socketio.on('request_log')
 def handle_request_log(data=None):
+    session = state.session()
     if rate_limited():
         return
     """Catch up after a reconnect. Replies to the asking socket only."""
     after_id = (data or {}).get('after_id', 0)
     if isinstance(after_id, bool) or not isinstance(after_id, int) or after_id < 0:
         after_id = 0
-    emit('log_history', {'entries': event_log.since(after_id)})
+    emit('log_history', {'entries': session.event_log.since(after_id)})
