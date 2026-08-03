@@ -7,23 +7,18 @@ from game import cities_knights as ck_module
 from game import rules as rules_module
 from game.bank import Bank
 from game.board import BoardBuilder
+from game.cities_knights_rules import CitiesKnightsRules
+from game.dev_card_rules import DevCardRules
 from game.player import Player
+from game.results import refused
+from game.robber_rules import RobberRules
 from game.trade import TradeManager
-from game.validation import RESOURCE_TYPES
+from game.trade_rules import TradeRules
+from game.turn_clock import TurnClock
 
 logger = logging.getLogger(__name__)
 
-
-def _refused(code: str, error: str) -> dict:
-    """A refused action, in the shape every engine action returns.
-
-    The machine-readable code travels next to the prose because clients switch
-    on the code while only the message is ever shown to a player.
-    """
-    return {'success': False, 'error': error, 'code': code}
-
-
-class Game(BoardBuilder):
+class Game(BoardBuilder, TradeRules, RobberRules, DevCardRules, CitiesKnightsRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -327,220 +322,6 @@ class Game(BoardBuilder):
             return True
         return False
 
-    def best_trade_rate(self, player_name: str, offered: dict) -> int:
-        """Cards the player must give per card received, given their harbours.
-
-        A 2:1 harbour only helps with its own resource, the 3:1 harbour helps
-        with anything, and without either it is the standard 4:1.
-        """
-        ports = self.get_player_ports(player_name)
-        rate = 3 if 'generic' in ports else 4
-        if any(resource in ports for resource in offered):
-            rate = min(rate, 2)
-        return rate
-
-    def propose_trade(self, player_name: str, offered: dict, wanted: dict) -> dict:
-        """Offer a trade to the table, or settle it against the bank.
-
-        A request at or better than the player's harbour rate is not really an
-        offer — it is a bank trade, so it completes immediately rather than
-        waiting for a response nobody would withhold.
-        """
-        if self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
-
-        if not offered or not wanted:
-            return _refused('INVALID_PAYLOAD', 'A trade needs resources on both sides')
-
-        current_name = self.players[self.current_player_index].name
-        if current_name != player_name:
-            return _refused(
-                'NOT_YOUR_TURN', f'Only {current_name} can propose trades on their turn'
-            )
-
-        player = self.get_player(player_name)
-        if player is None:
-            return _refused('INVALID_TARGET', 'Unknown player')
-
-        for resource, count in offered.items():
-            available = player.resources.get(resource, 0)
-            if available < count:
-                return _refused(
-                    'INSUFFICIENT_RESOURCES',
-                    f'Not enough {resource}: have {available}, offering {count}',
-                )
-
-        rate = self.best_trade_rate(player_name, offered)
-        if sum(offered.values()) / sum(wanted.values()) < rate:
-            offer = self.trade_manager.propose(player_name, offered, wanted)
-            if not offer:
-                return _refused('TRADE_LIMIT', 'Maximum number of trade offers reached')
-            return {'success': True, 'error': '', 'kind': 'offer', 'offer': offer}
-
-        # Check the bank can cover the whole request before touching anything.
-        # Mutating first and unwinding on failure previously left the player
-        # holding whatever was granted before the shortfall.
-        for resource, count in wanted.items():
-            if self.bank.resources.get(resource, 0) < count:
-                return _refused('BANK_EMPTY', f'Bank does not have {count} {resource}')
-
-        for resource, count in offered.items():
-            player.resources[resource] = player.resources.get(resource, 0) - count
-            self.bank.return_resources(resource, count)
-
-        for resource, count in wanted.items():
-            self.bank.take(resource, count)
-            player.resources[resource] = player.resources.get(resource, 0) + count
-
-        return {'success': True, 'error': '', 'kind': 'bank', 'rate_used': rate}
-
-    def accept_trade(self, offer_id: int, player_name: str) -> dict:
-        """Signal willingness to take an offer, if the cards are there."""
-        offer = self.trade_manager.offers.get(offer_id)
-        if not offer:
-            return _refused('TRADE_NOT_FOUND', 'Trade offer not found')
-
-        player = self.get_player(player_name)
-        if not player:
-            return _refused('INVALID_TARGET', 'Unknown player')
-
-        for resource, count in offer['wanted_resources'].items():
-            if player.resources.get(resource, 0) < count:
-                return _refused(
-                    'INSUFFICIENT_RESOURCES', f'Not enough {resource} to accept this trade'
-                )
-
-        if not self.trade_manager.accept(offer_id, player_name, player.resources):
-            return _refused('TRADE_FAILED', 'Could not accept trade')
-        return {'success': True, 'error': ''}
-
-    def decline_trade(self, offer_id: int, player_name: str) -> bool:
-        """Decline a trade offer."""
-        return self.trade_manager.decline(offer_id, player_name)
-
-    def cancel_trade(self, offer_id: int, player_name: str) -> bool:
-        """Cancel a trade offer (proposer only)."""
-        return self.trade_manager.cancel(offer_id, player_name)
-
-    def complete_trade(self, offer_id: int, proposer: str, selected_responder: str = None) -> dict:
-        """Settle an accepted offer and move the cards."""
-        settlement = self.trade_manager.complete(offer_id, proposer, selected_responder)
-        if not settlement:
-            return _refused('TRADE_FAILED', 'Could not complete trade')
-
-        if settlement['type'] == 'bank':
-            self.execute_bank_trade(offer_id, proposer)
-            return {'success': True, 'error': '', 'type': 'bank', 'responder': None}
-
-        responder = settlement['responder']
-        self.execute_trade_with_player(offer_id, proposer, responder)
-        return {'success': True, 'error': '', 'type': 'player', 'responder': responder}
-
-    def execute_trade_with_player(self, offer_id: int, proposer: str, responder: str):
-        """Execute a player-to-player trade."""
-        offer = self.trade_manager.offers.get(offer_id)
-        if not offer or offer['status'] != 'completed':
-            return False
-
-        proposer_player = self.get_player(proposer)
-        responder_player = self.get_player(responder)
-
-        if not proposer_player or not responder_player:
-            return False
-
-        # Transfer offered resources FROM proposer TO responder
-        for resource, count in offer['offered_resources'].items():
-            proposer_player.resources[resource] = proposer_player.resources.get(resource, 0) - count
-            responder_player.resources[resource] = (
-                responder_player.resources.get(resource, 0) + count
-            )
-
-        # Transfer wanted resources FROM responder TO proposer
-        for resource, count in offer['wanted_resources'].items():
-            responder_player.resources[resource] = (
-                responder_player.resources.get(resource, 0) - count
-            )
-            proposer_player.resources[resource] = proposer_player.resources.get(resource, 0) + count
-
-        return True
-
-    def execute_bank_trade(self, offer_id: int, proposer: str):
-        """Execute a bank trade (4:1 or better ratio)."""
-        offer = self.trade_manager.offers.get(offer_id)
-        if not offer or offer['status'] != 'completed':
-            return False
-
-        proposer_player = self.get_player(proposer)
-        if not proposer_player:
-            return False
-
-        # Transfer offered resources to bank
-        for resource, count in offer['offered_resources'].items():
-            for _ in range(count):
-                self.bank.return_resources(resource)
-
-        # Transfer wanted resources from bank to player
-        for resource, count in offer['wanted_resources'].items():
-            for _ in range(count):
-                self.bank.take(resource)
-            proposer_player.resources[resource] = proposer_player.resources.get(resource, 0) + count
-
-        return True
-
-    def get_player_ports(self, player_name: str) -> dict:
-        """Get all ports accessible to a player based on their settlements/cities."""
-        player = self.get_player(player_name)
-        if not player:
-            return {}
-
-        ports = {}
-        for vertex_key in player.settlements + player.cities:
-            vertex = self.vertices.get(vertex_key)
-            if vertex and vertex.port:
-                port_type = vertex.port.get("type")
-                if port_type == "generic":
-                    ports["generic"] = True
-                elif port_type == "resource":
-                    resource = vertex.port.get("resource")
-                    ports[resource] = True
-
-        return ports
-
-    def update_harbormaster(self):
-        """Recompute harbour points and who holds the Harbormaster card.
-
-        Traders & Barbarians: a settlement on a harbour is 1 point, a city 2.
-        The first player to reach 3 takes the card; it passes only when someone
-        else has *more*, so a tie leaves it where it is.
-        """
-        if not self.rules['harbormaster']:
-            return
-
-        self.harbor_points = {}
-        for player in self.players:
-            points = 0
-            for vertex_key in player.settlements:
-                vertex = self.vertices.get(vertex_key)
-                if vertex and vertex.port:
-                    points += 1
-            for vertex_key in player.cities:
-                vertex = self.vertices.get(vertex_key)
-                if vertex and vertex.port:
-                    points += 2
-            self.harbor_points[player.name] = points
-
-        best = max(self.harbor_points.values(), default=0)
-        if best < 3:
-            self.harbormaster_holder = None
-            return
-
-        leaders = [name for name, pts in self.harbor_points.items() if pts == best]
-        if self.harbormaster_holder in leaders:
-            # Still tied for the lead, so the holder keeps it.
-            return
-        if len(leaders) == 1:
-            self.harbormaster_holder = leaders[0]
-
     # --- Base game actions -------------------------------------------------
 
     def current_player_name(self) -> str:
@@ -604,41 +385,41 @@ class Game(BoardBuilder):
         what actually went down rather than assuming.
         """
         if self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+            return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
         if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can place buildings')
+            return refused('NOT_YOUR_TURN', f'Only {current_name} can place buildings')
 
         # Setup alternates settlement then road. Without this check a player can
         # keep placing free settlements for the whole of their setup turn.
         if in_setup and self.setup_action != "settlement":
-            return _refused('WRONG_PHASE', 'You must place a road next')
+            return refused('WRONG_PHASE', 'You must place a road next')
 
         # In C&K setup the second placement is a city, so check that supply instead.
         building_type = self.setup_building_type() if in_setup else 'settlement'
         if not self.has_piece_available(player_name, building_type):
             limit = self.MAX_CITIES if building_type == 'city' else self.MAX_SETTLEMENTS
-            return _refused('NO_PIECES_LEFT', f'You have used all {limit} {building_type}s')
+            return refused('NO_PIECES_LEFT', f'You have used all {limit} {building_type}s')
 
         vertex = self.vertices.get(vertex_key)
         if vertex is None:
-            return _refused('INVALID_TARGET', 'Invalid vertex')
+            return refused('INVALID_TARGET', 'Invalid vertex')
         if vertex.building is not None:
-            return _refused('OCCUPIED', 'This location already has a building')
+            return refused('OCCUPIED', 'This location already has a building')
         if not self._respects_distance_rule(vertex_key):
-            return _refused(
+            return refused(
                 'INVALID_PLACEMENT', 'Cannot place settlement next to another settlement'
             )
 
         if not in_setup:
             if not self._touches_own_road(player_name, vertex_key):
-                return _refused(
+                return refused(
                     'INVALID_PLACEMENT', 'Settlement must be connected to your own road'
                 )
             if not self.can_afford(player_name, 'settlement'):
-                return _refused('INSUFFICIENT_RESOURCES', self._cost_message('settlement'))
+                return refused('INSUFFICIENT_RESOURCES', self._cost_message('settlement'))
             self.deduct_cost(player_name, 'settlement')
 
         vertex.building = {'type': building_type, 'player': player_name}
@@ -667,24 +448,24 @@ class Game(BoardBuilder):
         card pays for the placement instead of the player's hand.
         """
         if self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+            return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
         if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can place buildings')
+            return refused('NOT_YOUR_TURN', f'Only {current_name} can place buildings')
 
         if in_setup and self.setup_action != "road":
-            return _refused('WRONG_PHASE', 'You must place a settlement first')
+            return refused('WRONG_PHASE', 'You must place a settlement first')
 
         if not self.has_piece_available(player_name, 'road'):
-            return _refused('NO_PIECES_LEFT', f'You have used all {self.MAX_ROADS} roads')
+            return refused('NO_PIECES_LEFT', f'You have used all {self.MAX_ROADS} roads')
 
         edge = self.edges.get(edge_key)
         if edge is None:
-            return _refused('INVALID_TARGET', 'Invalid edge')
+            return refused('INVALID_TARGET', 'Invalid edge')
         if edge.road is not None:
-            return _refused('OCCUPIED', 'This location already has a road')
+            return refused('OCCUPIED', 'This location already has a road')
 
         used_free_road = False
         if in_setup:
@@ -692,17 +473,17 @@ class Game(BoardBuilder):
             # unconditional — guarding it on last_setup_settlement being set
             # meant a road emitted before any settlement could land anywhere.
             if not self.last_setup_settlement:
-                return _refused('WRONG_PHASE', 'You must place a settlement first')
+                return refused('WRONG_PHASE', 'You must place a settlement first')
             if self.last_setup_settlement not in edge.neighbors.get('vertices', []):
-                return _refused('INVALID_PLACEMENT', 'Road must be connected to your settlement')
+                return refused('INVALID_PLACEMENT', 'Road must be connected to your settlement')
         else:
             if not self._road_connects(player_name, edge_key):
-                return _refused('INVALID_PLACEMENT', 'Road must be connected to your own road')
+                return refused('INVALID_PLACEMENT', 'Road must be connected to your own road')
             if self.free_roads_remaining > 0:
                 self.free_roads_remaining -= 1
                 used_free_road = True
             elif not self.can_afford(player_name, 'road'):
-                return _refused('INSUFFICIENT_RESOURCES', self._cost_message('road'))
+                return refused('INSUFFICIENT_RESOURCES', self._cost_message('road'))
             else:
                 self.deduct_cost(player_name, 'road')
 
@@ -724,30 +505,30 @@ class Game(BoardBuilder):
     def upgrade_city(self, player_name: str, vertex_key: str) -> dict:
         """Turn one of the player's own settlements into a city."""
         if self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+            return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
 
         if self.game_phase == "setup":
-            return _refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')
+            return refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')
 
         current_name = self.current_player_name()
         if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can upgrade buildings')
+            return refused('NOT_YOUR_TURN', f'Only {current_name} can upgrade buildings')
 
         if not self.has_piece_available(player_name, 'city'):
-            return _refused('NO_PIECES_LEFT', f'You have used all {self.MAX_CITIES} cities')
+            return refused('NO_PIECES_LEFT', f'You have used all {self.MAX_CITIES} cities')
 
         vertex = self.vertices.get(vertex_key)
         if vertex is None:
-            return _refused('INVALID_TARGET', 'Invalid vertex')
+            return refused('INVALID_TARGET', 'Invalid vertex')
         if vertex.building is None:
-            return _refused('INVALID_TARGET', 'No building at this location')
+            return refused('INVALID_TARGET', 'No building at this location')
         if vertex.building.get('type') != 'settlement':
-            return _refused('INVALID_TARGET', 'Can only upgrade settlements to cities')
+            return refused('INVALID_TARGET', 'Can only upgrade settlements to cities')
         if vertex.building.get('player') != player_name:
-            return _refused('NOT_YOUR_PIECE', 'Can only upgrade your own settlements')
+            return refused('NOT_YOUR_PIECE', 'Can only upgrade your own settlements')
 
         if not self.can_afford(player_name, 'city'):
-            return _refused('INSUFFICIENT_RESOURCES', self._cost_message('city'))
+            return refused('INSUFFICIENT_RESOURCES', self._cost_message('city'))
         self.deduct_cost(player_name, 'city')
 
         vertex.building = {'type': 'city', 'player': player_name}
@@ -760,269 +541,6 @@ class Game(BoardBuilder):
         self.update_harbormaster()
         return {'success': True, 'error': ''}
 
-    def move_robber(self, player_name: str, hex_key: str) -> dict:
-        """Move the robber onto a land hex and work out who can be robbed.
-
-        Returns {'success', 'error', 'code', 'victims'}; a non-empty victim
-        list means the mover still owes a choice.
-        """
-        if self.game_phase == "setup":
-            return _refused('WRONG_PHASE', 'Cannot move robber during setup')
-
-        if not self.must_move_robber:
-            return _refused('WRONG_PHASE', 'You do not need to move the robber')
-
-        current_name = self.players[self.current_player_index].name
-        if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can move the robber')
-
-        hex_obj = self.hexes.get(hex_key)
-        if hex_obj is None:
-            return _refused('INVALID_TARGET', 'Invalid hex')
-        if hex_obj.type == 'ocean':
-            return _refused('INVALID_TARGET', 'Cannot place robber on ocean')
-
-        # Friendly Robber, when enabled, protects anyone still on 2 victory points.
-        if not self.robber_is_allowed(hex_key):
-            return _refused(
-                'FRIENDLY_ROBBER',
-                'Friendly Robber: that hex touches a settlement of a player on '
-                '2 victory points. Pick another hex.',
-            )
-
-        self.robber_hex = hex_key
-        self.must_move_robber = False
-
-        # Nobody robs themselves, so the mover never appears in their own list.
-        victims = [victim for victim in self.get_robber_victims() if victim != player_name]
-        if victims:
-            self.must_choose_victim = True
-            self.robber_victims = victims
-
-        return {'success': True, 'error': '', 'victims': victims}
-
-    def steal_from_victim(self, player_name: str, victim_name: str) -> dict:
-        """Take one random card from a player the robber is sitting on.
-
-        Returns {'success', 'error', 'code', 'stolen'}; 'stolen' is None when
-        the victim's hand was empty, which is a legal outcome, not a refusal.
-        """
-        if not self.must_choose_victim:
-            return _refused('WRONG_PHASE', 'No victim selection required')
-
-        current_name = self.players[self.current_player_index].name
-        if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can choose victim')
-
-        if victim_name not in self.robber_victims:
-            return _refused('INVALID_TARGET', 'Invalid victim selection')
-
-        stolen = self.steal_resource(victim_name, player_name)
-        self.must_choose_victim = False
-        self.robber_victims = []
-        return {'success': True, 'error': '', 'stolen': stolen}
-
-    def discard(self, player_name: str, resources: dict) -> dict:
-        """Hand back half a hand that was over the limit when a 7 came up."""
-        if player_name not in self.players_needing_discard:
-            return _refused('WRONG_PHASE', 'You do not need to discard')
-
-        if not self.discard_resources(player_name, resources):
-            return _refused('INVALID_PAYLOAD', 'Invalid discard amount or resources')
-
-        return {'success': True, 'error': ''}
-
-    # --- Cities & Knights actions -----------------------------------------
-
-    def buy_improvement(self, player_name: str, track: str) -> dict:
-        """Buy the next level on a city improvement track.
-
-        Returns {'success': bool, 'error': str, 'level': int,
-                 'metropolis': bool, 'took_from': str|None}.
-        """
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
-        if track not in ck_module.IMPROVEMENT_TRACKS:
-            return {'success': False, 'error': 'Unknown improvement track'}
-
-        player = self.get_player(player_name)
-        if player is None:
-            return {'success': False, 'error': 'Unknown player'}
-
-        # You need a city to improve. The rulebook is explicit, and without the
-        # check a player with only settlements could buy the whole track.
-        if not player.cities:
-            return {'success': False, 'error': 'You need a city to build improvements'}
-
-        cost = self.ck.next_improvement_cost(player_name, track)
-        if cost is None:
-            return {'success': False, 'error': 'That track is already at level 5'}
-
-        commodity, amount = cost
-        if player.commodities.get(commodity, 0) < amount:
-            return {
-                'success': False,
-                'error': f'Need {amount} {commodity} to reach level '
-                f'{self.ck.level(player_name, track) + 1}',
-            }
-
-        player.commodities[commodity] -= amount
-        self.ck.improvements[player_name][track] += 1
-        new_level = self.ck.improvements[player_name][track]
-
-        # Claiming a metropolis needs a city that is not already one.
-        took_from = None
-        gained_metropolis = False
-        if new_level >= ck_module.METROPOLIS_LEVEL:
-            free_city = next((v for v in player.cities if not self.ck.is_metropolis(v)), None)
-            if free_city or self.ck.metropolis[track] == player_name:
-                took_from = self.ck.claim_metropolis(player_name, track, free_city)
-                gained_metropolis = self.ck.metropolis[track] == player_name
-
-        return {
-            'success': True,
-            'error': '',
-            'level': new_level,
-            'metropolis': gained_metropolis,
-            'took_from': took_from,
-        }
-
-    def build_knight(self, player_name: str, vertex_key: str) -> dict:
-        """Place a new, inactive basic knight.
-
-        A knight must sit on a vacant intersection touching one of the owner's
-        roads. The settlement distance rule does not apply to knights.
-        """
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
-
-        player = self.get_player(player_name)
-        vertex = self.vertices.get(vertex_key)
-        if player is None or vertex is None:
-            return {'success': False, 'error': 'Invalid target'}
-
-        if vertex.building is not None:
-            return {'success': False, 'error': 'There is a building there'}
-
-        owner, _ = self.ck.knight_at(vertex_key)
-        if owner is not None:
-            return {'success': False, 'error': 'There is already a knight there'}
-
-        if not self._touches_own_road(player_name, vertex_key):
-            return {'success': False, 'error': 'A knight must be placed on one of your roads'}
-
-        if not self.ck.can_build_knight(player_name, ck_module.BASIC):
-            return {'success': False, 'error': 'You have no basic knight pieces left'}
-
-        if not self._can_pay(player, ck_module.KNIGHT_BUILD_COST):
-            return {'success': False, 'error': 'A knight costs 1 sheep and 1 ore'}
-
-        self._pay(player, ck_module.KNIGHT_BUILD_COST)
-        self.ck.knights_of(player_name).append(ck_module.Knight(vertex_key))
-        return {'success': True, 'error': ''}
-
-    def activate_knight(self, player_name: str, vertex_key: str) -> dict:
-        """Pay grain to make a knight active. It may not act this turn."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
-
-        player = self.get_player(player_name)
-        owner, knight = self.ck.knight_at(vertex_key)
-        if knight is None or owner != player_name:
-            return {'success': False, 'error': 'You have no knight there'}
-        if knight.active:
-            return {'success': False, 'error': 'That knight is already active'}
-        if not self._can_pay(player, ck_module.KNIGHT_ACTIVATE_COST):
-            return {'success': False, 'error': 'Activating a knight costs 1 wheat'}
-
-        self._pay(player, ck_module.KNIGHT_ACTIVATE_COST)
-        knight.active = True
-        # A knight may be built and activated on the same turn, but never acts
-        # on the turn it was activated.
-        knight.activated_this_turn = True
-        return {'success': True, 'error': ''}
-
-    def promote_knight(self, player_name: str, vertex_key: str) -> dict:
-        """Raise a knight one rank. Mighty needs the Fortress."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
-
-        player = self.get_player(player_name)
-        owner, knight = self.ck.knight_at(vertex_key)
-        if knight is None or owner != player_name:
-            return {'success': False, 'error': 'You have no knight there'}
-
-        allowed, reason = self.ck.can_promote(player_name, knight)
-        if not allowed:
-            return {'success': False, 'error': reason}
-        if not self._can_pay(player, ck_module.KNIGHT_PROMOTE_COST):
-            return {'success': False, 'error': 'Promoting a knight costs 1 sheep and 1 ore'}
-
-        self._pay(player, ck_module.KNIGHT_PROMOTE_COST)
-        knight.rank += 1
-        return {'success': True, 'error': ''}
-
-    def move_knight(self, player_name: str, from_vertex: str, to_vertex: str) -> dict:
-        """Move an active knight along the owner's roads, displacing if stronger."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
-
-        owner, knight = self.ck.knight_at(from_vertex)
-        if knight is None or owner != player_name:
-            return {'success': False, 'error': 'You have no knight there'}
-        if not knight.can_act():
-            if knight.activated_this_turn:
-                return {'success': False, 'error': 'A knight cannot act the turn it is activated'}
-            if not knight.active:
-                return {'success': False, 'error': 'That knight is not active'}
-            return {'success': False, 'error': 'That knight has already acted this turn'}
-
-        target = self.vertices.get(to_vertex)
-        if target is None:
-            return {'success': False, 'error': 'Invalid target'}
-        if target.building is not None:
-            return {'success': False, 'error': 'There is a building there'}
-        if not self._touches_own_road(player_name, to_vertex):
-            return {'success': False, 'error': 'A knight moves along your own roads'}
-
-        other_owner, other_knight = self.ck.knight_at(to_vertex)
-        displaced = None
-        if other_knight is not None:
-            if other_owner == player_name:
-                return {'success': False, 'error': 'Your own knight is standing there'}
-            if knight.rank <= other_knight.rank:
-                return {
-                    'success': False,
-                    'error': 'You can only displace a knight weaker than yours',
-                }
-            new_home = self._displacement_target(other_owner, to_vertex)
-            if new_home is None:
-                # Nowhere legal to retreat to, so the knight is removed.
-                self.ck.knights_of(other_owner).remove(other_knight)
-            else:
-                other_knight.vertex = new_home
-            displaced = other_owner
-
-        knight.vertex = to_vertex
-        knight.spend_action()
-        return {'success': True, 'error': '', 'displaced': displaced}
-
-    def _displacement_target(self, owner: str, from_vertex: str):
-        """A vacant intersection connected to `owner`'s roads, next to where the
-        displaced knight stood."""
-        vertex = self.vertices.get(from_vertex)
-        if vertex is None:
-            return None
-        for candidate in vertex.neighbors.get('vertices', []):
-            neighbour = self.vertices.get(candidate)
-            if neighbour is None or neighbour.building is not None:
-                continue
-            if self.ck.knight_at(candidate)[1] is not None:
-                continue
-            if self._touches_own_road(owner, candidate):
-                return candidate
-        return None
-
     def _touches_own_road(self, player_name: str, vertex_key: str) -> bool:
         vertex = self.vertices.get(vertex_key)
         if vertex is None:
@@ -1032,111 +550,6 @@ class Game(BoardBuilder):
             if edge and edge.road and edge.road.get('player') == player_name:
                 return True
         return False
-
-    def _can_pay(self, player, cost: dict) -> bool:
-        return all(player.resources.get(res, 0) >= amount for res, amount in cost.items())
-
-    def _pay(self, player, cost: dict):
-        for res, amount in cost.items():
-            player.resources[res] = player.resources.get(res, 0) - amount
-            self.bank.return_resources(res, amount)
-
-    def build_city_wall(self, player_name: str, vertex_key: str) -> dict:
-        """Two brick for +2 hand limit on a 7. Max three per player."""
-        if not self.ck:
-            return {'success': False, 'error': 'Cities & Knights is not enabled'}
-
-        player = self.get_player(player_name)
-        if player is None or vertex_key not in player.cities:
-            return {'success': False, 'error': 'You have no city there'}
-        if self.ck.city_walls.get(player_name, 0) >= ck_module.MAX_CITY_WALLS:
-            return {'success': False, 'error': 'You have used all three city walls'}
-        if not self._can_pay(player, ck_module.CITY_WALL_COST):
-            return {'success': False, 'error': 'A city wall costs 2 brick'}
-
-        self._pay(player, ck_module.CITY_WALL_COST)
-        self.ck.city_walls[player_name] = self.ck.city_walls.get(player_name, 0) + 1
-        return {'success': True, 'error': ''}
-
-    def roll_event_die(self) -> str:
-        """One of three barbarian faces or a discipline's city gate."""
-        return self.rng.choice(ck_module.EVENT_FACES)
-
-    def resolve_barbarian_attack(self) -> dict:
-        """Compare Catan's active knights against the barbarians.
-
-        Attack strength is the number of cities and metropolises on the board;
-        defence is the total strength of every active knight. Ties defend
-        successfully — the rule is "greater than or equal".
-        """
-        attack = sum(len(p.cities) for p in self.players)
-        defence = self.ck.total_knight_strength()
-
-        contributions = {p.name: self.ck.total_knight_strength(p.name) for p in self.players}
-
-        result = {
-            'attack': attack,
-            'defence': defence,
-            'won': defence >= attack,
-            'contributions': contributions,
-            'defenders': [],
-            'pillaged': [],
-        }
-
-        if result['won']:
-            best = max(contributions.values(), default=0)
-            if best > 0:
-                winners = [n for n, v in contributions.items() if v == best]
-                result['defenders'] = winners
-                if len(winners) == 1:
-                    # A sole top defender takes a Defender of Catan card.
-                    # Ties instead each draw a progress card, which the caller
-                    # handles once progress cards exist.
-                    self.ck.defender_cards[winners[0]] = (
-                        self.ck.defender_cards.get(winners[0], 0) + 1
-                    )
-        else:
-            # The weakest defenders each lose a city. A player with no cities,
-            # or whose only cities are metropolises, is untouched.
-            eligible = {
-                name: strength
-                for name, strength in contributions.items()
-                if self._has_pillageable_city(name)
-            }
-            if eligible:
-                worst = min(eligible.values())
-                for name, strength in eligible.items():
-                    if strength == worst:
-                        if self._pillage_city(name):
-                            result['pillaged'].append(name)
-
-        self.ck.deactivate_all()
-        self.ck.reset_barbarians()
-        return result
-
-    def _has_pillageable_city(self, player_name: str) -> bool:
-        player = self.get_player(player_name)
-        if player is None:
-            return False
-        return any(not self.ck.is_metropolis(v) for v in player.cities)
-
-    def _pillage_city(self, player_name: str) -> bool:
-        """Turn one city back into a settlement. A metropolis is never taken."""
-        player = self.get_player(player_name)
-        target = next((v for v in player.cities if not self.ck.is_metropolis(v)), None)
-        if target is None:
-            return False
-
-        player.cities.remove(target)
-        player.settlements.append(target)
-        vertex = self.vertices.get(target)
-        if vertex and vertex.building:
-            vertex.building['type'] = 'settlement'
-
-        # A wall on the pillaged city is destroyed with it.
-        if self.ck.city_walls.get(player_name, 0) > 0:
-            self.ck.city_walls[player_name] -= 1
-        return True
 
     def victory_points_for(self, player_name: str) -> int:
         """A player's total, including anything the optional rules award.
@@ -1159,45 +572,6 @@ class Game(BoardBuilder):
             points += self.ck.defender_cards.get(player_name, 0)
 
         return points
-
-    def robber_is_allowed(self, hex_key: str) -> bool:
-        """Whether the robber may be moved onto this hex.
-
-        Friendly Robber (Traders & Barbarians): a hex touching a settlement of
-        a player on only 2 victory points is off limits, so the player who is
-        furthest behind cannot be kicked while they are down.
-        """
-        if not self.rules['friendly_robber']:
-            return True
-
-        if hex_key not in self.hexes:
-            return False
-
-        # A Hex only knows its neighbouring hexes, so walk the vertices and ask
-        # each one which hexes it touches — the same direction get_robber_victims
-        # uses.
-        for vertex in self.vertices.values():
-            if not vertex.building:
-                continue
-            if hex_key not in vertex.neighbors.get('hexes', []):
-                continue
-            owner = self.get_player(vertex.building.get('player'))
-            if owner is None:
-                continue
-            points = owner.get_victory_points(self.longest_road_holder, self.largest_army_holder)
-            if points <= 2:
-                return False
-        return True
-
-    def friendly_robber_fallback(self) -> str | None:
-        """Where the robber goes when Friendly Robber leaves nowhere legal.
-
-        The rule sends it to the desert in that case.
-        """
-        for key, hex_obj in self.hexes.items():
-            if hex_obj.type == 'desert':
-                return key
-        return None
 
     def get_board_data(self, viewer: str = None) -> dict:
         """
@@ -1386,128 +760,6 @@ class Game(BoardBuilder):
         if gained:
             logger.debug(f"Starter resources for {player_name} from {vertex_key}: {gained}")
 
-    def check_discard_required(self):
-        """Check which players need to discard half their resources (7 rolled)."""
-        self.players_needing_discard = {}
-
-        base_limit = self.rules['max_hand_before_discard']
-        for player in self.players:
-            # Commodities count toward the limit; each city wall raises it by 2.
-            total_cards = player.total_cards()
-            limit = base_limit
-            if self.ck:
-                limit += self.ck.city_wall_bonus(player.name)
-            if total_cards > limit:
-                discard_amount = total_cards // 2
-                self.players_needing_discard[player.name] = discard_amount
-
-        if self.players_needing_discard:
-            logger.debug(f"Players needing to discard: {self.players_needing_discard}")
-
-    def discard_resources(self, player_name: str, resources: dict) -> bool:
-        """Process resource discard from a player.
-
-        Args:
-            player_name: Name of player discarding
-            resources: Dict of resource_type -> count to discard
-
-        Returns:
-            bool: True if discard was successful
-        """
-        if player_name not in self.players_needing_discard:
-            return False
-
-        player = self.get_player(player_name)
-        if not player:
-            return False
-
-        # Caller is expected to have run this through validation.clean_resource_counts,
-        # but re-check here so the engine is safe to call directly from a test or
-        # a future handler: a negative count would pass the `current < count`
-        # check below and then *add* cards when subtracted.
-        for resource_type, count in resources.items():
-            if resource_type not in RESOURCE_TYPES:
-                return False
-            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-                return False
-
-        required = self.players_needing_discard[player_name]
-        discard_total = sum(resources.values())
-
-        if discard_total != required:
-            return False
-
-        for resource_type, count in resources.items():
-            current = player.resources.get(resource_type, 0)
-            if current < count:
-                return False
-
-        for resource_type, count in resources.items():
-            player.resources[resource_type] = player.resources.get(resource_type, 0) - count
-            self.bank.return_resources(resource_type, count)
-
-        del self.players_needing_discard[player_name]
-        logger.debug(f"Player {player_name} discarded {resources}")
-        return True
-
-    def get_robber_victims(self) -> list:
-        """Get list of players with settlements/cities adjacent to robber hex.
-
-        Returns:
-            list: List of player names who can be stolen from
-        """
-        if not self.robber_hex or self.robber_hex not in self.hexes:
-            return []
-
-        victim_names = set()
-
-        for _vertex_key, vertex in self.vertices.items():
-            if not vertex.building:
-                continue
-            if vertex.building.get('type') not in ('settlement', 'city'):
-                continue
-
-            if self.robber_hex in vertex.neighbors.get('hexes', []):
-                player_name = vertex.building.get('player')
-                if player_name:
-                    victim_names.add(player_name)
-
-        return list(victim_names)
-
-    def steal_resource(
-        self, victim_name: str, thief_name: str, resource_type: str = None
-    ) -> str | None:
-        """Steal a random resource from a victim and give to thief.
-
-        Args:
-            victim_name: Name of player to steal from
-            thief_name: Name of player to receive stolen resource
-            resource_type: If provided, steal this specific type (for UI choice)
-
-        Returns:
-            str: Resource type stolen, or None if no resources to steal
-        """
-        victim = self.get_player(victim_name)
-        if not victim:
-            return None
-
-        thief = self.get_player(thief_name)
-        if not thief:
-            return None
-
-        available_resources = [r for r, count in victim.resources.items() if count > 0]
-        if not available_resources:
-            return None
-
-        if resource_type and resource_type in available_resources:
-            stolen = resource_type
-        else:
-            stolen = self.rng.choice(available_resources)
-
-        victim.resources[stolen] = victim.resources[stolen] - 1
-        thief.resources[stolen] = thief.resources.get(stolen, 0) + 1
-        return stolen
-
     def give_resource(self, player_name: str, resource_type: str) -> bool:
         """Give a resource to a player.
 
@@ -1561,263 +813,6 @@ class Game(BoardBuilder):
             self.bank.return_resources(resource, amount)
         return True
 
-    def buy_dev_card(self, player_name: str) -> dict:
-        """Buy a development card from the bank. Returns result dict."""
-        if self.game_phase == "setup":
-            return _refused('WRONG_PHASE', 'Cannot buy development cards during setup')
-
-        if self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
-
-        current_name = self.players[self.current_player_index].name
-        if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can buy development cards')
-
-        player = self.get_player(player_name)
-        if not player:
-            return _refused('ACTION_FAILED', 'Player not found')
-
-        if not self.can_afford(player_name, 'knight'):
-            return _refused('ACTION_FAILED', 'Cannot afford development card')
-
-        card_type = self.bank.draw_dev_card()
-        if not card_type:
-            return _refused('ACTION_FAILED', 'No development cards left')
-
-        if not self.deduct_cost(player_name, 'knight'):
-            self.bank.return_dev_card(card_type)
-            return _refused('ACTION_FAILED', 'Failed to deduct cost')
-
-        player.dev_cards[card_type]['count'] += 1
-        player.dev_cards[card_type]['purchase_turn'] = self.turn_count
-        return {'success': True, 'error': '', 'card_type': card_type}
-
-    def get_dev_cards_for_player(self, player_name: str) -> dict:
-        """Get development cards for a specific player."""
-        player = self.get_player(player_name)
-        if not player:
-            return {}
-        return player.dev_cards.copy()
-
-    def use_invention(self, player_name: str, resources: dict) -> dict:
-        """Redeem the two cards an Invention card promised.
-
-        Returns {'success', 'error', 'code', 'taken'} — 'taken' can be short of
-        what was asked for if the bank ran out mid-grant.
-        """
-        # The card grants the right to this follow-up; without the pending flag
-        # anyone could call it at any time and drain the bank.
-        if self.pending_invention != player_name:
-            return _refused('NO_PENDING_INVENTION', 'You have not played an Invention card')
-
-        if sum(resources.values()) != 2:
-            return _refused('INVALID_PAYLOAD', 'Invention gives exactly 2 resources')
-
-        player = self.get_player(player_name)
-        if not player:
-            return _refused('INVALID_TARGET', 'Unknown player')
-
-        taken = {}
-        for resource_type, count in resources.items():
-            for _ in range(count):
-                if self.bank.take(resource_type):
-                    player.resources[resource_type] = player.resources.get(resource_type, 0) + 1
-                    taken[resource_type] = taken.get(resource_type, 0) + 1
-
-        self.pending_invention = None
-        return {'success': True, 'error': '', 'taken': taken}
-
-    def use_monopoly(self, player_name: str, resource_type: str) -> dict:
-        """Use monopoly card - steal ALL of specified resource from all other players."""
-        if self.pending_monopoly != player_name:
-            return _refused('NO_PENDING_MONOPOLY', 'You have not played a Monopoly card')
-
-        # Spent the moment it is redeemed, however the redemption turns out —
-        # a failed declaration must not leave a second one available.
-        self.pending_monopoly = None
-
-        player = self.get_player(player_name)
-        if not player:
-            return _refused('ACTION_REJECTED', 'Player not found')
-
-        if resource_type not in self.bank.resources:
-            return _refused('ACTION_REJECTED', 'Invalid resource type')
-
-        stolen_count = 0
-        stolen_from = []
-
-        for other_player in self.players:
-            if other_player.name == player_name:
-                continue
-
-            other_resources = other_player.resources.get(resource_type, 0)
-            if other_resources > 0:
-                other_player.resources[resource_type] = 0
-                player.resources[resource_type] = (
-                    player.resources.get(resource_type, 0) + other_resources
-                )
-                stolen_count += other_resources
-                stolen_from.append(f"{other_player.name}({other_resources})")
-
-        logger.debug(
-            "Player %s used Monopoly on %s: stole %s from %s",
-            player_name, resource_type, stolen_count, stolen_from
-        )
-        return {
-            'success': True,
-            'error': '',
-            'stolen_count': stolen_count,
-            'stolen_from': stolen_from,
-        }
-
-    def can_play_dev_card(self, player_name: str, card_type: str) -> tuple:
-        """Check if player can play a development card. Returns (can_play: bool, error: str)."""
-        player = self.get_player(player_name)
-        if not player:
-            return (False, 'Player not found')
-
-        card_data = player.dev_cards.get(card_type)
-        if not card_data or card_data['count'] <= 0:
-            return (False, 'You do not have this card')
-
-        if not self.has_rolled_dice and card_type != 'knight':
-            return (False, 'You must roll the dice first')
-
-        if (
-            card_data['purchase_turn'] is not None
-            and self.turn_count - card_data['purchase_turn'] < 1
-        ):
-            return (False, 'Cannot play card in the same turn it was purchased')
-
-        return (True, '')
-
-    def play_dev_card(self, player_name: str, card_type: str) -> dict:
-        """Play a development card and apply its effect.
-
-        Returns the usual pair plus 'needs_resources' (Invention),
-        'needs_resource' (Monopoly), 'must_move_robber' (Knight) and 'won':
-        each card leaves the table owing a different follow-up, and the caller
-        has to know which one without re-deciding it.
-        """
-        if self.game_phase == "setup":
-            return _refused('WRONG_PHASE', 'Cannot play development cards during setup')
-
-        current_name = self.players[self.current_player_index].name
-        if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can play development cards')
-
-        # A Knight may be played while the robber is still owed — that is how a
-        # player reassigns it. Nothing else may.
-        if card_type != 'knight' and self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
-
-        can_play, error = self.can_play_dev_card(player_name, card_type)
-        if not can_play:
-            return _refused('ACTION_REJECTED', error)
-
-        player = self.get_player(player_name)
-        player.dev_cards[card_type]['count'] -= 1
-
-        result = {
-            'success': True,
-            'error': '',
-            'card_type': card_type,
-            'needs_resources': False,
-            'needs_resource': False,
-            'must_move_robber': False,
-            'won': False,
-            'victory_points': 0,
-        }
-
-        if card_type == 'knight':
-            self.must_move_robber = True
-            player.knights_played += 1
-            self.update_largest_army()
-            result['must_move_robber'] = True
-        elif card_type == 'victory_point':
-            player.victory_points += 1
-            points = self.claim_victory(player_name)
-            if points is not None:
-                result['won'] = True
-                result['victory_points'] = points
-        elif card_type == 'invention':
-            # Record who is owed the follow-up. Without this, use_invention is a
-            # free action any client can call without ever holding the card.
-            self.pending_invention = player_name
-            result['needs_resources'] = True
-        elif card_type == 'two_roads':
-            self.free_roads_remaining = 2
-        elif card_type == 'monopoly':
-            self.pending_monopoly = player_name
-            result['needs_resource'] = True
-
-        logger.debug("Player %s played %s", player_name, card_type)
-        return result
-
-    def start(self):
-        """Start the game and shuffle player order."""
-        self.rng.shuffle(self.players)
-        self.game_state = "started"
-        self.start_turn()
-        logger.debug("\n=== Game started! ===")
-        logger.debug(f"Player order: {self.players}")
-        logger.debug(f"Current player: {self.players[self.current_player_index]}")
-        logger.debug("=====================\n")
-
-    def start_turn(self):
-        """Start a new turn and reset timers."""
-        import time
-
-        self.turn_start_time = time.time()
-        self.dice_rolled_time = None
-        self.has_rolled_dice = False
-        self.free_roads_remaining = 0  # Reset free roads at start of turn
-
-    def advance_turn(self, player_name: str) -> dict:
-        """End the current turn at a player's request."""
-        if self.must_move_robber:
-            return _refused('MUST_MOVE_ROBBER', 'You must move the robber first')
-
-        if self.must_choose_victim:
-            return _refused('MUST_CHOOSE_VICTIM', 'You must choose a victim to steal from')
-
-        if player_name in self.players_needing_discard:
-            return _refused('MUST_DISCARD', 'You must discard resources first')
-
-        if self.game_phase == "setup":
-            return _refused('WRONG_PHASE', 'Cannot skip turn during setup phase')
-
-        # The seat's own player normally ends the turn. Once the round timer has
-        # run out anyone may advance it, so an absent player cannot stall the table.
-        current_name = self.players[self.current_player_index].name
-        if player_name != current_name and not self.is_round_expired():
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can advance the turn')
-
-        return {'success': True, 'error': '', 'current_player': self.force_advance_turn()}
-
-    def force_advance_turn(self) -> str:
-        """Move to the next player and reset the per-turn state, unconditionally.
-
-        The turn watchdog uses this: a turn that has timed out ends whether or
-        not the player whose turn it was is still at the table.
-        """
-        self.current_player_index = (self.current_player_index + 1) % len(self.players)
-        self.turn_count += 1
-
-        # A new turn clears any follow-up the previous player never used, so an
-        # unspent Invention cannot be redeemed two turns later.
-        self.pending_invention = None
-        self.pending_monopoly = None
-        self.free_roads_remaining = 0
-
-        self.start_turn()
-        if self.ck:
-            # Clears each knight's per-turn flags. Without it a knight that acts
-            # once stays spent for the rest of the game.
-            self.ck.start_turn()
-
-        return self.players[self.current_player_index].name
-
     def roll_dice(self, player_name: str) -> dict:
         """Roll for the current player, resolve the roll, and pay production.
 
@@ -1826,14 +821,14 @@ class Game(BoardBuilder):
         None in the base game.
         """
         if self.game_phase == "setup":
-            return _refused('WRONG_PHASE', 'Cannot roll dice during setup phase')
+            return refused('WRONG_PHASE', 'Cannot roll dice during setup phase')
 
         current_name = self.players[self.current_player_index].name
         if current_name != player_name:
-            return _refused('NOT_YOUR_TURN', f'Only {current_name} can roll dice')
+            return refused('NOT_YOUR_TURN', f'Only {current_name} can roll dice')
 
         if self.has_rolled_dice:
-            return _refused('ALREADY_ROLLED', 'You have already rolled this turn')
+            return refused('ALREADY_ROLLED', 'You have already rolled this turn')
 
         # Rolled through the game's own generator so a test can script the
         # sequence and so production uses a source that cannot be reconstructed
@@ -1868,75 +863,6 @@ class Game(BoardBuilder):
             'event': event,
             'discards': dict(self.players_needing_discard),
         }
-
-    def _resolve_event_die(self, red_die: int) -> dict:
-        """Roll the C&K event die and act on it.
-
-        Three of its six faces advance the barbarian ship; the other three open
-        a city gate for one discipline, which is what lets players draw progress
-        cards (the red production die decides who qualifies).
-        """
-        face = self.roll_event_die()
-        self.ck.last_event = face
-        self.ck.last_red_die = red_die
-
-        outcome = {
-            'face': face,
-            'red_die': red_die,
-            'barbarian': face == ck_module.EVENT_BARBARIAN,
-            'arrived': False,
-            'position': self.ck.barbarian_position,
-            'attack': None,
-        }
-        if not outcome['barbarian']:
-            return outcome
-
-        outcome['arrived'] = self.ck.advance_barbarians()
-        outcome['position'] = self.ck.barbarian_position
-        if outcome['arrived']:
-            outcome['attack'] = self.resolve_barbarian_attack()
-        return outcome
-
-    def get_dice_roll_time_remaining(self) -> int:
-        """Get seconds remaining for dice roll."""
-        import time
-
-        if self.turn_start_time is None or self.has_rolled_dice:
-            return self.dice_roll_time_limit
-        elapsed = time.time() - self.turn_start_time
-        return max(0, self.dice_roll_time_limit - int(elapsed))
-
-    def get_round_time_remaining(self) -> int:
-        """Get seconds remaining for round (starts after dice roll)."""
-        import time
-
-        if self.turn_start_time is None:
-            return self.round_time_limit
-        # If dice not rolled yet, return full time (will be shown as "-")
-        if not self.has_rolled_dice:
-            return self.round_time_limit
-        # Calculate from dice roll time
-        if self.dice_rolled_time is None:
-            return self.round_time_limit
-        elapsed = time.time() - self.dice_rolled_time
-        return max(0, self.round_time_limit - int(elapsed))
-
-    def is_dice_roll_expired(self) -> bool:
-        """Check if dice roll time has expired."""
-        if self.has_rolled_dice:
-            return False
-        return self.get_dice_roll_time_remaining() <= 0
-
-    def is_round_expired(self) -> bool:
-        """Check if round time has expired."""
-        return self.get_round_time_remaining() <= 0
-
-    def set_dice_rolled(self):
-        """Mark that dice has been rolled."""
-        import time
-
-        self.has_rolled_dice = True
-        self.dice_rolled_time = time.time()
 
     def calculate_longest_road(self, player_name: str) -> int:
         """Calculate longest road for a player, respecting road blocks."""
