@@ -521,10 +521,20 @@
     </div>
 
     <!-- Trade Modal -->
-    <div id="trade-modal" class="modal hidden">
+    <!-- `modal-over-hand`: this dialog and the discard one cover the hand panel
+         in the aside, which is the one thing a player has to read to decide
+         what to type into them. They carry their own copy of the hand below
+         and drop the backdrop blur - see .modal-over-hand in style.css. -->
+    <div id="trade-modal" class="modal modal-over-hand hidden">
         <div class="modal-content">
             <span id="close-trade-modal" class="close">&times;</span>
             <h2>Propose Trade</h2>
+            <!-- Filled by panels.js from the same board payload the rail's hand
+                 panel is drawn from, and kept live while the dialog is open. -->
+            <div id="trade-hand" class="dialog-hand">
+                <span class="dialog-hand-label">In hand</span>
+                <div class="resource-display"></div>
+            </div>
             <!-- The bank is always willing to take 4:1, harbour or no harbour,
                  so a player with a 3:1 harbour who types 4 is simply handing it
                  a card. The rate strip says what each resource is worth to them
@@ -577,10 +587,16 @@
     </div>
 
     <!-- Discard Modal -->
-    <div id="discard-modal" class="modal hidden">
+    <div id="discard-modal" class="modal modal-over-hand hidden">
         <div class="modal-content">
             <h2>Discard Cards</h2>
             <p>You must discard <span id="discard-amount">0</span> cards to the bank.</p>
+            <!-- What is actually in hand, so the numbers can be typed without
+                 closing the dialog to go and look at a panel this covers. -->
+            <div id="discard-hand" class="dialog-hand">
+                <span class="dialog-hand-label">In hand</span>
+                <div class="resource-display"></div>
+            </div>
             <div class="resource-selector">
                 <label>🌲 Wood: <input type="number" id="discard-wood" min="0" max="10" value="0"></label>
                 <label>🧱 Brick: <input type="number" id="discard-brick" min="0" max="10" value="0"></label>
@@ -598,9 +614,6 @@
                 <label>🪙 Coin: <input type="number" id="discard-coin" min="0" max="10" value="0"></label>
                 <label>📜 Paper: <input type="number" id="discard-paper" min="0" max="10" value="0"></label>
             </div>
-            <!-- What is actually in hand, so the numbers can be typed without
-                 closing the dialog to go and look. -->
-            <p id="discard-hand" class="discard-hand"></p>
             <button id="submit-discard-btn">Discard</button>
         </div>
     </div>

@@ -5,7 +5,7 @@ import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js
 import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
 import { displayError } from './notices.js';
-import { findMyPlayer } from './panels.js';
+import { findMyPlayer, renderDialogHands } from './panels.js';
 import { emitGame } from './socket.js';
 import { getBoard, isMyTurn, viewState } from './state.js';
 
@@ -559,6 +559,9 @@ function showTradeModal() {
     const commodities = commoditiesInPlay();
     tradeGiveCommodities?.classList.toggle('hidden', !commodities);
     tradeWantCommodities?.classList.toggle('hidden', !commodities);
+    // This dialog covers the hand panel, and what is in hand is half of what
+    // decides an offer. Board updates keep it live from here on.
+    renderDialogHands();
     renderBankRates();
     renderTradeVerdict();
 }

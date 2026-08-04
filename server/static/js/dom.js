@@ -147,7 +147,10 @@ export const discardAmountSpan = document.getElementById('discard-amount');
 // Commodities count toward the limit a 7 enforces, so the dialog has a row for
 // them - shown only when the table plays them.
 export const discardCommodityRow = document.getElementById('discard-commodities');
+// Both dialogs cover the aside the hand panel lives in, so each carries its own
+// copy of the hand. panels.js fills the `.resource-display` inside them.
 export const discardHandNote = document.getElementById('discard-hand');
+export const tradeHandNote = document.getElementById('trade-hand');
 
 // Side panel tabs - the log and the trade panel share one box
 export const sideTabs = document.getElementById('side-tabs');

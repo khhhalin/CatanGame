@@ -4,7 +4,7 @@
 
 import { ckEnabled, isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
-import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
+import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, tradeHandNote, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
 import { displayError } from './notices.js';
 import { repositionPopover } from './popovers.js';
 import { isSeaMode, seaRule, syncSeaModeButtons } from './seafarers.js';
@@ -16,8 +16,6 @@ import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVi
 // both (`clean_card_counts`), and a hand that is over the limit on commodities
 // alone must be able to pay.
 const DISCARDABLE_CARDS = ['wood', 'brick', 'sheep', 'wheat', 'ore', ...COMMODITY_TYPES];
-
-const CARD_ICONS = { ...RESOURCE_ICONS, ...COMMODITY_ICONS };
 
 // Mirrors server/data/costs.json. Duplicated here only to grey a button out and
 // say why before the round trip - the server checks all of it again and the
@@ -634,6 +632,39 @@ export function findMyPlayer() {
 }
 
 /**
+ * One player's own cards as chips: the five resources, and the three
+ * commodities where they are dealt.
+ *
+ * Built once and painted in three places - the rail's hand panel and the two
+ * dialogs that cover it - so a chip cannot say one thing in the panel and
+ * another in the dialog asking for it.
+ *
+ * @param {object} player - Own player entry from the board payload
+ * @param {boolean} commodities - Whether to show cloth, coin and paper
+ * @returns {string} - HTML for the chip row
+ */
+function handChips(player, commodities) {
+    const resources = player.resources || {};
+    let html = '';
+    for (const type of ['wood', 'brick', 'sheep', 'wheat', 'ore']) {
+        const count = resources[type] || 0;
+        html += `<div class="resource res-${type}">${RESOURCE_ICONS[type]}${count}</div>`;
+    }
+
+    // Commodities sit in the same row as the resources: they are spent, traded
+    // and discarded like them, and a separate box implied they were not.
+    if (commodities) {
+        const held = player.commodities || {};
+        for (const type of COMMODITY_TYPES) {
+            const count = held[type] || 0;
+            html += `<div class="resource commodity com-${type}" title="${type}">`
+                + `${COMMODITY_ICONS[type]}${count}</div>`;
+        }
+    }
+    return html;
+}
+
+/**
  * Render resource panel - shows current user's resources
  */
 export function renderResourcePanel() {
@@ -646,43 +677,34 @@ export function renderResourcePanel() {
         return;
     }
 
-    const resourceIcons = {
-        wood: '🌲',
-        brick: '🧱',
-        sheep: '🐑',
-        wheat: '🌾',
-        ore: '🪨'
-    };
-    const resourceNames = {
-        wood: 'Wood',
-        brick: 'Brick',
-        sheep: 'Sheep',
-        wheat: 'Wheat',
-        ore: 'Ore'
-    };
-    
-    const resources = player.resources || {};
-    
-    const allResourceTypes = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
-    
-    let html = '';
-    for (const type of allResourceTypes) {
-        const count = resources[type] || 0;
-        html += `<div class="resource res-${type}">${resourceIcons[type]}${count}</div>`;
-    }
+    resourceDisplay.innerHTML = handChips(player, ckEnabled());
+    renderDialogHands();
+}
 
-    // Commodities sit in the same row as the resources: they are spent, traded
-    // and discarded like them, and a separate box implied they were not.
-    if (ckEnabled()) {
-        const commodities = player.commodities || {};
-        for (const type of COMMODITY_TYPES) {
-            const count = commodities[type] || 0;
-            html += `<div class="resource commodity com-${type}" title="${type}">`
-                + `${COMMODITY_ICONS[type]}${count}</div>`;
+/**
+ * Restate the hand inside the discard and trade dialogs.
+ *
+ * The tester could not see their cards while either dialog was up - both cover
+ * the aside the hand panel lives in, and both are asking a question that can
+ * only be answered from it. Rendered from the same payload on every board
+ * update, so a card gained or lost while the dialog is open shows there too.
+ */
+export function renderDialogHands() {
+    const player = findMyPlayer();
+    if (!player) {
+        return;
+    }
+    // Commodities are their own rule: the dialogs offer a row for them only
+    // when the table deals them, and a chip for a card that cannot exist would
+    // be a count of nothing.
+    const commodities = getBoard()?.rules?.commodities === true;
+    const chips = handChips(player, commodities);
+    for (const strip of [discardHandNote, tradeHandNote]) {
+        const row = strip?.querySelector('.resource-display');
+        if (row) {
+            row.innerHTML = chips;
         }
     }
-
-    resourceDisplay.innerHTML = html;
 }
 
 /**
@@ -891,34 +913,8 @@ export function openDiscardModal(amount) {
     const commodities = getBoard()?.rules?.commodities === true;
     discardCommodityRow?.classList.toggle('hidden', !commodities);
 
-    renderDiscardHand(commodities);
+    renderDialogHands();
     discardModal.classList.add('show');
-}
-
-/**
- * Say what is in hand, in the dialog that is asking for some of it back.
- *
- * The dialog covers the hand panel, so without this the numbers have to be
- * typed from memory - and a player who guesses wrong is told only that the
- * total was wrong, never which card they do not have.
- *
- * @param {boolean} commodities - Whether the table plays commodities
- */
-function renderDiscardHand(commodities) {
-    if (!discardHandNote) {
-        return;
-    }
-    const player = findMyPlayer();
-    const held = { ...(player?.resources || {}) };
-    if (commodities) {
-        Object.assign(held, player?.commodities || {});
-    }
-    const parts = Object.entries(held)
-        .filter(([, count]) => count > 0)
-        .map(([card, count]) => `${count}${CARD_ICONS[card] || card}`);
-    discardHandNote.textContent = parts.length > 0
-        ? `In hand: ${parts.join(' ')}`
-        : '';
 }
 
 /**
