@@ -128,3 +128,18 @@ Two things that are *not* violations: the catalogue's `group: expansion` is how
 the lobby sorts controls for players, and module names like `seafarers.py` or
 `cities_knights.py` describe where the mechanics come from. Neither changes
 behaviour.
+
+## Never stash or checkout in a shared worktree
+
+Several agents commit into this one checkout at the same time. `git stash`,
+`git checkout`, `git restore` and `git reset` act on the **whole tree**, so they
+silently take another agent's uncommitted work with them. This has already
+happened twice in one day: once observed as files vanishing and reappearing, and
+once admitted as a near miss on an engine file mid-edit.
+
+- To see a test fail before your fix, **write the test first and run it** — that
+  is the discipline anyway. If you must compare against a parent commit, use
+  `git archive <sha> | tar -x -C "$(mktemp -d)"` and work in that copy.
+- Stage by explicit path, always. Never `git add -A`, `git add .` or `commit -a`.
+- On `index.lock`, wait and retry — that is another agent committing, not
+  corruption.
