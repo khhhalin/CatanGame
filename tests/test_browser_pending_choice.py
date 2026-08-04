@@ -238,6 +238,17 @@ class TestTheChooserIsAsked:
         assert len(option_labels(bob)) == len(offered) == 2
         shot(bob, "chooser-barbarian-city-1920x1080")
 
+        # Both themes, because the panel and the ring are new surfaces and the
+        # dark theme is the one nobody looks at until a player reports it.
+        bob.page.evaluate(
+            "() => document.documentElement.setAttribute('data-theme', 'dark')"
+        )
+        bob.page.wait_for_timeout(400)
+        shot(bob, "chooser-barbarian-city-dark-1920x1080")
+        bob.page.evaluate(
+            "() => document.documentElement.removeAttribute('data-theme')"
+        )
+
     def test_a_city_is_named_by_the_terrain_it_stands_on(self, sacked_city):
         """"3,-3,0" is not an answer to "which city?". The kinds whose options
         are vertex keys have to be described, or the player is being asked to
@@ -415,11 +426,13 @@ class TestTheMerchantIsOnTheBoard:
         alice = tabs["Alice"]
         hex_key = game.merchant_hex
         assert alice.board()["merchant_hex"] == hex_key
+        # Before the sampling below, which leaves the canvas holding the frame
+        # drawn *without* the piece.
+        shot(alice, "merchant-on-the-board-1920x1080")
 
         with_piece = alice.page.evaluate(SAMPLE_MERCHANT, [hex_key, True])
         without = alice.page.evaluate(SAMPLE_MERCHANT, [hex_key, False])
         assert with_piece != without, "the merchant painted nothing"
-        shot(alice, "merchant-on-the-board-1920x1080")
 
     def test_the_holder_is_named_with_the_point_it_scores(self, merchant):
         _, tabs = merchant

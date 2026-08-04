@@ -411,14 +411,20 @@ class TestTerrainFollowsTheTheme:
                     window.BoardRenderer.render(boardData, 'board-canvas', null, null);
                     const layout = window.BoardRenderer.computeLayout(boardData);
                     const point = layout.hexPositions[key];
-                    const rect = canvas.getBoundingClientRect();
+                    // Offset in *board* space, not screen pixels: 22 clears the
+                    // 12px number token and stays inside the 35px hex at any
+                    // scale. As a screen offset it walked onto the token the
+                    // moment the board was fitted any larger, and the test then
+                    // sampled the digit - which is the same colour in both
+                    // themes, so it failed for a reason that had nothing to do
+                    // with the terrain it is about.
                     const client = window.BoardRenderer.boardToClient(
-                        canvas, point.x + layout.offsetX, point.y + layout.offsetY
+                        canvas, point.x + layout.offsetX, point.y + layout.offsetY + 22
                     );
+                    const rect = canvas.getBoundingClientRect();
                     const ratio = canvas.width / rect.width;
-                    // Off the number token, still well inside the hex.
                     const x = Math.round((client.x - rect.left) * ratio);
-                    const y = Math.round((client.y - rect.top) * ratio + 24 * ratio);
+                    const y = Math.round((client.y - rect.top) * ratio);
                     const data = canvas.getContext('2d').getImageData(x, y, 1, 1).data;
                     return [data[0], data[1], data[2]];
                 }

@@ -34,7 +34,9 @@ const VERTEX_KINDS = ['barbarian_city', 'deserter', 'deserter_placement'];
 // own `prompt`: the wording lives in `game/pending_choice.py` so a refusal, a
 // log line and this panel cannot drift apart.
 const CHOICE_TITLES = {
-    barbarian_city: '🏴‍☠️ The barbarians are sacking a city',
+    // Plain emoji, no ZWJ sequences: a pirate flag is a three-codepoint join
+    // and falls back to a tofu box on a system without it.
+    barbarian_city: '🏛️ The barbarians are sacking a city',
     progress_deck: '🎴 Draw a progress card',
     commercial_harbor: '⚓ Commercial Harbor',
     master_merchant: '💰 Master Merchant',
