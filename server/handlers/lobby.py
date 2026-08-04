@@ -4,6 +4,8 @@ import logging
 import os
 import random
 
+import build_info
+import changelog
 import state
 from extensions import socketio
 from flask import request
@@ -339,11 +341,39 @@ def _start_game_locked():
     current_player = session.game.players[session.game.current_player_index]
     for sid, name in list(session.viewers.items()):
         emit('game_started', {
+            'build': build_info.summary(),
             'players': session.game.get_player_names(),
             'observers': session.game.observers,
             'current_player': current_player.name if current_player else None,
             'board': session.game.get_board_data(viewer=name)
         }, to=sid)
+
+@socketio.on('request_changelog')
+def handle_request_changelog(data=None):
+    """What this server is running, and what changed in it.
+
+    Answered to the asking socket only, and answerable before anyone has
+    joined: a tester on a stale tab has to be able to read the build id
+    without first taking a seat.
+
+    Registered here rather than in a module of its own because app.py names
+    every handler module it imports, and a build identity is a fact about this
+    server — the same thing the lobby already answers for the roster and the
+    rules. A malformed changelog is reported as an error the panel can show
+    instead of taking the whole reply down with it: the build id is the half
+    that actually saves a triage round, and it does not depend on the file
+    parsing.
+    """
+    if rate_limited():
+        return
+
+    payload = {'build': build_info.summary(), 'releases': []}
+    try:
+        payload['releases'] = changelog.load()
+    except changelog.ChangelogError as exc:
+        logger.exception("the changelog could not be parsed")
+        payload['error'] = str(exc)
+    emit('changelog', payload)
 
 @socketio.on('disconnect')
 def handle_disconnect(reason=None):

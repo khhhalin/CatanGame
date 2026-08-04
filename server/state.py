@@ -16,6 +16,7 @@ import os
 import random
 import threading
 
+import build_info
 from config import get_config
 from extensions import socketio
 from flask import request
@@ -307,6 +308,11 @@ def broadcast_board(extra=None):
         payload = {
             'board': live.game.get_board_data(viewer=name),
             'log_last_id': live.event_log.last_id,
+            # Which build served this. A tab left open across a deploy keeps
+            # talking to the new server with the old client, and this is what
+            # lets it notice: the panel latches the first id it is told and says
+            # so, loudly, the moment a later payload disagrees.
+            'build': build_info.summary(),
         }
         if extra:
             payload.update(extra)
@@ -429,12 +435,13 @@ def send_state_snapshot():
     """Send the full current state to the requesting socket only."""
     game = session().game
     if game is None or game.game_state != "started":
-        emit('game_state', {'in_game': False})
+        emit('game_state', {'in_game': False, 'build': build_info.summary()})
         return
 
     current_player = game.players[game.current_player_index]
     emit('game_state', {
         'in_game': True,
+        'build': build_info.summary(),
         'players': game.get_player_names(),
         'observers': game.observers,
         'current_player': current_player.name if current_player else None,
