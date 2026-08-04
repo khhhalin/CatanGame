@@ -427,6 +427,76 @@ def can_afford(player_data, cost):
 ROAD_COST = {"wood": 1, "brick": 1}
 SETTLEMENT_COST = {"wood": 1, "brick": 1, "wheat": 1, "sheep": 1}
 CITY_COST = {"wheat": 2, "ore": 3}
+SHIP_COST = {"wood": 1, "sheep": 1}
+
+# How many ships a seafaring bot builds before it starts taking victory points.
+STARTING_FLEET = 3
+
+
+def legal_ship_edges(board, player_name):
+    """Vacant sea sides a ship of this player's could be built on.
+
+    Own ships and own buildings only — a road meeting the same intersection
+    does not extend a shipping route — and never a side of the hex the pirate
+    is sitting on, which it blocks entirely. `sea` is the server's own mask,
+    sent on every edge, so the geometry is read rather than re-derived.
+    """
+    mine = {
+        key for key, vertex in board["vertices"].items()
+        if (vertex.get("building") or {}).get("player") == player_name
+    }
+    for edge in board["edges"].values():
+        if (edge.get("ship") or {}).get("player") == player_name:
+            mine.update(edge["neighbors"]["vertices"])
+
+    pirate = board.get("pirate_hex")
+    return [
+        key for key, edge in sorted(board["edges"].items())
+        if edge.get("sea") and not edge.get("ship") and not edge.get("road")
+        and not (pirate and pirate in edge["neighbors"]["hexes"])
+        and any(vertex in mine for vertex in edge["neighbors"]["vertices"])
+    ]
+
+
+def open_seafarers_fold(player):
+    """Raise the Seafarers fold if it is not already up.
+
+    The chip toggles, so clicking it blind closes a panel a previous step left
+    open.
+    """
+    if player.page.get_attribute("#seafarers-chip", "aria-expanded") != "true":
+        player.page.click("#seafarers-chip")
+
+
+def count_ships(player):
+    return len(
+        (player.me() or {}).get("ships") or []
+    )
+
+
+def build_ship(player, candidates):
+    """Arm ship placement in the Seafarers fold, then aim. See build_road.
+
+    The popover is fixed and can lie over the board, so it is dismissed before
+    anything is aimed at: a target underneath it cannot be clicked at all.
+    """
+    before = count_ships(player)
+    open_seafarers_fold(player)
+    player.page.wait_for_selector("#build-ship-btn:not([disabled])", timeout=5000)
+    player.page.click("#build-ship-btn")
+    player.page.keyboard.press("Escape")
+
+    edge_key = first_clickable(player, 'edge', candidates)
+    if not edge_key:
+        raise AssertionError(f"no clickable sea edge among {len(candidates)} candidates")
+    click_edge(player, edge_key)
+    confirm_placement(player)
+    player.page.wait_for_function(
+        "before => ((window.__catanDebug.getBoard().players.find(p => p.is_you)"
+        "            || {}).ships || []).length > before",
+        arg=before, timeout=8000,
+    )
+    return edge_key
 
 
 # --- Playing a turn -------------------------------------------------------
@@ -470,8 +540,15 @@ def resolve_discard(player):
     return True
 
 
-def resolve_robber(player):
-    """Move the robber if a 7 is blocking the turn."""
+def resolve_robber(player, prefer_pirate=False):
+    """Move the robber if a 7 is blocking the turn.
+
+    `prefer_pirate` aims at the open sea instead, which is how the pirate is
+    moved: nothing arms it, the roller simply taps a sea hex and the server
+    reads that as the pirate rather than the robber. It falls back to the land
+    hexes if the sea cannot be reached, because leaving a 7 unanswered blocks
+    the rest of the game.
+    """
     board = player.board()
     if not board.get("must_move_robber"):
         return False
@@ -484,6 +561,13 @@ def resolve_robber(player):
         key for key, hex_data in board["hexes"].items()
         if hex_data["type"] not in ("ocean", "desert") and key != board.get("robber_hex")
     ]
+
+    if prefer_pirate and board.get("rules", {}).get("pirate"):
+        ocean = [
+            key for key, hex_data in sorted(board["hexes"].items())
+            if hex_data["type"] == "ocean" and key != board.get("pirate_hex")
+        ]
+        candidates = ocean + candidates
 
     clickable = first_clickable(player, 'hex', candidates)
     if clickable:
@@ -694,11 +778,16 @@ def _trade_towards(player, cost):
     return False
 
 
-def spend_what_you_can(player):
+def spend_what_you_can(player, ships=False):
     """Buy whatever this hand affords, preferring settlements over roads.
 
     A settlement is a victory point outright; roads only pay off through
     Longest Road. Both are needed to finish a game, so try both.
+
+    `ships` adds a ship to the list, for a table playing Seafarers: a ship is
+    the same price as a road in a different pair of resources, and it counts
+    towards the Longest Trade Route alongside them, so a bot that never builds
+    one leaves the whole of Seafarers unplayed.
     """
     built = []
 
@@ -706,6 +795,19 @@ def spend_what_you_can(player):
     me = next((p for p in board["players"] if p["is_you"]), None)
     if me is None:
         return built
+
+    # A fleet first, on a table that sails. A city is a victory point and a
+    # ship is not, so a bot that always takes the point reaches the target with
+    # the ships it was dealt in setup and no others — a seafaring game with no
+    # sailing in it. Three is enough to have a shipping route worth the name and
+    # few enough that it costs a handful of turns.
+    fleet = len(me.get("ships") or [])
+    if ships and fleet < STARTING_FLEET and can_afford(me, SHIP_COST):
+        placed = _try(build_ship, player, legal_ship_edges(board, player.name))
+        if placed:
+            built.append(("ship", placed))
+            board = player.board()
+            me = next(p for p in board["players"] if p["is_you"])
 
     # A refused build is not a test failure: the server is the authority on
     # legality, and a bot that mispredicts it should lose a turn, not abort the
@@ -727,6 +829,17 @@ def spend_what_you_can(player):
             board = player.board()
             me = next(p for p in board["players"] if p["is_you"])
 
+    # Ships before roads, once the fleet above has been paid for: they cost the
+    # same as a road in a different pair of resources and count towards the same
+    # award, and a bot that reaches for the road first spends the wood every
+    # time.
+    if ships and can_afford(me, SHIP_COST):
+        placed = _try(build_ship, player, legal_ship_edges(board, player.name))
+        if placed:
+            built.append(("ship", placed))
+            board = player.board()
+            me = next(p for p in board["players"] if p["is_you"])
+
     if can_afford(me, ROAD_COST):
         placed = _try(build_road, player, legal_road_edges(board, player.name))
         if placed:
@@ -740,6 +853,8 @@ def spend_what_you_can(player):
             target = CITY_COST
         elif legal_settlement_vertices(board, player.name):
             target = SETTLEMENT_COST
+        elif ships and not legal_road_edges(board, player.name):
+            target = SHIP_COST
         else:
             target = ROAD_COST
         _trade_towards(player, target)
@@ -767,12 +882,16 @@ def end_turn(player):
     )
 
 
-def play_one_turn(actor, everyone):
+def play_one_turn(actor, everyone, ships=False, prefer_pirate=False):
     """Roll, settle any 7, build what the hand allows, then pass.
 
     Returns what was built, so a caller can tell progress from a stalemate.
+
+    `ships` lets the bot build ships as well; `prefer_pirate` answers a 7 by
+    sailing the pirate rather than walking the robber. Both default off, so a
+    base-game caller plays exactly the turn it always did.
     """
-    resolve_robber(actor)
+    resolve_robber(actor, prefer_pirate)
     if not actor.board().get("has_rolled_dice"):
         roll_dice(actor)
 
@@ -781,8 +900,8 @@ def play_one_turn(actor, everyone):
     for player in everyone:
         resolve_discard(player)
 
-    resolve_robber(actor)
-    built = spend_what_you_can(actor)
+    resolve_robber(actor, prefer_pirate)
+    built = spend_what_you_can(actor, ships=ships)
 
     # A winning build ends the game, so there is no next turn to advance to.
     # Without this the bot wins and then hangs waiting for a turn change that
