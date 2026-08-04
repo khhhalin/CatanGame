@@ -727,6 +727,141 @@ function drawCity(ctx, x, y, playerColor) {
 }
 
 /* -------------------------------------------------------------------------
+ * City walls (Cities & Knights)
+ *
+ * A wall was buildable and completely invisible: two brick bought a hand-limit
+ * bonus that appeared as a number in a panel and nothing on the board at all.
+ *
+ * Drawn as a rampart standing around the intersection, *under* the city, so
+ * the piece it protects is always painted over the top of it and can never be
+ * hidden by it. The rampart is open towards the top right, which is exactly
+ * where a knight sharing this intersection steps to - so a walled city with a
+ * knight on it reads as two pieces, not one collision.
+ *
+ * Its colours are fixed rather than themed, for the same reason the knight's
+ * are: it sits on a player-coloured piece on a terrain fill, and neither of
+ * those is under this file's control. A pale halo under a dark outline
+ * survives both themes and all six player colours.
+ * ---------------------------------------------------------------------- */
+
+// A rampart of straight wall runs between square corner towers. Two earlier
+// attempts drew crenellations around a circle; at 36px across, radial teeth on
+// a ring read as a cog and not as a fortification at all. Straight runs with
+// corners are what says "wall" at this size.
+const WALL_RADIUS = 15.5;       // corners; clear of the city's 16px footprint
+const WALL_CORNERS = 5;         // four runs of wall between them
+const WALL_TOWER = 2.8;         // half a tower; kept small, or five of them
+                                // read as five blobs rather than one wall
+const WALL_GAP_START = -0.05 * Math.PI;   // just above the right horizontal
+const WALL_SWEEP = 1.5 * Math.PI;         // three quarters round, open top right
+const WALL_STONE = '#b9c4d0';
+const WALL_HALO = '#f4f8fb';
+const WALL_OUTLINE = '#0e141b';
+
+// Halo, then outline, then stone: three passes of the same polyline, each
+// narrower than the last, which is how a stroked line gets an outline at all.
+const WALL_HALO_WIDTH = 9.5;
+const WALL_OUTLINE_WIDTH = 7.5;
+const WALL_STONE_WIDTH = 5;
+
+/**
+ * The corners of the rampart, in order along the wall.
+ *
+ * @param {number} x - Vertex x
+ * @param {number} y - Vertex y
+ * @returns {Array<object>} - {x, y, angle} per corner
+ */
+function wallCorners(x, y) {
+    const corners = [];
+    for (let index = 0; index < WALL_CORNERS; index += 1) {
+        const angle = WALL_GAP_START + WALL_SWEEP * (index / (WALL_CORNERS - 1));
+        corners.push({
+            x: x + WALL_RADIUS * Math.cos(angle),
+            y: y + WALL_RADIUS * Math.sin(angle),
+            angle,
+        });
+    }
+    return corners;
+}
+
+/**
+ * Trace the runs of wall as one open polyline, leaving it as the current path.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Vertex x
+ * @param {number} y - Vertex y
+ */
+function cityWallPath(ctx, x, y) {
+    const corners = wallCorners(x, y);
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (const corner of corners.slice(1)) {
+        ctx.lineTo(corner.x, corner.y);
+    }
+}
+
+/**
+ * Trace one square corner tower, square to the wall it stands on.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} corner - One entry from wallCorners
+ */
+function wallTowerPath(ctx, corner) {
+    const along = corner.angle + Math.PI / 2;
+    const acrossX = Math.cos(corner.angle);
+    const acrossY = Math.sin(corner.angle);
+    const alongX = Math.cos(along);
+    const alongY = Math.sin(along);
+
+    ctx.beginPath();
+    for (const [side, end] of [[1, 1], [1, -1], [-1, -1], [-1, 1]]) {
+        const pointX = corner.x + (acrossX * side + alongX * end) * WALL_TOWER;
+        const pointY = corner.y + (acrossY * side + alongY * end) * WALL_TOWER;
+        if (side === 1 && end === 1) {
+            ctx.moveTo(pointX, pointY);
+        } else {
+            ctx.lineTo(pointX, pointY);
+        }
+    }
+    ctx.closePath();
+}
+
+/**
+ * Draw the wall protecting one city.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Vertex x
+ * @param {number} y - Vertex y
+ */
+function drawCityWall(ctx, x, y) {
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'butt';
+
+    // The halo goes down first and widest, so the wall keeps its edge on a dark
+    // forest hex and on a pale desert alike.
+    for (const [color, width] of [[WALL_HALO, WALL_HALO_WIDTH],
+                                  [WALL_OUTLINE, WALL_OUTLINE_WIDTH],
+                                  [WALL_STONE, WALL_STONE_WIDTH]]) {
+        cityWallPath(ctx, x, y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+    }
+
+    for (const corner of wallCorners(x, y)) {
+        wallTowerPath(ctx, corner);
+        ctx.fillStyle = WALL_STONE;
+        ctx.fill();
+        ctx.strokeStyle = WALL_OUTLINE;
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+/* -------------------------------------------------------------------------
  * Knights (Cities & Knights)
  *
  * A knight stands on an intersection, which is also where a settlement or a
@@ -1457,9 +1592,21 @@ function drawGhost(ctx, layout, preview) {
                 ctx.lineWidth = 2;
                 ctx.stroke();
                 ctx.setLineDash([5, 4]);
+            } else if (preview.kind === 'city_wall') {
+                // The piece itself, half-transparent: a player aiming a wall
+                // should see the wall, not a generic marker.
+                ctx.setLineDash([]);
+                cityWallPath(ctx, pos.x, pos.y);
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                for (const corner of wallCorners(pos.x, pos.y)) {
+                    wallTowerPath(ctx, corner);
+                    ctx.fill();
+                }
+                ctx.setLineDash([5, 4]);
             } else {
-                // A city wall has no board art of its own yet, so a ring says
-                // "here" without claiming to be a piece.
+                // Anything without art of its own: a blob says "here" without
+                // claiming to be a piece.
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, 9, 0, Math.PI * 2);
                 ctx.fill();
@@ -1641,6 +1788,18 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (pos && edge.ship) {
             drawShip(ctx, pos, playerColors[edge.ship.player] || null);
+        }
+    }
+
+    // Walls before the buildings: a wall stands around the city it protects, so
+    // the city is painted over it and cannot be obscured by it.
+    const wallsByPlayer = (boardData.cities_knights || {}).city_wall_vertices || {};
+    for (const owner in wallsByPlayer) {
+        for (const vertexKey of wallsByPlayer[owner]) {
+            const pos = vertexPositions[vertexKey];
+            if (pos) {
+                drawCityWall(ctx, pos.x, pos.y);
+            }
         }
     }
 
