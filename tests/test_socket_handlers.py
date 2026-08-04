@@ -1593,3 +1593,89 @@ class TestCommoditiesReachTheTradeHandler:
                                      'wanted': {'wood': 1}})
 
         assert last_error(actor)['code'] == 'INSUFFICIENT_RESOURCES'
+
+
+class TestTheLogSaysWhoTheRollPaid:
+    """The bug: a roll logged "Alice rolled 3 + 3 = 6" and nothing else, so no
+    player could tell what it had paid them — which is also how a production
+    bug hides."""
+
+    def _rolling(self, clients, faces):
+        from tests.conftest import ScriptedRandom
+
+        alice, bob = clients
+        game = state.session().game
+        game.rng = ScriptedRandom(faces)
+        game.game_phase = "playing"
+        game.start_turn()
+        acting = game.players[game.current_player_index].name
+        actor = seated(acting, Alice=alice, Bob=bob)
+        actor.get_received()
+        return game, acting, actor
+
+    def _settle_on_six(self, game, name):
+        """One settlement paying on a 6 and on nothing else.
+
+        The other hexes the intersection touches are moved off every number
+        this test rolls: an intersection borders three hexes, and leaving their
+        numbers alone made "the roll paid nobody" depend on which numbers the
+        shuffle happened to deal.
+        """
+        for vertex_key in sorted(game.vertices):
+            vertex = game.vertices[vertex_key]
+            producing = [
+                key for key in vertex.neighbors.get('hexes', [])
+                if key in game.hexes and game.hexes[key].number
+                and game.hexes[key].type not in ('desert', 'ocean')
+            ]
+            if not producing:
+                continue
+            for key in producing[1:]:
+                game.hexes[key].number = 12
+            paying = game.hexes[producing[0]]
+            paying.number = 6
+            vertex.building = {'type': 'settlement', 'player': name}
+            if game.robber_hex in producing:
+                game.robber_hex = None
+            return paying.type
+        raise AssertionError("no producing hex on this board")
+
+    def test_the_log_names_the_player_and_the_card(self, clients):
+        game, acting, actor = self._rolling(clients, [3, 3])
+        resource = self._settle_on_six(game, acting)
+
+        actor.emit('roll_dice', {'name': acting})
+
+        entries = [e['entry'] for e in events(actor, 'event_logged')]
+        production = [e for e in entries if 'gained' in e['details']]
+        assert len(production) == 1, "one entry for the whole table, not one per player"
+        assert production[0]['details']['gained'] == {acting: {resource: 1}}
+        assert f"+1 {resource}" in production[0]['text']
+        assert acting in production[0]['text']
+
+    def test_a_roll_that_paid_nobody_says_so(self, clients):
+        game, acting, actor = self._rolling(clients, [2, 3])
+        self._settle_on_six(game, acting)
+
+        actor.emit('roll_dice', {'name': acting})
+
+        entries = [e['entry'] for e in events(actor, 'event_logged')]
+        production = [e for e in entries if 'gained' in e['details']]
+        assert production[0]['details']['gained'] == {}
+        assert 'nobody' in production[0]['text']
+
+    def test_everyone_sees_the_same_entry(self, clients):
+        """Shared history: the log is one record, not a private receipt."""
+        alice, bob = clients
+        game, acting, actor = self._rolling(clients, [3, 3])
+        self._settle_on_six(game, acting)
+        bob.get_received()
+        alice.get_received()
+
+        actor.emit('roll_dice', {'name': acting})
+
+        seen = []
+        for client in (alice, bob):
+            entries = [e['entry'] for e in events(client, 'event_logged')]
+            seen.append([e['text'] for e in entries if 'gained' in e['details']])
+        assert seen[0] == seen[1] and seen[0], seen

@@ -889,7 +889,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.production_modifiers.update(changed)
         return value
 
-    def distribute_resources(self, dice_total: int):
+    def distribute_resources(self, dice_total: int) -> dict:
         """Distribute resources to players based on dice roll.
 
         Each settlement adjacent to a hex with matching number receives 1 resource.
@@ -897,13 +897,19 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         Args:
             dice_total: The sum of the two dice rolled
+
+        Returns:
+            dict: {player name: {card type: count}} — what this roll actually
+            paid, commodities included. Empty when it paid nobody, which the
+            log says out loud rather than leaving "did anything happen?"
+            unanswerable.
         """
         # One roll's worth: cleared here so the set never carries a rule over
         # from the previous turn.
         self.production_modifiers = set()
 
         if dice_total == 7:
-            return
+            return {}
 
         gained_resources = {}
 
@@ -957,6 +963,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 )
                 logger.debug(f"  {player_name}: {resource_str}")
             logger.debug(f"  Bank: {self.bank}")
+
+        # Sorted on the way out: the walk visits vertices in dict order, and a
+        # payload whose key order varies per process is exactly the kind of
+        # thing a seeded replay is supposed to pin down.
+        return {
+            player_name: dict(sorted(cards.items()))
+            for player_name, cards in sorted(gained_resources.items())
+        }
 
     def distribute_from_settlement(self, vertex_key: str, player_name: str):
         """Give resources from a specific settlement's adjacent hexes (for starter resources)."""
@@ -1097,7 +1111,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             self.check_discard_required()
 
         # A 7 produces nothing; distribute_resources knows that itself.
-        self.distribute_resources(total)
+        gained = self.distribute_resources(total)
 
         return {
             'success': True,
@@ -1110,6 +1124,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # The house rules that changed what this roll paid, so the log can
             # say why. Sorted for a stable payload.
             'modifiers': sorted(self.production_modifiers),
+            # Who the roll paid and in what. Empty means it paid nobody.
+            'gained': gained,
         }
 
     def next_dice(self) -> tuple:

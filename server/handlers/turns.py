@@ -195,6 +195,34 @@ def _announce_event_die(event):
     socketio.emit('barbarian_attack', result)
 
 
+def _announce_production(total, gained):
+    """Say what the roll paid, in one entry for the whole table.
+
+    One line rather than one per player: the log is a shared history, and four
+    players collecting on the same number would push everything else off the
+    panel four lines at a time.
+
+    Naming what each player took leaks nothing. Hands themselves stay redacted
+    per viewer, but production is not a hand: `get_board_data` already sends
+    every hex's type and number, every building with its owner, the robber's
+    hex and the rule set to every client, and the roll itself is broadcast — so
+    every client can already compute this exactly. Saying it out loud only
+    saves them the arithmetic, and it is what tells a player their city paid
+    one card where they expected two.
+    """
+    if gained:
+        text = 'Production: ' + '; '.join(
+            f"{player_name} " + ', '.join(f"+{count} {card}" for card, count in cards.items())
+            for player_name, cards in gained.items()
+        )
+    else:
+        # Said rather than left silent: "did anything happen?" has to be
+        # answerable from the log alone.
+        text = f"Production: the {total} paid nobody"
+
+    log_event('dice', text, total=total, gained=gained)
+
+
 def _announce_dice_roll(name, result):
     """Report a roll the engine has already applied. Caller holds session.lock."""
     dice1, dice2, total = result['dice1'], result['dice2'], result['total']
@@ -205,6 +233,11 @@ def _announce_dice_roll(name, result):
     # rather than leaving them to report it as a bug.
     log_event('dice', f"{name} rolled {dice1} + {dice2} = {total}",
               player=name, total=total, modifiers=result.get('modifiers') or [])
+
+    # A 7 pays nobody by rule and has its own consequences to report, so the
+    # production line is skipped there rather than stating the obvious.
+    if total != 7:
+        _announce_production(total, result.get('gained') or {})
 
     if result['event']:
         _announce_event_die(result['event'])
