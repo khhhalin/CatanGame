@@ -165,17 +165,104 @@ class SeafarersRules:
     # --- Moving --------------------------------------------------------
 
     def ship_is_open(self, player_name: str, edge_key: str) -> bool:
-        """Whether one end of this ship is free of its owner's other pieces.
+        """Whether this ship may be picked up.
 
-        The rulebook's test for a movable ship, and the same test that keeps a
-        closed route — one that interconnects two of the owner's buildings —
-        on the board: every ship in such a route has both ends held down, by a
-        neighbouring ship or by the building at the end of the line.
+        Three sentences of the rulebook, in the order they narrow each other:
+
+        - "A player may only move a ship if at least one of that ship's two
+          ends is not adjacent to any other piece belonging to that player."
+        - "If a circular shipping route does not touch any of the owner's
+          settlements or cities, every ship in that route counts as open."
+        - "If a shipping route leaves one settlement and returns to that same
+          settlement without touching any other settlement or city, one ship at
+          each end of that route counts as open."
+
+        Only the first used to be implemented, which made every loop closed. A
+        closed route is one that "interconnects two of the owner's settlements
+        and/or cities", so a circle touching one building or none was never
+        closed by the definition; the other two sentences say which of its
+        ships that leaves open.
         """
         edge = self.edges.get(edge_key)
         if edge is None:
             return False
 
+        if self._ship_has_a_free_end(player_name, edge_key):
+            return True
+
+        route = self.ship_route(player_name, edge_key)
+        if not self._route_is_circular(route):
+            return False
+
+        buildings = self._route_buildings(player_name, route)
+        if not buildings:
+            return True
+        if len(buildings) == 1:
+            # The loop leaves one building and comes back to it: the ship at
+            # each end of it — the two touching that building — may move.
+            return buildings[0] in edge.neighbors['vertices']
+        return False
+
+    def ship_route(self, player_name: str, edge_key: str) -> list:
+        """Every ship of this player's chained to this one, this one included.
+
+        "A chain of connected ships of the same colour forms a single shipping
+        route", and a route is what the closed-and-open rules are written
+        about — one ship on its own cannot tell whether it is in a circle.
+        """
+        route = {edge_key}
+        unexplored = [edge_key]
+        while unexplored:
+            edge = self.edges.get(unexplored.pop())
+            if edge is None:
+                continue
+            for vertex_key in edge.neighbors['vertices']:
+                vertex = self.vertices.get(vertex_key)
+                if vertex is None:
+                    continue
+                for connected_key in vertex.neighbors['edges']:
+                    if connected_key in route:
+                        continue
+                    connected = self.edges.get(connected_key)
+                    if connected and connected.ship \
+                            and connected.ship.get('player') == player_name:
+                        route.add(connected_key)
+                        unexplored.append(connected_key)
+        return sorted(route)
+
+    def _route_is_circular(self, route: list) -> bool:
+        """Whether the route closes on itself.
+
+        A connected run of sides holds a loop exactly when it has at least as
+        many sides as it has intersections; a route that branches without
+        looping always has one intersection more.
+        """
+        intersections = {
+            vertex_key
+            for edge_key in route
+            for vertex_key in self.edges[edge_key].neighbors['vertices']
+        }
+        return len(route) >= len(intersections)
+
+    def _route_buildings(self, player_name: str, route: list) -> list:
+        """Which of the owner's buildings this route touches.
+
+        The owner's alone: the rules ask about "the owner's settlements and/or
+        cities", and an opponent standing on the route neither closes it nor
+        opens it.
+        """
+        touched = set()
+        for edge_key in route:
+            for vertex_key in self.edges[edge_key].neighbors['vertices']:
+                vertex = self.vertices.get(vertex_key)
+                if vertex and vertex.building \
+                        and vertex.building.get('player') == player_name:
+                    touched.add(vertex_key)
+        return sorted(touched)
+
+    def _ship_has_a_free_end(self, player_name: str, edge_key: str) -> bool:
+        """Whether one end of this ship is clear of its owner's other pieces."""
+        edge = self.edges[edge_key]
         for vertex_key in edge.neighbors['vertices']:
             vertex = self.vertices.get(vertex_key)
             if vertex is None:

@@ -121,6 +121,36 @@ def ship_path(game, start_vertex, length):
     return found
 
 
+def sea_ring(game):
+    """The board's circular run of sea sides, as (edges, vertices).
+
+    Found by stripping dead ends off the sea-side graph until only the loop is
+    left, rather than written down: which sides form it depends on where the
+    land ended up, and a hardcoded ring would be a copy of one board.
+    """
+    sides = {
+        edge_key: set(game.edges[edge_key].neighbors['vertices'])
+        for edge_key in sorted(game.edges)
+        if game.is_sea_edge(edge_key)
+    }
+
+    pruned = True
+    while pruned:
+        pruned = False
+        ends = {}
+        for edge_key, vertices in sides.items():
+            for vertex_key in vertices:
+                ends.setdefault(vertex_key, []).append(edge_key)
+        for edge_keys in ends.values():
+            if len(edge_keys) == 1 and edge_keys[0] in sides:
+                del sides[edge_keys[0]]
+                pruned = True
+
+    assert sides, 'no circular run of sea sides on this board'
+    vertices = sorted({key for ends in sides.values() for key in ends})
+    return sorted(sides), vertices
+
+
 def build_ships_along(game, player_name, edges):
     """Put this player's ships on these sides, bypassing cost and turn order."""
     player = game.get_player(player_name)

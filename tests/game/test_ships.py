@@ -14,6 +14,7 @@ from seafarers_board import (
     inland_edges_at,
     other_end,
     sea_edges_at,
+    sea_ring,
     seafarers_game,
     ship_path,
 )
@@ -318,6 +319,66 @@ class TestMovingShips:
             if key != edges[0] and game.edges[key].ship is None
         )
         assert game.move_ship('Alice', edges[0], target)['code'] == 'RULE_NOT_IN_PLAY'
+
+
+class TestCircularRoutes:
+    """A loop is not a closed route.
+
+    Reported as a rule the engine got wrong: `ship_is_open` asked only whether
+    both ends of one ship were held, so every ship in a circle was stuck for
+    ever — the one thing expansions.md 67-68 say cannot happen. A closed route
+    is one that "interconnects *two* of the owner's settlements and/or cities"
+    (expansions.md 72), and a loop touching one building or none is not that.
+    """
+
+    def _ring(self, game):
+        edges, vertices = sea_ring(game)
+        build_ships_along(game, 'Alice', edges)
+        return edges, vertices
+
+    def test_a_circle_touching_no_building_is_open_all_the_way_round(self, sea_game):
+        """expansions.md 67: "If a circular shipping route does not touch any
+        of the owner's settlements or cities, every ship in that route counts
+        as open and may be moved.\""""
+        edges, _vertices = self._ring(sea_game)
+
+        assert [key for key in edges if not sea_game.ship_is_open('Alice', key)] == []
+
+    def test_a_loop_back_to_one_settlement_opens_a_ship_at_each_end(self, sea_game):
+        """expansions.md 68: "If a shipping route leaves one settlement and
+        returns to that same settlement without touching any other settlement
+        or city, one ship at each end of that route counts as open.\""""
+        edges, vertices = self._ring(sea_game)
+        home = vertices[0]
+        give_building(sea_game, 'Alice', home)
+
+        ends = sorted(
+            key for key in edges if home in sea_game.edges[key].neighbors['vertices']
+        )
+        assert len(ends) == 2, 'a loop leaves its settlement by two sides'
+        assert [key for key in edges if sea_game.ship_is_open('Alice', key)] == ends
+
+    def test_a_loop_between_two_settlements_is_still_closed(self, sea_game):
+        """expansions.md 72: a route interconnecting two of the owner's
+        buildings is closed, and a circle that does so is no exception."""
+        edges, vertices = self._ring(sea_game)
+        give_building(sea_game, 'Alice', vertices[0])
+        give_building(sea_game, 'Alice', vertices[len(vertices) // 2])
+
+        assert [key for key in edges if sea_game.ship_is_open('Alice', key)] == []
+
+    def test_an_opponents_building_does_not_open_your_loop(self, sea_game):
+        """The rule names "the owner's" buildings, so Bob standing on the ring
+        neither closes Alice's route nor opens it."""
+        edges, vertices = self._ring(sea_game)
+        give_building(sea_game, 'Alice', vertices[0])
+        give_building(sea_game, 'Bob', vertices[len(vertices) // 2])
+
+        ends = sorted(
+            key for key in edges
+            if vertices[0] in sea_game.edges[key].neighbors['vertices']
+        )
+        assert [key for key in edges if sea_game.ship_is_open('Alice', key)] == ends
 
 
 class TestSetup:
