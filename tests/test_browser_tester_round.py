@@ -29,11 +29,7 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
-    build_road,
-    build_settlement,
-    edges_next_to,
     launch_browser,
-    legal_setup_vertices,
     start_server,
     stop_server,
 )
@@ -147,9 +143,29 @@ def browser():
         engine.close()
 
 
+def a_hand_that_could_buy_a_development_card(game):
+    """Enough wheat, sheep and ore to buy one, on a table that has no deck.
+
+    Affordability is the only thing the Buy Card button ever checked, so the
+    hand has to cover the cost or the button would be greyed out for the wrong
+    reason and the test would pass over the bug.
+    """
+    actor = game.current_player_name()
+    player = game.get_player(actor)
+    player.resources.update(EMPTY_HAND)
+    player.resources.update({"wheat": 2, "sheep": 2, "ore": 2})
+    return {"actor": actor}
+
+
 @pytest.fixture
 def owes_a_commodity_discard(browser, tmp_path):
     with table(browser, tmp_path, a_hand_of_commodities_owing_a_discard) as live:
+        yield live
+
+
+@pytest.fixture
+def progress_card_table(browser, tmp_path):
+    with table(browser, tmp_path, a_hand_that_could_buy_a_development_card) as live:
         yield live
 
 
@@ -212,4 +228,54 @@ class TestACommodityHandCanPayADiscard:
 
     def test_no_console_errors(self, owes_a_commodity_discard):
         player, _ = owes_a_commodity_discard
+        assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- 2. Buying a card a progress-card table has no deck for ---------------
+
+
+class TestBuyCardIsNotOfferedWhereItIsRefused:
+    """The server answers `buy_dev_card` with DEV_CARDS_NOT_IN_PLAY whenever
+    progress cards are on - they replace the development deck outright. The
+    button was gated on affordability alone, so a player with the cost in hand
+    could click it and be told no."""
+
+    def test_the_hand_really_could_pay_for_one(self, progress_card_table):
+        """Otherwise the button would be greyed for want of ore and this suite
+        would prove nothing."""
+        player, _ = progress_card_table
+        held = player.me()["resources"]
+        assert held["wheat"] >= 1 and held["sheep"] >= 1 and held["ore"] >= 1, held
+        assert player.board()["rules"]["progress_cards"] is True
+
+    def test_buy_card_is_greyed_out_and_says_the_table_has_no_deck(
+        self, progress_card_table
+    ):
+        player, _ = progress_card_table
+        state = player.page.evaluate(
+            "() => { const b = document.getElementById('buy-dev-card-btn');"
+            "        return { off: b.disabled, why: b.title }; }"
+        )
+        assert state["off"], "Buy Card is live on a table that plays progress cards"
+        assert "progress cards" in state["why"], (
+            f"Buy Card is disabled but does not say why: {state['why']!r}"
+        )
+
+    def test_the_progress_hand_replaces_the_development_fold(self, progress_card_table):
+        """A Development Cards fold on such a table offers a deck that does not
+        exist; the progress hand is what the player actually holds."""
+        player, _ = progress_card_table
+        assert not player.page.is_visible("#dev-cards-panel"), (
+            "the development card fold is still offered alongside progress cards"
+        )
+        assert player.page.is_visible("#progress-cards-chip"), (
+            "the progress card fold is not on screen"
+        )
+        player.page.click("#progress-cards-chip")
+        player.page.wait_for_selector("#progress-cards-popover:not(.hidden)", timeout=3000)
+        shot(player, "progress-cards-panel-light")
+        player.page.click("#progress-cards-chip")
+
+    def test_no_console_errors(self, progress_card_table):
+        player, _ = progress_card_table
         assert player.noisy_errors() == [], player.noisy_errors()

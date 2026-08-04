@@ -950,6 +950,10 @@ function buildBlockReason(kind) {
     if (!getBoard()) {
         return 'No game is running';
     }
+    const missing = missingFromThisTableReason(kind);
+    if (missing) {
+        return missing;
+    }
     if (getGamePhase() === 'setup') {
         return 'Not during setup';
     }
@@ -966,6 +970,26 @@ function buildBlockReason(kind) {
 }
 
 /**
+ * Why the table this player is at has no such action at all, or ''.
+ *
+ * Kept apart from the turn and cost checks because a house rule does not stand
+ * down during setup the way they do: progress cards replace the development
+ * deck outright, and the server answers `buy_dev_card` with
+ * DEV_CARDS_NOT_IN_PLAY for the whole game. The tester's report was being
+ * offered the button and then refused by the server - the one pattern this
+ * client has already agreed not to use.
+ *
+ * @param {string} kind - Key into BUILD_COSTS
+ * @returns {string} - Empty when the table does play it
+ */
+function missingFromThisTableReason(kind) {
+    if (kind === 'dev_card' && getBoard()?.rules?.progress_cards === true) {
+        return 'This table uses progress cards, not development cards';
+    }
+    return '';
+}
+
+/**
  * Grey out every action the player cannot take, with the reason on hover.
  *
  * The setup phase is the one exception: the server dictates what goes down
@@ -979,7 +1003,8 @@ function updateAffordability() {
         if (!button) {
             return;
         }
-        if (inSetup) {
+        const missing = missingFromThisTableReason(kind);
+        if (inSetup && !missing) {
             button.disabled = false;
             button.title = hint;
             return;
