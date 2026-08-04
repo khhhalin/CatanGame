@@ -238,6 +238,30 @@ class TestAWallIsActuallyDrawn:
         assert gap > 2 * 16, f"neighbouring vertices are only {gap:.1f}px apart"
 
 
+class TestTheGhostShowsTheWallItWouldBuild:
+    """A wall used to preview as a plain blob, which said "here" but not what.
+
+    The ghost is drawn last of everything, so this also pins that a wall already
+    standing on the vertex cannot hide the preview of the next one.
+    """
+
+    def test_aiming_a_wall_previews_a_wall(self, table):
+        vertex = _inland_vertex(table)
+        _put(table, vertex, walled=False)
+        without = _sample(table, vertex)
+
+        with_ghost = table.page.evaluate(
+            RENDER_AND_SAMPLE.replace(
+                "window.BoardRenderer.render(board, 'board-canvas', null, null)",
+                "window.BoardRenderer.render(board, 'board-canvas', null, "
+                "{ kind: 'city_wall', key: vertexKey, color: '#ffffff' })",
+            ),
+            [vertex, [0, 0], WALL_PATCH],
+        )
+        changed = differing_pixels(without, with_ghost)
+        assert changed > 200, f"only {changed} pixels changed - no wall ghost is drawn"
+
+
 class TestItLooksRightToAHuman:
     """Screenshots are the point of this suite as much as the assertions are."""
 
