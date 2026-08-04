@@ -63,6 +63,7 @@ export const closeMonopolyModal = document.getElementById('close-monopoly-modal'
 export const noticeRegion = document.getElementById('notice-region');
 export const connectionStatus = document.getElementById('connection-status');
 export const robberIndicator = document.getElementById('robber-indicator');
+export const robberText = document.getElementById('robber-text');
 export const devDeckRemaining = document.getElementById('dev-deck-remaining');
 export const boardCanvas = document.getElementById('board-canvas');
 
@@ -91,6 +92,15 @@ export const knightHint = document.getElementById('knight-hint');
 export const buildKnightBtn = document.getElementById('build-knight-btn');
 export const moveKnightBtn = document.getElementById('move-knight-btn');
 export const buildWallBtn = document.getElementById('build-wall-btn');
+
+// Seafarers. Like the panels above, this one exists in the template but stays
+// hidden unless the running game has ships switched on.
+export const seafarersPanel = document.getElementById('seafarers-panel');
+export const seafarersChipValue = document.getElementById('seafarers-chip-value');
+export const buildShipBtn = document.getElementById('build-ship-btn');
+export const moveShipBtn = document.getElementById('move-ship-btn');
+export const shipHint = document.getElementById('ship-hint');
+export const islandPoints = document.getElementById('island-points');
 
 // The chip each folded subject collapses to. Its `-value` span is the summary
 // line the player reads without opening anything.

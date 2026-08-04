@@ -11,6 +11,7 @@ import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailabilit
 import { handleNameTaken, renderActiveRules, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
 import { displayError, logToGameConsole, showNotice } from './notices.js';
 import { offerVictimChoice, openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
+import { renderSeafarers } from './seafarers.js';
 import { setConnectionStatus, socket, socketAvailable } from './socket.js';
 import { applyBoardFacts, getBoard, getCurrentPlayer, getRole, isMyTurn, setRoster, viewState } from './state.js';
 import { noteServerClocks, updateTimers } from './timers.js';
@@ -86,6 +87,7 @@ socket.on('game_started', (data) => {
     // Commodities, improvements, knights and the barbarian clock - or nothing
     // at all, in a base game
     renderCitiesKnights();
+    renderSeafarers();
 
     // Show what the table agreed to before the game began
     renderActiveRules();
@@ -126,6 +128,7 @@ socket.on('game_state', (data) => {
         renderDevCards();
         renderActiveRules();
         renderCitiesKnights();
+        renderSeafarers();
     }
 
     // Set color picker to current user's color
@@ -158,6 +161,7 @@ socket.on('turn_changed', (data) => {
     renderResourcePanel();
     // Whose turn it is decides what every Cities & Knights button says
     renderCitiesKnights();
+    renderSeafarers();
     console.log('Turn changed. Current player:', data.current_player);
 
     // `turn_changed` carries the fresh clocks a fraction before the board
@@ -234,6 +238,7 @@ socket.on('board_updated', (data) => {
     updateTimers(data.board);
     renderActiveRules();
     renderCitiesKnights();
+    renderSeafarers();
     checkLogGap(data);
 
     // Clear highlight after 2 seconds if there was one
@@ -261,6 +266,7 @@ socket.on('event_die', (data) => {
         });
     }
     renderCitiesKnights();
+    renderSeafarers();
 });
 
 // The attack is resolved server-side inside `roll_dice` - there is no phase in

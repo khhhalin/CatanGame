@@ -201,6 +201,37 @@
                             </div>
                         </div>
 
+                        <!-- Seafarers. Hidden in a base game; the client
+                             unhides it only when the running game has ships
+                             on, and each control inside answers to its own
+                             rule (ship movement can be off with ships on). -->
+                        <div class="fold hidden sea-panel" id="seafarers-panel">
+                            <button type="button" class="fold-chip" id="seafarers-chip"
+                                    aria-expanded="false" aria-controls="seafarers-popover">
+                                <span class="fold-name">Seafarers</span>
+                                <span class="fold-value" id="seafarers-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="seafarers-popover"
+                                 role="dialog" aria-label="Seafarers">
+                                <div class="popover-head">
+                                    <span>Seafarers</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div class="popover-body">
+                                    <!-- Static so their listeners are registered
+                                         once; the client only rewrites their
+                                         labels and state. -->
+                                    <div class="ck-actions">
+                                        <button type="button" id="build-ship-btn" class="ck-action"></button>
+                                        <button type="button" id="move-ship-btn" class="ck-action"></button>
+                                    </div>
+                                    <div id="ship-hint" class="ck-note"></div>
+                                    <div id="island-points" class="ck-note hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="fold" id="dev-cards-panel">
                             <button type="button" class="fold-chip" id="dev-cards-chip"
                                     aria-expanded="false" aria-controls="dev-cards-popover">

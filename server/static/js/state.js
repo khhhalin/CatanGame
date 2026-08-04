@@ -32,14 +32,18 @@ export const viewState = {
     // role and colour are a request, and the roster above is the answer.
     identity: { name: null, requestedRole: null, color: null },
 
-    // 'settlement', 'road', 'city', or - with Cities & Knights on - 'knight',
-    // 'knight_move' and 'city_wall'. All of them mean the same thing: the next
-    // tap on the board is an intent, not a pan.
+    // 'settlement', 'road', 'city'; with Cities & Knights on - 'knight',
+    // 'knight_move' and 'city_wall'; with Seafarers on - 'ship' and
+    // 'ship_move'. All of them mean the same thing: the next tap on the board
+    // is an intent, not a pan.
     selectedBuilding: null,
 
     // First half of a knight move. A move is two taps, so the origin has to
     // survive between them.
     knightMoveFrom: null,
+
+    // The same for a ship move: the side the ship was picked up from.
+    shipMoveFrom: null,
 
     // What the pointer is over, and what a click has offered up for a ✓.
     // Both are `{kind, key, blocked}` or null. `sample` is the raw pointer

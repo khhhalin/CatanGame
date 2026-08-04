@@ -96,6 +96,12 @@ const GHOST_ALLOWED_COLOR = '#ecf0f1';
 const GHOST_BLOCKED_COLOR = '#e74c3c';
 const GHOST_RING_RADIUS = 14;
 
+// Which part of the board each placement aims at. Listed rather than tested
+// one kind at a time: the ghost, the ring and the anchor all have to agree on
+// the answer, and three separate `=== 'road'` checks is how they stop agreeing.
+const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move'];
+const HEX_GHOST_KINDS = ['robber', 'pirate'];
+
 // Cache of the last computed layout, keyed by board data identity.
 // This is a memo of a pure computation, not state that drawing writes to.
 let lastLayoutBoardData = null;
@@ -839,6 +845,152 @@ function drawRoad(ctx, x1, y1, x2, y2, playerColor) {
     ctx.stroke();
 }
 
+/* -------------------------------------------------------------------------
+ * Ships and the pirate (Seafarers)
+ *
+ * A ship lies on the same Edge object a road would, so the two have to be told
+ * apart by *shape*, not by where they are: a coastal side can carry either one,
+ * and a player who reads a ship as a road builds the wrong network for three
+ * turns before finding out. So a road stays what it always was - one solid bar
+ * of the owner's colour - and a ship is a thin lane with a little boat standing
+ * on it, hull in the owner's colour under a pale sail.
+ *
+ * The boat is drawn upright rather than turned along its edge, for the same
+ * reason the harbour labels are: a hull rotated onto the southern coastline is
+ * upside down, and an upside-down boat reads as debris.
+ *
+ * Every piece out here sits on open water, whose fill is a fixed dark blue in
+ * both themes, but a ship may also lie against a pale desert coast - and its
+ * hull is a colour the player picked, which may be either. So each shape
+ * carries a pale halo *and* a dark outline rather than one ink chosen for one
+ * background; that is separation from anything behind it and from any fill
+ * inside it, without a contrast test that could only be right about one of the
+ * two.
+ * ---------------------------------------------------------------------- */
+
+const SHIP_HALO = 'rgba(246, 249, 252, 0.95)';
+const SHIP_OUTLINE = '#0e141b';
+// The rulebook's pirate is a black ship. Nothing else on the board is this
+// colour, and the robber - a grey block - shares no part of its silhouette.
+const PIRATE_HULL = '#15191f';
+
+/**
+ * Trace a boat's hull, centred on (x, y).
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Waterline y
+ * @param {number} scale - Size multiplier, 1 is a player's ship
+ */
+function hullPath(ctx, x, y, scale) {
+    ctx.beginPath();
+    ctx.moveTo(x - 9 * scale, y);
+    ctx.lineTo(x + 9 * scale, y);
+    ctx.lineTo(x + 5.5 * scale, y + 5.5 * scale);
+    ctx.lineTo(x - 5.5 * scale, y + 5.5 * scale);
+    ctx.closePath();
+}
+
+/**
+ * Trace a boat's sail, centred on (x, y).
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Mast x
+ * @param {number} y - Waterline y
+ * @param {number} scale - Size multiplier
+ */
+function sailPath(ctx, x, y, scale) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.8 * scale, y - 11 * scale);
+    ctx.lineTo(x + 7.5 * scale, y - 1 * scale);
+    ctx.lineTo(x + 0.8 * scale, y - 1 * scale);
+    ctx.closePath();
+}
+
+/**
+ * Draw one boat: mast, sail and hull, haloed and outlined.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Waterline y
+ * @param {string} hullColor - Fill for the hull
+ * @param {string} sailColor - Fill for the sail
+ * @param {number} scale - Size multiplier
+ */
+function drawBoat(ctx, x, y, hullColor, sailColor, scale = 1) {
+    const paint = (trace, fill) => {
+        trace();
+        ctx.strokeStyle = SHIP_HALO;
+        ctx.lineWidth = 3.5 * scale;
+        ctx.stroke();
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = SHIP_OUTLINE;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+    };
+
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([]);
+
+    // The mast goes down first so both sails and hull overlap its ends.
+    ctx.strokeStyle = SHIP_OUTLINE;
+    ctx.lineWidth = 1.8 * scale;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 11.5 * scale);
+    ctx.lineTo(x, y + 1 * scale);
+    ctx.stroke();
+
+    paint(() => sailPath(ctx, x, y, scale), sailColor);
+    paint(() => hullPath(ctx, x, y, scale), hullColor);
+    ctx.restore();
+}
+
+/**
+ * Draw a ship on a sea edge.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} pos - Edge geometry {x1, y1, x2, y2, centerX, centerY}
+ * @param {string} playerColor - Colour of the ship's owner
+ */
+function drawShip(ctx, pos, playerColor) {
+    const color = playerColor || '#888888';
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.setLineDash([]);
+    // The shipping lane. Half a road's weight, so even the line alone says
+    // which of the two networks this side belongs to.
+    ctx.strokeStyle = SHIP_HALO;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(pos.x1, pos.y1);
+    ctx.lineTo(pos.x2, pos.y2);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(pos.x1, pos.y1);
+    ctx.lineTo(pos.x2, pos.y2);
+    ctx.stroke();
+    ctx.restore();
+
+    drawBoat(ctx, pos.centerX, pos.centerY + 2, color, SHIP_HALO, 1);
+}
+
+/**
+ * Draw the pirate on its sea hex.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} centerX - Hex centre x
+ * @param {number} centerY - Hex centre y
+ */
+function drawPirate(ctx, centerX, centerY) {
+    drawBoat(ctx, centerX, centerY + 6, PIRATE_HULL, PIRATE_HULL, 1.45);
+}
+
 /**
  * Compute the full board geometry from board data.
  * Pure: reads only boardData, touches no canvas and no module state, so hit
@@ -1125,6 +1277,24 @@ function boardToClient(canvas, boardX, boardY) {
  */
 function drawGhost(ctx, layout, preview) {
     const { vertexPositions, edgePositions, hexPositions } = layout;
+
+    // The origin half of a two-step ship move. Marked on the board rather than
+    // in a list, because unlike a knight a ship has no panel row to highlight -
+    // the only place a player can see which one they picked up is where it is.
+    if (preview.from && edgePositions[preview.from]) {
+        const origin = edgePositions[preview.from];
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = preview.color || GHOST_ALLOWED_COLOR;
+        ctx.beginPath();
+        ctx.arc(origin.centerX, origin.centerY, GHOST_RING_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+    if (!preview.key) {
+        return;
+    }
     // Blocked is a different *shape* as well as a different colour: a player
     // who cannot tell red from green still has to be able to tell "not allowed"
     // from "not a target".
@@ -1140,8 +1310,8 @@ function drawGhost(ctx, layout, preview) {
     // A dashed ring around the target, whatever the piece is. The piece art is
     // small and half-transparent; the ring is what says "this spot, not the
     // one next to it" at a glance.
-    if (preview.kind !== 'robber') {
-        const centre = preview.kind === 'road'
+    if (!HEX_GHOST_KINDS.includes(preview.kind)) {
+        const centre = EDGE_GHOST_KINDS.includes(preview.kind)
             ? edgePositions[preview.key]
             : vertexPositions[preview.key];
         if (centre) {
@@ -1158,15 +1328,19 @@ function drawGhost(ctx, layout, preview) {
         }
     }
 
-    if (preview.kind === 'road') {
+    if (EDGE_GHOST_KINDS.includes(preview.kind)) {
         const pos = edgePositions[preview.key];
         if (pos) {
             ctx.setLineDash([]);
-            drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
+            if (preview.kind === 'road') {
+                drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
+            } else {
+                drawShip(ctx, pos, color);
+            }
             ctx.setLineDash([5, 4]);
             markIfBlocked(ctx, preview, pos.centerX, pos.centerY);
         }
-    } else if (preview.kind === 'robber') {
+    } else if (HEX_GHOST_KINDS.includes(preview.kind)) {
         const pos = hexPositions[preview.key];
         if (pos) {
             const radius = BOARD_CONFIG.hexRadius - 2;
@@ -1187,6 +1361,12 @@ function drawGhost(ctx, layout, preview) {
             ctx.globalAlpha = 0.85;
             ctx.lineWidth = 3;
             ctx.stroke();
+            // Which piece is about to sail there, not just which hex: with the
+            // pirate in play a 7 offers two different moves and the outlined
+            // hex alone looks identical for both.
+            if (preview.kind === 'pirate') {
+                drawPirate(ctx, pos.x, pos.y);
+            }
             markIfBlocked(ctx, preview, pos.x, pos.y);
         }
     } else {
@@ -1333,7 +1513,15 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
         ctx.lineWidth = 1;
         ctx.strokeRect(robberX - robberSize/2, robberY - robberSize/2, robberSize, robberSize);
     }
-    
+
+    // The pirate. Null until somebody first moves it, so an untouched table
+    // with the rule on shows nothing at all.
+    if (boardData.pirate_hex && hexPositions[boardData.pirate_hex]) {
+        const piratePos = hexPositions[boardData.pirate_hex];
+        drawPirate(ctx, piratePos.x, piratePos.y);
+    }
+
+
     // Draw roads first so buildings appear on top
     // Note: Empty edges are not drawn (only clickable)
     for (const key in edges) {
@@ -1355,6 +1543,19 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (pos && edge.port) {
             drawHarbour(ctx, pos, edge.port, seawardFrom(edge, pos, hexPositions));
+        }
+    }
+
+    // Ships after the harbours: a harbour badge is fixed furniture that sits
+    // out in the water, and a player's own piece is what has to win where the
+    // two overlap. The badge still reads - its plank and mooring lines are on
+    // the coast, clear of any sea edge.
+    for (const key in edges) {
+        const edge = edges[key];
+        const pos = edgePositions[key];
+
+        if (pos && edge.ship) {
+            drawShip(ctx, pos, playerColors[edge.ship.player] || null);
         }
     }
 
@@ -1389,7 +1590,9 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     }
 
     // Last, so the ghost is never hidden under a piece already on the board
-    if (preview && preview.key) {
+    // `from` alone is a ship picked up and not yet aimed, which still has to be
+    // shown or the player cannot see what they are holding.
+    if (preview && (preview.key || preview.from)) {
         drawGhost(ctx, layout, preview);
     }
 
@@ -1494,6 +1697,7 @@ function findNearestVertex(boardData, clickX, clickY) {
     }
 
     const { vertexPositions, offsetX, offsetY } = layout;
+    const vertices = boardData.vertices || {};
     // Divided by scale so the target stays a constant size on screen: a fixed
     // board-space radius becomes unclickable when zoomed out.
     const radius = BOARD_CONFIG.clickRadius / camera.scale;
@@ -1502,6 +1706,16 @@ function findNearestVertex(boardData, clickX, clickY) {
     let nearestDist = Infinity;
 
     for (const key in vertexPositions) {
+        // Open water is not a place. With ships on, the graph is grown to cover
+        // the ocean ring, so most of the vertices in the payload are out at
+        // sea; the server lists only *land* hexes as a vertex's neighbours, so
+        // an empty list is exactly "no hex meets here". No piece may ever stand
+        // on one - the engine refuses every attempt - and offering one as a
+        // target is a click a player can only be told off for. In a base game
+        // the ocean carries no vertices at all, so this excludes nothing.
+        if (!(vertices[key]?.neighbors?.hexes || []).length) {
+            continue;
+        }
         const pos = vertexPositions[key];
         // Adjust for canvas offset
         const adjX = pos.x + offsetX;

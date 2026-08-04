@@ -1,6 +1,7 @@
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
 import { barbarianChipValue, barbarianDefense, barbarianLastAttack, barbarianPanel, barbarianStatus, barbarianTrack, buildKnightBtn, buildWallBtn, devCardsPanel, gameBoard, gameScreen, improvementTracks, improvementsChipValue, improvementsPanel, knightHint, knightList, knightsChipValue, knightsPanel, moveKnightBtn, placeRoadBtn, placeSettlementBtn, progressCardsChipValue, progressCardsPanel, progressHandDiv, upgradeCityBtn } from './dom.js';
 import { findMyPlayer } from './panels.js';
+import { syncSeaModeButtons } from './seafarers.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, viewState } from './state.js';
 
@@ -288,7 +289,9 @@ function toggleCkMode(mode) {
     });
     gameBoard.classList.toggle('placement-mode', Boolean(viewState.selectedBuilding));
 
+    // A Seafarers mode is a placement mode too: only one may ever be armed
     syncCkModeButtons();
+    syncSeaModeButtons();
     renderCitiesKnights();
 }
 

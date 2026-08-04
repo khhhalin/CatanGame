@@ -1814,6 +1814,14 @@ button:disabled {
     font-size: var(--text-sm);
 }
 
+/* The Seafarers fold is the same shape as the Cities & Knights ones - two
+   board-mode buttons, a hint and a note - so it wears their classes and needs
+   nothing here but the same type size. It is `.hidden` in the template and only
+   ever unhidden when the running game has ships on. */
+.sea-panel {
+    font-size: var(--text-sm);
+}
+
 /* A short explanation under a control: a cost, a reason a button is off, or
    what to tap next. */
 .ck-note {

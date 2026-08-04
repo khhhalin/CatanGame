@@ -8,6 +8,7 @@ import './board.js';
 import './lobby.js';
 import './panels.js';
 import './cities-knights.js';
+import './seafarers.js';
 import './trade.js';
 import './event-log.js';
 import './net.js';
@@ -33,5 +34,15 @@ window.__catanDebug = {
     getUser: () => viewState.identity.name,
     getRole,
     getCurrentPlayer,
-    isGameStarted: isGameRunning
+    isGameStarted: isGameRunning,
+    // What the next tap on the board would be an attempt at. A two-tap
+    // placement - a knight move, a ship move - has a half-finished state that
+    // nothing on screen names, so "it did nothing" and "it is waiting for the
+    // second tap" are indistinguishable from the outside without this.
+    getSelection: () => ({
+        mode: viewState.selectedBuilding,
+        knightMoveFrom: viewState.knightMoveFrom,
+        shipMoveFrom: viewState.shipMoveFrom,
+        pending: viewState.placement.pending
+    })
 };

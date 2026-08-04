@@ -16,6 +16,7 @@ import { markDirty } from './board.js';
 import { ckEnabled, handleCkVertexTap } from './cities-knights.js';
 import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
 import { emitGame } from './socket.js';
+import { handleShipEdgeTap, selectShipToMove } from './seafarers.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
 
 // Personal preference, so a name that cannot collide with a table setting.
@@ -39,7 +40,16 @@ const PLACEMENT_NOUNS = {
     city_wall: 'City wall',
     knight: 'Knight',
     knight_move: 'Knight move',
+    ship: 'Ship',
+    ship_move: 'Ship move',
+    pirate: 'Pirate',
 };
+
+// Which part of the board each kind snaps to. The renderer keeps the same two
+// lists for drawing; both are short and both would be wrong in the same way if
+// a kind were added to one and not the other.
+const EDGE_KINDS = ['road', 'ship', 'ship_move'];
+const HEX_KINDS = ['robber', 'pirate'];
 
 // What the announcement last said, so aiming at the same spot twice does not
 // repeat itself into the live region.
@@ -98,12 +108,49 @@ function currentPlacementKind() {
     if (!viewState.selectedBuilding) {
         return null;
     }
-    // Setup only accepts the piece the server is asking for next
-    if (getGamePhase() === 'setup'
-        && viewState.selectedBuilding !== (getBoard().setup_action || 'settlement')) {
-        return null;
+    // Setup only accepts the piece the server is asking for next - except that
+    // "a player who places a starting settlement on the coast may place a ship
+    // instead of a road next to that settlement", so where the server asks for
+    // a road a ship answers just as well.
+    if (getGamePhase() === 'setup') {
+        const wanted = getBoard().setup_action || 'settlement';
+        const answers = viewState.selectedBuilding === wanted
+            || (viewState.selectedBuilding === 'ship' && wanted === 'road');
+        if (!answers) {
+            return null;
+        }
     }
     return viewState.selectedBuilding;
+}
+
+/**
+ * Which armed mode a pinned target belongs to.
+ *
+ * The pirate is the one placement nothing arms: with the rule on, a 7 lets the
+ * roller move either piece and the hex they aim at decides which. So a pending
+ * pirate belongs to the robber mode, and without this the ✓ retires itself the
+ * frame after it appears.
+ *
+ * @param {string} kind - Placement kind of a pinned or hovered target
+ * @returns {string} - The mode that produced it
+ */
+function armedKindOf(kind) {
+    return kind === 'pirate' ? 'robber' : kind;
+}
+
+/**
+ * What the tap at this key is actually a move of.
+ *
+ * @param {string} kind - The armed mode
+ * @param {string} key - Board key the pointer snapped to
+ * @returns {string} - Placement kind
+ */
+function resolveKind(kind, key) {
+    if (kind === 'robber' && getBoard()?.rules?.pirate === true
+        && getBoard().hexes[key]?.type === 'ocean') {
+        return 'pirate';
+    }
+    return kind;
 }
 
 /**
@@ -117,10 +164,10 @@ function currentPlacementKind() {
 function snapToTarget(kind, clientX, clientY) {
     const board = getBoard();
     const position = window.BoardRenderer.clientToBoard(boardCanvas, clientX, clientY);
-    if (kind === 'robber') {
+    if (HEX_KINDS.includes(kind)) {
         return window.BoardRenderer.findNearestHex(board, position.x, position.y);
     }
-    if (kind === 'road') {
+    if (EDGE_KINDS.includes(kind)) {
         return window.BoardRenderer.findNearestEdge(board, position.x, position.y);
     }
     return window.BoardRenderer.findNearestVertex(board, position.x, position.y);
@@ -186,6 +233,55 @@ function roadConnects(board, edgeKey, me) {
 }
 
 /**
+ * Whether a ship could go here, as far as the client can tell.
+ *
+ * `edge.sea` is the server's own answer to "may a ship ever lie on this side",
+ * sent on every edge in every game. It is read rather than re-derived on
+ * purpose: working the geometry out again in JavaScript would be a second
+ * implementation of a rule, and the two would drift.
+ *
+ * @param {object} board - Board payload
+ * @param {string} edgeKey - Hex side being aimed at
+ * @param {string} me - This player's name
+ * @param {string|null} ignoring - A side being moved off, which must not hold
+ *                                 its own destination up
+ * @returns {boolean}
+ */
+function shipCanLie(board, edgeKey, me, ignoring) {
+    const edge = board.edges[edgeKey];
+    if (!edge || edge.sea !== true || edge.ship || edge.road) {
+        return false;
+    }
+    // The pirate blocks every side of the hex it sits on.
+    if (board.pirate_hex && (edge.neighbors.hexes || []).includes(board.pirate_hex)) {
+        return false;
+    }
+
+    const ends = edge.neighbors.vertices || [];
+    if (getGamePhase() === 'setup') {
+        // The setup ship must touch the settlement just placed, and which one
+        // that was is not in the payload - the same approximation the setup
+        // road makes.
+        return ends.some(key => board.vertices[key]?.building?.player === me);
+    }
+    // Own ships and own buildings only: a road at the same intersection does
+    // not extend a shipping route.
+    return ends.some(vertexKey => {
+        const vertex = board.vertices[vertexKey];
+        if (!vertex) {
+            return false;
+        }
+        if (vertex.building?.player === me) {
+            return true;
+        }
+        return (vertex.neighbors.edges || []).some(
+            other => other !== edgeKey && other !== ignoring
+                && board.edges[other]?.ship?.player === me
+        );
+    });
+}
+
+/**
  * Whether the server would refuse this placement, as far as the client can
  * tell.
  *
@@ -200,6 +296,24 @@ function isBlocked(kind, key) {
 
     if (kind === 'robber') {
         return board.hexes[key]?.type === 'ocean';
+    }
+
+    if (kind === 'pirate') {
+        return board.hexes[key]?.type !== 'ocean' || key === board.pirate_hex;
+    }
+
+    if (kind === 'ship') {
+        return !shipCanLie(board, key, me, null);
+    }
+
+    if (kind === 'ship_move') {
+        // First tap picks the ship up, second lays it down, so which one is
+        // being previewed depends on whether an origin is already held.
+        if (!viewState.shipMoveFrom) {
+            const ship = board.edges[key]?.ship;
+            return ship?.player !== me || ship?.built_turn === board.turn_count;
+        }
+        return !shipCanLie(board, key, me, viewState.shipMoveFrom);
     }
 
     if (kind === 'road') {
@@ -292,11 +406,18 @@ export function clearHover() {
  */
 export function currentPreview() {
     const target = viewState.placement.pending || viewState.placement.hover;
-    if (!target) {
+    if (!target && !viewState.shipMoveFrom) {
         return null;
     }
+    if (!target) {
+        // A ship picked up but not yet aimed: nothing to preview, but the
+        // player still has to be able to see which one is in their hand.
+        const held = getBoard()?.players?.find(p => p.name === viewState.identity.name);
+        return { kind: 'ship_move', key: null, blocked: false,
+                 color: held?.color || null, from: viewState.shipMoveFrom };
+    }
     const mine = getBoard()?.players?.find(player => player.name === viewState.identity.name);
-    return { ...target, color: mine?.color || null };
+    return { ...target, color: mine?.color || null, from: viewState.shipMoveFrom || null };
 }
 
 /**
@@ -308,7 +429,8 @@ export function updatePlacement() {
 
     // A turn change, a piece that landed, or a disarmed button: whatever the
     // selection was for is gone, so it must not stay pinned to the board.
-    if (viewState.placement.pending && viewState.placement.pending.kind !== kind) {
+    if (viewState.placement.pending
+        && armedKindOf(viewState.placement.pending.kind) !== kind) {
         viewState.placement.pending = null;
         markDirty();
     }
@@ -337,7 +459,8 @@ function updateHover(kind) {
     }
 
     const key = snapToTarget(kind, sample.x, sample.y);
-    const next = key ? { kind, key, blocked: isBlocked(kind, key) } : null;
+    const aimed = key ? resolveKind(kind, key) : null;
+    const next = key ? { kind: aimed, key, blocked: isBlocked(aimed, key) } : null;
 
     const same = Boolean(next) === Boolean(previous)
         && (!next || (next.key === previous.key && next.kind === previous.kind
@@ -379,14 +502,23 @@ export function handlePlacementTap(clientX, clientY) {
         return true;
     }
 
+    // Picking a ship up is the same: it is the *second* tap that moves it.
+    if (kind === 'ship_move' && !viewState.shipMoveFrom) {
+        selectShipToMove(key);
+        markDirty();
+        return true;
+    }
+
+    const aimed = resolveKind(kind, key);
+
     if (yoloMode) {
-        commit({ kind, key });
+        commit({ kind: aimed, key });
         return true;
     }
 
     // Aiming somewhere else with a confirmation up moves the selection. It
     // must not commit the old one - a click is never a ✓.
-    viewState.placement.pending = { kind, key, blocked: isBlocked(kind, key) };
+    viewState.placement.pending = { kind: aimed, key, blocked: isBlocked(aimed, key) };
     markDirty();
     return true;
 }
@@ -401,6 +533,12 @@ function commit(target) {
 
     if (target.kind === 'robber') {
         emitGame('move_robber', { name, hex: target.key });
+    } else if (target.kind === 'pirate') {
+        // Sent *instead of* move_robber, and answered with the same
+        // `choose_victim` the robber raises.
+        emitGame('move_pirate', { name, hex: target.key });
+    } else if (target.kind === 'ship' || target.kind === 'ship_move') {
+        handleShipEdgeTap(target.key);
     } else if (target.kind === 'settlement') {
         emitGame('place_settlement', { name, vertex: target.key });
     } else if (target.kind === 'road') {
@@ -574,9 +712,9 @@ function hideConfirmControl() {
 function anchorFor(pending) {
     const layout = window.BoardRenderer.computeLayout(getBoard());
     let position = null;
-    if (pending.kind === 'robber') {
+    if (HEX_KINDS.includes(pending.kind)) {
         position = layout.hexPositions[pending.key];
-    } else if (pending.kind === 'road') {
+    } else if (EDGE_KINDS.includes(pending.kind)) {
         const edge = layout.edgePositions[pending.key];
         position = edge ? { x: edge.centerX, y: edge.centerY } : null;
     } else {

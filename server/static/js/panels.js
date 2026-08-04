@@ -7,6 +7,7 @@ import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js
 import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
 import { displayError } from './notices.js';
 import { repositionPopover } from './popovers.js';
+import { isSeaMode, seaRule, syncSeaModeButtons } from './seafarers.js';
 import { emitGame } from './socket.js';
 import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVictims, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
 
@@ -80,8 +81,10 @@ placeSettlementBtn.addEventListener('click', () => {
         upgradeCityBtn.classList.remove('active');
         gameBoard.classList.add('placement-mode');
     }
-    // A Cities & Knights mode is a placement mode too: only one may be armed
+    // A Cities & Knights or Seafarers mode is a placement mode too: only one
+    // may be armed
     syncCkModeButtons();
+    syncSeaModeButtons();
 });
 
 /**
@@ -106,8 +109,10 @@ placeRoadBtn.addEventListener('click', () => {
         upgradeCityBtn.classList.remove('active');
         gameBoard.classList.add('placement-mode');
     }
-    // A Cities & Knights mode is a placement mode too: only one may be armed
+    // A Cities & Knights or Seafarers mode is a placement mode too: only one
+    // may be armed
     syncCkModeButtons();
+    syncSeaModeButtons();
 });
 
 /**
@@ -132,8 +137,10 @@ upgradeCityBtn.addEventListener('click', () => {
         placeRoadBtn.classList.remove('active');
         gameBoard.classList.add('placement-mode');
     }
-    // A Cities & Knights mode is a placement mode too: only one may be armed
+    // A Cities & Knights or Seafarers mode is a placement mode too: only one
+    // may be armed
     syncCkModeButtons();
+    syncSeaModeButtons();
 });
 
 /**
@@ -182,6 +189,12 @@ export function renderGameSidebar(data) {
     const harbormasterHolder = getBoard()?.harbormaster_holder || null;
     const harborPoints = getBoard()?.harbor_points || {};
 
+    // Island points are already inside victory_points. They are broken out here
+    // because a settlement that scores three points instead of one otherwise
+    // looks like an arithmetic error on everyone else's scoreboard.
+    const islandsOn = seaRule('island_victory_points');
+    const islandPointsByPlayer = getBoard()?.island_points || {};
+
     players.forEach(name => {
         const li = document.createElement('li');
         
@@ -200,6 +213,7 @@ export function renderGameSidebar(data) {
         // Same treatment as longest road / largest army, but only when on
         const harborIndicator = harbormasterOn && name === harbormasterHolder ? ' ⚓' : '';
         const harborSegment = harbormasterOn ? ` · Hb ${harborPoints[name] || 0}` : '';
+        const islandSegment = islandsOn ? ` · 🏝️${islandPointsByPlayer[name] || 0}` : '';
 
         // Hands are hidden: the server sends counts only, for every player
         const resourceCount = playerData?.resource_count ?? 0;
@@ -232,7 +246,7 @@ export function renderGameSidebar(data) {
 
         const meta = document.createElement('div');
         meta.className = 'score-meta';
-        meta.textContent = `Rd ${roadLength} · Kn ${knights}${harborSegment}`
+        meta.textContent = `Rd ${roadLength} · Kn ${knights}${harborSegment}${islandSegment}`
             + ` · 🎴${resourceCount}${commoditySegment} · 📜${devCardCount}`;
 
         li.appendChild(head);
@@ -766,8 +780,13 @@ export function updateGameUI(boardData) {
         const setupAction = boardData.setup_action || 'settlement';
         
         if (isMyTurn()) {
-            // Auto-select the required building type
-            viewState.selectedBuilding = setupAction;
+            // Auto-select the required building type. A ship the player armed
+            // themselves survives, because the rulebook lets one replace the
+            // starting road beside a coastal settlement.
+            viewState.selectedBuilding =
+                (setupAction === 'road' && viewState.selectedBuilding === 'ship')
+                    ? 'ship'
+                    : setupAction;
             gameBoard.classList.add('placement-mode');
             
             // Update button states
@@ -810,7 +829,7 @@ export function updateGameUI(boardData) {
         // A Cities & Knights mode is left armed: a knight move takes two taps
         // and someone else's trade landing between them would otherwise disarm
         // the board halfway through it.
-        if (!isCkMode(viewState.selectedBuilding)) {
+        if (!isCkMode(viewState.selectedBuilding) && !isSeaMode(viewState.selectedBuilding)) {
             viewState.selectedBuilding = null;
             gameBoard.classList.remove('placement-mode');
         }
@@ -835,6 +854,7 @@ export function updateGameUI(boardData) {
     updateAffordability();
     renderTurnIndicator();
     syncCkModeButtons();
+    syncSeaModeButtons();
 
     // A payload can change how tall an open popover's contents are; it is
     // pinned in viewport coordinates, so it has to be re-pinned rather than
@@ -969,8 +989,10 @@ export function updateConsoleVisibility() {
     placeSettlementBtn.classList.remove('active');
     placeRoadBtn.classList.remove('active');
     upgradeCityBtn.classList.remove('active');
+    viewState.shipMoveFrom = null;
     gameBoard.classList.remove('placement-mode');
     syncCkModeButtons();
+    syncSeaModeButtons();
 }
 
 /**
