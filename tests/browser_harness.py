@@ -27,6 +27,9 @@ SHOT_DIR = os.path.join(REPO, "test-artifacts", "browser")
 
 VIDEO_DIR = os.path.join(REPO, "test-artifacts", "video")
 
+# Each test server's own log. See start_server for why it is not a pipe.
+LOG_DIR = os.path.join(REPO, "test-artifacts", "server-logs")
+
 RESOURCES = ('wood', 'brick', 'sheep', 'wheat', 'ore')
 
 # Watching the tests is the point of testing in a browser, so make it easy:
@@ -87,12 +90,21 @@ def start_server(data_dir, seed=None, config="development"):
     # stalled a player short of winning, on identical code.
     if seed is not None:
         env["CATAN_SEED"] = str(seed)
+    # The server's own log, to a file rather than a pipe. Nothing reads the
+    # pipe, so a long game fills the kernel buffer and the worker blocks inside
+    # a log call — a five-minute run had one killed and restarted underneath it,
+    # which arrives in the browser as ERR_CONNECTION_REFUSED and in the test as
+    # nonsense. A file also leaves the log where a human can read it afterwards.
+    os.makedirs(LOG_DIR, exist_ok=True)
+    log = open(os.path.join(LOG_DIR, f"server-{port}.log"), "w")
     proc = subprocess.Popen(
         [sys.executable, "-m", "gunicorn", "-w", "1", "--threads", "50",
          "-b", f"127.0.0.1:{port}", "wsgi:app"],
         cwd=SERVER_DIR, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        stdout=log, stderr=subprocess.STDOUT, text=True,
     )
+    # Closed by stop_server, which is the only thing that knows the run is over.
+    proc.log_file = log
 
     for _ in range(100):
         try:
@@ -113,6 +125,9 @@ def stop_server(proc):
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         proc.kill()
+    log = getattr(proc, "log_file", None)
+    if log is not None:
+        log.close()
 
 
 # Personal, per-browser preference: a click places outright instead of raising

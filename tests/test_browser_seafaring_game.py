@@ -176,11 +176,6 @@ def roads_of(board, name):
     )
 
 
-def actor_of(players):
-    board = players[0].board()
-    return next(p for p in players if p.name == board["current_player"])
-
-
 # --- The lobby -------------------------------------------------------------
 
 
