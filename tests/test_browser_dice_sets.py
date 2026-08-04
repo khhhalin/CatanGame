@@ -327,18 +327,14 @@ def a_city_was_paid(player, total):
 
 
 class TestAModifierThatBitesSaysSo:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="the roll carries no record of which modifiers fired: the dice "
-               "log entry needs details['modifiers'] = the rule ids of the "
-               "modifiers that changed a value while resolving it",
-    )
     def test_a_roll_epidemic_cut_names_the_rule_in_the_log(self, epidemic_table):
         """Epidemic is silent by construction: the roll reads like any other.
 
-        Fails today because nothing on the wire says a modifier fired, and the
-        client will not guess — recomputing the rule in JavaScript is a second
-        implementation free to disagree with the one that was applied.
+        Written as a strict xfail while nothing on the wire said a modifier had
+        fired — the client would not guess, because recomputing the rule in
+        JavaScript is a second implementation free to disagree with the one
+        that was applied. `details['modifiers']` now carries it, so the marker
+        is gone and this holds the behaviour instead of waiting for it.
         """
         alice, bob = epidemic_table
         by_name = {"Alice": alice, "Bob": bob}
