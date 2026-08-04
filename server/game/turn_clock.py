@@ -1,4 +1,4 @@
-"""Turn order and the two server-side clocks.
+"""Turn order and the server-side clock, one phase at a time.
 
 Split out of `game.py` alongside the other rules mixins; see `board.py` for the
 pattern. The clocks are server-owned on purpose — a client that owns the timer
@@ -102,35 +102,112 @@ class TurnClock:
 
         return self.players[self.current_player_index].name
 
+    def _timer_limit(self, rule_id: str, config, config_attr: str, fallback: int) -> int:
+        """How long one clock runs: the table's number, or this server's.
+
+        Zero is the catalogue default for every clock and means "leave it to
+        the server", which is what keeps a deployment's own configuration —
+        and a test run's one-second clocks — in force for a table that never
+        opened the setting.
+        """
+        return self.rules[rule_id] or getattr(config, config_attr, fallback)
+
+    def timer_limit_for(self, phase: str) -> int | None:
+        """How long the clock for one phase runs, or None if there is none."""
+        return {
+            'dice': self.dice_roll_time_limit,
+            'discard': self.discard_time_limit,
+            'robber': self.robber_time_limit,
+            'choice': self.choice_time_limit,
+            'turn': self.round_time_limit,
+        }.get(phase)
+
+    def _phase_now(self) -> str | None:
+        """The phase the game is in this instant, whatever the clock says.
+
+        Ordered by what actually blocks the table: nothing can be built or
+        traded while a 7 is unpaid, the robber is refused until every discard
+        is in, and a pending choice freezes everyone including the player whose
+        turn it is not.
+        """
+        if self.game_state != 'started' or self.game_phase == 'setup':
+            return None
+        if self.players_needing_discard:
+            return 'discard'
+        if self.must_move_robber or self.must_choose_victim:
+            return 'robber'
+        if self.pending_choices:
+            return 'choice'
+        if not self.has_rolled_dice:
+            return 'dice'
+        return 'turn'
+
+    def timer_phase(self) -> str | None:
+        """Which clock is running, restarting it when the phase has changed.
+
+        Worked out from the game's own state rather than started by hand: every
+        rule that can open a discard, a robber move or a decision would
+        otherwise have to remember to start a clock for it, and the one that
+        forgot would hand the next phase a clock that had already run out.
+        """
+        phase = self._phase_now()
+        if phase != self.clock_phase:
+            self.clock_phase = phase
+            self.clock_started_time = time.time()
+        return phase
+
+    def timer_remaining(self) -> int | None:
+        """Seconds left on the running clock, or None when none is running."""
+        phase = self.timer_phase()
+        if phase is None:
+            return None
+        # A pending choice carries its own deadline, because a choice can be
+        # opened while another phase's clock is already running and it is often
+        # owed by a player whose turn it is not.
+        if phase == 'choice':
+            deadline = min(choice['deadline'] for choice in self.pending_choices)
+            return max(0, int(deadline - time.time()))
+        limit = self.timer_limit_for(phase)
+        return max(0, limit - int(time.time() - self.clock_started_time))
+
+    def timer_expired(self) -> bool:
+        """Whether the running clock has run out."""
+        remaining = self.timer_remaining()
+        return remaining is not None and remaining <= 0
+
+    def timer_state(self) -> dict:
+        """The running clock, for the client to count down against."""
+        phase = self.timer_phase()
+        return {
+            'phase': phase,
+            'remaining': self.timer_remaining(),
+            'limit': self.timer_limit_for(phase),
+        }
+
     def get_dice_roll_time_remaining(self) -> int:
-        """Get seconds remaining for dice roll."""
-        if self.turn_start_time is None or self.has_rolled_dice:
+        """Seconds left to roll. Full time once the dice are up."""
+        if self.timer_phase() != 'dice':
             return self.dice_roll_time_limit
-        elapsed = time.time() - self.turn_start_time
-        return max(0, self.dice_roll_time_limit - int(elapsed))
+        return self.timer_remaining()
 
     def get_round_time_remaining(self) -> int:
-        """Get seconds remaining for round (starts after dice roll)."""
-        if self.turn_start_time is None:
+        """Seconds left in the turn proper.
+
+        Full time until it starts, which is only once the roll and anything it
+        caused — a discard, a robber move — has been settled. Those have clocks
+        of their own now, so a slow discard no longer costs a player their turn.
+        """
+        if self.timer_phase() != 'turn':
             return self.round_time_limit
-        # If dice not rolled yet, return full time (will be shown as "-")
-        if not self.has_rolled_dice:
-            return self.round_time_limit
-        # Calculate from dice roll time
-        if self.dice_rolled_time is None:
-            return self.round_time_limit
-        elapsed = time.time() - self.dice_rolled_time
-        return max(0, self.round_time_limit - int(elapsed))
+        return self.timer_remaining()
 
     def is_dice_roll_expired(self) -> bool:
         """Check if dice roll time has expired."""
-        if self.has_rolled_dice:
-            return False
-        return self.get_dice_roll_time_remaining() <= 0
+        return self.timer_phase() == 'dice' and self.timer_expired()
 
     def is_round_expired(self) -> bool:
-        """Check if round time has expired."""
-        return self.get_round_time_remaining() <= 0
+        """Check if the turn proper has run out of time."""
+        return self.timer_phase() == 'turn' and self.timer_expired()
 
     def set_dice_rolled(self):
         """Mark that dice has been rolled."""

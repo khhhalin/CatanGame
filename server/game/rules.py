@@ -322,6 +322,46 @@ RULES += [
 ]
 
 
+# --- The clocks ---------------------------------------------------------
+# One clock per phase of a turn, all of them the table's to set. Zero is not
+# "no limit" — it means "whatever this server is configured with", which is
+# what a table that never opened these settings gets. Nothing here is a
+# rulebook number: the physical game has no clock at all, and these exist
+# because an online table cannot wait for a player who closed their laptop.
+RULES += [
+    _int("dice_timer_seconds", "Dice roll clock", 0, 0, 600,
+         "No published rule: an online table's replacement for a player who "
+         "has walked away from the table",
+         "How long a player has to roll before the server rolls for them. "
+         "0 keeps this server's own default."),
+    _int("discard_timer_seconds", "Discard clock", 0, 0, 600,
+         "No published rule; the discard itself is base game rulebook (a 7 "
+         "costs every hand over the limit half its cards)",
+         "How long a player has to hand back half their hand after a 7 "
+         "before the server discards at random for them. 0 keeps this "
+         "server's own default."),
+    _int("robber_timer_seconds", "Robber clock", 0, 0, 600,
+         "No published rule; the move itself is base game rulebook (the "
+         "robber is moved to another hex and one card is stolen)",
+         "How long the roller of a 7 has to move the robber and pick a "
+         "victim before the server does it for them. 0 keeps this server's "
+         "own default."),
+    _int("turn_timer_seconds", "Turn clock", 0, 0, 3600,
+         "No published rule: an online table's replacement for a player who "
+         "has walked away from the table",
+         "How long the rest of a turn lasts once the roll — and any discard "
+         "and robber move it caused — is settled. 0 keeps this server's own "
+         "default."),
+    _int("choice_timer_seconds", "Decision clock", 0, 0, 600,
+         "No published rule; the decisions themselves are the rules that ask "
+         "for them (which city the barbarians sack, which card a Wedding "
+         "takes)",
+         "How long a player has to answer a decision the engine stopped to "
+         "ask for before the server answers it for them. 0 keeps this "
+         "server's own default."),
+]
+
+
 # --- Base-game variants -------------------------------------------------
 RULES += [
     _bool("longest_road_card", "Longest Road card", True,

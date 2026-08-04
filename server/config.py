@@ -19,8 +19,13 @@ class Config:
     MAX_PLAYERS = 4
     MIN_PLAYERS = 2
     VICTORY_POINTS_TO_WIN = 10
+    # One clock per phase of a turn. These are the fallbacks: a table that sets
+    # the matching rule in the lobby plays to its number instead.
     DICE_ROLL_SECONDS = 15
+    DISCARD_SECONDS = 60
+    ROBBER_SECONDS = 60
     ROUND_SECONDS = 120
+    CHOICE_SECONDS = 30
 
     # Fix the shuffles and the dice to a reproducible sequence. Unset in
     # normal play; set it to replay a game exactly, which is what makes an
@@ -60,6 +65,12 @@ class DevelopmentConfig(Config):
 class TestingConfig(DevelopmentConfig):
     TESTING = True
     DICE_ROLL_SECONDS = 1
+    # The discard and robber clocks were the round clock's job before they were
+    # split out, so they keep its two seconds here. The decision clock is left
+    # at the shared default: a browser test clicks a dialog at human speed, and
+    # two seconds would answer it first.
+    DISCARD_SECONDS = 2
+    ROBBER_SECONDS = 2
     ROUND_SECONDS = 2
 
 

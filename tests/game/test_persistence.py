@@ -248,6 +248,34 @@ class TestRulesSurvive:
         assert after.rules['dice_set'] == 'standard'
         assert after.rules['epidemic'] is False
 
+    def test_the_clocks_the_table_set_come_back(self, tmp_path):
+        game = a_game({'discard_timer_seconds': 45, 'robber_timer_seconds': 40,
+                       'starting_city_yield': 'resource_only'})
+        after = round_trip(game, tmp_path)
+        assert after.discard_time_limit == 45
+        assert after.robber_time_limit == 40
+        assert after.rules['starting_city_yield'] == 'resource_only'
+
+    def test_a_save_from_before_the_clocks_keeps_the_servers_own(self, tmp_path):
+        """An old save names no clock at all, and must not invent one: the
+        game comes back on whatever this server is configured with."""
+        path = str(tmp_path / "game.json")
+        persistence.save(a_game(), path)
+        with open(path) as handle:
+            data = json.load(handle)
+        for rule_id in ('dice_timer_seconds', 'discard_timer_seconds',
+                        'robber_timer_seconds', 'turn_timer_seconds',
+                        'choice_timer_seconds'):
+            del data['rules'][rule_id]
+        with open(path, 'w') as handle:
+            json.dump(data, handle)
+
+        class Config:
+            DISCARD_SECONDS = 33
+
+        after = persistence.load(path, config=Config)
+        assert after.discard_time_limit == 33
+
 
 class TestCitiesKnightsSurvives:
     def test_improvements_come_back(self, tmp_path):

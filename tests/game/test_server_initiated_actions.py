@@ -36,10 +36,16 @@ def events(client, name):
     return [msg['args'][0] for msg in client.get_received() if msg['name'] == name]
 
 
+def run_out_the_clock(game):
+    """Back-date the running clock so this pass of the watchdog expires it."""
+    game.timer_phase()  # latch the phase the game is in, then run it out
+    game.clock_started_time = time.time() - game.timer_limit_for(game.clock_phase) - 1
+
+
 class TestTheWatchdogNeedsNoSeat:
     def test_an_expired_dice_timer_rolls_for_the_absent_player(self, playing_clients):
         alice, bob, game = playing_clients
-        game.turn_start_time = time.time() - game.dice_roll_time_limit - 1
+        run_out_the_clock(game)
 
         turns._watchdog_tick()
 
@@ -51,9 +57,61 @@ class TestTheWatchdogNeedsNoSeat:
         alice, _bob, game = playing_clients
         before = game.players[game.current_player_index].name
         game.set_dice_rolled()
-        game.dice_rolled_time = time.time() - game.round_time_limit - 1
+        run_out_the_clock(game)
 
         turns._watchdog_tick()
 
         assert game.players[game.current_player_index].name != before
         assert events(alice, 'turn_changed')
+
+
+class TestEachClockExpiresItsOwnPhase:
+    """The watchdog once `continue`d on a pending robber, so a turn could never
+    end and the flag leaked into the next player's turn. Each phase now has a
+    clock of its own and one pass expires exactly the one that is running."""
+
+    @pytest.fixture
+    def seven_rolled(self, playing_clients):
+        alice, bob, game = playing_clients
+        game.set_dice_rolled()
+        game.get_player('Bob').resources = {'wood': 5, 'ore': 5}
+        game.check_discard_required()
+        game.must_move_robber = True
+        return alice, bob, game
+
+    def test_the_discard_clock_discards_and_leaves_the_robber_alone(self, seven_rolled):
+        alice, _bob, game = seven_rolled
+        run_out_the_clock(game)
+
+        turns._watchdog_tick()
+
+        assert game.players_needing_discard == {}
+        assert game.get_player('Bob').total_cards() == 5
+        assert game.must_move_robber, "the robber has a clock of its own to run"
+        assert events(alice, 'discard_completed')
+
+    def test_the_robber_clock_settles_the_robber_and_not_the_turn(self, seven_rolled):
+        _alice, _bob, game = seven_rolled
+        before = game.players[game.current_player_index].name
+        game.players_needing_discard = {}
+        run_out_the_clock(game)
+
+        turns._watchdog_tick()
+
+        assert not game.must_move_robber
+        assert not game.must_choose_victim
+        assert game.players[game.current_player_index].name == before, \
+            "the robber's clock is not the turn's"
+
+    def test_the_turn_clock_only_runs_once_nothing_is_pending(self, seven_rolled):
+        """The whole sequence, one pass each: discard, robber, then the turn."""
+        _alice, _bob, game = seven_rolled
+        before = game.players[game.current_player_index].name
+
+        for _ in range(3):
+            run_out_the_clock(game)
+            turns._watchdog_tick()
+
+        assert game.players[game.current_player_index].name != before
+        assert not game.must_move_robber, "and nothing leaked into the next turn"
+        assert game.players_needing_discard == {}

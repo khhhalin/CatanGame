@@ -59,6 +59,7 @@ def _announce_turn(current_player_name):
             'current_player': current_player_name,
             'dice_roll_time': session.game.get_dice_roll_time_remaining(),
             'round_time': session.game.get_round_time_remaining(),
+            'timer': session.game.timer_state(),
             'has_rolled_dice': session.game.has_rolled_dice,
         },
     )
@@ -271,12 +272,11 @@ def handle_refresh_board(data=None):
     emit('board_updated', {'board': session.game.get_board_data(viewer=viewer_for())})
 
 
-def _resolve_on_timeout():
-    """Settle the discards and the robber the round timer left hanging.
+def _resolve_discards_on_timeout():
+    """Discard for everyone the discard clock left hanging.
 
-    Caller holds session.lock. Afterwards nothing is pending, so the turn ends
-    through the ordinary path and a late `move_robber` is refused rather than
-    landing on the next player's turn.
+    Caller holds session.lock. A 7 blocks the robber, every build and every
+    trade until the last card is in, so this is settled rather than skipped.
     """
     game = state.session().game
 
@@ -290,8 +290,15 @@ def _resolve_on_timeout():
         )
         socketio.emit('discard_completed', {'player': player_name})
 
-    if not (game.must_move_robber or game.must_choose_victim):
-        return
+
+def _resolve_robber_on_timeout():
+    """Move the robber and steal for a player who never did.
+
+    Caller holds session.lock. Afterwards nothing is pending, so the turn ends
+    through the ordinary path and a late `move_robber` is refused rather than
+    landing on the next player's turn.
+    """
+    game = state.session().game
 
     outcome = game.auto_resolve_robber()
     logger.info("robber timer expired, resolved automatically: %s", outcome)
@@ -341,45 +348,41 @@ def _watchdog_tick():
     # outlives any single session.
     session = state.session()
     with session.lock:
-        if session.game is None or session.game.game_state != "started":
+        game = session.game
+        if game is None or game.game_state != "started":
             return
-        if session.game.game_phase == "setup":
-            return
+
+        # Exactly one clock runs at a time and this pass expires only that one.
         # An unfinished robber or discard used to park the watchdog here for
-        # good: those flags block every other action, so the turn could never
-        # end and the table stopped. Give the player the rest of their round,
-        # then settle it for them.
-        if (
-            session.game.must_move_robber
-            or session.game.must_choose_victim
-            or session.game.players_needing_discard
-        ):
-            if not session.game.is_round_expired():
-                return
-            _resolve_on_timeout()
+        # good — it `continue`d while either was pending, so the turn could
+        # never end and the flag leaked into the next player's turn. Now the
+        # phase says which clock to expire, resolving it clears the phase, and
+        # the next pass picks up whatever the game moved on to.
+        phase = game.timer_phase()
+        if phase is None or not game.timer_expired():
+            return
 
-        # A pending choice keeps its own clock rather than borrowing the
-        # round's: it can be owed by a player whose turn it is not, and the
-        # round timer does not even run before the dice are up, which would
-        # have parked the watchdog here exactly as before.
-        if session.game.pending_choices:
-            if not session.game.choices_expired():
-                return
-            _resolve_choices_on_timeout()
+        current_player = game.players[game.current_player_index]
 
-        current_player = session.game.players[session.game.current_player_index]
-
-        # Auto-roll first: a turn cannot advance before the dice are up.
-        if not session.game.has_rolled_dice and session.game.is_dice_roll_expired():
+        if phase in ('discard', 'robber', 'choice'):
+            if phase == 'discard':
+                _resolve_discards_on_timeout()
+            elif phase == 'robber':
+                _resolve_robber_on_timeout()
+            else:
+                _resolve_choices_on_timeout()
+            # Hands, the robber and whatever a choice settled all changed with
+            # nobody clicking anything, so the table is told without waiting
+            # for the next action to carry it.
+            bump_and_broadcast()
+        elif phase == 'dice':
             logger.info("dice timer expired, auto-rolling for %s", current_player.name)
-            result = session.game.roll_dice(current_player.name)
+            result = game.roll_dice(current_player.name)
             if result['success']:
                 _announce_dice_roll(current_player.name, result)
-            return
-
-        if session.game.has_rolled_dice and session.game.is_round_expired():
-            logger.info("round timer expired, advancing past %s", current_player.name)
-            _announce_turn(session.game.force_advance_turn())
+        elif phase == 'turn':
+            logger.info("turn timer expired, advancing past %s", current_player.name)
+            _announce_turn(game.force_advance_turn())
 
 
 def _turn_watchdog():

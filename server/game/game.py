@@ -137,13 +137,30 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Discard half mechanic
         self.players_needing_discard = {}  # player_name -> amount to discard
 
-        # Timer settings (in seconds)
-        self.dice_roll_time_limit = getattr(config, 'DICE_ROLL_SECONDS', 15)
-        self.round_time_limit = getattr(config, 'ROUND_SECONDS', 120)
+        # One clock per phase of a turn, in seconds. The table sets them in the
+        # lobby; a rule left at 0 means "whatever this server is configured
+        # with", which is how a deployment keeps its own defaults and how a
+        # test run keeps its one-second clocks.
+        self.dice_roll_time_limit = self._timer_limit('dice_timer_seconds',
+                                                      config, 'DICE_ROLL_SECONDS', 15)
+        self.discard_time_limit = self._timer_limit('discard_timer_seconds',
+                                                    config, 'DISCARD_SECONDS', 60)
+        self.robber_time_limit = self._timer_limit('robber_timer_seconds',
+                                                   config, 'ROBBER_SECONDS', 60)
+        self.round_time_limit = self._timer_limit('turn_timer_seconds',
+                                                  config, 'ROUND_SECONDS', 120)
         # How long a player has to answer a pending choice before the server
         # answers it for them. Shorter than a round: the whole table is frozen
         # while one player decides, and often it is not even their turn.
-        self.choice_time_limit = getattr(config, 'CHOICE_SECONDS', 30)
+        self.choice_time_limit = self._timer_limit('choice_timer_seconds',
+                                                   config, 'CHOICE_SECONDS', 30)
+
+        # Which clock is running and when it started. Both are worked out from
+        # the game's own state on demand (see `TurnClock.timer_phase`), so a
+        # rule that opens a discard or a robber move does not have to remember
+        # to start a clock for it.
+        self.clock_phase = None
+        self.clock_started_time = None
 
         # Decisions the engine has stopped to ask for — see
         # `game/pending_choice.py`. Each entry names the kind of decision, the
@@ -865,6 +882,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'players_needing_discard': self.players_needing_discard,
             'dice_roll_time': self.get_dice_roll_time_remaining(),
             'round_time': self.get_round_time_remaining(),
+            # Which clock is actually running and how much of it is left. The
+            # two fields above are one phase each and say nothing while a
+            # discard or a robber move is holding the table up.
+            'timer': self.timer_state(),
             'has_rolled_dice': self.has_rolled_dice,
             'turn_count': self.turn_count,
             'free_roads_remaining': self.free_roads_remaining,
