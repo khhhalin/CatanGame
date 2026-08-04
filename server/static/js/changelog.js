@@ -276,9 +276,10 @@ export function renderChangelog(payload) {
 }
 
 /**
- * Whether the panel is open. Exported for the debug hook only.
+ * Whether the panel is open. `aria-expanded` is the single answer - a local
+ * flag beside it is a second one waiting to disagree.
  */
-export function isChangelogOpen() {
+function isChangelogOpen() {
     return toggle.getAttribute('aria-expanded') === 'true';
 }
 
