@@ -66,7 +66,12 @@ class TestAutoResolveRobber:
         game.vertices[vertex_key].building = {'type': 'settlement', 'player': 'Bob'}
         game.get_player('Bob').settlements.append(vertex_key)
         game.get_player('Bob').resources = {'ore': 1}
-        game.robber_hex = target
+        # Somewhere else to start from: the robber may not be moved onto the
+        # hex it already stands on.
+        game.robber_hex = next(
+            key for key, hex_obj in game.hexes.items()
+            if hex_obj.type != 'ocean' and key != target
+        )
 
         # The robber never stays put, so aim it by hand and resolve the steal.
         game.move_robber(game.players[game.current_player_index].name, target)

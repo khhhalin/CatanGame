@@ -45,6 +45,16 @@ class RobberRules:
         if hex_obj.type == 'ocean':
             return refused('INVALID_TARGET', 'Cannot place robber on ocean')
 
+        # The robber is *moved*, so the hex it already stands on is not an
+        # answer: leaving it put keeps its neighbours blocked and costs the
+        # roller nothing. `_auto_robber_hex` has always excluded it; only the
+        # player-driven path let it through.
+        if hex_key == self.robber_hex:
+            return refused(
+                'ROBBER_MUST_MOVE',
+                'The robber must be moved to a different hex than the one it is on',
+            )
+
         # Friendly Robber, when enabled, protects anyone still on 2 victory points.
         if not self.robber_is_allowed(hex_key):
             return refused(

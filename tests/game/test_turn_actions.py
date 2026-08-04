@@ -81,6 +81,23 @@ class TestMovingTheRobber:
         assert playing_game.robber_hex == hex_key
         assert playing_game.must_move_robber is False
 
+    def test_the_robber_may_not_stay_where_it_is(self, playing_game):
+        """Reported: "robber stands on 0,3,-3; move_robber to that same hex ->
+        accepted".
+
+        The robber must be moved to another hex, so a player who owes the move
+        cannot answer it by naming the hex it already sits on and leaving every
+        neighbour paying as before.
+        """
+        hex_key = a_land_hex(playing_game)
+        playing_game.robber_hex = hex_key
+        playing_game.must_move_robber = True
+
+        result = playing_game.move_robber(acting(playing_game), hex_key)
+
+        assert result['code'] == 'ROBBER_MUST_MOVE'
+        assert playing_game.must_move_robber is True
+
     def test_a_neighbouring_opponent_becomes_a_victim(self, playing_game):
         playing_game.must_move_robber = True
         name = acting(playing_game)
