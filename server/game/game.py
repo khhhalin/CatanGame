@@ -405,8 +405,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         lets a road start at one of your own settlements or cities, and looking
         only for an adjacent road refused that placement outright.
 
-        An opponent's knight holds the intersection it stands on, so the
-        network does not run through it (expansions.md 389).
+        An opponent holds any intersection they have built on, so the network
+        does not run through it — the base-game rule a knight is modelled on
+        (expansions.md 389 for the knight). Without this the engine was
+        inconsistent: a knight blocked a road and the settlement the rule is
+        named after did not.
         """
         edge = self.edges.get(edge_key)
         if edge is None:
@@ -415,7 +418,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             vertex = self.vertices.get(vertex_key)
             if vertex is None or self.knight_blocks(player_name, vertex_key):
                 continue
-            if vertex.building and vertex.building.get('player') == player_name:
+            if vertex.building:
+                # Their intersection, their block; yours is what a road starts
+                # from. Either way the walk stops here.
+                if vertex.building.get('player') != player_name:
+                    continue
                 return True
             for connected_key in vertex.neighbors.get('edges', []):
                 if connected_key == edge_key:
