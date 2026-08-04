@@ -92,6 +92,8 @@ never a half-drawn panel.
 - **Fixed** The event die is announced with the roll rather than at the turn boundary, so the barbarian track stops looking frozen for a whole turn.
 - **Fixed** The barbarians say what they did, and the Trade button is greyed out rather than disappearing when it cannot be used.
 - **Fixed** A popover no longer opens on top of the control that opens it, which made opening one a one-way trip.
+- **New** The table fits on one screen. Every subject that used to overflow the rail is a line stating its own numbers, with the detail one press away, and nothing scrolls except the game log.
+- **Fixed** Nothing is loaded from anybody else's server any more, so the game works offline and cannot be taken down by a third party's outage.
 
 ## 0e1f7f4 — 2026-08-03 21:54
 
