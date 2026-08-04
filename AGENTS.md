@@ -193,7 +193,10 @@ Document custom events when implementing:
 ## Reference documents
 - `coding-rules.md` — architecture, security, and protocol rules. Read the
   relevant Part before changing that layer.
-- `audit-report.md` — the compliance audit these rules produced, with current status.
+- `OPEN-THREADS.md` — what is started, known-broken, or deliberately deferred.
+  (The compliance audit that produced these rules is no longer in the tree: it
+  documented a live authorisation hole in a public repo. See `git log` if you
+  need it.)
 - `expansions.md` — pick-and-choose catalogue of official expansion rules.
 - `board-zoom-plan.md` — researched plan for board zoom/pan (not yet implemented).
 

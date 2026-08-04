@@ -7,4 +7,4 @@ python-socketio>=5.10.0,<6
 # Required by async_mode="threading" for real WebSocket transport. Without it
 # the server silently falls back to HTTP long-polling.
 simple-websocket>=1.0,<2
-gunicorn>=21.2,<24
+gunicorn>=21.2,<27
