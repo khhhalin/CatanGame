@@ -149,6 +149,55 @@ class TestGameStateSurvives:
         game.pending_invention = 'Alice'
         assert round_trip(game, tmp_path).pending_invention == 'Alice'
 
+    def test_a_decision_the_game_is_waiting_on_comes_back(self, tmp_path):
+        """A restart mid-decision must not deadlock the table.
+
+        Losing the choice leaves the rule that opened it half applied — a
+        barbarian attack that sacked nothing — and every action is refused
+        while one is outstanding, so a lost choice with a live flag would stop
+        the game for good.
+        """
+        game = a_game()
+        game.open_choice('barbarian_city', 'Alice', ['v1', 'v2'], reason='attack')
+
+        after = round_trip(game, tmp_path)
+
+        restored = after.pending_choice_for('Alice')
+        assert restored['kind'] == 'barbarian_city'
+        assert restored['options'] == ['v1', 'v2']
+        assert restored['context'] == {'reason': 'attack'}
+        # The clock starts again rather than being restored: a save reloaded an
+        # hour later would otherwise expire before anyone could answer it.
+        assert not after.choices_expired()
+
+    def test_a_chosen_alchemist_roll_comes_back(self, tmp_path):
+        game = a_game()
+        game.pending_dice = (3, 4)
+        assert round_trip(game, tmp_path).pending_dice == (3, 4)
+
+    def test_the_merchant_keeps_its_hex_and_its_owner(self, tmp_path):
+        game = a_game()
+        game.merchant_hex = next(k for k, h in game.hexes.items() if h.type != 'ocean')
+        game.merchant_holder = 'Bob'
+
+        after = round_trip(game, tmp_path)
+
+        assert (after.merchant_hex, after.merchant_holder) == (game.merchant_hex, 'Bob')
+        assert after.victory_points_for('Bob') == 1, 'the point travels with the piece'
+
+    def test_a_save_written_before_any_of_this_still_loads(self, tmp_path):
+        """Old saves predate every field above and must not be refused."""
+        game = a_game()
+        data = persistence.serialize(game)
+        for field in ('pending_choices', 'pending_dice', 'merchant_hex', 'merchant_holder'):
+            data.pop(field)
+
+        restored = persistence.deserialize(data)
+
+        assert restored.pending_choices == []
+        assert restored.pending_dice is None
+        assert restored.merchant_holder is None
+
 
 class TestRulesSurvive:
     def test_the_chosen_rules_come_back(self, tmp_path):

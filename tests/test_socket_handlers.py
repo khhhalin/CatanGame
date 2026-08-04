@@ -1274,3 +1274,102 @@ class TestSeafarersOverTheWire:
 
         assert game.longest_road_holder == acting
         assert events(a, 'game_won')[-1]['player'] == acting
+
+
+class TestAnsweringAPendingChoice:
+    """`make_choice` is the one way out of the choice phase, so it is also the
+    one place an untrusted answer could rewrite somebody else's board."""
+
+    def _ck_game(self, socket_app):
+        alice = socketio.test_client(socket_app)
+        bob = socketio.test_client(socket_app)
+        alice.emit('join', {'name': 'Alice', 'role': 'player'})
+        bob.emit('join', {'name': 'Bob', 'role': 'player'})
+        alice.emit('set_rules', {'preset': 'cities_and_knights'})
+        alice.emit('start_game')
+        game = state.session().game
+        game.game_phase = "playing"
+        game.start_turn()
+        game.set_dice_rolled()
+        alice.get_received()
+        bob.get_received()
+        return alice, bob, game
+
+    def _barbarians_take_a_city(self, game, owner='Alice'):
+        """A lost attack against a player holding two cities, so they choose."""
+        first, second = sorted(game.vertices)[:2]
+        player = game.get_player(owner)
+        for vertex_key in (first, second):
+            game.vertices[vertex_key].building = {'type': 'city', 'player': owner}
+            player.cities.append(vertex_key)
+        game.resolve_barbarian_attack()
+        return first, second
+
+    def test_the_player_who_was_asked_can_answer(self, socket_app):
+        alice, _bob, game = self._ck_game(socket_app)
+        first, second = self._barbarians_take_a_city(game)
+
+        alice.emit('make_choice', {'name': 'Alice', 'kind': 'barbarian_city',
+                                   'option': second})
+
+        assert game.get_player('Alice').cities == [first]
+        assert game.pending_choices == []
+        assert events(alice, 'choice_resolved')[-1]['player'] == 'Alice'
+
+    def test_another_player_cannot_answer_for_them(self, socket_app):
+        _alice, bob, game = self._ck_game(socket_app)
+        first, second = self._barbarians_take_a_city(game)
+
+        bob.emit('make_choice', {'name': 'Bob', 'kind': 'barbarian_city', 'option': second})
+
+        assert last_error(bob)['code'] == 'NO_CHOICE_PENDING'
+        assert game.get_player('Alice').cities == [first, second]
+
+    def test_an_option_that_was_never_offered_is_refused(self, socket_app):
+        alice, _bob, game = self._ck_game(socket_app)
+        first, second = self._barbarians_take_a_city(game)
+        stranger = next(k for k in sorted(game.vertices) if k not in (first, second))
+
+        alice.emit('make_choice', {'name': 'Alice', 'kind': 'barbarian_city',
+                                   'option': stranger})
+
+        assert last_error(alice)['code'] == 'INVALID_CHOICE'
+        assert game.get_player('Alice').cities == [first, second]
+
+    def test_an_unknown_kind_is_refused_before_the_engine_sees_it(self, socket_app):
+        alice, _bob, game = self._ck_game(socket_app)
+        self._barbarians_take_a_city(game)
+
+        alice.emit('make_choice', {'name': 'Alice', 'kind': 'nonsense', 'option': 'x'})
+
+        assert last_error(alice)['code'] == 'INVALID_PAYLOAD'
+
+    def test_a_junk_payload_is_dropped_rather_than_crashing_the_handler(self, socket_app):
+        alice, _bob, game = self._ck_game(socket_app)
+        self._barbarians_take_a_city(game)
+
+        for bad in ({}, {'name': 5}, {'name': 'Alice'},
+                    {'name': 'Alice', 'kind': 'barbarian_city', 'option': []}):
+            alice.emit('make_choice', bad)
+            error = last_error(alice)
+            assert error is None or error['code'] != 'SERVER_ERROR', bad
+        assert alice.is_connected()
+
+    def test_the_table_is_told_who_it_is_waiting_for(self, socket_app):
+        alice, bob, game = self._ck_game(socket_app)
+        self._barbarians_take_a_city(game)
+
+        bob.emit('request_state')
+        waiting = events(bob, 'game_state')[-1]['board']['pending_choices']
+
+        assert [entry['player'] for entry in waiting] == ['Alice']
+        assert 'options' not in waiting[0] or waiting[0]['options'] is None
+
+    def test_nobody_can_build_while_the_game_is_waiting(self, socket_app):
+        _alice, bob, game = self._ck_game(socket_app)
+        self._barbarians_take_a_city(game)
+        acting = game.players[game.current_player_index].name
+
+        bob.emit('buy_improvement', {'name': acting, 'track': 'trade'})
+
+        assert last_error(bob)['code'] in ('MUST_CHOOSE', 'AWAITING_CHOICE')
