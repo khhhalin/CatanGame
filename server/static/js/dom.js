@@ -39,6 +39,7 @@ export const placeRoadBtn = document.getElementById('place-road-btn');
 export const upgradeCityBtn = document.getElementById('upgrade-city-btn');
 export const rollDiceBtn = document.getElementById('roll-dice-btn');
 export const diceDisplay = document.getElementById('dice-display');
+export const diceSetEl = document.getElementById('dice-set');
 export const resourceDisplay = document.getElementById('resource-display');
 export const bankDisplay = document.getElementById('bank-display');
 const tradePanel = document.getElementById('trade-panel');

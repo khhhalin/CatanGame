@@ -9,7 +9,7 @@ import { renderPendingChoices } from './choices.js';
 import { describeLastAttack, noteBarbarianAttack, renderCitiesKnights } from './cities-knights.js';
 import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, turnSound, userScreen, victimModal } from './dom.js';
 import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
-import { handleNameTaken, renderActiveRules, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
+import { handleNameTaken, renderActiveRules, renderDiceSet, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
 import { displayError, logToGameConsole, showNotice } from './notices.js';
 import { offerVictimChoice, openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
 import { renderSeafarers } from './seafarers.js';
@@ -32,6 +32,7 @@ socket.on('rules_changed', (data) => {
     viewState.server.rules.locked = data.locked === true;
     renderRulesPanel();
     renderActiveRules();
+    renderDiceSet();
 });
 
 socket.on('user_list', (data) => {
@@ -93,6 +94,7 @@ socket.on('game_started', (data) => {
 
     // Show what the table agreed to before the game began
     renderActiveRules();
+    renderDiceSet();
 
     console.log('Game started! Player order:', data.players);
     console.log('Current player:', data.current_player);
@@ -129,6 +131,7 @@ socket.on('game_state', (data) => {
         renderBank();
         renderDevCards();
         renderActiveRules();
+        renderDiceSet();
         renderCitiesKnights();
         renderSeafarers();
         // A reload or a reconnect in the middle of a question: the snapshot
@@ -243,6 +246,9 @@ socket.on('board_updated', (data) => {
     updateButtonColors();
     updateTimers(data.board);
     renderActiveRules();
+    // Redrawn on every board payload, not only at the start: the deck it names
+    // shrinks by one with each roll.
+    renderDiceSet();
     renderCitiesKnights();
     renderSeafarers();
     renderPendingChoices();

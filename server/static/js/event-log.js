@@ -1,7 +1,7 @@
 import { chatForm, chatInput, chatSendBtn, logEntriesDiv, logJumpBtn, logTabBadge, logTabBtn, sideTabs, tradeTabBadge, tradeTabBtn } from './dom.js';
 import { closePopover, togglePopover } from './popovers.js';
 import { emitGame, socket } from './socket.js';
-import { viewState } from './state.js';
+import { getBoard, viewState } from './state.js';
 
 // Chat and event log
 //
@@ -101,7 +101,55 @@ function buildLogEntryNode(entry) {
     text.textContent = entry.text;
     row.appendChild(text);
 
+    const note = buildModifierNote(entry);
+    if (note) {
+        row.appendChild(note);
+    }
+
     return row;
+}
+
+/**
+ * Name the house rules that changed what this event paid out.
+ *
+ * A modifier is silent by construction: Epidemic hands a city one card instead
+ * of two and the roll reads exactly like any other. A player who collects half
+ * of what they expected and is told nothing reports it as a bug - the starting
+ * city's commodity was reported that way already.
+ *
+ * Which modifiers fired is the server's answer, carried in the entry's details
+ * as `modifiers` (rule ids); working it back out from the board would be a
+ * second copy of the rule, free to disagree with the one that was applied. Of
+ * those, only the ones this table actually turned on are named - the base game
+ * decides a city's yield through the same funnel, and saying so on every roll
+ * is noise, not information.
+ *
+ * @param {object} entry - A validated entry from the server
+ * @returns {HTMLElement|null} - The note, or null when nothing changed
+ */
+function buildModifierNote(entry) {
+    const fired = entry.details?.modifiers;
+    if (!Array.isArray(fired) || fired.length === 0) {
+        return null;
+    }
+
+    // The running game's rules, not the lobby's selection: the two differ the
+    // moment somebody edits the picker while a game is on.
+    const active = getBoard()?.rules || {};
+    const named = viewState.server.rules.catalogue.filter(rule => (
+        fired.includes(rule.id) && active[rule.id] !== undefined && active[rule.id] !== rule.default
+    ));
+    if (named.length === 0) {
+        return null;
+    }
+
+    const note = document.createElement('span');
+    note.className = 'log-modifier';
+    note.textContent = ` — ${named.map(rule => rule.name).join(', ')}`;
+    // The rule's own words, as the lobby offered them, for the player asking
+    // why the number is not what they counted on.
+    note.title = named.map(rule => `${rule.name}: ${rule.summary || ''}`.trim()).join('\n\n');
+    return note;
 }
 
 /**

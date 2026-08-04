@@ -2,7 +2,7 @@
 
 import { setHighlight } from './board.js';
 import { renderCitiesKnights } from './cities-knights.js';
-import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
 import { requestLogCatchUp } from './event-log.js';
 import { displayError, showNotice } from './notices.js';
 import { emitGame, socket } from './socket.js';
@@ -137,6 +137,9 @@ export function returnToLobby() {
     viewState.knightMoveFrom = null;
     renderCitiesKnights();
     diceDisplay.innerHTML = '';
+    // The next game is a fresh agreement; the last one's dice must not linger
+    // over the lobby's own.
+    diceSetEl?.classList.add('hidden');
     rollDiceBtn.disabled = false;
     rollDiceBtn.textContent = 'Roll Dice';
 
@@ -536,4 +539,45 @@ export function renderActiveRules() {
             ? `${parts.length} changed`
             : 'Base game';
     }
+}
+
+// The rule that decides what the dice may show. Named once, here, because this
+// is the only place the client says anything about the dice themselves; what
+// the set *contains* is the server's business and is never restated in JS.
+const DICE_SET_RULE = 'dice_set';
+
+/**
+ * Say which dice the table is playing with, beside the two faces they land on.
+ *
+ * The option's own name, from the catalogue - never the id, which is what the
+ * running game's rules dict carries. Silent for the standard pair: a rule that
+ * changes nothing has nothing to explain.
+ */
+export function renderDiceSet() {
+    if (!diceSetEl) {
+        return;
+    }
+
+    const active = getBoard()?.rules;
+    const rule = viewState.server.rules.catalogue.find(entry => entry.id === DICE_SET_RULE);
+    const chosen = active?.[DICE_SET_RULE];
+    const option = (rule?.options || []).find(entry => entry.id === chosen);
+
+    if (!rule || chosen === undefined || chosen === rule.default) {
+        diceSetEl.classList.add('hidden');
+        diceSetEl.textContent = '';
+        diceSetEl.removeAttribute('title');
+        return;
+    }
+
+    // How much of the deck is left, when the table deals its rolls rather than
+    // rolling them. The count is the server's - `dice_deck_remaining` in the
+    // board payload - because how large the set is and how much of it has gone
+    // are both answers only the engine holds. Absent, the set is still named.
+    const left = getBoard()?.dice_deck_remaining;
+    const remaining = Number.isInteger(left) ? ` · ${left} left` : '';
+
+    diceSetEl.textContent = `${option ? option.name : chosen}${remaining}`;
+    diceSetEl.title = option?.summary || rule.summary || '';
+    diceSetEl.classList.remove('hidden');
 }

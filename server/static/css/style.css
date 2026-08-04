@@ -910,6 +910,15 @@ button:disabled {
     justify-content: center;
 }
 
+/* Sits inside the dice row rather than under it: the console is a fixed number
+   of rows, and every row it grows is a row the board loses. `nowrap` keeps the
+   set's name from wrapping the group onto a second line. */
+.dice-set {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
 .dice-display .die {
     background-color: var(--surface-1);
     color: var(--text);
@@ -1604,6 +1613,15 @@ button:disabled {
     background-color: transparent;
     color: var(--text-muted);
     font-style: italic;
+}
+
+/* The house rule that changed what an event paid out. Not colour alone: it
+   reads as a clause of the sentence it follows, so a player who cannot tell
+   the two apart still gets the whole statement. */
+.log-modifier {
+    color: var(--text);
+    font-style: normal;
+    font-weight: 600;
 }
 
 .log-kind-chat { border-left-color: var(--info); }
