@@ -14,6 +14,7 @@ rather than shuffled.
 
 import logging
 
+from game import maps
 from game.hex_models import Edge, Hex, Vertex
 
 logger = logging.getLogger(__name__)
@@ -273,6 +274,14 @@ class BoardBuilder:
         # Step 2: Create hex objects with resource types and numbers
         self._create_hexes(land_hex_keys, ocean_hex_keys)
 
+        # Step 2b: land is what was dealt, not what the layout set aside for it.
+        # The two are the same set for every built-in layout, which is why this
+        # never mattered before; a pool that can deal sea into a land slot is
+        # what makes them differ, and every other rule on the board already
+        # reads the terrain rather than this list.
+        land_hex_keys = {key for key in land_hex_keys if self.hexes[key].type != 'ocean'}
+        ocean_hex_keys = set(self.hexes) - land_hex_keys
+
         # Step 3: Generate the graph. Without ships the ocean ring is scenery
         # and only the land carries intersections and hex sides. Ships need
         # somewhere to be built, so with the rule on the sea is generated too —
@@ -328,8 +337,12 @@ class BoardBuilder:
             number_tokens = list(layout['numbers'])
             self.rng.shuffle(resource_types)
             self.rng.shuffle(number_tokens)
+            # Only a resource hex takes a token. Exempting the desert alone let
+            # a sea tile in a land pool pop a token out of the box and carry a
+            # number on open water, where the renderer would draw it and
+            # production would pay nobody.
             placed = [
-                (hex_type, None if hex_type == 'desert' else number_tokens.pop())
+                (hex_type, number_tokens.pop() if maps.takes_a_token(hex_type) else None)
                 for hex_type in resource_types
             ]
 
@@ -632,8 +645,19 @@ class BoardBuilder:
         """
         return len(self.land_hexes_of_edge(edge_key)) == 1
 
-    def _coastal_edges_in_order(self) -> list:
-        """The coastal edges, walked as a ring around the island."""
+    def _coastline_rings(self) -> list:
+        """Every coastline on this board, walked in order, longest first.
+
+        A board can have more than one. The walk used to follow a single ring
+        from the lowest coastal edge and hand it back even when it had reached
+        a fraction of the coast — 18 edges of 54 on a board with an island in a
+        lagoon, none of them the island's — so every harbour crowded onto
+        whichever coast the walk happened to find. Repeating the walk from the
+        lowest edge nobody has claimed yet is all it takes.
+
+        The first ring is walked exactly as it always was, which is what keeps
+        the harbours of a one-coast board where they have always been.
+        """
         coastal = [
             edge_key for edge_key in sorted(self.edges) if self.is_coastal_edge(edge_key)
         ]
@@ -650,29 +674,58 @@ class BoardBuilder:
         # share. Sorted starting point and sorted candidates, for the same
         # reason the rest of generation sorts: set order varies between
         # processes, and the harbours would land somewhere else every run.
-        ring = [coastal[0]]
-        visited = set(ring)
-        behind = min(self.edges[ring[0]].neighbors["vertices"])
-        while True:
-            ahead = next(
-                vertex_key
-                for vertex_key in self.edges[ring[-1]].neighbors["vertices"]
-                if vertex_key != behind
-            )
-            unvisited = sorted(
-                edge_key for edge_key in edges_at_vertex[ahead] if edge_key not in visited
-            )
-            if not unvisited:
-                break
-            ring.append(unvisited[0])
-            visited.add(unvisited[0])
-            behind = ahead
+        rings = []
+        visited = set()
+        for start in coastal:
+            if start in visited:
+                continue
+            ring = [start]
+            visited.add(start)
+            behind = min(self.edges[start].neighbors["vertices"])
+            while True:
+                ahead = next(
+                    vertex_key
+                    for vertex_key in self.edges[ring[-1]].neighbors["vertices"]
+                    if vertex_key != behind
+                )
+                unvisited = sorted(
+                    edge_key for edge_key in edges_at_vertex[ahead] if edge_key not in visited
+                )
+                if not unvisited:
+                    break
+                ring.append(unvisited[0])
+                visited.add(unvisited[0])
+                behind = ahead
+            rings.append(ring)
 
-        if len(ring) != len(coastal):
-            logger.warning(
-                f"coastline is not a single ring: walked {len(ring)} of {len(coastal)} edges"
-            )
-        return ring
+        # Longest first, so the coast with room for the most harbours is served
+        # first and the leftovers land on the biggest island. Tie broken by the
+        # lowest edge key, never by walk order.
+        rings.sort(key=lambda ring: (-len(ring), ring[0]))
+        return rings
+
+    def _harbours_per_ring(self, rings: list, count: int) -> list:
+        """How many harbours each coastline gets, in proportion to its length.
+
+        Capped at half a coast's length, because harbours never share an
+        intersection and the spacing below needs an edge between each pair. A
+        board with more harbours in the box than its coasts can hold keeps the
+        existing behaviour: say so and place as many as fit.
+        """
+        capacity = [len(ring) // 2 for ring in rings]
+        coast = sum(len(ring) for ring in rings)
+        count = min(count, sum(capacity))
+
+        share = [
+            min(cap, count * len(ring) // coast)
+            for cap, ring in zip(capacity, rings, strict=True)
+        ]
+        # Whatever rounding left over goes to the longest coast that still has
+        # room; `rings` is already longest first.
+        for index, cap in enumerate(capacity):
+            while sum(share) < count and share[index] < cap:
+                share[index] += 1
+        return share
 
     def _assign_ports(self):
         """Hang the harbours off coastal edges, spaced around the island.
@@ -693,46 +746,55 @@ class BoardBuilder:
         of the published rulebook scan, so which harbour sits where on the
         beginner map is ours. Their number and 4/5 split are the rulebook's.
         """
-        coast = self._coastal_edges_in_order()
+        rings = self._coastline_rings()
+        coast = sum(len(ring) for ring in rings)
         port_types = list(self.board_layout['ports'])
-        if len(coast) < 2 * len(port_types):
+        share = self._harbours_per_ring(rings, len(port_types)) if rings else []
+        if sum(share) < len(port_types):
             logger.warning(
-                f"coastline of {len(coast)} edges is too short for "
+                f"coastline of {coast} edges is too short for "
                 f"{len(port_types)} harbours that do not touch"
             )
-            port_types = port_types[: len(coast) // 2]
+            port_types = port_types[: sum(share)]
         if not port_types:
             return
 
         # A printed map has its harbours printed too, so a fixed layout keeps
         # the order below and starts at the same place on the coast every game.
-        rotation = 0
         if not self.board_layout['fixed']:
             self.rng.shuffle(port_types)
+
+        placed = 0
+        for ring, count in zip(rings, share, strict=True):
+            if not count:
+                continue
             # Where the run of harbours starts is the only thing chance decides
-            # about their placement; the spacing below is fixed.
-            rotation = self.rng.randrange(len(coast))
+            # about their placement; the spacing below is fixed. One draw per
+            # coastline, so a board with a single coast — every built-in layout
+            # — makes exactly the calls it always made.
+            rotation = 0 if self.board_layout['fixed'] else self.rng.randrange(len(ring))
 
-        for index, port_type in enumerate(port_types):
-            # Evenly spaced around the ring, because real harbours never share
-            # an intersection: at this spacing consecutive harbours always
-            # leave at least one coastal edge between them.
-            position = (rotation + round(index * len(coast) / len(port_types))) % len(coast)
-            edge_obj = self.edges[coast[position]]
+            for index, port_type in enumerate(port_types[placed:placed + count]):
+                # Evenly spaced around the ring, because real harbours never
+                # share an intersection: at this spacing consecutive harbours
+                # always leave at least one coastal edge between them.
+                position = (rotation + round(index * len(ring) / count)) % len(ring)
+                edge_obj = self.edges[ring[position]]
 
-            if port_type == "generic":
-                port = {"type": "generic"}
-            else:
-                port = {"type": "resource", "resource": port_type}
+                if port_type == "generic":
+                    port = {"type": "generic"}
+                else:
+                    port = {"type": "resource", "resource": port_type}
 
-            edge_obj.port = port
-            for vertex_key in edge_obj.neighbors["vertices"]:
-                # A copy per vertex: one shared dict would let a mutation of a
-                # single intersection silently change the whole harbour.
-                self.vertices[vertex_key].port = dict(port)
+                edge_obj.port = port
+                for vertex_key in edge_obj.neighbors["vertices"]:
+                    # A copy per vertex: one shared dict would let a mutation of
+                    # a single intersection silently change the whole harbour.
+                    self.vertices[vertex_key].port = dict(port)
+            placed += count
 
         logger.debug(
             f"Harbours assigned: {sum(1 for t in port_types if t == 'generic')} generic (3:1), "
             f"{sum(1 for t in port_types if t != 'generic')} resource (2:1) "
-            f"on {len(coast)} coastal edges"
+            f"on {coast} coastal edges over {len(rings)} coastlines"
         )
