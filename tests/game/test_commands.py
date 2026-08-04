@@ -69,7 +69,7 @@ class TestAddResource:
 
     def test_the_table_is_told_who_ran_it(self):
         result = run(playing(COMMAND_RULES), '/add_resource wood 1')
-        assert result['log'] == "Alice added 1 wood to Alice's hand"
+        assert result['log'] == "Alice added 1 wood to their own hand"
 
     def test_a_named_player_is_the_one_who_gets_them(self):
         game = playing(COMMAND_RULES)

@@ -173,6 +173,11 @@ export const chatForm = document.getElementById('chat-form');
 export const chatInput = document.getElementById('chat-input');
 export const chatSendBtn = document.getElementById('chat-send-btn');
 
+// The command bar: a listbox over the chat input, filled from the server's
+// command catalogue.
+export const commandBar = document.getElementById('command-bar');
+export const commandList = document.getElementById('command-list');
+
 // Turn sound - preload
 export const turnSound = new Audio('/static/audio/turn.wav');
 turnSound.preload = 'auto';

@@ -1690,6 +1690,18 @@ button:disabled {
 .log-kind-turn { border-left-color: var(--com-paper); }
 .log-kind-game { border-left-color: var(--text); }
 .log-kind-rules { border-left-color: var(--border-strong); }
+.log-kind-command { border-left-color: var(--accent); }
+
+/* A command's reply, shown to the player who typed it and to nobody else. It
+   says so in words ("Only you:") as well as in the surface, so it is never
+   mistaken for something the table read. */
+.log-private {
+    background-color: var(--accent-soft);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 
 /* Offered instead of yanking the view down while someone reads history. A
    full-width strip above the input, not a floating pill: a pill positioned
@@ -1707,6 +1719,102 @@ button:disabled {
 
 .log-jump:hover {
     background-color: color-mix(in srgb, var(--info) 82%, var(--text));
+}
+
+/* The chat box and the command bar above it. The dock is the positioning
+   context so the bar can sit exactly on top of the input without a magic
+   offset. */
+.chat-dock {
+    flex: none;
+    position: relative;
+}
+
+/* Floated over the log rather than sitting in the column: the page never
+   scrolls at the game size, so a list that pushed the input down would take
+   the height out of the log - and out of the board on a short window. */
+.command-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: var(--space-1);
+    z-index: 20;
+    background-color: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-2);
+    max-height: 45vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.command-list {
+    list-style: none;
+    margin: 0;
+    padding: var(--space-1);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Name and argument hint share the first line and wrap together; the summary
+   always starts a new one. A grid with the hint in its own column pushed a
+   wrapped hint into the middle of the row, which read as a second command. */
+.command-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--space-2);
+    row-gap: 2px;
+    text-align: left;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.command-name {
+    font-family: monospace;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.command-args {
+    font-family: monospace;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+/* The summary runs under the name and hint, so a long one wraps into the row
+   instead of widening the panel. */
+.command-summary {
+    flex: 1 0 100%;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+/* The active row. Marked three ways - a filled background, a bar down the
+   left, and aria-selected - because colour alone is not a state a player who
+   cannot see it can read. */
+.command-item.is-active {
+    background-color: var(--info-soft);
+    border-left-color: var(--info);
+}
+
+.command-item.is-active .command-args,
+.command-item.is-active .command-summary {
+    color: var(--text);
+}
+
+/* A command this table cannot run is still listed: hiding it teaches the
+   player it does not exist, when the truth is that a rule is off. The reason
+   is in the summary's own words - the dimming is not carrying it alone. */
+.command-unavailable .command-name {
+    color: var(--text-muted);
+    font-weight: 600;
 }
 
 .chat-form {

@@ -7,8 +7,9 @@
 import { markDirty, setHighlight } from './board.js';
 import { renderPendingChoices } from './choices.js';
 import { describeLastAttack, noteBarbarianAttack, renderCitiesKnights } from './cities-knights.js';
+import { setCommandCatalogue } from './commands.js';
 import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, userScreen, victimModal } from './dom.js';
-import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
+import { appendCommandResult, appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
 import { handleNameTaken, renderActiveRules, renderDiceSet, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
 import { displayError, logToGameConsole, showNotice } from './notices.js';
 import { offerVictimChoice, openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
@@ -34,6 +35,22 @@ socket.on('rules_changed', (data) => {
     renderRulesPanel();
     renderActiveRules();
     renderDiceSet();
+});
+
+// The command bar renders from this and knows no command name of its own, for
+// the same reason the rules picker renders from the rule catalogue.
+socket.on('commands_changed', (data) => {
+    setCommandCatalogue(data);
+});
+
+// One command's reply, to the socket that typed it. Rendered into the log as a
+// private line - it is an answer, not history.
+socket.on('command_result', (data) => {
+    if (!data || !Array.isArray(data.lines)) {
+        console.warn('Ignoring malformed command_result payload:', data);
+        return;
+    }
+    appendCommandResult(data.lines);
 });
 
 socket.on('user_list', (data) => {

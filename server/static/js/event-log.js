@@ -1,3 +1,4 @@
+import { isCommandLine, runCommand } from './commands.js';
 import { chatForm, chatInput, chatSendBtn, logEntriesDiv, logJumpBtn, logTabBadge, logTabBtn, sideTabs, tradeTabBadge, tradeTabBtn } from './dom.js';
 import { closePopover, togglePopover } from './popovers.js';
 import { emitGame, socket } from './socket.js';
@@ -13,7 +14,8 @@ import { getBoard, viewState } from './state.js';
 // list still renders, tagged as a plain game event - a kind straight from the
 // wire must never reach a class name unchecked.
 const LOG_KINDS = [
-    'chat', 'dice', 'build', 'trade', 'robber', 'dev_card', 'turn', 'game', 'rules'
+    'chat', 'dice', 'build', 'trade', 'robber', 'dev_card', 'turn', 'game', 'rules',
+    'command'
 ];
 
 // How far from the bottom still counts as "reading the newest entries".
@@ -236,7 +238,7 @@ export function updateChatAvailability() {
     const online = socket.connected === true;
     if (chatInput) {
         chatInput.disabled = !online;
-        chatInput.placeholder = online ? 'Say something…' : 'Reconnecting…';
+        chatInput.placeholder = online ? 'Say something, or / for commands…' : 'Reconnecting…';
     }
     if (chatSendBtn) {
         chatSendBtn.disabled = !online;
@@ -246,6 +248,10 @@ export function updateChatAvailability() {
 /**
  * Send whatever is in the chat box. The server sanitizes and may still refuse;
  * the trim here only avoids a round trip for an empty box.
+ *
+ * A line that *starts* with the command prefix goes to the command handler
+ * instead of the log. One that merely contains a slash - "back in 5 w/ coffee",
+ * a date, a URL - is chat, and has to stay chat.
  */
 function sendChatMessage() {
     if (!chatInput) {
@@ -255,10 +261,54 @@ function sendChatMessage() {
     if (!text) {
         return;
     }
+    if (isCommandLine(text)) {
+        if (runCommand(text)) {
+            chatInput.value = '';
+        }
+        return;
+    }
     if (!emitGame('chat_message', { text: text })) {
         return;
     }
     chatInput.value = '';
+}
+
+/**
+ * Show one command's reply in the log, to this player only.
+ *
+ * Built here rather than logged on the server because it is not history: a
+ * /whoami is nobody else's business, and putting it through the shared log
+ * would either broadcast it or invent a private entry the log has no id for.
+ * Marked as private in words as well as in colour, so it is not read as
+ * something the table saw.
+ *
+ * @param {Array<string>} lines - The server's reply, one sentence per line
+ */
+export function appendCommandResult(lines) {
+    if (!logEntriesDiv || !Array.isArray(lines) || lines.length === 0) {
+        return;
+    }
+    const wasAtBottom = isLogScrolledToBottom();
+
+    const row = document.createElement('div');
+    row.className = 'log-entry log-kind-command log-private';
+
+    const label = document.createElement('span');
+    label.className = 'log-player';
+    label.textContent = 'Only you:';
+    row.appendChild(label);
+
+    for (const line of lines) {
+        const text = document.createElement('span');
+        text.className = 'log-text';
+        text.textContent = String(line);
+        row.appendChild(text);
+    }
+
+    logEntriesDiv.appendChild(row);
+    if (wasAtBottom) {
+        scrollLogToBottom();
+    }
 }
 
 if (chatForm) {

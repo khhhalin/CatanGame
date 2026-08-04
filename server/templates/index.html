@@ -510,12 +510,31 @@
                         <button type="button" id="log-jump-btn" class="log-jump hidden">
                             New messages ↓
                         </button>
-                        <form id="chat-form" class="chat-form" autocomplete="off">
-                            <input type="text" id="chat-input" class="chat-input"
-                                   placeholder="Say something…" maxlength="300"
-                                   autocomplete="off" aria-label="Chat message">
-                            <button type="submit" id="chat-send-btn" class="chat-send">Send</button>
-                        </form>
+                        <!-- The command bar. One text field does both jobs: a
+                             line that starts with "/" filters this list, and
+                             anything else is chat. It is a combobox over the
+                             chat input, so the list is reachable with the
+                             arrow keys and announced through
+                             aria-activedescendant rather than by moving focus
+                             out of the field the player is typing in. Its
+                             contents come from the server's catalogue - no
+                             command name is written in this file. -->
+                        <div class="chat-dock">
+                            <div id="command-bar" class="command-bar hidden">
+                                <ul id="command-list" class="command-list" role="listbox"
+                                    aria-label="Chat commands"></ul>
+                            </div>
+                            <form id="chat-form" class="chat-form" autocomplete="off">
+                                <input type="text" id="chat-input" class="chat-input"
+                                       placeholder="Say something, or / for commands…"
+                                       maxlength="300"
+                                       autocomplete="off" aria-label="Chat message"
+                                       role="combobox" aria-expanded="false"
+                                       aria-autocomplete="list" aria-controls="command-list">
+                                <button type="submit" id="chat-send-btn"
+                                        class="chat-send">Send</button>
+                            </form>
+                        </div>
                     </div>
 
                     <div class="tab-panel popover popover-wide hidden" id="trade-panel"

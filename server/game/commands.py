@@ -96,19 +96,22 @@ def changed_rules(rules: dict) -> list:
 # --- The commands -------------------------------------------------------
 #
 # Each entry is one command. `args` is the hint the command bar shows next to
-# the name, `requires_rule` the single rule that has to be on before it may run
+# the name, `requires_rules` every rule that has to be on before it may run
 # (None for the four that only report), and `needs_game` whether there has to be
 # a game to talk about at all.
 
 
-def _command(command_id, args, summary, run, requires_rule=None, needs_game=False,
+def _command(command_id, args, summary, run, requires_rules=(), needs_game=False,
              changes_state=False):
     return {
         'id': command_id,
         'name': f'{PREFIX}{command_id}',
         'args': args,
         'summary': summary,
-        'requires_rule': requires_rule,
+        # Every rule that has to be on. More than one for `/barbarians`, which
+        # needs both the table's permission to run commands at all and the rule
+        # that puts a barbarian ship on the board to move.
+        'requires_rules': tuple(requires_rules),
         'needs_game': needs_game,
         # Whether running this can change the game. It decides two things: that
         # the caller must hold a seat *at the table* rather than merely in the
@@ -266,9 +269,10 @@ def _cmd_add_resource(game, rules, actor, args) -> dict:
         game.bank.take(card, count)
         player.resources[card] = player.resources.get(card, 0) + count
 
+    whose = 'their own hand' if target == actor else f"{target}'s hand"
     return _ok(
         [f'{target} now holds {player.all_cards()[card]} {card}.'],
-        log=f'{actor} added {count} {card} to {target}\'s hand',
+        log=f'{actor} added {count} {card} to {whose}',
         changed=True,
     )
 
@@ -422,21 +426,21 @@ COMMANDS = [
     _command('deck', '', 'What is left to draw.', _cmd_deck, needs_game=True),
     _command('add_resource', '<card> <count> [player]',
              'Put cards into a hand — yours unless you name somebody.',
-             _cmd_add_resource, requires_rule=COMMAND_RULE, needs_game=True,
+             _cmd_add_resource, requires_rules=(COMMAND_RULE,), needs_game=True,
              changes_state=True),
     _command('give', '<player> <card> <count>',
              'Move cards out of your own hand, to correct a misdeal.',
-             _cmd_give, requires_rule=COMMAND_RULE, needs_game=True,
+             _cmd_give, requires_rules=(COMMAND_RULE,), needs_game=True,
              changes_state=True),
     _command('set_dice', '<a> <b>', 'Fix the next production roll.',
-             _cmd_set_dice, requires_rule=COMMAND_RULE, needs_game=True,
+             _cmd_set_dice, requires_rules=(COMMAND_RULE,), needs_game=True,
              changes_state=True),
     _command('skip', '', 'End the current turn without waiting for the clock.',
-             _cmd_skip, requires_rule=COMMAND_RULE, needs_game=True,
+             _cmd_skip, requires_rules=(COMMAND_RULE,), needs_game=True,
              changes_state=True),
     _command('barbarians', '<space>|attack',
              'Move the barbarian ship, or land it now.',
-             _cmd_barbarians, requires_rule=COMMAND_RULE, needs_game=True,
+             _cmd_barbarians, requires_rules=(COMMAND_RULE, 'barbarians'), needs_game=True,
              changes_state=True),
 ]
 
@@ -444,10 +448,16 @@ COMMANDS_BY_ID = {command['id']: command for command in COMMANDS}
 
 
 def _unavailable(command: dict, rules: dict, has_game: bool) -> str | None:
-    """Why this command cannot run right now, or None."""
-    rule_id = command['requires_rule']
-    if rule_id is not None and not rules.get(rule_id):
-        return f'"{rules_module.RULES_BY_ID[rule_id]["name"]}" is not one of this table\'s rules'
+    """Why this command cannot run right now, or None.
+
+    The first missing rule, by name. Naming one at a time is deliberate: a
+    table reads "Barbarian attacks is not one of this table's rules" and knows
+    which switch to look for.
+    """
+    for rule_id in command['requires_rules']:
+        if not rules.get(rule_id):
+            name = rules_module.RULES_BY_ID[rule_id]['name']
+            return f'"{name}" is not one of this table\'s rules'
     if command['needs_game'] and not has_game:
         return 'no game is running'
     return None
@@ -472,7 +482,7 @@ def catalogue(rules: dict, has_game: bool = False) -> list:
             'name': command['name'],
             'args': command['args'],
             'summary': command['summary'],
-            'requires_rule': command['requires_rule'],
+            'requires_rules': list(command['requires_rules']),
             'needs_game': command['needs_game'],
             'changes_state': command['changes_state'],
             'available': reason is None,
@@ -527,8 +537,8 @@ def run(text: str, actor: str, game, rules: dict) -> dict:
 
     reason = _unavailable(command, rules, game is not None)
     if reason is not None:
-        code = 'RULE_IS_OFF' if command['requires_rule'] and not rules.get(
-            command['requires_rule']) else 'NO_GAME'
+        missing_rule = any(not rules.get(rule_id) for rule_id in command['requires_rules'])
+        code = 'RULE_IS_OFF' if missing_rule else 'NO_GAME'
         return refused(code, f'{command["name"]} cannot run: {reason}')
 
     return command['run'](game, rules, actor, args)

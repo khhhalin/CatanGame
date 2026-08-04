@@ -2,6 +2,7 @@
 // registers its own listeners as it evaluates, and `net.js` last of all binds
 // the socket handlers that drive them.
 
+import { getCommandCatalogue } from './commands.js';
 import { displayError } from './notices.js';
 import { getBoard, getCurrentPlayer, getRole, isGameRunning, viewState } from './state.js';
 import './board.js';
@@ -45,6 +46,10 @@ window.__catanDebug = {
         presets: viewState.server.rules.presets,
         locked: viewState.server.rules.locked,
     }),
+    // The slash commands the server offers this table, for the same reason as
+    // the rules above: the command bar renders from the server's catalogue, and
+    // a test holding its own copy could not notice it failing to draw one.
+    getCommands: getCommandCatalogue,
     // What the next tap on the board would be an attempt at. A two-tap
     // placement - a knight move, a ship move - has a half-finished state that
     // nothing on screen names, so "it did nothing" and "it is waiting for the
