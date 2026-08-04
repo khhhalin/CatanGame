@@ -299,6 +299,13 @@ function renderAwardSummary() {
     // The number that would take the bonus, whoever is holding it now
     const best = (scores) => Math.max(0, ...Object.values(scores).map(Number));
 
+    // The threshold the engine is actually applying, never a copy of the base
+    // game's number: a table that lowered the minimum to 2 was told "needs 5".
+    const needs = (ruleId) => {
+        const minimum = Number(board.rules?.[ruleId]);
+        return Number.isFinite(minimum) ? `, needs ${minimum}` : '';
+    };
+
     // Seafarers plays for the Longest Trade Route *instead of* the Longest
     // Road, and roads and ships both count toward it - so a route that was
     // mostly ships was being reported as "10 roads". The rulebook counts it in
@@ -313,7 +320,7 @@ function renderAwardSummary() {
             value: board.longest_road_holder
                 ? `${roadLengths[board.longest_road_holder] || 0} `
                   + (tradeRoute ? 'segments' : 'roads')
-                : `best ${best(roadLengths)}, needs 5`
+                : `best ${best(roadLengths)}${needs('longest_road_minimum')}`
         },
         {
             icon: '🛡️',
@@ -321,7 +328,7 @@ function renderAwardSummary() {
             holder: board.largest_army_holder,
             value: board.largest_army_holder
                 ? `${knights[board.largest_army_holder] || 0} knights`
-                : `best ${best(knights)}, needs 3`
+                : `best ${best(knights)}${needs('largest_army_minimum')}`
         }
     ];
 

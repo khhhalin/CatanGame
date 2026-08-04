@@ -1,13 +1,16 @@
 """The award panel, read the way a player reads it.
 
-What it got wrong was found by playing rather than by any assertion in the
-suite — the server state was right, which is why nothing here caught it.
+Two things it got wrong, both found by playing rather than by any assertion in
+the suite — the server state was right in each case, which is why nothing here
+caught them:
 
-A seafaring table plays for the Longest Trade Route, not the Longest Road, and
-the route is roads *and* ships. A screenshot of a route that was mostly ships
-read "Alice · 10 roads".
+  - a seafaring table plays for the Longest Trade Route, not the Longest Road,
+    and the route is roads *and* ships. A screenshot of a route that was mostly
+    ships read "Alice · 10 roads";
+  - the two thresholds were literals in the client. A table that set the
+    Longest Road minimum to 2 was still told "needs 5".
 
-The table is arranged with the real engine and written to the save file the
+Both tables are arranged with the real engine and written to the save file the
 server restores on boot, as `test_browser_knights.py` does: the panel is what is
 under test, not the play that reaches it.
 
@@ -82,6 +85,11 @@ def a_route_of_roads_and_ships(game):
     return {"holder": actor, "roads": len(roads), "ships": len(ships)}
 
 
+def nobody_near_either_award(game):
+    """An empty board on a table that lowered both minimums to 2."""
+    return {}
+
+
 def build_game(rules, build):
     game = Game(list(TABLE), [], rng=random.Random(7), rules=rules)
     game.game_state = "started"
@@ -132,6 +140,18 @@ def seafaring_table(browser, tmp_path):
         yield live
 
 
+@pytest.fixture
+def short_minimums_table(browser, tmp_path):
+    rules = {
+        "longest_road_card": True,
+        "largest_army_card": True,
+        "longest_road_minimum": 2,
+        "largest_army_minimum": 2,
+    }
+    with table(browser, tmp_path, rules, nobody_near_either_award) as live:
+        yield live
+
+
 def award_text(player):
     return player.page.inner_text("#award-summary")
 
@@ -160,3 +180,20 @@ class TestTheRouteIsNamedForTheRuleBeingPlayed:
             f"a route of {marks['roads']} roads and {marks['ships']} ships was "
             f"reported in roads: {text!r}"
         )
+
+
+class TestTheThresholdsComeFromTheTable:
+    def test_the_minimums_are_the_ones_the_engine_uses(self, short_minimums_table):
+        """Reported from play: a table that lowered both minimums to 2 was told
+        "needs 5" and "needs 3" — the client held its own copy of the base
+        game's numbers."""
+        player, _ = short_minimums_table
+
+        text = award_text(player)
+        assert "needs 2" in text
+        assert "needs 5" not in text
+        assert "needs 3" not in text
+
+    def test_no_console_errors(self, short_minimums_table):
+        player, _ = short_minimums_table
+        assert player.noisy_errors() == [], player.noisy_errors()
