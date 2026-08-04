@@ -2,6 +2,7 @@
 
 import { choiceHighlightVertices, handleChoiceTap } from './choices.js';
 import { boardCanvas } from './dom.js';
+import { handleKnightTap, updateKnightOverlay } from './knight-overlay.js';
 import { displayError } from './notices.js';
 import { clearHover, currentPreview, handlePlacementTap, samplePointer, updatePlacement } from './placement.js';
 import { getBoard, viewState } from './state.js';
@@ -32,6 +33,9 @@ function frame() {
     // This may mark the frame dirty, so it runs before the check below.
     if (getBoard() && window.BoardRenderer) {
         updatePlacement();
+        // After the placement pass, which is what decides whether a build mode
+        // is armed - an armed mode retires the overlay.
+        updateKnightOverlay();
     }
 
     if (viewState.render.dirty) {
@@ -99,7 +103,15 @@ function handleBoardTap(event) {
         return;
     }
 
-    handlePlacementTap(event.clientX, event.clientY);
+    // Placement first, always: with a mode armed the tap belongs to the piece
+    // being placed, including the first tap of a two-tap knight move, which
+    // picks the knight up and sends nothing. Only a tap that was not a
+    // placement at all can be a question about the knight standing there.
+    if (handlePlacementTap(event.clientX, event.clientY)) {
+        return;
+    }
+
+    handleKnightTap(event.clientX, event.clientY);
 }
 
 boardCanvas.addEventListener('pointerdown', (event) => {

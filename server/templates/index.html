@@ -377,6 +377,24 @@
                             <span aria-hidden="true">✗</span>
                         </button>
                     </div>
+                    <!-- Tapping a knight you own raises its own actions where
+                         it stands, instead of leaving them in the Knights fold
+                         with no connection to the piece. Positioned by
+                         knight-overlay.js in the same way and for the same
+                         reason as the ✓/✗ above: absolutely, inside the board
+                         box, so it can never resize the canvas or move the
+                         camera. The buttons are static so their listeners are
+                         registered once; only the labels and the disabled
+                         state are rewritten. -->
+                    <div id="knight-actions" class="knight-actions hidden"
+                         role="group" aria-label="Knight actions">
+                        <button type="button" id="knight-action-activate"
+                                class="knight-action" data-knight-overlay="activate"></button>
+                        <button type="button" id="knight-action-promote"
+                                class="knight-action" data-knight-overlay="promote"></button>
+                        <button type="button" id="knight-action-move"
+                                class="knight-action" data-knight-overlay="move"></button>
+                    </div>
                     <!-- The canvas is keyboard-zoomable (+ - 0, arrows); these
                          are the visible affordance for the same thing. -->
                     <div class="board-controls">

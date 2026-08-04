@@ -112,7 +112,7 @@ function clearSettledPlacement() {
 /**
  * This player's knight standing on a vertex, if any.
  */
-function myKnightAt(vertexKey) {
+export function myKnightAt(vertexKey) {
     const mine = getBoard()?.cities_knights?.knights?.[viewState.identity.name] || [];
     return mine.find(knight => knight.vertex === vertexKey) || null;
 }
@@ -183,6 +183,19 @@ const MIGHTY_RANK = 3;
 
 // The board modes this section adds to the settlement/road/city set
 const CK_MODES = ['knight', 'knight_move', 'city_wall'];
+
+// What each per-knight action is called and what it costs, worded once: the
+// Knights fold and the overlay a tap on the knight raises both use these, and
+// a player who learns the label in one place must read the same one in the
+// other.
+// `formatCost` is a hoisted function declaration, so the costs above are read
+// here rather than copied - a second copy of "1 sheep 1 ore" is exactly the
+// kind of literal that drifts.
+export const KNIGHT_ACTION_LABELS = {
+    activate: `Activate · ${formatCost(KNIGHT_ACTIVATE_COST)}`,
+    promote: `Promote · ${formatCost(KNIGHT_PROMOTE_COST)}`,
+    move: 'Move',
+};
 
 /**
  * Whether one Cities & Knights rule is in play in the running game.
@@ -271,6 +284,70 @@ function ckTurnBlockReason() {
 }
 
 /**
+ * Why each of one knight's three actions is refused right now, or '' for the
+ * ones that are legal.
+ *
+ * A copy of the engine's rules and only ever a copy - the server checks all of
+ * it again - so it errs the way every other affordance here does: it greys an
+ * action out and says why rather than letting the click fail. Shared by the
+ * Knights fold and by the overlay a tap on the knight itself raises, because
+ * two lists of reasons would disagree the first time one of them changed.
+ *
+ * @param {object} knight - A knight entry from `cities_knights.knights`
+ * @returns {object} - {activate, promote, move}, each a reason or ''
+ */
+export function knightActionReasons(knight) {
+    const player = findMyPlayer();
+    const ck = getBoard()?.cities_knights;
+    if (!player || !ck) {
+        const none = 'No game is running';
+        return { activate: none, promote: none, move: none };
+    }
+
+    const knights = ck.knights?.[player.name] || [];
+    const resources = player.resources || {};
+    const hasFortress = (ck.improvements?.[player.name]?.politics || 0) >= ABILITY_LEVEL;
+    const blocked = ckRule('knights')
+        ? ckTurnBlockReason()
+        : 'Knights are not one of this table\'s rules';
+    const rankCount = (rank) => knights.filter(other => other.rank === rank).length;
+
+    let activate = blocked;
+    if (!activate && knight.active) {
+        activate = 'Already active';
+    }
+    if (!activate) {
+        activate = shortfallReason(resources, KNIGHT_ACTIVATE_COST);
+    }
+
+    let promote = blocked;
+    if (!promote && knight.rank >= MIGHTY_RANK) {
+        promote = 'Already mighty';
+    }
+    if (!promote && knight.rank + 1 === MIGHTY_RANK && !hasFortress) {
+        promote = 'Mighty knights need the Fortress (Politics 3)';
+    }
+    if (!promote && rankCount(knight.rank + 1) >= MAX_KNIGHTS_PER_RANK) {
+        promote = `No ${KNIGHT_RANK_NAMES[knight.rank + 1].toLowerCase()} knight pieces left`;
+    }
+    if (!promote) {
+        promote = shortfallReason(resources, KNIGHT_PROMOTE_COST);
+    }
+
+    // `can_act` is the engine's own answer and covers three separate refusals,
+    // so the two a player can do something about are named apart from it.
+    let move = blocked;
+    if (!move && !knight.active) {
+        move = 'Activate it first';
+    }
+    if (!move && !knight.can_act) {
+        move = 'It cannot act again until your next turn';
+    }
+
+    return { activate, promote, move };
+}
+
+/**
  * Arm or disarm one of this expansion's board modes.
  * Same single-mode rule as the settlement/road/city buttons: arming one of
  * these disarms those, and vice versa.
@@ -292,6 +369,23 @@ function toggleCkMode(mode) {
     // A Seafarers mode is a placement mode too: only one may ever be armed
     syncCkModeButtons();
     syncSeaModeButtons();
+    renderCitiesKnights();
+}
+
+/**
+ * Arm the knight move with this knight already picked up.
+ *
+ * The two-tap move is untouched by this: the overlay's Move button does
+ * exactly what the first tap does - it holds the knight and sends nothing -
+ * so the next tap is the second one either way.
+ *
+ * @param {string} vertexKey - Where the knight this player is moving stands
+ */
+export function startKnightMove(vertexKey) {
+    if (viewState.selectedBuilding !== 'knight_move') {
+        toggleCkMode('knight_move');
+    }
+    viewState.knightMoveFrom = vertexKey;
     renderCitiesKnights();
 }
 
@@ -587,7 +681,6 @@ function renderKnights(player) {
     const knights = ck.knights?.[player.name] || [];
     const resources = player.resources || {};
     const walls = ck.city_walls?.[player.name] || 0;
-    const hasFortress = (ck.improvements?.[player.name]?.politics || 0) >= ABILITY_LEVEL;
     const turnBlock = ckTurnBlockReason();
 
     const rankCount = (rank) => knights.filter(knight => knight.rank === rank).length;
@@ -666,35 +759,12 @@ function renderKnights(player) {
         const actions = document.createElement('div');
         actions.className = 'knight-buttons';
 
-        let activateReason = turnBlock;
-        if (!activateReason && knight.active) {
-            activateReason = 'Already active';
-        }
-        if (!activateReason) {
-            activateReason = shortfallReason(resources, KNIGHT_ACTIVATE_COST);
-        }
+        const reasons = knightActionReasons(knight);
         actions.appendChild(buildKnightActionButton(
-            'activate', knight.vertex,
-            `Activate · ${formatCost(KNIGHT_ACTIVATE_COST)}`, activateReason
+            'activate', knight.vertex, KNIGHT_ACTION_LABELS.activate, reasons.activate
         ));
-
-        let promoteReason = turnBlock;
-        if (!promoteReason && knight.rank >= MIGHTY_RANK) {
-            promoteReason = 'Already mighty';
-        }
-        if (!promoteReason && knight.rank + 1 === MIGHTY_RANK && !hasFortress) {
-            promoteReason = 'Mighty knights need the Fortress (Politics 3)';
-        }
-        if (!promoteReason && rankCount(knight.rank + 1) >= MAX_KNIGHTS_PER_RANK) {
-            const nextRank = KNIGHT_RANK_NAMES[knight.rank + 1].toLowerCase();
-            promoteReason = `No ${nextRank} knight pieces left`;
-        }
-        if (!promoteReason) {
-            promoteReason = shortfallReason(resources, KNIGHT_PROMOTE_COST);
-        }
         actions.appendChild(buildKnightActionButton(
-            'promote', knight.vertex,
-            `Promote · ${formatCost(KNIGHT_PROMOTE_COST)}`, promoteReason
+            'promote', knight.vertex, KNIGHT_ACTION_LABELS.promote, reasons.promote
         ));
 
         row.appendChild(actions);

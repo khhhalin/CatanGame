@@ -768,6 +768,37 @@ button:disabled {
     outline-offset: 2px;
 }
 
+/* A knight's own actions, over the knight. Positioned exactly as the ✓/✗ is,
+   and for the same reason: absolutely, inside the board box, so raising it can
+   change neither the canvas box nor the camera. knight-overlay.js sets
+   left/top in pixels; everything else is here. */
+.knight-actions {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    transform: translateX(-50%);
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-pill);
+    background-color: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-2);
+    white-space: nowrap;
+}
+
+/* Small enough to sit over a hex without hiding the intersections around it.
+   The disabled treatment is the one every button in this client shares. */
+.knight-action {
+    padding: 0.25rem var(--space-2);
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    border-radius: var(--radius-pill);
+}
+
+.knight-action:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
 
 /* Mid-turn indicators, overlaid rather than stacked above the board. They
    float over the canvas so appearing and disappearing never changes the board

@@ -105,6 +105,13 @@ export const knightHint = document.getElementById('knight-hint');
 export const buildKnightBtn = document.getElementById('build-knight-btn');
 export const moveKnightBtn = document.getElementById('move-knight-btn');
 export const buildWallBtn = document.getElementById('build-wall-btn');
+// The actions a tap on your own knight raises, over the piece itself. Like the
+// ✓/✗, it overlays the board and is never in flow above it - see
+// knight-overlay.js.
+export const knightActions = document.getElementById('knight-actions');
+export const knightActionButtons = knightActions
+    ? Array.from(knightActions.querySelectorAll('[data-knight-overlay]'))
+    : [];
 
 // Seafarers. Like the panels above, this one exists in the template but stays
 // hidden unless the running game has ships switched on.
