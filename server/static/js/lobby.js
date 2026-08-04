@@ -437,6 +437,23 @@ function sendRules() {
     emitGame('set_rules', { rules: chosen });
 }
 
+// Every call sends the *whole* selection, so coalescing rapid changes loses
+// nothing — the last one carries the others. Without this, ticking a row of
+// rules fires one full emit each: the server rate-limits the burst, the player
+// gets a stack of "Slow down" toasts over their hand, and the event log fills
+// with a dozen identical "changed the house rules" lines.
+const RULE_SEND_DELAY_MS = 250;
+
+let pendingRuleSend = null;
+
+function queueRuleSend() {
+    clearTimeout(pendingRuleSend);
+    pendingRuleSend = setTimeout(() => {
+        pendingRuleSend = null;
+        sendRules();
+    }, RULE_SEND_DELAY_MS);
+}
+
 if (rulesList) {
     // One delegated listener for controls that are rebuilt whenever the
     // catalogue changes. `change` rather than `input` so a number is sent
@@ -445,11 +462,17 @@ if (rulesList) {
         if (!event.target.closest('[data-rule-id]')) {
             return;
         }
-        sendRules();
+        queueRuleSend();
     });
 
-    // The focused control is skipped while rendering, so re-sync it on leave
+    // The focused control is skipped while rendering, so re-sync it on leave.
+    // Not while a send is queued, though: server state is a step behind until
+    // it lands, so re-syncing then reverts the tick the player just made —
+    // which is exactly what happens when they run down a list of rules.
     rulesList.addEventListener('focusout', (event) => {
+        if (pendingRuleSend !== null) {
+            return;
+        }
         const input = event.target.closest('[data-rule-id]');
         const rule = viewState.server.rules.catalogue.find(entry => entry.id === input?.dataset.ruleId);
         if (rule) {
