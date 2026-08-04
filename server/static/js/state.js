@@ -70,8 +70,10 @@ export const viewState = {
     // rebuilt when the catalogue's shape changes.
     renderedRulesSignature: '',
 
-    // Countdown display only - the server owns turn expiry.
-    timers: { diceSeconds: 15, roundSeconds: 120, updatedAt: Date.now(), handle: null },
+    // Countdown display only - the server owns expiry. The last `timer` reading
+    // it sent, and when it arrived: which clock is running, how much of it is
+    // left and how long it was. Null until the first payload says.
+    timers: { phase: null, remaining: null, limit: null, updatedAt: Date.now(), handle: null },
 
     // The once-per-second trade offer countdown.
     tradeTimerHandle: null

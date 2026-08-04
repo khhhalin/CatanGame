@@ -1,53 +1,61 @@
-// The dice and round countdowns.
+// The turn's countdowns.
 //
-// Display only - the server owns turn expiry, and a client that owned the clock
+// Display only - the server owns expiry, and a client that owned the clock
 // would own unlimited thinking time.
 //
-// Both numbers are *derived*, never counted. The server sends the seconds it
-// has left on each clock in every board payload (`dice_roll_time`,
-// `round_time`); this module records them with the wall-clock instant they
-// arrived and, once a second, shows the difference. Two consequences, and both
-// were bugs before:
+// Nothing here is counted and nothing here is inferred. A turn is now several
+// phases with a clock each - dice, discard, robber, choice, turn - and the
+// server says in every payload which one is running (`timer.phase`), how much
+// of it is left (`timer.remaining`) and how long it was (`timer.limit`). This
+// module records that reading with the wall-clock instant it arrived and, once
+// a second, shows the difference. Two consequences, and both were bugs before:
 //
 //   - Every tab shows the same number, because every tab is subtracting from
 //     the same server-sent figure rather than from a count of its own.
-//   - The round clock appears the moment the payload says the dice are up. It
-//     used to be gated behind a ticker that only ran on the current player's
-//     own tab, so for everyone else neither clock ever moved and the round one
-//     never arrived at all.
+//   - A phase change appears on every tab at once. Working out which phase the
+//     game is in from `has_rolled_dice` and the rest is exactly the local
+//     guess that made the round clock never arrive for anyone but the roller.
+//
+// Two elements, both keeping the ids a dozen test modules drive: `#dice-timer`
+// is whichever clock is running and names it, `#round-timer` is the turn
+// proper. Before phases existed those were the only two clocks there were.
 
 import { diceTimerEl, roundTimerEl } from './dom.js';
-import { getBoard, getGamePhase, hasRolledDice, isGameRunning, viewState } from './state.js';
+import { getBoard, getGamePhase, isGameRunning, viewState } from './state.js';
 
-// Where each clock changes colour, in seconds remaining.
-const DICE_WARNING = 10;
-const DICE_DANGER = 5;
-const ROUND_WARNING = 60;
-const ROUND_DANGER = 30;
+// What each phase is called on screen. `turn` is absent on purpose: it is the
+// one clock with an element of its own.
+const PHASE_LABELS = {
+    dice: 'Dice',
+    discard: 'Discard',
+    robber: 'Robber',
+    choice: 'Choice',
+};
+
+// Where a clock changes colour, as a share of the time it started with. A
+// fraction rather than a count of seconds because every phase has a limit of
+// its own and the table can change all of them in the lobby - a hardcoded
+// "10 seconds left is a warning" says nothing on a 5-second discard clock.
+const WARNING_SHARE = 0.5;
+const DANGER_SHARE = 0.25;
 
 /**
  * Record the clocks a server message carried.
  *
- * Safe to call with any payload: a message that says nothing about the clocks
+ * Safe to call with any payload: a message that says nothing about the clock
  * leaves the last reading alone rather than resetting it to a default, which is
  * what would make the display jump backwards.
  *
- * @param {object} data - Any payload that may carry `dice_roll_time`/`round_time`
+ * @param {object} data - Any payload that may carry a `timer` object
  */
 export function noteServerClocks(data) {
-    if (!data) {
+    const timer = data?.timer;
+    if (!timer || typeof timer !== 'object') {
         return;
     }
-    if (typeof data.dice_roll_time !== 'number' && typeof data.round_time !== 'number') {
-        return;
-    }
-    if (typeof data.dice_roll_time === 'number') {
-        viewState.timers.diceSeconds = data.dice_roll_time;
-    }
-    if (typeof data.round_time === 'number') {
-        viewState.timers.roundSeconds = data.round_time;
-    }
-    // One anchor for both: the server computed them at the same instant.
+    viewState.timers.phase = timer.phase ?? null;
+    viewState.timers.remaining = typeof timer.remaining === 'number' ? timer.remaining : null;
+    viewState.timers.limit = typeof timer.limit === 'number' ? timer.limit : null;
     viewState.timers.updatedAt = Date.now();
 }
 
@@ -63,24 +71,33 @@ export function updateTimers(boardData) {
 }
 
 /**
- * Seconds left on a clock, given what the server said and how long ago.
+ * Seconds left on the running clock, given what the server said and how long
+ * ago it said it.
  *
- * @param {number} serverSeconds - Remaining, as of the last payload
- * @returns {number}
+ * @returns {number|null} - null when no clock is running
  */
-function remaining(serverSeconds) {
+function remaining() {
+    if (viewState.timers.remaining === null) {
+        return null;
+    }
     const elapsed = Math.floor((Date.now() - viewState.timers.updatedAt) / 1000);
-    return Math.max(0, serverSeconds - elapsed);
+    return Math.max(0, viewState.timers.remaining - elapsed);
 }
 
 /**
- * The urgency class for a countdown.
+ * The urgency class for a countdown, against the time it started with.
+ *
+ * @param {number} seconds - Left on the clock
+ * @param {number|null} limit - What the clock started at
  */
-function timerClass(seconds, warningAt, dangerAt) {
-    if (seconds <= dangerAt) {
+function timerClass(seconds, limit) {
+    if (!limit) {
+        return 'timer';
+    }
+    if (seconds <= limit * DANGER_SHARE) {
         return 'timer danger';
     }
-    if (seconds <= warningAt) {
+    if (seconds <= limit * WARNING_SHARE) {
         return 'timer warning';
     }
     return 'timer';
@@ -98,7 +115,8 @@ function renderTimers() {
         return;
     }
 
-    if (!isGameRunning() || getGamePhase() === 'setup') {
+    const phase = viewState.timers.phase;
+    if (!isGameRunning() || getGamePhase() === 'setup' || !phase) {
         diceTimerEl.textContent = 'Dice: —';
         diceTimerEl.className = 'timer';
         roundTimerEl.textContent = 'Round: —';
@@ -106,21 +124,25 @@ function renderTimers() {
         return;
     }
 
-    // Exactly one of the two is live at any moment: the dice clock runs until
-    // the roll, the round clock from the roll to the end of the turn.
-    if (hasRolledDice()) {
+    const left = remaining();
+    const urgency = timerClass(left, viewState.timers.limit);
+
+    // The turn proper. Its own element, because it is the clock a player is
+    // spending while they decide what to build.
+    if (phase === 'turn') {
         diceTimerEl.textContent = 'Dice: rolled';
         diceTimerEl.className = 'timer';
-
-        const left = remaining(viewState.timers.roundSeconds);
         roundTimerEl.textContent = `Round: ${left}s`;
-        roundTimerEl.className = timerClass(left, ROUND_WARNING, ROUND_DANGER);
+        roundTimerEl.className = urgency;
         return;
     }
 
-    const left = remaining(viewState.timers.diceSeconds);
-    diceTimerEl.textContent = `Dice: ${left}s`;
-    diceTimerEl.className = timerClass(left, DICE_WARNING, DICE_DANGER);
+    // Everything the roll can hold the table up with. Named, because "45s" over
+    // a table that has stopped says nothing about what it is waiting for - and
+    // a discard clock running down while the turn clock reads "—" is the whole
+    // point of splitting them.
+    diceTimerEl.textContent = `${PHASE_LABELS[phase] || phase}: ${left}s`;
+    diceTimerEl.className = urgency;
     roundTimerEl.textContent = 'Round: —';
     roundTimerEl.className = 'timer';
 }
