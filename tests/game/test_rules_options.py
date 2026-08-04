@@ -434,6 +434,99 @@ class TestDiceDeck:
         assert game.dice_deck == []
 
 
+class TestEpidemic:
+    """expansions.md 775: on a 6 or an 8 a city collects one card, not two."""
+
+    def _city_on_a_number(self, game, number):
+        """Put Alice's city on a corner touching one producing hex, and make
+        that hex's number the one asked for."""
+        vertex_key, hex_obj = TestCityProduction()._lone_hex_corner(game)
+        hex_obj.number = number
+        game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+        game.get_player('Alice').cities.append(vertex_key)
+        return hex_obj
+
+    @pytest.mark.parametrize('number', [6, 8])
+    def test_a_city_collects_one_on_the_red_numbers(self, number):
+        game = make_game({'epidemic': True})
+        hex_obj = self._city_on_a_number(game, number)
+
+        game.distribute_resources(number)
+
+        assert game.get_player('Alice').resources[hex_obj.type] == 1
+
+    def test_every_other_number_still_pays_a_city_in_full(self):
+        game = make_game({'epidemic': True})
+        hex_obj = self._city_on_a_number(game, 5)
+
+        game.distribute_resources(5)
+
+        assert game.get_player('Alice').resources[hex_obj.type] == 2
+
+    def test_it_caps_whatever_the_table_set_a_city_to(self):
+        """The epidemic runs after the city's own share, so a table playing
+        cities at 4 cards still collects 1 on a 6."""
+        game = make_game({'epidemic': True, 'city_production': 4})
+        hex_obj = self._city_on_a_number(game, 6)
+
+        game.distribute_resources(6)
+
+        assert game.get_player('Alice').resources[hex_obj.type] == 1
+
+    def test_off_by_default_a_six_pays_a_city_twice(self):
+        game = make_game()
+        hex_obj = self._city_on_a_number(game, 6)
+
+        game.distribute_resources(6)
+
+        assert game.get_player('Alice').resources[hex_obj.type] == 2
+
+
+class TestDiceSets:
+    """expansions.md 739: "When you roll a '2' or a '12' as your production
+    roll you re-roll the dice, because no hex carries those numbers"."""
+
+    def _playing(self, rules):
+        game = make_game(rules, rng=random.Random(11))
+        game.game_phase = "playing"
+        game.start_turn()
+        return game
+
+    def _roll_many(self, game, times):
+        totals = []
+        for _ in range(times):
+            game.has_rolled_dice = False
+            game.must_move_robber = False
+            totals.append(game.roll_dice('Alice')['total'])
+        return totals
+
+    def test_the_chosen_set_never_throws_a_two_or_a_twelve(self):
+        game = self._playing({'dice_set': 'no_two_or_twelve'})
+        totals = self._roll_many(game, 200)
+        assert set(totals) == set(range(3, 12))
+
+    def test_the_standard_set_still_throws_them(self):
+        game = self._playing(None)
+        assert {2, 12} <= set(self._roll_many(game, 400))
+
+    def test_a_dealt_deck_deals_the_chosen_set(self):
+        """The dice deck and a dice set compose: the deck is the set, shuffled,
+        so 34 rolls is every combination that set allows, once each."""
+        game = self._playing({'dice_set': 'no_two_or_twelve', 'dice_deck': True})
+        totals = self._roll_many(game, 34)
+        assert sorted(totals) == sorted(
+            first + second
+            for first in range(1, 7) for second in range(1, 7)
+            if first + second not in (2, 12)
+        )
+
+    def test_the_same_seed_deals_the_same_game(self):
+        """A set is drawn from the game's own generator, like everything else."""
+        first = self._roll_many(self._playing({'dice_set': 'no_two_or_twelve'}), 20)
+        second = self._roll_many(self._playing({'dice_set': 'no_two_or_twelve'}), 20)
+        assert first == second
+
+
 class TestVictoryPointCardsInHand:
     def _one_card_short(self, game):
         """Settlements worth one point less than the game needs."""
