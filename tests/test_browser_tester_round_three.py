@@ -62,10 +62,20 @@ ACTIVATE_ONLY_HAND = {"wood": 0, "brick": 0, "sheep": 0, "wheat": 1, "ore": 0}
 
 
 def shot(player, label):
+    """One screenshot per theme. Every one of these fixes was a question about
+    what a player can read, and this UI has both a light and a dark palette."""
     os.makedirs(SHOT_DIR, exist_ok=True)
-    path = os.path.join(SHOT_DIR, f"{label}.png")
-    player.page.screenshot(path=path, full_page=False)
-    return path
+    paths = []
+    for theme in ("light", "dark"):
+        player.page.evaluate(
+            "t => document.documentElement.setAttribute('data-theme', t)", theme
+        )
+        player.page.wait_for_timeout(150)
+        path = os.path.join(SHOT_DIR, f"{label}-{theme}-1920x1080.png")
+        player.page.screenshot(path=path, full_page=False)
+        paths.append(path)
+    player.page.evaluate("() => document.documentElement.removeAttribute('data-theme')")
+    return paths
 
 
 # --- Arranging a table -----------------------------------------------------
@@ -285,7 +295,7 @@ class TestTheHandIsReadableWhileDiscarding:
             "the discard dialog does not restate the hand it is asking about"
         )
         assert_legible(player, "#discard-hand", "mid-discard")
-        shot(player, "discard-hand-light-1920x1080")
+        shot(player, "discard-dialog")
 
     def test_the_discard_dialog_does_not_blur_what_is_behind_it(self, discarding):
         """"you cant see your cards due to blur", named precisely."""
@@ -333,7 +343,7 @@ class TestTheHandIsReadableWhileTrading:
         )
         assert_legible(player, "#trade-hand", "mid-trade")
         assert player.page.evaluate(MODAL_FILTER, "trade-modal") == "none"
-        shot(player, "trade-hand-light-1920x1080")
+        shot(player, "trade-dialog")
 
 
 # --- A knight's own actions, at the knight ---------------------------------
@@ -383,7 +393,7 @@ class TestClickingYourOwnKnightOffersItsActions:
         reasons = {entry["action"]: entry["reason"] for entry in offered}
         assert "sheep" in reasons["promote"], reasons["promote"]
         assert reasons["move"] == "Activate it first", reasons["move"]
-        shot(player, "knight-overlay-light-1920x1080")
+        shot(player, "knight-overlay")
 
     def test_taking_an_action_sends_it_and_puts_the_overlay_away(self, sleeping_knight):
         """The knight wakes up, the wheat is spent, and the three-button strip
