@@ -4,4 +4,8 @@
 **/.git
 **/node_modules
 **/*.md
+# ...except the changelog: the running server parses it to name its own
+# build and to show testers what changed. Without it a container reports
+# "unknown" and serves an empty panel.
+!CHANGELOG.md
 **/tests

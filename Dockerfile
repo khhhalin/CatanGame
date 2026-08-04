@@ -6,6 +6,10 @@ COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server/ .
+# Alongside the server, because build_info.py looks for it next to the
+# application: it is both the changelog the panel shows and the last
+# fallback for the build id, and a container carries no .git to ask.
+COPY CHANGELOG.md .
 
 EXPOSE 5000
 
