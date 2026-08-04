@@ -466,7 +466,12 @@ class TestCitiesAndKnightsFits:
         assert states, "no build buttons found"
         for state in states:
             assert state["off"], f"{state['id']} is live on someone else's turn"
-            assert current in state["why"], (
+            # Buy Card is the exception, and for a better reason: this table
+            # plays progress cards, so the server refuses `buy_dev_card` for the
+            # whole game whoever is on turn. Naming the current player there
+            # would say the wait is what stops them, and it is not.
+            expected = "progress cards" if state["id"] == "buy-dev-card-btn" else current
+            assert expected in state["why"], (
                 f"{state['id']} is disabled but does not say why: {state['why']!r}"
             )
 
