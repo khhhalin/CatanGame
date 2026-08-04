@@ -59,6 +59,11 @@ DICE_SETS = {
 class Modifier:
     """One adjustment to one number.
 
+    `rule_id` is the rule this speaks for. Usually one the lobby lists, but a
+    base-game rule nobody can switch off — the robber below — is still a
+    modifier, because it is still an adjustment to a number somebody else's
+    modifier has to compose with.
+
     `applies` is asked whether the table's rules switch this on; `change`
     receives the value so far, the rules and the context the hook passes, and
     returns the new value. It must not mutate what it was handed — the caller

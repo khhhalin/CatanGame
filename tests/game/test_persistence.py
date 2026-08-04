@@ -220,6 +220,34 @@ class TestRulesSurvive:
 
         assert round_trip(game, tmp_path).dice_deck == game.dice_deck
 
+    def test_a_custom_dice_set_comes_back_with_what_is_left_of_it(self, tmp_path):
+        """A restart must not hand the table the two numbers they took out."""
+        game = a_game({'dice_set': 'no_two_or_twelve', 'dice_deck': True})
+        game.game_phase = "playing"
+        game.start_turn()
+        game.roll_dice(game.players[game.current_player_index].name)
+
+        after = round_trip(game, tmp_path)
+        assert after.rules['dice_set'] == 'no_two_or_twelve'
+        assert after.dice_deck == game.dice_deck
+        assert all(sum(pair) not in (2, 12) for pair in after.dice_combinations())
+
+    def test_a_save_written_before_these_rules_existed_still_loads(self, tmp_path):
+        """Old saves carry no `dice_set` and no `epidemic`; both fall back to
+        the base game rather than refusing the file."""
+        path = str(tmp_path / "game.json")
+        persistence.save(a_game(), path)
+        with open(path) as handle:
+            data = json.load(handle)
+        for rule_id in ('dice_set', 'epidemic'):
+            del data['rules'][rule_id]
+        with open(path, 'w') as handle:
+            json.dump(data, handle)
+
+        after = persistence.load(path)
+        assert after.rules['dice_set'] == 'standard'
+        assert after.rules['epidemic'] is False
+
 
 class TestCitiesKnightsSurvives:
     def test_improvements_come_back(self, tmp_path):
