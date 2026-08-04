@@ -11,9 +11,6 @@ import { isSeaMode, seaRule, syncSeaModeButtons } from './seafarers.js';
 import { emitGame } from './socket.js';
 import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVictims, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
 
-// Mirrors server/data/costs.json. Duplicated here only to grey a button out and
-// say why before the round trip - the server checks all of it again and the
-// board is drawn from its answer, never from this.
 // Everything a 7 counts, which is what a discard may name. The five resources
 // and - on a table that plays them - the three commodities: the engine takes
 // both (`clean_card_counts`), and a hand that is over the limit on commodities
@@ -22,6 +19,9 @@ const DISCARDABLE_CARDS = ['wood', 'brick', 'sheep', 'wheat', 'ore', ...COMMODIT
 
 const CARD_ICONS = { ...RESOURCE_ICONS, ...COMMODITY_ICONS };
 
+// Mirrors server/data/costs.json. Duplicated here only to grey a button out and
+// say why before the round trip - the server checks all of it again and the
+// board is drawn from its answer, never from this.
 const BUILD_COSTS = {
     settlement: { wood: 1, brick: 1, wheat: 1, sheep: 1 },
     road: { wood: 1, brick: 1 },
