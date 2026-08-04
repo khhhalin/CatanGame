@@ -642,6 +642,8 @@ def start_problems(defn: MapDefinition, chosen: dict) -> list:
     problems = []
     if any(region.kind == 'fog' for region in defn.regions):
         problems.append(f'{defn.name} has fog, which cannot be played yet')
+    if chosen.get('start_on_main_land') and not defn.hexes_of_kind('main'):
+        problems.append(f'{defn.name} has no main land to start on')
     components = land_components(defn)
     if len(components) > 1 and not chosen.get('ships'):
         problems.append(f'{defn.name} has {len(components)} islands and needs Ships')

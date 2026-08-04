@@ -302,6 +302,19 @@ class TestWarningsDoNotBlock:
         assert 'FOG_REGION' in [warning.code for warning in warnings]
         assert maps.start_problems(maps.parse_map(document), {'ships': True})
 
+    def test_starting_on_the_main_land_needs_a_map_that_has_some(self):
+        """The rule and the map have to agree, and the table is told which of
+        the two to change rather than being handed a game nobody can open."""
+        document = make_map()
+        region_named(document, 'mainland')['kind'] = 'island'
+        defn = maps.parse_map(document)
+
+        assert maps.validate_map(defn)[0] == []
+        assert maps.start_problems(defn, {'start_on_main_land': True}) == [
+            'Test Map has no main land to start on'
+        ]
+        assert maps.start_problems(defn, {'start_on_main_land': False}) == []
+
     def test_more_harbours_than_the_coast_can_hold(self):
         document = make_map()
         document['harbours'] = {'mode': 'bag', 'types': {'generic': 12}}
