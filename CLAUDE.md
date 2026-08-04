@@ -94,3 +94,37 @@ server state perfectly correct.
 - `./.venv/bin/python -m pytest -q` passes, and `./.venv/bin/ruff check server tests` is clean.
 - A test that fails is a bug report. Fix the code or file it. **Never delete a test because it fails.**
 - Deleting a good test is worse than keeping a mediocre one. When unsure, keep it and write down why.
+
+## Rules are individual. There are no expansions in the engine
+
+`cities_and_knights` was once one boolean that silently switched on eight
+mechanics *and* overrode the victory target. A table could not play knights
+without commodities, and a lobby that asked for 10 points got 13 with no
+explanation.
+
+It is now 41 individually switchable rules. Keep it that way:
+
+- **No engine code may branch on the name of an expansion.** Branch on the
+  specific rule that governs the behaviour — `rules['knights']`, not "are we
+  playing C&K". `grep -rn "rules\['cities_and_knights'\]" server/` must stay
+  empty, and the same goes for any expansion added later.
+- **Add rules one at a time, each with its own switch**, a real `source`
+  citation and a summary a player can decide on. A new expansion is a batch of
+  rules, never a mode.
+- **A preset is a shortcut, not a mode.** It ticks individual rules and nothing
+  records which preset was used. `preset_rules('cities_and_knights')` returns a
+  dict of rule ids; the engine never learns the preset existed.
+- **Never add a rule the engine ignores.** A picker showing a setting nothing
+  honours is worse than no setting. A test asserts every catalogue id is read
+  by engine code — keep it passing.
+- **A rule may suggest, never overwrite.** `suggests_victory_target` exists so a
+  rule can propose a different length; the preset sets it and the lobby can
+  change it back. Silently rewriting another rule is the bug this replaced.
+- Dependencies are **refused, not propped up**: `dependency_problems` names what
+  is missing (`INCOHERENT_RULES`) rather than switching it on behind the table's
+  back.
+
+Two things that are *not* violations: the catalogue's `group: expansion` is how
+the lobby sorts controls for players, and module names like `seafarers.py` or
+`cities_knights.py` describe where the mechanics come from. Neither changes
+behaviour.
