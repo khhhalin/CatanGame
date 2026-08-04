@@ -292,8 +292,12 @@ def roll_and_pass(actor, everyone):
         resolve_discard(player)
     resolve_robber(actor)
 
+    # The *roll* line, not merely the last dice line: a roll now logs two
+    # `dice` entries — the roll and what it paid — so taking the last one
+    # returned the production sentence, which carries no total to read.
     entry = actor.page.evaluate(
-        "() => { const rows = document.querySelectorAll('#log-entries .log-kind-dice');"
+        "() => { const rows = [...document.querySelectorAll('#log-entries .log-kind-dice')]"
+        "          .filter(row => row.textContent.includes(' rolled '));"
         "        return rows.length ? rows[rows.length - 1].textContent : ''; }"
     )
 
