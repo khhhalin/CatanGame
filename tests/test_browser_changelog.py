@@ -12,8 +12,9 @@ assertions are the ones that decide whether it can answer it:
   - expanded, at 1920x1080, it covers neither the hand nor the board controls
     nor the console. Two dialogs have already had to be fixed for exactly that.
 
-Deliberately self-contained: `browser_harness` is being rewritten, so
-everything this needs is defined here.
+Self-contained but for the browser itself, which comes from
+`browser_harness`: one browser process is shared by the whole run, and a
+second sync driver in the same process cannot start at all.
 
 Run: pytest tests/test_browser_changelog.py -m slow -v
 """
@@ -28,7 +29,7 @@ import time
 import pytest
 
 pytest.importorskip("playwright", reason="playwright is not installed")
-from playwright.sync_api import sync_playwright  # noqa: E402
+from browser_harness import browser_session  # noqa: E402
 
 pytestmark = pytest.mark.slow
 
@@ -171,10 +172,12 @@ def overlaps(one, other):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = play.chromium.launch(headless=True)
+    # The harness's shared browser, not a `sync_playwright()` of this file's
+    # own: the sync driver holds an asyncio loop open for as long as it is
+    # running, so a second one anywhere in the process raises "please use the
+    # Async API" and every test in this file errors at setup.
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
