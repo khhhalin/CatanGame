@@ -299,13 +299,20 @@ function renderAwardSummary() {
     // The number that would take the bonus, whoever is holding it now
     const best = (scores) => Math.max(0, ...Object.values(scores).map(Number));
 
+    // Seafarers plays for the Longest Trade Route *instead of* the Longest
+    // Road, and roads and ships both count toward it - so a route that was
+    // mostly ships was being reported as "10 roads". The rulebook counts it in
+    // segments (expansions.md 77-84).
+    const tradeRoute = board.rules?.longest_trade_route === true;
+
     const rows = [
         {
             icon: '👑',
-            name: 'Longest Road',
+            name: tradeRoute ? 'Longest Trade Route' : 'Longest Road',
             holder: board.longest_road_holder,
             value: board.longest_road_holder
-                ? `${roadLengths[board.longest_road_holder] || 0} roads`
+                ? `${roadLengths[board.longest_road_holder] || 0} `
+                  + (tradeRoute ? 'segments' : 'roads')
                 : `best ${best(roadLengths)}, needs 5`
         },
         {
