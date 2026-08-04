@@ -133,7 +133,7 @@ class RobberRules:
             self.auto_discard(owing)
 
         if self.must_move_robber:
-            target = self._auto_robber_hex()
+            target = self._auto_robber_hex(acting)
             if target is None:
                 # No land hex is legal (Friendly Robber with no desert). Nothing
                 # can be resolved, so release the block rather than stall.
@@ -154,10 +154,13 @@ class RobberRules:
         return outcome
 
     def auto_discard(self, player_name: str) -> dict:
-        """Discard at random for a player who let their timer run out.
+        """Discard at random for a player who let their discard clock run out.
 
         Which cards go is chosen by the server, not the player: the alternative
         is a table that waits forever on someone who has closed their laptop.
+        Every card in the hand is equally likely — a fixed order would let a
+        player game the timeout by holding what they want kept behind what the
+        server always takes first.
         """
         if player_name not in self.players_needing_discard:
             return {}
@@ -166,8 +169,13 @@ class RobberRules:
         if player is None:
             return {}
 
+        # Sorted, so the draw depends on what is in the hand and not on the
+        # order the cards were collected in: the same seed and the same hand
+        # must always cost the same cards, however that hand was filled.
         hand = []
-        for card_type, count in list(player.resources.items()) + list(player.commodities.items()):
+        for card_type, count in sorted(
+            list(player.resources.items()) + list(player.commodities.items())
+        ):
             hand.extend([card_type] * count)
 
         required = min(self.players_needing_discard[player_name], len(hand))
@@ -183,16 +191,50 @@ class RobberRules:
             return {}
         return chosen
 
-    def _auto_robber_hex(self) -> str | None:
-        """Where the robber goes when nobody picked. Never back where it sits."""
-        candidates = [
+    def _hexes_touching(self, player_name: str) -> set:
+        """Every hex this player has a building on a corner of."""
+        touched = set()
+        for vertex in self.vertices.values():
+            if not vertex.building or vertex.building.get('player') != player_name:
+                continue
+            touched.update(vertex.neighbors.get('hexes', []))
+        return touched
+
+    def _auto_robber_hex(self, acting: str = None) -> str | None:
+        """Where the robber goes when nobody picked. Never back where it sits.
+
+        The busiest hex that costs the timed-out player nothing: "busiest" is
+        the pip count, the dots on the number token, which is how often the hex
+        pays and so how much blocking it takes off the table. Picking at random
+        was as likely to land on the absent player's own best hex as on
+        anybody's, so a missed click blockaded the player who missed it.
+
+        Ties are broken with the game's own rng, so a seeded game resolves a
+        timeout the same way every replay. If every legal hex touches one of
+        their buildings there is no harmless choice, and the busiest of those
+        is taken instead — the robber has to go somewhere.
+        """
+        legal = [
             key
             for key, hex_obj in self.hexes.items()
             if hex_obj.type != 'ocean' and key != self.robber_hex and self.robber_is_allowed(key)
         ]
-        if candidates:
-            return self.rng.choice(candidates)
-        return self.friendly_robber_fallback()
+        if not legal:
+            return self.friendly_robber_fallback()
+
+        acting = acting or self.players[self.current_player_index].name
+        harmless = [key for key in legal if key not in self._hexes_touching(acting)]
+        candidates = harmless or legal
+
+        best = max(self._hex_pips(key) for key in candidates)
+        return self.rng.choice([key for key in candidates if self._hex_pips(key) == best])
+
+    def _hex_pips(self, hex_key: str) -> int:
+        """The dots on a hex's number token: 5 for a 6 or an 8, 0 for none."""
+        number = self.hexes[hex_key].number
+        if number is None:
+            return 0
+        return 6 - abs(7 - number)
 
     def robber_is_allowed(self, hex_key: str) -> bool:
         """Whether the robber may be moved onto this hex.
