@@ -3,8 +3,8 @@
 The server is authoritative, so a phase that blocks building has to be enforced
 here whatever the UI happens to draw. `game.py` already refuses the base-game
 placements while the robber is unmoved; this covers the rest of the pending
-states — an unchosen victim, an owed discard — and the Cities & Knights
-purchases, which had no phase check at all.
+states — an unchosen victim, an owed discard, an open pending choice — and the
+Cities & Knights purchases, which had no phase check at all.
 """
 
 import state

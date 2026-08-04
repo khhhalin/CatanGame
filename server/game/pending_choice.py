@@ -63,7 +63,7 @@ class PendingChoiceRules:
         if kind not in KINDS:
             raise ValueError(f"unknown pending choice kind: {kind}")
 
-        options = [option for option in options]
+        options = list(options)
         if not options:
             return None
 
