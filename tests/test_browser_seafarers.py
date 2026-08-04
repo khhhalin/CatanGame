@@ -30,6 +30,7 @@ from browser_harness import (
     build_road,
     build_settlement,
     click_edge,
+    click_hex,
     client_point,
     confirm_is_showing,
     edges_next_to,
@@ -367,6 +368,24 @@ def movable_ship(players, limit=6):
     raise AssertionError("no player reached a ship they were allowed to move")
 
 
+def roll_until_a_seven(players, limit=24):
+    """Pass turns until somebody rolls a 7 and owes a robber move.
+
+    The dice are seeded, so this is the same number of turns every run - the
+    loop is a bound, not a gamble.
+    """
+    for _ in range(limit):
+        player = actor_of(players)
+        if not player.board().get("has_rolled_dice"):
+            roll_dice(player)
+        for tab in players:
+            resolve_discard(tab)
+        if player.board().get("must_move_robber"):
+            return player
+        end_turn(player)
+    raise AssertionError(f"no 7 was rolled in {limit} turns")
+
+
 def actor_of(players):
     board = players[0].board()
     return next(p for p in players if p.name == board["current_player"])
@@ -564,6 +583,28 @@ class TestTheSailedBoard:
         chip = player.page.inner_text("#seafarers-chip-value")
         assert "🚢" in chip, f"the chip says nothing about the fleet: {chip!r}"
 
+        open_seafarers_fold(player)
+        player.page.wait_for_selector("#build-ship-btn", timeout=5000)
+        assert "🌲" in player.page.inner_text("#build-ship-btn"), "no cost on the button"
+        # Special points are inside victory_points already; the fold is the only
+        # place the breakdown is stated.
+        assert player.page.is_visible("#island-points")
+        shot(player, "seafarers-controls-1920x1080")
+        player.page.keyboard.press("Escape")
+
+    def test_the_extra_fold_does_not_make_the_page_scroll(self, sailed_table):
+        """The rail gained a row. The owner's rule for this screen is that
+        nothing scrolls and nothing is clipped, and one more fold is exactly
+        the kind of thing that breaks it — it did once already, for Cities &
+        Knights, at this very viewport."""
+        page = sailed_table[0].page.evaluate(
+            "() => ({ height: document.documentElement.scrollHeight,"
+            "         width: document.documentElement.scrollWidth,"
+            "         viewH: window.innerHeight, viewW: window.innerWidth })"
+        )
+        assert page["height"] <= page["viewH"] + 1, f"the page scrolls: {page}"
+        assert page["width"] <= page["viewW"] + 1, f"the page scrolls: {page}"
+
     def test_moving_a_ship_greys_the_control_out_with_its_reason(self, sailed_table):
         """`ship_moved_this_turn` is one move per turn, and it has to be said on
         the control before the tap — not reported as an error after it, which is
@@ -610,6 +651,45 @@ class TestTheSailedBoard:
             timeout=5000,
         )
         assert "already moved" in player.page.get_attribute("#move-ship-btn", "title")
+
+    def test_the_pirate_sails_instead_of_the_robber_on_a_seven(self, sailed_table):
+        """A 7 offers two moves with the pirate in play, and which one is sent
+        is decided by the hex the player aims at — a land hex is the robber, a
+        sea hex is the pirate. Both end the same way: `must_move_robber` drops
+        and the server answers with the victim choice it already had.
+        """
+        player = roll_until_a_seven(sailed_table)
+        board = player.board()
+        assert board["pirate_hex"] is None, "the pirate has already been moved"
+
+        ocean = [key for key, hex_data in sorted(board["hexes"].items())
+                 if hex_data["type"] == "ocean"]
+        target = first_clickable(player, 'hex', ocean)
+        assert target, "no ocean hex can be clicked"
+
+        # No button arms this: the robber is pending, so a tap on the board is
+        # already a move, and the sea is what makes it the pirate's.
+        click_hex(player, target)
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+        assert "Pirate" in player.page.inner_text("#placement-announce"), (
+            "the confirmation did not say it was about to move the pirate"
+        )
+        player.page.click("#placement-confirm-yes")
+
+        player.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().pirate_hex !== null", timeout=8000
+        )
+        after = player.board()
+        assert after["pirate_hex"] == target
+        assert after["must_move_robber"] is False
+        # The robber stayed where it was: the pirate is moved *instead of* it.
+        assert after["robber_hex"] == board["robber_hex"]
+        if player.page.is_visible("#victim-modal.show"):
+            player.page.evaluate(
+                "() => document.getElementById('victim-modal').classList.remove('show')"
+            )
+        settle_frames(player)
+        shot(player, "seafarers-pirate-1920x1080")
 
     def test_a_seafaring_board_looks_right_in_both_themes(self, sailed_table):
         """Not an assertion about beauty — the shots are for a human to open.
