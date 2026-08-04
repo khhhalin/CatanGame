@@ -354,6 +354,24 @@ class TestIdentityComesFromTheConnection:
         assert game.has_rolled_dice, "the seat acted, whatever the payload claimed"
         assert last_error(actor) is None
 
+    def test_a_progress_hand_can_only_be_asked_for_by_its_owner(self, socket_app):
+        """`request_progress_hand` answered with whatever hand the payload
+        named, so any client could read an opponent's cards."""
+        alice = socketio.test_client(socket_app)
+        bob = socketio.test_client(socket_app)
+        alice.emit('join', {'name': 'Alice', 'role': 'player'})
+        bob.emit('join', {'name': 'Bob', 'role': 'player'})
+        alice.emit('set_rules', {'preset': 'cities_and_knights'})
+        alice.emit('start_game')
+        state.session().game.ck.progress_hands['Bob'] = ['spy', 'warlord']
+        alice.get_received()
+
+        alice.emit('request_progress_hand', {'name': 'Bob'})
+
+        hand = events(alice, 'progress_hand')[-1]
+        assert hand['player'] == 'Alice'
+        assert hand['cards'] == [], "Bob's cards stay Bob's"
+
     def test_taking_over_a_seat_switches_the_private_view(self, clients):
         alice, _ = clients
         game = state.session().game
