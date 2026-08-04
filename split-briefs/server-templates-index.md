@@ -170,7 +170,7 @@ the split commit.
 ## 6. How to verify the split changed nothing
 
 ```bash
-cd /home/kalin/catan/CatanGame
+cd the repo root
 
 # --- The template: render before and after, compare the DOM, not the bytes ---
 TMP=$(mktemp -d)
@@ -203,9 +203,9 @@ diff /tmp/dom-before /tmp/dom-after         # MUST be empty (123 exports)
 git show --stat HEAD | grep -c 'static/js/' # expect: only dom.js and dom/*
 
 # --- The suites ---
-./.venv/bin/python -m pytest -q
-./.venv/bin/ruff check server tests
-./.venv/bin/python -m pytest -q tests/test_browser_layout.py \
+.venv/bin/python -m pytest -q
+.venv/bin/ruff check server tests
+.venv/bin/python -m pytest -q tests/test_browser_layout.py \
     tests/test_browser_a11y.py tests/test_browser_firefox.py \
     tests/test_browser_playthrough.py tests/test_browser_knights.py \
     tests/test_browser_trade_rate.py

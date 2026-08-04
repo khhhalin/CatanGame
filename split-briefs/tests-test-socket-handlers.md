@@ -129,28 +129,28 @@ filename.
 ## 6. How to verify the split changed nothing
 
 ```bash
-cd /home/kalin/catan/CatanGame
+cd the repo root
 
 # The set of tests must be identical, ignoring only the module path.
-./.venv/bin/python -m pytest --collect-only -q 2>/dev/null \
+.venv/bin/python -m pytest --collect-only -q 2>/dev/null \
   | grep '::' | sed 's|^.*::||' | sort > /tmp/tests-after
 
 TMP=$(mktemp -d); git archive HEAD~1 | tar -x -C "$TMP"   # never git stash here
-(cd "$TMP" && /home/kalin/catan/CatanGame/.venv/bin/python -m pytest \
+(cd "$TMP" && .venv/bin/python -m pytest \
    --collect-only -q 2>/dev/null) | grep '::' | sed 's|^.*::||' | sort > /tmp/tests-before
 
 diff /tmp/tests-before /tmp/tests-after      # MUST be empty
 
 # Counts, as a second check: 998 collected fast, 237 browser deselected.
-./.venv/bin/python -m pytest --collect-only -q 2>&1 | tail -1
+.venv/bin/python -m pytest --collect-only -q 2>&1 | tail -1
 
 # Nothing references the old path.
 grep -rn "test_socket_handlers" --include='*.py' --include='*.md' \
      --include='*.toml' --include='*.json' . | grep -v '^./.git'
 
-./.venv/bin/python -m pytest -q tests/handlers/ -v
-./.venv/bin/python -m pytest -q
-./.venv/bin/ruff check server tests
+.venv/bin/python -m pytest -q tests/handlers/ -v
+.venv/bin/python -m pytest -q
+.venv/bin/ruff check server tests
 ```
 
 ### What would prove a regression rather than merely passing

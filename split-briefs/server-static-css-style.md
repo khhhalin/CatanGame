@@ -136,7 +136,7 @@ and readable in the template where a reviewer will look for it.
 The strong check, which no other brief in this set can offer:
 
 ```bash
-cd /home/kalin/catan/CatanGame
+cd the repo root
 # The parent version, WITHOUT touching the shared worktree:
 TMP=$(mktemp -d)
 git archive HEAD~1 server/static/css/style.css | tar -x -C "$TMP"
@@ -161,8 +161,8 @@ Then:
 
 ```bash
 grep -c 'rel="stylesheet"' server/templates/index.html    # expect 9
-./.venv/bin/python -m pytest -q
-./.venv/bin/python -m pytest -q tests/test_browser_layout.py \
+.venv/bin/python -m pytest -q
+.venv/bin/python -m pytest -q tests/test_browser_layout.py \
     tests/test_browser_firefox.py tests/test_browser_a11y.py \
     tests/test_browser_visuals.py
 ```

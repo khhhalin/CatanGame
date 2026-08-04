@@ -205,7 +205,7 @@ other. See the verification step.
 ```bash
 # 1. Cycle check — the thing most likely to go wrong, and silent if it does.
 #    Build the module graph from the import lines and look for a back edge.
-cd /home/kalin/catan/CatanGame
+cd the repo root
 grep -Hn "^import .* from '\./" server/static/js/*.js
 #    Expect: no path from cities-knights.js or seafarers.js back to panels.js.
 
@@ -224,9 +224,9 @@ git archive HEAD~1 server/static/js/panels.js | tar -xO \
 diff /tmp/before /tmp/after   # expect: no removals
 
 # 4. The suites.
-./.venv/bin/python -m pytest -q                    # 998 fast tests
-./.venv/bin/ruff check server tests
-./.venv/bin/python -m pytest -q tests/test_browser_layout.py \
+.venv/bin/python -m pytest -q                    # 998 fast tests
+.venv/bin/ruff check server tests
+.venv/bin/python -m pytest -q tests/test_browser_layout.py \
     tests/test_browser_tester_round.py tests/test_browser_a11y.py \
     tests/test_browser_visuals.py tests/test_browser_firefox.py
 #    then the full 237-test browser run before calling it done (~16 min).

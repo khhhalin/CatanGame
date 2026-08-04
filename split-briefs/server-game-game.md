@@ -150,7 +150,7 @@ small accessors, production and costs, and dice.
   eight means any name collision resolves silently by position. Before
   committing, prove there is none:
   ```bash
-  ./.venv/bin/python - <<'EOF'
+  .venv/bin/python - <<'EOF'
   import sys; sys.path.insert(0, 'server')
   from game.game import Game
   import collections
@@ -179,16 +179,16 @@ small accessors, production and costs, and dice.
 ## 6. How to verify the split changed nothing
 
 ```bash
-cd /home/kalin/catan/CatanGame
+cd the repo root
 
 # 1. The public surface of Game is identical.
-./.venv/bin/python -c "
+.venv/bin/python -c "
 import sys; sys.path.insert(0,'server')
 from game.game import Game
 print('\n'.join(sorted(n for n in dir(Game) if not n.startswith('__'))))" > /tmp/api-after
 # and the same from the parent, in a scratch copy — NEVER git stash here:
 TMP=$(mktemp -d); git archive HEAD~1 | tar -x -C "$TMP"
-(cd "$TMP" && /home/kalin/catan/CatanGame/.venv/bin/python -c "
+(cd "$TMP" && .venv/bin/python -c "
 import sys; sys.path.insert(0,'server')
 from game.game import Game
 print('\n'.join(sorted(n for n in dir(Game) if not n.startswith('__'))))") > /tmp/api-before
@@ -197,7 +197,7 @@ diff /tmp/api-before /tmp/api-after        # MUST be empty
 # 2. No MRO collision (script above). MUST print [].
 
 # 3. The catalogue still imports with no filesystem access.
-./.venv/bin/python -c "
+.venv/bin/python -c "
 import sys, builtins; sys.path.insert(0,'server')
 _open = builtins.open
 def guard(*a, **k): raise AssertionError('rules touched the filesystem: %r' % (a,))
@@ -207,14 +207,14 @@ print(len(rules.catalogue()), 'rules')
 builtins.open = _open"
 
 # 4. Save-file compatibility, both directions.
-./.venv/bin/python -m pytest -q tests/game/test_persistence.py \
+.venv/bin/python -m pytest -q tests/game/test_persistence.py \
     tests/game/test_seafarers_persistence.py \
     tests/game/test_progress_card_persistence.py -v
 
 # 5. Everything.
-./.venv/bin/python -m pytest -q          # 998 fast tests
-./.venv/bin/ruff check server tests
-./.venv/bin/python -m pytest -q tests/test_browser_full_game.py \
+.venv/bin/python -m pytest -q          # 998 fast tests
+.venv/bin/ruff check server tests
+.venv/bin/python -m pytest -q tests/test_browser_full_game.py \
     tests/test_browser_playthrough.py tests/test_browser_awards.py
 # then the full browser suite before calling it done.
 ```
