@@ -64,20 +64,23 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def start_server(data_dir, seed=None):
+def start_server(data_dir, seed=None, config="development"):
     """A real gunicorn server on its own port and its own data directory.
 
     Returns (process, url). The caller owns shutdown.
+
+    `config` defaults to development and not TestingConfig: the latter's 1s dice
+    timer and 2s round timer let the turn watchdog auto-play faster than a
+    browser can click, which silently invalidates any assertion about who did
+    what. A suite whose subject *is* the watchdog passes `config="testing"` on
+    purpose — there is no other way to make the clocks run out inside a test.
     """
     port = free_port()
     env = dict(
         os.environ,
         SECRET_KEY="browser-test",
         CATAN_DATA_DIR=str(data_dir),
-        # Not TestingConfig: its 1s dice timer and 2s round timer let the turn
-        # watchdog auto-play faster than a browser can click, which silently
-        # invalidates any assertion about who did what.
-        CATAN_CONFIG="development",
+        CATAN_CONFIG=config,
     )
     # A seeded server replays the same board and the same dice every run. A
     # test that plays a whole game is otherwise a coin toss: it passed, then
