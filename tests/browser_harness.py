@@ -181,15 +181,21 @@ def wait_for_rule(player, rule_id, value, timeout=8000):
     )
 
 
-_ASK_FOR_A_RESYNC = """
+# Deliberately `request_log` and not `request_state`: a resync answers with a
+# whole board, and a board payload is not inert. It runs the client's
+# placement bookkeeping, which is what decides whether an armed build mode
+# survives - so using one here would change the thing being observed. Asking
+# for the log after its last entry replies with an empty list and touches
+# nothing at all.
+_ASK_FOR_AN_EMPTY_ANSWER = """
 async () => {
     const socket = (await import('/static/js/socket.js')).socket;
-    if (window.__resyncs === undefined) {
-        window.__resyncs = 0;
-        socket.on('game_state', () => { window.__resyncs += 1; });
+    if (window.__pings === undefined) {
+        window.__pings = 0;
+        socket.on('log_history', () => { window.__pings += 1; });
     }
-    const before = window.__resyncs;
-    socket.emit('request_state');
+    const before = window.__pings;
+    socket.emit('request_log', { after_id: 2000000000 });
     return before;
 }
 """
@@ -199,26 +205,26 @@ def server_round_trip(player, timeout=3000, attempts=4):
     """Wait out one full trip to the server and back.
 
     This is what "give the server the time it would have needed to answer an
-    emit" means, said exactly. `request_state` is a read-only resync and
-    socket.io delivers in order, so once its answer is in, anything sent before
-    it has already been handled.
+    emit" means, said exactly. Socket.io delivers in order, so once the answer
+    to a question asked afterwards is in, anything sent before it has already
+    been handled.
 
     Better than a fixed sleep in both directions: it is a few milliseconds on
     an idle machine, and on a loaded one it actually waits - where a 500ms
     sleep would let a "nothing happened" assertion pass because the server had
-    not got round to the thing yet. Resyncs are rate limited to about one a
+    not got round to the thing yet. These are rate limited to about one a
     second, so a dropped ask is retried rather than treated as a failure.
     """
     for _ in range(attempts):
-        before = player.page.evaluate(_ASK_FOR_A_RESYNC)
+        before = player.page.evaluate(_ASK_FOR_AN_EMPTY_ANSWER)
         try:
             player.page.wait_for_function(
-                "before => window.__resyncs > before", arg=before, timeout=timeout,
+                "before => window.__pings > before", arg=before, timeout=timeout,
             )
             return
         except PlaywrightTimeout:
             continue
-    raise AssertionError(f"{player.name}: the server never answered a resync")
+    raise AssertionError(f"{player.name}: the server never answered")
 
 
 def wait_for_rules(player, rules, timeout=8000):
