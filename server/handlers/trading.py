@@ -7,12 +7,12 @@ from extensions import socketio
 from game.validation import (
     InvalidPayload,
     clean_resource_counts,
-    require_str,
 )
 from state import (
     bump_and_broadcast,
     rate_limited,
     reject,
+    require_actor,
 )
 
 from handlers.phases import blocked_by_phase
@@ -28,8 +28,11 @@ def handle_propose_trade(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         offered = clean_resource_counts(data.get('offered'), 'offered')
         wanted = clean_resource_counts(data.get('wanted'), 'wanted')
     except InvalidPayload as exc:
@@ -83,10 +86,10 @@ def handle_accept_trade(data):
     if session.game is None or session.game.game_state != "started":
         return
 
-    name = data.get('name', '')
+    name = require_actor(data)
     offer_id = data.get('offer_id', 0)
 
-    if not name or not offer_id:
+    if name is None or not offer_id:
         return
 
     result = session.game.accept_trade(offer_id, name)
@@ -107,10 +110,10 @@ def handle_decline_trade(data):
     if session.game is None or session.game.game_state != "started":
         return
 
-    name = data.get('name', '')
+    name = require_actor(data)
     offer_id = data.get('offer_id', 0)
 
-    if not name or not offer_id:
+    if name is None or not offer_id:
         return
 
     if session.game.decline_trade(offer_id, name):
@@ -126,10 +129,10 @@ def handle_cancel_trade(data):
     if session.game is None or session.game.game_state != "started":
         return
 
-    name = data.get('name', '')
+    name = require_actor(data)
     offer_id = data.get('offer_id', 0)
 
-    if not name or not offer_id:
+    if name is None or not offer_id:
         return
 
     if session.game.cancel_trade(offer_id, name):
@@ -146,11 +149,11 @@ def handle_complete_trade(data):
     if session.game is None or session.game.game_state != "started":
         return
 
-    name = data.get('name', '')
+    name = require_actor(data)
     offer_id = data.get('offer_id', 0)
     selected_responder = data.get('selected_responder', None)
 
-    if not name or not offer_id:
+    if name is None or not offer_id:
         return
 
     result = session.game.complete_trade(offer_id, name, selected_responder)

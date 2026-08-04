@@ -37,6 +37,16 @@ def last_error(client):
     return errors[-1] if errors else None
 
 
+def seated(name, **clients):
+    """The client holding `name`'s seat.
+
+    Turn order is shuffled, so a test that acts for the current player has to
+    ask which socket is sitting in that seat — since the fix, no other socket
+    can act for them without an explicit takeover.
+    """
+    return clients[name]
+
+
 class TestConnectionAndState:
     # A join with no game running is answered with in_game False: see
     # TestStartingAGame, which records why that flag matters to the client.
@@ -207,7 +217,7 @@ class TestErrorsAreTargetedAndCoded:
 
 class TestPieceLimitsOverTheWire:
     def test_settlements_run_out(self, clients):
-        alice, _ = clients
+        alice, bob = clients
         game = state.session().game
         game.game_phase = "playing"
 
@@ -219,25 +229,130 @@ class TestPieceLimitsOverTheWire:
         player.resources = {'wood': 9, 'brick': 9, 'wheat': 9, 'sheep': 9}
         vertex_key = next(iter(game.vertices))
 
-        alice.emit('place_settlement', {'name': acting, 'vertex': vertex_key})
+        actor = seated(acting, Alice=alice, Bob=bob)
+        actor.emit('place_settlement', {'name': acting, 'vertex': vertex_key})
 
-        assert last_error(alice)['code'] == 'NO_PIECES_LEFT'
+        assert last_error(actor)['code'] == 'NO_PIECES_LEFT'
 
 
-class TestActingAsAnotherPlayerStillWorks:
-    """This group is deliberate: the table trusts each other and wants to be
-    able to finish a turn for someone who stepped away."""
+class TestIdentityComesFromTheConnection:
+    """Who is acting is decided by the socket's seat, never by the payload.
 
-    def test_one_client_can_act_for_another_player(self, clients):
-        alice, _ = clients
+    Every handler used to take `data['name']` at face value, so any connected
+    client could send another player's name and roll their dice, spend their
+    resources or answer their pending choices. Covering for someone who stepped
+    away is still supported — but it now means taking their seat on purpose,
+    which the table can see in the log.
+    """
+
+    def _playing(self, clients):
+        alice, bob = clients
         game = state.session().game
         game.game_phase = "playing"
         game.start_turn()
         acting = game.players[game.current_player_index].name
+        return game, acting, seated(acting, Alice=alice, Bob=bob)
 
-        alice.emit('roll_dice', {'name': acting})
+    def test_another_players_socket_cannot_roll_for_them(self, clients):
+        """The hole: a second socket sent {'name': 'Alice'} and rolled Alice's
+        dice."""
+        alice, bob = clients
+        game, acting, actor = self._playing(clients)
+        impostor = bob if actor is alice else alice
+        impostor.get_received()
 
-        assert game.has_rolled_dice, "acting on behalf of the current player is allowed"
+        impostor.emit('roll_dice', {'name': acting})
+
+        assert not game.has_rolled_dice, "the roll was attributed to the sender's seat"
+        assert last_error(impostor)['code'] == 'NOT_YOUR_TURN'
+
+    def test_a_socket_with_no_seat_cannot_act(self, socket_app, clients):
+        game, acting, _actor = self._playing(clients)
+        lurker = socketio.test_client(socket_app)
+
+        lurker.emit('roll_dice', {'name': acting})
+
+        assert not game.has_rolled_dice
+        assert last_error(lurker)['code'] == 'NOT_SEATED'
+
+    def test_an_observer_cannot_act_as_a_player(self, socket_app, clients):
+        game, acting, _actor = self._playing(clients)
+        watcher = socketio.test_client(socket_app)
+        watcher.emit('join', {'name': 'Wanda', 'role': 'observer'})
+        watcher.get_received()
+
+        watcher.emit('roll_dice', {'name': acting})
+
+        assert not game.has_rolled_dice
+        assert last_error(watcher)['code'] == 'NOT_A_PLAYER'
+
+    def test_covering_for_a_player_means_taking_their_seat(self, clients):
+        """The feature the table wants, now as a deliberate act: one socket
+        joins as the absent player and can then play their turn."""
+        alice, bob = clients
+        game, acting, actor = self._playing(clients)
+        cover = bob if actor is alice else alice
+
+        cover.emit('join', {'name': acting, 'role': 'player', 'takeover': True})
+        cover.get_received()
+        cover.emit('roll_dice', {'name': acting})
+
+        assert game.has_rolled_dice, "the seat was taken, so the action is theirs"
+        assert last_error(cover) is None
+
+    def test_a_takeover_is_announced_to_the_table(self, clients):
+        alice, bob = clients
+
+        bob.emit('join', {'name': 'Alice', 'role': 'player', 'takeover': True})
+
+        texts = [e['entry']['text'] for e in events(bob, 'event_logged')]
+        assert any('took over' in text and 'Alice' in text for text in texts), texts
+
+    def test_the_socket_that_lost_its_seat_can_no_longer_act(self, clients):
+        """Two sockets holding one seat is how the impersonation looked from
+        the inside. After a takeover the seat has exactly one holder."""
+        alice, bob = clients
+        game = state.session().game
+        game.game_phase = "playing"
+        game.start_turn()
+
+        bob.emit('join', {'name': 'Alice', 'role': 'player', 'takeover': True})
+        alice.get_received()
+        alice.emit('roll_dice', {'name': 'Alice'})
+
+        assert list(state.session().viewers.values()).count('Alice') == 1
+        assert last_error(alice)['code'] == 'NOT_SEATED'
+
+    def test_a_reconnecting_player_recovers_their_seat(self, socket_app, clients):
+        """A refresh gives the player a new sid. If the seat did not come back
+        with them the game would be unplayable on any dropped connection."""
+        alice, bob = clients
+        game = state.session().game
+        game.game_phase = "playing"
+        game.start_turn()
+        acting = game.players[game.current_player_index].name
+        seated(acting, Alice=alice, Bob=bob).disconnect()
+
+        again = socketio.test_client(socket_app)
+        again.emit('join', {'name': acting, 'role': 'player', 'takeover': True})
+        again.get_received()
+        again.emit('roll_dice', {'name': acting})
+
+        assert game.has_rolled_dice, "the reconnected socket holds the seat again"
+        assert last_error(again) is None
+
+    def test_the_payload_name_is_ignored_in_favour_of_the_seat(self, clients):
+        """The client still sends `name` on every event; it must not decide
+        anything."""
+        alice, bob = clients
+        game, acting, actor = self._playing(clients)
+        other = next(p.name for p in game.players if p.name != acting)
+        actor.get_received()
+
+        actor.emit('roll_dice', {'name': other})
+
+        assert game.has_rolled_dice, "the seat acted, whatever the payload claimed"
+        assert last_error(actor) is None
 
     def test_taking_over_a_seat_switches_the_private_view(self, clients):
         alice, _ = clients
@@ -620,9 +735,11 @@ class TestLobbyRules:
         victim.settlements.append('second')      # 2 victory points exactly
         a.get_received()
 
-        a.emit('move_robber', {'name': acting, 'hex': protected_hex})
+        actor = seated(acting, A=a, B=b)
+        actor.get_received()
+        actor.emit('move_robber', {'name': acting, 'hex': protected_hex})
 
-        assert last_error(a)['code'] == 'FRIENDLY_ROBBER'
+        assert last_error(actor)['code'] == 'FRIENDLY_ROBBER'
         assert game.robber_hex != protected_hex
 
 
@@ -941,7 +1058,7 @@ class TestCitiesKnightsOverTheWire:
 
     def test_the_second_setup_placement_builds_a_city(self, socket_app):
         """The reported gap: the second starting building stayed a settlement."""
-        a, _ = self._ck_game(socket_app)
+        a, b = self._ck_game(socket_app)
         game = state.session().game
 
         placed = []
@@ -956,7 +1073,7 @@ class TestCitiesKnightsOverTheWire:
                             for n in v.neighbors.get('vertices', [])
                             if n in game.vertices)
             )
-            a.emit('place_settlement', {'name': who, 'vertex': vertex})
+            seated(who, A=a, B=b).emit('place_settlement', {'name': who, 'vertex': vertex})
             assert game.vertices[vertex].building['type'] == expected, (
                 f"round {_round}: expected {expected}"
             )
@@ -966,7 +1083,7 @@ class TestCitiesKnightsOverTheWire:
                 key for key, e in game.edges.items()
                 if not e.road and vertex in e.neighbors.get('vertices', [])
             )
-            a.emit('place_road', {'name': who, 'edge': edge})
+            seated(who, A=a, B=b).emit('place_road', {'name': who, 'edge': edge})
 
         assert placed[:2] == ['settlement', 'settlement']
         assert placed[-2:] == ['city', 'city'], "round two builds cities"
@@ -976,44 +1093,49 @@ class TestCitiesKnightsOverTheWire:
             assert len(player.cities) == 1
 
     def test_buying_an_improvement_works(self, socket_app):
-        a, _ = self._ck_game(socket_app)
+        a, b = self._ck_game(socket_app)
         game = state.session().game
         game.game_phase = "playing"
         acting = game.players[game.current_player_index].name
         player = game.get_player(acting)
         player.cities.append('a-city')
         player.commodities = {'cloth': 5}
-        a.get_received()
+        actor = seated(acting, A=a, B=b)
+        actor.get_received()
 
-        a.emit('buy_improvement', {'name': acting, 'track': 'trade'})
+        actor.emit('buy_improvement', {'name': acting, 'track': 'trade'})
 
-        assert last_error(a) is None
+        assert last_error(actor) is None
         assert game.ck.level(acting, 'trade') == 1
 
     def test_an_unaffordable_improvement_says_why(self, socket_app):
-        a, _ = self._ck_game(socket_app)
+        a, b = self._ck_game(socket_app)
         game = state.session().game
         game.game_phase = "playing"
         acting = game.players[game.current_player_index].name
         game.get_player(acting).cities.append('a-city')
-        a.get_received()
+        actor = seated(acting, A=a, B=b)
+        actor.get_received()
 
-        a.emit('buy_improvement', {'name': acting, 'track': 'trade'})
+        actor.emit('buy_improvement', {'name': acting, 'track': 'trade'})
 
-        error = last_error(a)
+        error = last_error(actor)
         assert error['code'] == 'ACTION_REJECTED'
         assert 'cloth' in error['message'], "name what is missing"
 
     def test_only_the_current_player_may_act(self, socket_app):
-        a, _ = self._ck_game(socket_app)
+        a, b = self._ck_game(socket_app)
         game = state.session().game
         game.game_phase = "playing"
-        other = next(p.name for p in game.players
-                     if p.name != game.players[game.current_player_index].name)
-        a.get_received()
+        acting = game.players[game.current_player_index].name
+        other = next(p.name for p in game.players if p.name != acting)
+        waiting = seated(other, A=a, B=b)
+        waiting.get_received()
 
-        a.emit('buy_improvement', {'name': other, 'track': 'trade'})
-        assert last_error(a)['code'] == 'NOT_YOUR_TURN'
+        # Naming the player whose turn it is changes nothing: the action is
+        # attributed to the seat this socket holds.
+        waiting.emit('buy_improvement', {'name': acting, 'track': 'trade'})
+        assert last_error(waiting)['code'] == 'NOT_YOUR_TURN'
 
     def test_the_actions_are_refused_in_the_base_game(self, socket_app):
         a = socketio.test_client(socket_app)
@@ -1058,34 +1180,34 @@ class TestBarbarianClock:
         game.start_turn()
         a.get_received()
         b.get_received()
-        return a, game
+        return a, b, game
 
     def test_rolling_records_the_event_die(self, socket_app):
-        a, game = self._playing_ck_game(socket_app)
+        a, b, game = self._playing_ck_game(socket_app)
         acting = game.players[game.current_player_index].name
-        a.emit('roll_dice', {'name': acting})
+        seated(acting, A=a, B=b).emit('roll_dice', {'name': acting})
         assert game.ck.last_event is not None, "the third die was rolled"
         assert game.ck.last_red_die is not None
 
     def test_the_ship_advances_over_many_rolls(self, socket_app):
-        a, game = self._playing_ck_game(socket_app)
+        a, b, game = self._playing_ck_game(socket_app)
         start = game.ck.barbarian_position
         moved = False
         for _ in range(30):
             acting = game.players[game.current_player_index].name
             game.has_rolled_dice = False
-            a.emit('roll_dice', {'name': acting})
+            seated(acting, A=a, B=b).emit('roll_dice', {'name': acting})
             if game.ck.barbarian_position != start or game.ck.barbarians_have_attacked:
                 moved = True
                 break
         assert moved, "3 of 6 event faces advance the ship; 30 rolls must move it"
 
     def test_an_attack_eventually_happens_and_resets(self, socket_app):
-        a, game = self._playing_ck_game(socket_app)
+        a, b, game = self._playing_ck_game(socket_app)
         for _ in range(200):
             acting = game.players[game.current_player_index].name
             game.has_rolled_dice = False
-            a.emit('roll_dice', {'name': acting})
+            seated(acting, A=a, B=b).emit('roll_dice', {'name': acting})
             if game.ck.barbarians_have_attacked:
                 break
         assert game.ck.barbarians_have_attacked, "the ship must reach the island"
@@ -1093,26 +1215,26 @@ class TestBarbarianClock:
 
     def test_a_seven_does_not_move_the_robber_before_the_first_attack(self, socket_app):
         """C&K holds the robber back until the barbarians have landed once."""
-        a, game = self._playing_ck_game(socket_app)
+        a, b, game = self._playing_ck_game(socket_app)
         game.ck.barbarians_have_attacked = False
         acting = game.players[game.current_player_index].name
 
         # Force a 7 without touching the engine's own generator contract.
         rolls = iter([3, 4])
         game.rng.randint = lambda lo, hi: next(rolls, 3)
-        a.emit('roll_dice', {'name': acting})
+        seated(acting, A=a, B=b).emit('roll_dice', {'name': acting})
 
         assert not game.must_move_robber
 
     def test_a_seven_moves_the_robber_after_the_first_attack(self, socket_app):
-        a, game = self._playing_ck_game(socket_app)
+        a, b, game = self._playing_ck_game(socket_app)
         game.ck.barbarians_have_attacked = True
         acting = game.players[game.current_player_index].name
 
         rolls = iter([3, 4])
         game.rng.randint = lambda lo, hi: next(rolls, 3)
         game.rng.choice = lambda seq: seq[-1]      # a city gate, not a barbarian
-        a.emit('roll_dice', {'name': acting})
+        seated(acting, A=a, B=b).emit('roll_dice', {'name': acting})
 
         assert game.must_move_robber
 
@@ -1120,14 +1242,14 @@ class TestBarbarianClock:
         """ck.start_turn() was never called, so a knight that acted once was
         spent for the rest of the game."""
         from game import cities_knights as ck
-        a, game = self._playing_ck_game(socket_app)
+        a, b, game = self._playing_ck_game(socket_app)
         knight = ck.Knight('v1')
         knight.active = True
         knight.acted_this_turn = True
         game.ck.knights[game.players[0].name] = [knight]
 
         acting = game.players[game.current_player_index].name
-        a.emit('next_turn', {'name': acting})
+        seated(acting, A=a, B=b).emit('next_turn', {'name': acting})
 
         assert knight.acted_this_turn is False
         assert knight.activated_this_turn is False
@@ -1178,48 +1300,53 @@ class TestSeafarersOverTheWire:
         assert any(edge['ship'] is None for edge in board['edges'].values())
 
     def test_a_client_can_build_a_ship(self, socket_app):
-        a, _b, game = self._sea_game(socket_app)
+        a, b, game = self._sea_game(socket_app)
         acting = game.players[game.current_player_index].name
         _vertex, edge_key = self._coastal_settlement(game, acting)
         game.get_player(acting).resources = {'wood': 1, 'sheep': 1}
 
-        a.emit('build_ship', {'name': acting, 'edge': edge_key})
+        seated(acting, A=a, B=b).emit('build_ship', {'name': acting, 'edge': edge_key})
 
         assert game.edges[edge_key].ship == {'player': acting, 'built_turn': game.turn_count}
 
     def test_a_table_without_ships_is_told_which_rule_is_missing(self, socket_app):
-        a, _b, game = self._sea_game(socket_app, preset=None)
+        a, b, game = self._sea_game(socket_app, preset=None)
         acting = game.players[game.current_player_index].name
+        actor = seated(acting, A=a, B=b)
 
-        a.emit('build_ship', {'name': acting, 'edge': next(iter(game.edges))})
+        actor.emit('build_ship', {'name': acting, 'edge': next(iter(game.edges))})
 
-        assert last_error(a)['code'] == 'RULE_NOT_IN_PLAY'
+        assert last_error(actor)['code'] == 'RULE_NOT_IN_PLAY'
 
     def test_a_ship_cannot_be_built_by_naming_someone_elses_turn(self, socket_app):
-        a, _b, game = self._sea_game(socket_app)
+        """Naming the player who is up buys nothing: the seat acts, and this
+        socket's seat is the one waiting."""
+        a, b, game = self._sea_game(socket_app)
         acting = game.players[game.current_player_index].name
         waiting = game.players[(game.current_player_index + 1) % len(game.players)].name
         _vertex, edge_key = self._coastal_settlement(game, acting)
         game.get_player(waiting).resources = {'wood': 1, 'sheep': 1}
+        impostor = seated(waiting, A=a, B=b)
 
-        a.emit('build_ship', {'name': waiting, 'edge': edge_key})
+        impostor.emit('build_ship', {'name': acting, 'edge': edge_key})
 
         assert game.edges[edge_key].ship is None
-        assert last_error(a)['code'] == 'NOT_YOUR_TURN'
+        assert last_error(impostor)['code'] == 'NOT_YOUR_TURN'
 
     def test_a_junk_payload_is_dropped_rather_than_crashing_the_handler(self, socket_app):
-        a, _b, game = self._sea_game(socket_app)
+        a, b, game = self._sea_game(socket_app)
         acting = game.players[game.current_player_index].name
+        actor = seated(acting, A=a, B=b)
 
-        a.emit('build_ship', {'name': acting, 'edge': None})
-        a.emit('move_ship', {'name': acting, 'from_edge': 'nowhere'})
-        a.emit('move_pirate', {'name': acting, 'hex': ['not', 'a', 'key']})
+        actor.emit('build_ship', {'name': acting, 'edge': None})
+        actor.emit('move_ship', {'name': acting, 'from_edge': 'nowhere'})
+        actor.emit('move_pirate', {'name': acting, 'hex': ['not', 'a', 'key']})
 
         assert not any(edge.ship for edge in game.edges.values())
         assert game.pirate_hex is None
 
     def test_the_pirate_moves_and_offers_the_same_choice_the_robber_does(self, socket_app):
-        a, _b, game = self._sea_game(socket_app)
+        a, b, game = self._sea_game(socket_app)
         acting = game.players[game.current_player_index].name
         victim = game.players[(game.current_player_index + 1) % len(game.players)].name
         _vertex, edge_key = self._coastal_settlement(game, victim)
@@ -1232,15 +1359,16 @@ class TestSeafarersOverTheWire:
             key for key in game.edges[edge_key].neighbors['hexes']
             if game.hexes[key].type == 'ocean'
         )
-        a.emit('move_pirate', {'name': acting, 'hex': sea_hex})
+        actor = seated(acting, A=a, B=b)
+        actor.emit('move_pirate', {'name': acting, 'hex': sea_hex})
 
         assert game.pirate_hex == sea_hex
-        assert events(a, 'choose_victim')[-1]['victims'] == [victim]
+        assert events(actor, 'choose_victim')[-1]['victims'] == [victim]
 
     def test_a_client_can_move_a_ship(self, socket_app):
         """The one action with no equivalent in the base game, so nothing else
         proves the event is wired up at all."""
-        a, _b, game = self._sea_game(socket_app)
+        a, b, game = self._sea_game(socket_app)
         acting = game.players[game.current_player_index].name
         vertex, from_edge = self._coastal_settlement(game, acting)
         game.edges[from_edge].ship = {'player': acting, 'built_turn': game.turn_count - 1}
@@ -1250,7 +1378,8 @@ class TestSeafarersOverTheWire:
             if key != from_edge and game.is_sea_edge(key)
         )
 
-        a.emit('move_ship', {'name': acting, 'from_edge': from_edge, 'to_edge': to_edge})
+        seated(acting, A=a, B=b).emit(
+            'move_ship', {'name': acting, 'from_edge': from_edge, 'to_edge': to_edge})
 
         assert game.edges[from_edge].ship is None
         assert game.edges[to_edge].ship['player'] == acting
@@ -1259,7 +1388,7 @@ class TestSeafarersOverTheWire:
         """The Longest Trade Route is worth two points, so the fifth ship of a
         route can be the winning move. Nothing else tells the table it is over:
         the win is announced from the handler, not drawn from the board."""
-        a, _b, game = self._sea_game(socket_app)
+        a, b, game = self._sea_game(socket_app)
         acting = game.players[game.current_player_index].name
         vertex, _first = self._coastal_settlement(game, acting)
 
@@ -1270,10 +1399,11 @@ class TestSeafarersOverTheWire:
         # Two short of the target, so only the card can carry them over it.
         player.victory_points = game.rules['victory_target'] - 2
 
-        a.emit('build_ship', {'name': acting, 'edge': route[-1]})
+        actor = seated(acting, A=a, B=b)
+        actor.emit('build_ship', {'name': acting, 'edge': route[-1]})
 
         assert game.longest_road_holder == acting
-        assert events(a, 'game_won')[-1]['player'] == acting
+        assert events(actor, 'game_won')[-1]['player'] == acting
 
 
 class TestAnsweringAPendingChoice:
@@ -1366,10 +1496,14 @@ class TestAnsweringAPendingChoice:
         assert 'options' not in waiting[0] or waiting[0]['options'] is None
 
     def test_nobody_can_build_while_the_game_is_waiting(self, socket_app):
-        _alice, bob, game = self._ck_game(socket_app)
+        """Even the player whose turn it is: the game has stopped on a
+        question, and building around it would spend cards the answer moves."""
+        alice, bob, game = self._ck_game(socket_app)
         self._barbarians_take_a_city(game)
         acting = game.players[game.current_player_index].name
+        actor = seated(acting, Alice=alice, Bob=bob)
+        actor.get_received()
 
-        bob.emit('buy_improvement', {'name': acting, 'track': 'trade'})
+        actor.emit('buy_improvement', {'name': acting, 'track': 'trade'})
 
-        assert last_error(bob)['code'] in ('MUST_CHOOSE', 'AWAITING_CHOICE')
+        assert last_error(actor)['code'] in ('MUST_CHOOSE', 'AWAITING_CHOICE')

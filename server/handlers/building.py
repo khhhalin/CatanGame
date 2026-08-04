@@ -13,6 +13,7 @@ from state import (
     log_event,
     rate_limited,
     reject,
+    require_actor,
 )
 
 from handlers.phases import blocked_by_phase
@@ -37,8 +38,11 @@ def handle_place_settlement(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         vertex_key = require_str(data.get('vertex'), 'vertex')
     except InvalidPayload:
         return
@@ -66,8 +70,11 @@ def handle_place_road(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         edge_key = require_str(data.get('edge'), 'edge')
     except InvalidPayload:
         return
@@ -99,8 +106,11 @@ def handle_upgrade_city(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         vertex_key = require_str(data.get('vertex'), 'vertex')
     except InvalidPayload:
         return

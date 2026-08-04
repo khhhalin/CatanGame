@@ -70,17 +70,16 @@ def handle_join(data):
     # for. Browsers pre-fill the name field, so without this a second window
     # silently joins as whoever joined first and both end up viewing that
     # player — which reads as "every browser became A".
-    if not data.get('takeover'):
-        holder = next(
-            (sid for sid, viewer in session.viewers.items()
-             if viewer == name and sid != request.sid),
-            None,
-        )
-        if holder is not None:
-            reject('NAME_TAKEN',
-                   f'"{name}" is already connected. Pick a different name, '
-                   f'or confirm to take over their seat.')
-            return
+    holder = next(
+        (sid for sid, viewer in session.viewers.items()
+         if viewer == name and sid != request.sid),
+        None,
+    )
+    if holder is not None and not data.get('takeover'):
+        reject('NAME_TAKEN',
+               f'"{name}" is already connected. Pick a different name, '
+               f'or confirm to take over their seat.')
+        return
 
     role = data.get('role', 'observer')
     if role not in ('player', 'observer'):
@@ -140,6 +139,19 @@ def handle_join(data):
     # Binding before the seat check left a rejected socket registered as
     # present, which then made its own name look taken on the retry.
     session.viewers[request.sid] = name
+
+    if holder is not None:
+        # A seat has exactly one holder. Leaving the old binding in place is
+        # the two-sockets-one-player state that used to let either of them act
+        # as that player, which is the thing this is meant to end. The old
+        # socket is told, so a browser that lost its seat can say why.
+        session.viewers.pop(holder, None)
+        logger.warning("seat takeover name=%s new_sid=%s old_sid=%s",
+                       name, request.sid, holder)
+        log_event('game', f"Someone took over {name}'s seat", player=name)
+        emit('error', {'code': 'SEAT_TAKEN',
+                       'message': f"Another connection took over {name}'s seat."},
+             to=holder)
 
     if session.game is not None and session.game.game_state == "started" \
             and not session.game.is_player(name):

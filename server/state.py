@@ -64,11 +64,12 @@ class GameSession:
         # players had already made.
         self.lobby_rules = rules_module.defaults()
 
-        # Socket id -> the player name this connection joined as. This drives
-        # *which private hand a socket is shown*, not authorization: acting as
-        # another player is deliberately allowed here so the group can cover
-        # for someone mid-game. Taking over means joining as them, which also
-        # switches the private view.
+        # Socket id -> the seat this connection holds. It decides both which
+        # private hand the socket is shown and, through `require_actor`, whose
+        # actions it may take: identity comes from the connection, never from
+        # a `name` in the payload, which anyone can forge. Covering for someone
+        # who stepped away still works — it means joining as them with
+        # `takeover`, which moves the seat to that socket and is logged.
         self.viewers = {}
 
         # Chat and game history. Survives games so the table can look back at
@@ -252,12 +253,45 @@ def viewer_for(sid=None):
     """The player name a socket is currently viewing as, if any."""
     return session().viewers.get(sid or request.sid)
 
+def require_actor(data=None):
+    """The seat this socket holds, or None once the action has been refused.
+
+    Every game handler starts here. The acting player is whoever this
+    *connection* is seated as; the `name` a client sends is only its claim
+    about itself, and until this existed any connected socket could send
+    another player's name and act as them. The field is still read — the
+    browser puts it in every payload — but only to notice a disagreement,
+    which is either a client bug or somebody trying it on.
+    """
+    seat = session().viewers.get(request.sid)
+    claimed = data.get('name') if isinstance(data, dict) else None
+    if isinstance(claimed, str) and claimed.strip() and claimed.strip() != seat:
+        logger.warning("payload name %r does not match seat %r for %s from sid=%s",
+                       claimed, seat, request.event.get('message'), request.sid)
+
+    if seat is None:
+        reject('NOT_SEATED', 'Join the table before taking an action')
+        return None
+
+    game = session().game
+    if game is not None and game.game_state == "started" and not game.is_player(seat):
+        # An observer holds a seat in the lobby but none at the table. Without
+        # this they would reach the engine under a name it does not know.
+        reject('NOT_A_PLAYER', 'Observers cannot act in the game')
+        return None
+    return seat
+
 def broadcast_board(extra=None):
     """Send the board to every connected socket, filtered per recipient.
 
     Each socket gets its own payload because hands are hidden information: a
     single broadcast sends identical bytes to everyone, and anything in those
     bytes is readable in DevTools no matter what the UI draws.
+
+    Sent through `socketio.emit` rather than the request-scoped `emit`: the turn
+    watchdog broadcasts from a background task with no request behind it, and
+    the request-scoped form raised there — so every board update the server sent
+    on its own initiative was lost inside the watchdog's except clause.
     """
     live = session()
     if live.game is None:
@@ -269,7 +303,7 @@ def broadcast_board(extra=None):
         }
         if extra:
             payload.update(extra)
-        emit('board_updated', payload, to=sid)
+        socketio.emit('board_updated', payload, to=sid)
 
 def announce_choices():
     """Tell each player who owes a decision what they are being asked.
@@ -284,7 +318,9 @@ def announce_choices():
     for sid, name in list(session().viewers.items()):
         choice = game.pending_choice_for(name)
         if choice is not None:
-            emit('choice_required', game.choice_to_dict(choice, viewer=name), to=sid)
+            # socketio.emit for the same reason as broadcast_board: an
+            # expiring choice is announced from the watchdog, with no request.
+            socketio.emit('choice_required', game.choice_to_dict(choice, viewer=name), to=sid)
 
 def save_game():
     """Write the game to disk so a restart does not lose it.

@@ -15,6 +15,7 @@ from state import (
     log_event,
     rate_limited,
     reject,
+    require_actor,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,11 @@ def handle_move_robber(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         hex_key = require_str(data.get('hex'), 'hex')
     except InvalidPayload:
         return
@@ -54,8 +58,11 @@ def handle_discard_resources(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         # Commodities count toward the limit a 7 enforces, so the discard has
         # to be able to name them too.
         resources = clean_card_counts(data.get('resources'))
@@ -82,8 +89,11 @@ def handle_choose_robber_victim(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         victim_name = require_str(data.get('victim'), 'victim')
     except InvalidPayload:
         return

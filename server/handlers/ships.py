@@ -15,6 +15,7 @@ from state import (
     log_event,
     rate_limited,
     reject,
+    require_actor,
 )
 
 from handlers.building import announce_victory
@@ -54,8 +55,11 @@ def handle_build_ship(data):
     if session is None:
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         edge_key = require_str(data.get('edge'), 'edge')
     except InvalidPayload:
         return
@@ -85,8 +89,11 @@ def handle_move_ship(data):
     if session is None:
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         from_edge = require_str(data.get('from_edge'), 'from_edge')
         to_edge = require_str(data.get('to_edge'), 'to_edge')
     except InvalidPayload:
@@ -117,8 +124,11 @@ def handle_move_pirate(data):
     if session is None:
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         hex_key = require_str(data.get('hex'), 'hex')
     except InvalidPayload:
         return

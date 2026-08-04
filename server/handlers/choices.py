@@ -22,6 +22,7 @@ from state import (
     log_event,
     rate_limited,
     reject,
+    require_actor,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,11 @@ def handle_make_choice(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         kind = require_choice(data.get('kind'), 'kind', tuple(KINDS))
         option = require_str(data.get('option'), 'option', max_length=128)
     except InvalidPayload as exc:

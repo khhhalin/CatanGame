@@ -11,12 +11,12 @@ from game.validation import (
     InvalidPayload,
     clean_resource_counts,
     require_choice,
-    require_str,
 )
 from state import (
     bump_and_broadcast,
     rate_limited,
     reject,
+    require_actor,
 )
 
 from handlers.building import announce_victory
@@ -46,9 +46,8 @@ def handle_buy_dev_card(data):
     if session.game is None or session.game.game_state != "started":
         return
 
-    try:
-        name = require_str(data.get('name'), 'name')
-    except InvalidPayload:
+    name = require_actor(data)
+    if name is None:
         return
 
     if _dev_cards_disabled(session.game) or blocked_by_phase(name):
@@ -75,8 +74,11 @@ def handle_play_dev_card(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         card_type = require_choice(data.get('card_type'), 'card_type', DEV_CARD_TYPES)
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
@@ -122,8 +124,11 @@ def handle_use_invention(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         # Invention grants exactly two cards, so the whole request is bounded
         # here rather than trusting the client to ask for a sane amount.
         resources = clean_resource_counts(data.get('resources'), total_max=2)
@@ -148,8 +153,11 @@ def handle_use_monopoly(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         resource_type = require_choice(data.get('resource_type'), 'resource_type', RESOURCE_TYPES)
     except InvalidPayload as exc:
         reject(exc.code, exc.message)

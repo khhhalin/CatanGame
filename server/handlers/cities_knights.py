@@ -21,6 +21,7 @@ from state import (
     log_event,
     rate_limited,
     reject,
+    require_actor,
 )
 
 from handlers.phases import blocked_by_phase
@@ -51,8 +52,11 @@ def _ck_action(data, rule_id, method_name, *extra_keys):
     if _rule_is_off(session.game, rule_id):
         return None
 
+    name = require_actor(data)
+    if name is None:
+        return None
+
     try:
-        name = require_str(data.get('name'), 'name')
         args = [require_str(data.get(key), key) for key in extra_keys]
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
@@ -202,8 +206,11 @@ def handle_play_progress_card(data):
     if _rule_is_off(session.game, 'progress_cards'):
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         card_id = require_choice(
             data.get('card'), 'card', tuple(progress_cards.CARDS_BY_ID)
         )
@@ -244,9 +251,10 @@ def handle_request_progress_hand(data):
     if session.game is None or not session.game.rules['progress_cards']:
         return
 
-    try:
-        name = require_str(data.get('name'), 'name')
-    except InvalidPayload:
+    # The sender's own hand, and only ever theirs: the cards are the whole
+    # point of the secrecy, so the name is the socket's seat, not the payload's.
+    name = require_actor(data)
+    if name is None:
         return
 
     emit('progress_hand', {'player': name, 'cards': list(session.game.ck.hand_of(name))})

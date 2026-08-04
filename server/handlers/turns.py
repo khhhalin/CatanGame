@@ -16,6 +16,7 @@ from state import (
     log_event,
     rate_limited,
     reject,
+    require_actor,
     update_users,
     viewer_for,
 )
@@ -31,8 +32,12 @@ def handle_next_turn(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     with session.lock:
-        result = session.game.advance_turn(data.get('name'))
+        result = session.game.advance_turn(name)
         if not result['success']:
             reject(result['code'], result['error'])
             return
@@ -68,8 +73,11 @@ def handle_set_color(data):
     if session.game is None or session.game.game_state != "started":
         return
 
+    name = require_actor(data)
+    if name is None:
+        return
+
     try:
-        name = require_str(data.get('name'), 'name')
         color = require_str(data.get('color'), 'color', max_length=32)
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
@@ -102,10 +110,8 @@ def handle_roll_dice(data):
     if session.game is None or session.game.game_state != "started":
         return
 
-    try:
-        name = require_str(data.get('name'), 'name')
-    except InvalidPayload as exc:
-        reject(exc.code, exc.message)
+    name = require_actor(data)
+    if name is None:
         return
 
     with session.lock:
@@ -286,6 +292,59 @@ def _resolve_choices_on_timeout():
         socketio.emit('choice_resolved', {'player': settled['player'], 'kind': settled['kind']})
 
 
+def _watchdog_tick():
+    """One pass of the turn watchdog. Runs with no request context.
+
+    This is the server acting on its own behalf, so there is no socket and no
+    seat behind it: nothing in here may reach for `request`, or a table whose
+    player walked away stalls forever with a "working outside of request
+    context" in the log and no error anyone can see.
+    """
+    # Fetched each pass rather than held: this task is started once at boot and
+    # outlives any single session.
+    session = state.session()
+    with session.lock:
+        if session.game is None or session.game.game_state != "started":
+            return
+        if session.game.game_phase == "setup":
+            return
+        # An unfinished robber or discard used to park the watchdog here for
+        # good: those flags block every other action, so the turn could never
+        # end and the table stopped. Give the player the rest of their round,
+        # then settle it for them.
+        if (
+            session.game.must_move_robber
+            or session.game.must_choose_victim
+            or session.game.players_needing_discard
+        ):
+            if not session.game.is_round_expired():
+                return
+            _resolve_on_timeout()
+
+        # A pending choice keeps its own clock rather than borrowing the
+        # round's: it can be owed by a player whose turn it is not, and the
+        # round timer does not even run before the dice are up, which would
+        # have parked the watchdog here exactly as before.
+        if session.game.pending_choices:
+            if not session.game.choices_expired():
+                return
+            _resolve_choices_on_timeout()
+
+        current_player = session.game.players[session.game.current_player_index]
+
+        # Auto-roll first: a turn cannot advance before the dice are up.
+        if not session.game.has_rolled_dice and session.game.is_dice_roll_expired():
+            logger.info("dice timer expired, auto-rolling for %s", current_player.name)
+            result = session.game.roll_dice(current_player.name)
+            if result['success']:
+                _announce_dice_roll(current_player.name, result)
+            return
+
+        if session.game.has_rolled_dice and session.game.is_round_expired():
+            logger.info("round timer expired, advancing past %s", current_player.name)
+            _announce_turn(session.game.force_advance_turn())
+
+
 def _turn_watchdog():
     """Expire turns server-side.
 
@@ -296,51 +355,6 @@ def _turn_watchdog():
     while True:
         socketio.sleep(1)
         try:
-            # Fetched each pass rather than held: this task is started once at
-            # boot and outlives any single session.
-            session = state.session()
-            with session.lock:
-                if session.game is None or session.game.game_state != "started":
-                    continue
-                if session.game.game_phase == "setup":
-                    continue
-                # An unfinished robber or discard used to park the watchdog
-                # here for good: those flags block every other action, so the
-                # turn could never end and the table stopped. Give the player
-                # the rest of their round, then settle it for them.
-                if (
-                    session.game.must_move_robber
-                    or session.game.must_choose_victim
-                    or session.game.players_needing_discard
-                ):
-                    if not session.game.is_round_expired():
-                        continue
-                    _resolve_on_timeout()
-
-                # A pending choice keeps its own clock rather than borrowing
-                # the round's: it can be owed by a player whose turn it is not,
-                # and the round timer does not even run before the dice are up,
-                # which would have parked the watchdog here exactly as before.
-                if session.game.pending_choices:
-                    if not session.game.choices_expired():
-                        continue
-                    _resolve_choices_on_timeout()
-
-                current_player = session.game.players[session.game.current_player_index]
-
-                # Auto-roll first: a turn cannot advance before the dice are up.
-                if (
-                    not session.game.has_rolled_dice
-                    and session.game.is_dice_roll_expired()
-                ):
-                    logger.info("dice timer expired, auto-rolling for %s", current_player.name)
-                    result = session.game.roll_dice(current_player.name)
-                    if result['success']:
-                        _announce_dice_roll(current_player.name, result)
-                    continue
-
-                if session.game.has_rolled_dice and session.game.is_round_expired():
-                    logger.info("round timer expired, advancing past %s", current_player.name)
-                    _announce_turn(session.game.force_advance_turn())
+            _watchdog_tick()
         except Exception:
             logger.exception("turn watchdog error")
