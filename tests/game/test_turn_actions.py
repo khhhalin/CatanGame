@@ -104,6 +104,23 @@ class TestMovingTheRobber:
         assert result['victims'] == []
         assert playing_game.must_choose_victim is False
 
+    def test_an_opponents_unpaid_discard_holds_the_robber_back(self, playing_game):
+        """Reported: the roller moved the robber while two opponents were
+        still sitting on the discard dialog.
+
+        All discarding happens before the robber is moved, so the block is the
+        table's, not the player's own — the roller rarely owes one themselves.
+        """
+        name = acting(playing_game)
+        playing_game.get_player(other_player(playing_game, name)).resources = {'wood': 8}
+        playing_game.check_discard_required()
+        playing_game.must_move_robber = True
+
+        result = playing_game.move_robber(name, a_land_hex(playing_game))
+
+        assert result['code'] == 'MUST_DISCARD'
+        assert playing_game.must_move_robber is True
+
     def test_friendly_robber_keeps_the_hex_off_limits(self, rng):
         """The optional rule is enforced by the same method, not by the caller."""
         from game.game import Game
@@ -228,6 +245,18 @@ class TestAdvancingTheTurn:
     def test_an_owed_discard_blocks_the_turn(self, playing_game):
         name = acting(playing_game)
         playing_game.get_player(name).resources = {'wood': 8}
+        playing_game.check_discard_required()
+
+        assert playing_game.advance_turn(name)['code'] == 'MUST_DISCARD'
+
+    def test_an_opponents_owed_discard_blocks_the_turn_too(self, playing_game):
+        """Reported: the roller ended the turn with opponents mid-discard.
+
+        The discard belongs to the roll that is still being resolved, so the
+        turn cannot end while anyone at the table still owes one.
+        """
+        name = acting(playing_game)
+        playing_game.get_player(other_player(playing_game, name)).resources = {'wood': 8}
         playing_game.check_discard_required()
 
         assert playing_game.advance_turn(name)['code'] == 'MUST_DISCARD'

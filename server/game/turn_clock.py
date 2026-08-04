@@ -56,8 +56,14 @@ class TurnClock:
         if blocked is not None:
             return blocked
 
+        # A discard belongs to the roll still being resolved, so the turn ends
+        # for nobody while any of it is unpaid. Checking only the caller let the
+        # roller finish their turn while two opponents were still discarding.
         if player_name in self.players_needing_discard:
             return refused('MUST_DISCARD', 'You must discard resources first')
+        if self.players_needing_discard:
+            owed = ', '.join(sorted(self.players_needing_discard))
+            return refused('MUST_DISCARD', f'Waiting for {owed} to discard')
 
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot skip turn during setup phase')

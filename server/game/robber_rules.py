@@ -32,6 +32,13 @@ class RobberRules:
         if current_name != player_name:
             return refused('NOT_YOUR_TURN', f'Only {current_name} can move the robber')
 
+        # All discarding happens before the robber is moved, so an unpaid
+        # discard anywhere at the table holds it back. The mover is rarely the
+        # player who owes one, which is why this is not a per-player check.
+        if self.players_needing_discard:
+            owed = ', '.join(sorted(self.players_needing_discard))
+            return refused('MUST_DISCARD', f'{owed} must discard before the robber moves')
+
         hex_obj = self.hexes.get(hex_key)
         if hex_obj is None:
             return refused('INVALID_TARGET', 'Invalid hex')
@@ -107,6 +114,13 @@ class RobberRules:
         """
         acting = player_name or self.players[self.current_player_index].name
         outcome = {'player': acting, 'hex': None, 'victim': None, 'stolen': None}
+
+        # The robber is refused while anyone still owes a discard, so anything
+        # left owing is settled first: a resolution the blocking rule can refuse
+        # would leave the table stuck exactly where this method exists to help.
+        for owing in list(self.players_needing_discard):
+            logger.info("discard still owed by %s at robber timeout; discarding", owing)
+            self.auto_discard(owing)
 
         if self.must_move_robber:
             target = self._auto_robber_hex()

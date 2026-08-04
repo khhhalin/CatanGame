@@ -32,6 +32,11 @@ def phase_block(name: str) -> tuple[str, str] | None:
     # instead of paying the 7.
     if name in game.players_needing_discard:
         return 'MUST_DISCARD', 'You must discard down to the hand limit first'
+    # And the table waits with them: the 7 is still being resolved, and a rule
+    # that stops the robber but lets the roller keep building is half a rule.
+    if game.players_needing_discard:
+        owed = ', '.join(sorted(game.players_needing_discard))
+        return 'MUST_DISCARD', f'Waiting for {owed} to discard'
     return None
 
 
