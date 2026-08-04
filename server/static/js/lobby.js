@@ -226,11 +226,23 @@ function buildRuleRow(rule) {
     label.setAttribute('for', `rule-${rule.id}`);
     label.textContent = rule.name;
 
-    const input = document.createElement('input');
+    // A choice needs a control that can express more than two states. It used
+    // to fall through to the checkbox branch, which left the beginner and large
+    // maps unselectable - the picker showed a tick nobody could interpret.
+    const input = document.createElement(rule.type === 'choice' ? 'select' : 'input');
     input.id = `rule-${rule.id}`;
     input.dataset.ruleId = rule.id;
     input.dataset.ruleType = rule.type;
-    if (rule.type === 'int') {
+    if (rule.type === 'choice') {
+        input.className = 'rule-choice';
+        (rule.options || []).forEach(option => {
+            const item = document.createElement('option');
+            item.value = option.id;
+            item.textContent = option.name;
+            item.title = option.summary || '';
+            input.appendChild(item);
+        });
+    } else if (rule.type === 'int') {
         input.type = 'number';
         input.className = 'rule-number';
         input.min = rule.minimum;
@@ -316,7 +328,7 @@ function applyRuleValue(rule) {
     }
 
     const value = viewState.server.rules.selected[rule.id] ?? rule.default;
-    if (rule.type === 'int') {
+    if (rule.type === 'choice' || rule.type === 'int') {
         input.value = value;
     } else {
         input.checked = Boolean(value);
@@ -423,7 +435,9 @@ function sendRules() {
             return;
         }
 
-        if (rule.type === 'int') {
+        if (rule.type === 'choice') {
+            chosen[rule.id] = input.value;
+        } else if (rule.type === 'int') {
             const parsed = parseInt(input.value, 10);
             const fallback = viewState.server.rules.selected[rule.id] ?? rule.default;
             chosen[rule.id] = Number.isNaN(parsed)
@@ -502,7 +516,10 @@ export function renderActiveRules() {
         if (value === undefined || value === rule.default) {
             return;
         }
-        if (rule.type === 'int') {
+        if (rule.type === 'choice') {
+            const option = (rule.options || []).find(entry => entry.id === value);
+            parts.push(`${rule.name}: ${option ? option.name : value}`);
+        } else if (rule.type === 'int') {
             parts.push(`${rule.name}: ${value}`);
         } else {
             parts.push(value ? rule.name : `${rule.name}: off`);

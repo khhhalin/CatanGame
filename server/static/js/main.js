@@ -35,6 +35,16 @@ window.__catanDebug = {
     getRole,
     getCurrentPlayer,
     isGameStarted: isGameRunning,
+    // The catalogue the server sent and what the table has selected. A test
+    // that copies the rule list into itself cannot notice the picker failing
+    // to render a rule the server offers — which is how the map choices were
+    // unselectable while every test passed.
+    getRules: () => ({
+        catalogue: viewState.server.rules.catalogue,
+        selected: viewState.server.rules.selected,
+        presets: viewState.server.rules.presets,
+        locked: viewState.server.rules.locked,
+    }),
     // What the next tap on the board would be an attempt at. A two-tap
     // placement - a knight move, a ship move - has a half-finished state that
     // nothing on screen names, so "it did nothing" and "it is waiting for the

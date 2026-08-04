@@ -536,10 +536,23 @@ button:disabled {
 /* A locked rule is muted, not faded: `opacity` would take the number in the
    stepper below AA. The lock itself is stated in #rules-locked-note. */
 .rule-toggle:disabled,
+.rule-choice:disabled,
 .rule-number:disabled {
     filter: grayscale(1);
     color: var(--text-faint);
     cursor: not-allowed;
+}
+
+/* A choice needs a control that can show more than two states; it reuses the
+   number field's surface so the picker reads as one set of controls. */
+.rule-choice {
+    max-width: 12rem;
+    padding: 0.2rem;
+    border: none;
+    border-radius: 3px;
+    background-color: var(--surface);
+    color: var(--text);
+    cursor: pointer;
 }
 
 .rule-source {
