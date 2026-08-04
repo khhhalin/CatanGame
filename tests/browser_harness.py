@@ -646,6 +646,12 @@ def bank_trade(player, give_resource, give_count, want_resource):
     player.page.fill(f"#want-{want_resource}", "1")
     player.page.click("#submit-trade-btn")
 
+    # A player holding a harbour is offering the bank more than it may charge
+    # them, so the dialog lowers the give side to their own rate and waits to be
+    # told again. A person reads the line and presses Propose; so does this.
+    if player.page.is_visible("#trade-modal.show"):
+        player.page.click("#submit-trade-btn")
+
     try:
         player.page.wait_for_function(
             "([res, before]) => {"

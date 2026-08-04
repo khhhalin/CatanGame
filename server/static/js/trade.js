@@ -2,9 +2,10 @@
 // made in a dialog before the server can resolve them.
 
 import { RESOURCE_ICONS } from './constants.js';
-import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeModal, tradeOffersDiv } from './dom.js';
+import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
 import { displayError } from './notices.js';
+import { findMyPlayer } from './panels.js';
 import { emitGame } from './socket.js';
 import { getBoard, isMyTurn, viewState } from './state.js';
 
@@ -13,6 +14,86 @@ import { getBoard, isMyTurn, viewState } from './state.js';
  * the countdown here is display only and the server decides when an offer dies.
  */
 const TRADE_OFFER_SECONDS = 10;
+
+const TRADE_RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+
+// What the merchant is worth at the bank for the hex it stands on. Duplicated
+// from MERCHANT_TRADE_RATE in server/game/trade_rules.py, like the build costs
+// in cities-knights.js: it only shapes a hint, and the server's answer is what
+// the trade is settled at.
+const MERCHANT_TRADE_RATE = 2;
+
+// ------------------------------------------------------------- harbour rates
+//
+// The bank will take 4:1 from anybody - "the 4:1 trade is always possible, even
+// if you do not have a settlement on a harbor" - so the engine is right to
+// accept one from a player holding a 3:1 harbour. It is the interface that owed
+// them a warning, and did not: the tester built a harbour, kept typing 4, and
+// gave the bank a free card every time.
+//
+// Everything needed to work the rate out is already in the board payload - the
+// player's own settlements and cities, the harbour on each vertex, the table's
+// three rate rules and where the merchant stands - so this mirrors the engine's
+// `best_trade_rate` rather than asking for a new field. The server recomputes
+// it and its answer is what the trade settles at; this only decides what the
+// player is told before they press the button.
+
+/**
+ * The harbours this player's buildings stand on.
+ *
+ * @returns {object} - {generic: true} and/or {resource: true} per 2:1 harbour
+ */
+function myPorts() {
+    const board = getBoard();
+    const me = findMyPlayer();
+    if (!board || !me) {
+        return {};
+    }
+    const ports = {};
+    for (const key of [...(me.settlements || []), ...(me.cities || [])]) {
+        const port = board.vertices?.[key]?.port;
+        if (!port) {
+            continue;
+        }
+        if (port.type === 'generic') {
+            ports.generic = true;
+        } else if (port.type === 'resource' && port.resource) {
+            ports[port.resource] = true;
+        }
+    }
+    return ports;
+}
+
+/**
+ * Cards this player must give per card received, for one bundle of resources.
+ *
+ * Mirrors `TradeRules.best_trade_rate`: a 2:1 harbour only helps with its own
+ * resource, a 3:1 helps with anything, and a harbour never makes a trade worse.
+ *
+ * @param {Array<string>} offered - Resource ids the player is giving
+ * @returns {number}
+ */
+function bestTradeRate(offered) {
+    const board = getBoard();
+    const rules = board?.rules || {};
+    const ports = myPorts();
+    let rate = rules.bank_trade_rate ?? 4;
+    if (ports.generic) {
+        rate = Math.min(rate, rules.generic_harbour_rate ?? 3);
+    }
+    if (offered.some(resource => ports[resource])) {
+        rate = Math.min(rate, rules.special_harbour_rate ?? 2);
+    }
+    // The merchant is a harbour its holder carries with them, for the hex it
+    // stands on only.
+    if (board?.merchant_holder === viewState.identity.name) {
+        const standingOn = board.hexes?.[board.merchant_hex]?.type;
+        if (standingOn && offered.includes(standingOn)) {
+            rate = Math.min(rate, MERCHANT_TRADE_RATE);
+        }
+    }
+    return rate;
+}
 
 /**
  * Format a resource bundle as "2🌲 1🧱 ", skipping empty entries.
@@ -302,6 +383,141 @@ function startTradeTimers() {
 startTradeTimers();
 
 /**
+ * Read the two rows of number inputs.
+ *
+ * @returns {object} - {offered, wanted} as {resource: count}, empties dropped
+ */
+function readTradeInputs() {
+    const offered = {};
+    const wanted = {};
+
+    TRADE_RESOURCES.forEach(res => {
+        const giveCount = parseInt(document.getElementById(`give-${res}`).value) || 0;
+        const wantCount = parseInt(document.getElementById(`want-${res}`).value) || 0;
+        if (giveCount > 0) offered[res] = giveCount;
+        if (wantCount > 0) wanted[res] = wantCount;
+    });
+
+    return { offered, wanted };
+}
+
+/**
+ * One chip per resource, saying what the bank charges this player for it.
+ *
+ * Rendered on open rather than once at boot: a harbour built this turn changes
+ * every number here, and a rate strip that is out of date is worse than none.
+ */
+function renderBankRates() {
+    if (!tradeBankRates) {
+        return;
+    }
+    const baseRate = getBoard()?.rules?.bank_trade_rate ?? 4;
+    const fragment = document.createDocumentFragment();
+
+    const label = document.createElement('span');
+    label.className = 'trade-rates-label';
+    label.textContent = 'Your bank rate:';
+    fragment.appendChild(label);
+
+    for (const resource of TRADE_RESOURCES) {
+        const rate = bestTradeRate([resource]);
+        const chip = document.createElement('span');
+        chip.className = 'trade-rate-chip';
+        chip.dataset.resource = resource;
+        // A harbour is only worth having if the player can see they hold one,
+        // so the ones better than the table's flat rate are marked as such.
+        chip.classList.toggle('is-harbour', rate < baseRate);
+        chip.textContent = `${RESOURCE_ICONS[resource]} ${rate}:1`;
+        fragment.appendChild(chip);
+    }
+
+    tradeBankRates.replaceChildren(fragment);
+}
+
+/**
+ * What the numbers currently typed would do, and whether they waste cards.
+ *
+ * @returns {object} - {kind, rate, given, asked, overpay} where kind is
+ *                     'empty', 'offer' (goes to the table) or 'bank'
+ */
+function describeTrade() {
+    const { offered, wanted } = readTradeInputs();
+    const given = Object.values(offered).reduce((sum, count) => sum + count, 0);
+    const asked = Object.values(wanted).reduce((sum, count) => sum + count, 0);
+
+    if (!given || !asked) {
+        return { kind: 'empty', rate: 0, given, asked, overpay: 0 };
+    }
+
+    const rate = bestTradeRate(Object.keys(offered));
+    // Same test the engine applies: at or better than the player's rate it is
+    // not an offer at all, it is a bank trade that settles immediately.
+    if (given / asked < rate) {
+        return { kind: 'offer', rate, given, asked, overpay: 0, offered, wanted };
+    }
+    return { kind: 'bank', rate, given, asked, overpay: given - rate * asked,
+             offered, wanted };
+}
+
+/**
+ * Say what will happen, in words, under the inputs.
+ */
+function renderTradeVerdict() {
+    if (!tradeVerdict) {
+        return;
+    }
+    const verdict = describeTrade();
+    tradeVerdict.classList.remove('is-warning', 'is-bank');
+
+    if (verdict.kind === 'empty') {
+        tradeVerdict.textContent = 'Put cards on both sides.';
+        return;
+    }
+    if (verdict.kind === 'offer') {
+        tradeVerdict.textContent =
+            `Goes to the table: ${formatTradeBundle(verdict.offered)} `
+            + `→ ${formatTradeBundle(verdict.wanted)}.`;
+        return;
+    }
+    if (verdict.overpay > 0) {
+        tradeVerdict.classList.add('is-warning');
+        tradeVerdict.textContent =
+            `The bank takes this at ${verdict.rate}:1, so `
+            + `${verdict.overpay} extra card${verdict.overpay === 1 ? '' : 's'} `
+            + 'would go to it for nothing.';
+        return;
+    }
+    tradeVerdict.classList.add('is-bank');
+    tradeVerdict.textContent = `Trades with the bank at ${verdict.rate}:1, straight away.`;
+}
+
+/**
+ * Lower the give side to exactly the player's own rate.
+ *
+ * Only ever reached from the Propose button, and always announced: a dialog
+ * that quietly changed what somebody typed would be a worse trap than the one
+ * this is here to close.
+ *
+ * @param {object} verdict - A 'bank' verdict with overpay > 0
+ * @returns {boolean} - Whether the inputs could be lowered
+ */
+function applyBestRate(verdict) {
+    const resources = Object.keys(verdict.offered);
+    // Only for a single-resource offer: spreading the saving over a mixed
+    // bundle means choosing which resource the player keeps, which is their
+    // decision and not this dialog's.
+    if (resources.length !== 1) {
+        return false;
+    }
+    const fair = verdict.rate * verdict.asked;
+    if (fair < 1) {
+        return false;
+    }
+    document.getElementById(`give-${resources[0]}`).value = String(fair);
+    return true;
+}
+
+/**
  * Show trade modal
  */
 function showTradeModal() {
@@ -311,6 +527,8 @@ function showTradeModal() {
     }
     tradeModal.classList.remove('hidden');
     tradeModal.classList.add('show');
+    renderBankRates();
+    renderTradeVerdict();
 }
 
 /**
@@ -320,38 +538,70 @@ function hideTradeModal() {
     tradeModal.classList.remove('show');
     tradeModal.classList.add('hidden');
     // Reset inputs
-    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(res => {
+    TRADE_RESOURCES.forEach(res => {
         document.getElementById(`give-${res}`).value = 0;
         document.getElementById(`want-${res}`).value = 0;
     });
+    clearOverpayOffer();
+    renderTradeVerdict();
+}
+
+// The numbers a player asked to send that were lowered for them, kept so the
+// "send it anyway" button can put back exactly what they typed.
+let overpayOffer = null;
+
+function clearOverpayOffer() {
+    overpayOffer = null;
+    tradeSendAnywayBtn?.classList.add('hidden');
 }
 
 /**
- * Submit trade proposal
+ * Send a trade to the server and close the dialog.
  */
-function submitTrade() {
-    const offered = {};
-    const wanted = {};
-    
-    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(res => {
-        const giveCount = parseInt(document.getElementById(`give-${res}`).value) || 0;
-        const wantCount = parseInt(document.getElementById(`want-${res}`).value) || 0;
-        if (giveCount > 0) offered[res] = giveCount;
-        if (wantCount > 0) wanted[res] = wantCount;
-    });
-    
-    if (Object.keys(offered).length === 0 || Object.keys(wanted).length === 0) {
-        displayError('Please specify resources to give and want');
-        return;
-    }
-    
+function sendTrade(offered, wanted) {
     emitGame('propose_trade', {
         name: viewState.identity.name,
         offered: offered,
         wanted: wanted
     });
-    
+
     hideTradeModal();
+}
+
+/**
+ * Submit trade proposal.
+ *
+ * A bank trade worse than the player's own harbour rate is stopped once: the
+ * give side is lowered to the rate they are entitled to, the change is stated,
+ * and pressing Propose again sends the corrected numbers. Overpaying stays
+ * possible - the rulebook allows it - but only from the button that says so.
+ */
+function submitTrade() {
+    const { offered, wanted } = readTradeInputs();
+
+    if (Object.keys(offered).length === 0 || Object.keys(wanted).length === 0) {
+        displayError('Please specify resources to give and want');
+        return;
+    }
+
+    const verdict = describeTrade();
+    if (verdict.kind === 'bank' && verdict.overpay > 0 && applyBestRate(verdict)) {
+        overpayOffer = { offered, wanted };
+        tradeSendAnywayBtn.textContent =
+            `Give the bank ${verdict.given} anyway`;
+        tradeSendAnywayBtn.classList.remove('hidden');
+        renderTradeVerdict();
+        if (tradeVerdict) {
+            tradeVerdict.classList.add('is-warning');
+            tradeVerdict.textContent =
+                `Lowered to ${verdict.rate}, your rate for this trade — `
+                + `${verdict.overpay} card${verdict.overpay === 1 ? '' : 's'} `
+                + 'kept. Press Propose to send it.';
+        }
+        return;
+    }
+
+    sendTrade(offered, wanted);
 }
 
 /**
@@ -475,6 +725,28 @@ function completeTrade(offerId, responder) {
 if (proposeTradeBtn) proposeTradeBtn.addEventListener('click', showTradeModal);
 if (closeTradeModal) closeTradeModal.addEventListener('click', hideTradeModal);
 if (submitTradeBtn) submitTradeBtn.addEventListener('click', submitTrade);
+
+// One delegated listener rather than ten: every number input in the dialog
+// changes what the verdict has to say, including the ones the code above
+// rewrites, and a stale verdict under a corrected number is the same trap.
+if (tradeModal) {
+    tradeModal.addEventListener('input', (event) => {
+        if (event.target.matches('input[type="number"]')) {
+            // Typing past a correction is a new trade, so the old numbers stop
+            // being on offer.
+            clearOverpayOffer();
+            renderTradeVerdict();
+        }
+    });
+}
+
+if (tradeSendAnywayBtn) {
+    tradeSendAnywayBtn.addEventListener('click', () => {
+        if (overpayOffer) {
+            sendTrade(overpayOffer.offered, overpayOffer.wanted);
+        }
+    });
+}
 if (tradeModal) tradeModal.addEventListener('click', (e) => {
     if (e.target === tradeModal) hideTradeModal();
 });

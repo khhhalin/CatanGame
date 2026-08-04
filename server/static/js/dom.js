@@ -48,6 +48,12 @@ export const myOffersDiv = document.getElementById('my-offers');
 export const tradeModal = document.getElementById('trade-modal');
 export const closeTradeModal = document.getElementById('close-trade-modal');
 export const submitTradeBtn = document.getElementById('submit-trade-btn');
+// What the bank will actually pay this player, and what the numbers they have
+// typed will do. See trade.js: the bank takes 4:1 from anyone, so a harbour is
+// only worth having if the player can see they hold one.
+export const tradeBankRates = document.getElementById('trade-bank-rates');
+export const tradeVerdict = document.getElementById('trade-verdict');
+export const tradeSendAnywayBtn = document.getElementById('trade-send-anyway');
 export const diceTimerEl = document.getElementById('dice-timer');
 export const roundTimerEl = document.getElementById('round-timer');
 export const devCardsPanel = document.getElementById('dev-cards-panel');

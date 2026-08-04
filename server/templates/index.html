@@ -509,6 +509,12 @@
         <div class="modal-content">
             <span id="close-trade-modal" class="close">&times;</span>
             <h2>Propose Trade</h2>
+            <!-- The bank is always willing to take 4:1, harbour or no harbour,
+                 so a player with a 3:1 harbour who types 4 is simply handing it
+                 a card. The rate strip says what each resource is worth to them
+                 before they type, and #trade-verdict says what the numbers in
+                 front of them will actually do. -->
+            <p id="trade-bank-rates" class="trade-rates"></p>
             <div class="trade-modal-section">
                 <h3>You Give:</h3>
                 <div class="resource-selector">
@@ -529,7 +535,14 @@
                     <label>🪨 Ore: <input type="number" id="want-ore" min="0" max="10" value="0"></label>
                 </div>
             </div>
-            <button id="submit-trade-btn">Propose</button>
+            <p id="trade-verdict" class="trade-verdict" role="status" aria-live="polite"></p>
+            <div class="trade-actions">
+                <button id="submit-trade-btn">Propose</button>
+                <!-- Shown only after the numbers have been lowered to the
+                     player's own rate, so the choice to overpay stays available
+                     and stays explicit. -->
+                <button type="button" id="trade-send-anyway" class="trade-anyway hidden"></button>
+            </div>
         </div>
     </div>
 
