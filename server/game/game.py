@@ -404,13 +404,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         A player's network is their roads *and* their buildings: the rulebook
         lets a road start at one of your own settlements or cities, and looking
         only for an adjacent road refused that placement outright.
+
+        An opponent's knight holds the intersection it stands on, so the
+        network does not run through it (expansions.md 389).
         """
         edge = self.edges.get(edge_key)
         if edge is None:
             return False
         for vertex_key in edge.neighbors.get('vertices', []):
             vertex = self.vertices.get(vertex_key)
-            if vertex is None:
+            if vertex is None or self.knight_blocks(player_name, vertex_key):
                 continue
             if vertex.building and vertex.building.get('player') == player_name:
                 return True
@@ -1155,7 +1158,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             )
 
         def has_other_player_building(vertex_key):
-            """Check if vertex has another player's building."""
+            """Whether an opponent holds this intersection against the walk.
+
+            A knight counts alongside a settlement or city: it "interrupts an
+            opponent's longest road passing through it" (expansions.md 389).
+            """
+            if self.knight_blocks(player_name, vertex_key):
+                return True
             vertex = self.vertices.get(vertex_key)
             if vertex and vertex.building:
                 building_player = vertex.building.get('player')

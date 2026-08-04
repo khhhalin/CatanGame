@@ -344,6 +344,97 @@ class TestKnights:
         assert game.ck.total_knight_strength() == 1
 
 
+def land_road_run(game, length):
+    """A connected run of `length` land sides: (edges, the vertices between)."""
+    def walk(vertex_key, edges, vertices):
+        if len(edges) == length:
+            return edges, vertices
+        for edge_key in game.vertices[vertex_key].neighbors.get('edges', []):
+            if edge_key in edges or not game.land_hexes_of_edge(edge_key):
+                continue
+            ahead = next(
+                v for v in game.edges[edge_key].neighbors['vertices'] if v != vertex_key
+            )
+            if ahead in vertices:
+                continue
+            found = walk(ahead, edges + [edge_key], vertices + [ahead])
+            if found:
+                return found
+        return None
+
+    for start in game.vertices:
+        found = walk(start, [], [start])
+        if found:
+            return found
+    pytest.fail(f'no run of {length} land sides on this board')
+
+
+def stand_knight(game, player_name, vertex_key, rank=ck.BASIC):
+    """Put a knight on an intersection, skipping the build rules."""
+    game.ck.knights_of(player_name).append(ck.Knight(vertex_key, rank))
+
+
+class TestAKnightBlocksAnOpponent:
+    """expansions.md 389: "A knight standing on an intersection blocks opposing
+    road building through that intersection and interrupts an opponent's
+    longest road passing through it." 390: never its own owner's.
+    """
+
+    def _ready(self, game, player_name='Alice'):
+        game.game_phase = 'playing'
+        game.has_rolled_dice = True
+        game.current_player_index = [p.name for p in game.players].index(player_name)
+
+    def test_a_knight_blocks_an_opponents_road(self):
+        game = ck_game()
+        edges, vertices = land_road_run(game, 2)
+        game.edges[edges[0]].road = {'player': 'Alice'}
+        game.get_player('Alice').roads.append(edges[0])
+        stand_knight(game, 'Bob', vertices[1])
+        game.get_player('Alice').resources = {'wood': 1, 'brick': 1}
+        self._ready(game)
+
+        result = game.build_road('Alice', edges[1])
+
+        assert not result['success']
+        assert result['code'] == 'INVALID_PLACEMENT'
+
+    def test_your_own_knight_does_not_block_you(self):
+        game = ck_game()
+        edges, vertices = land_road_run(game, 2)
+        game.edges[edges[0]].road = {'player': 'Alice'}
+        game.get_player('Alice').roads.append(edges[0])
+        stand_knight(game, 'Alice', vertices[1])
+        game.get_player('Alice').resources = {'wood': 1, 'brick': 1}
+        self._ready(game)
+
+        assert game.build_road('Alice', edges[1])['success']
+
+    def test_a_knight_interrupts_an_opponents_route(self):
+        game = ck_game()
+        edges, vertices = land_road_run(game, 4)
+        player = game.get_player('Alice')
+        for edge_key in edges:
+            game.edges[edge_key].road = {'player': 'Alice'}
+            player.roads.append(edge_key)
+        assert game.calculate_longest_road('Alice') == 4
+
+        stand_knight(game, 'Bob', vertices[2])
+
+        assert game.calculate_longest_road('Alice') == 2
+
+    def test_a_knight_does_not_interrupt_its_own_owners_route(self):
+        game = ck_game()
+        edges, vertices = land_road_run(game, 4)
+        player = game.get_player('Alice')
+        for edge_key in edges:
+            game.edges[edge_key].road = {'player': 'Alice'}
+            player.roads.append(edge_key)
+        stand_knight(game, 'Alice', vertices[2])
+
+        assert game.calculate_longest_road('Alice') == 4
+
+
 class TestBarbarians:
     def test_the_ship_arrives_after_seven_steps(self):
         game = ck_game()

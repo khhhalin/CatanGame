@@ -20,6 +20,19 @@ class CitiesKnightsRules:
     gets exactly that, and asking for an improvement is refused by name.
     """
 
+    def knight_blocks(self, player_name: str, vertex_key: str) -> bool:
+        """Whether an opponent's knight holds this intersection against them.
+
+        expansions.md 389: "A knight standing on an intersection blocks
+        opposing road building through that intersection and interrupts an
+        opponent's longest road passing through it." 390: "A knight never
+        blocks its own owner's roads or longest road."
+        """
+        if not self.rules['knights'] or self.ck is None:
+            return False
+        owner, _knight = self.ck.knight_at(vertex_key)
+        return owner is not None and owner != player_name
+
     def _rule_is_off(self, rule_id: str) -> dict | None:
         """A refusal naming the rule that would have to be on, or None."""
         if self.rules[rule_id] and self.ck is not None:
