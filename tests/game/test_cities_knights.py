@@ -333,6 +333,61 @@ class TestKnights:
         assert game.promote_knight('Alice', vertex)['success']
         assert game.ck.knight_at(vertex)[1].rank == ck.MIGHTY
 
+    def _land_vertex_on_roads(self, game, *names):
+        """A vacant land vertex with a road of each named player touching it."""
+        for vertex_key, vertex in game.vertices.items():
+            if vertex.building or not vertex.neighbors.get('hexes'):
+                continue
+            edges = [key for key in vertex.neighbors.get('edges', []) if not game.edges[key].road]
+            if len(edges) < len(names):
+                continue
+            for name, edge_key in zip(names, edges, strict=False):
+                game.edges[edge_key].road = {'player': name}
+                game.get_player(name).roads.append(edge_key)
+            return vertex_key
+        pytest.fail("no usable land vertex")
+
+    def test_a_settlement_cannot_be_built_where_a_knight_stands(self):
+        """Reported from play: Alice settled the intersection Bob's knight held.
+
+        expansions.md 378 places a knight on a "vacant intersection", and 1398
+        sends a crossing knight elsewhere when a settlement holds the target —
+        a knight and a building never share an intersection. The engine already
+        knew this one way round (`build_knight` refuses a vertex with a
+        building); `place_settlement` never asked about knights at all.
+        """
+        game = ck_game()
+        vertex = self._land_vertex_on_roads(game, 'Alice', 'Bob')
+        game.get_player('Bob').resources = {'sheep': 1, 'ore': 1}
+        assert game.build_knight('Bob', vertex)['success']
+
+        game.game_phase = 'playing'
+        game.current_player_index = game.players.index(game.get_player('Alice'))
+        game.get_player('Alice').resources = {'wood': 1, 'brick': 1, 'sheep': 1, 'wheat': 1}
+        result = game.place_settlement('Alice', vertex)
+
+        assert not result['success'], "an opponent's knight holds the intersection"
+        assert game.vertices[vertex].building is None
+
+    def test_your_own_knight_also_holds_the_intersection(self):
+        """The road exception in expansions.md 390 is about roads, not pieces.
+
+        A knight and a building cannot stand on the same intersection whoever
+        owns them; move the knight off first.
+        """
+        game = ck_game()
+        vertex = self._land_vertex_on_roads(game, 'Alice', 'Bob')
+        game.get_player('Alice').resources = {'sheep': 1, 'ore': 1}
+        assert game.build_knight('Alice', vertex)['success']
+
+        game.game_phase = 'playing'
+        game.current_player_index = game.players.index(game.get_player('Alice'))
+        game.get_player('Alice').resources = {'wood': 1, 'brick': 1, 'sheep': 1, 'wheat': 1}
+        result = game.place_settlement('Alice', vertex)
+
+        assert not result['success']
+        assert game.vertices[vertex].building is None
+
     def test_only_active_knights_defend(self):
         game = ck_game()
         vertex = self._road_and_vertex(game)

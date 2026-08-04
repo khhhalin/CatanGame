@@ -498,6 +498,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             )
         if vertex.building is not None:
             return refused('OCCUPIED', 'This location already has a building')
+        if self.knight_holds(vertex_key):
+            return refused('OCCUPIED', 'A knight is standing here')
         if not self._respects_distance_rule(vertex_key):
             return refused(
                 'INVALID_PLACEMENT', 'Cannot place settlement next to another settlement'

@@ -21,7 +21,9 @@ What is covered, and why each one is here:
   - a knight move is two taps, and the first one only picks the knight up —
     nothing is sent, so there is nothing to confirm;
   - a city wall is built, and is drawn on the city it protects and on no other;
-  - a knight sharing an intersection with a building does not hide it.
+  - a knight sharing an intersection with a building does not hide it. No legal
+    move puts the two there — that is a rule the engine enforces — so this one
+    is arranged in the state a restored payload can still carry.
 
 Each test gets its own server: every scenario is an arranged hand, and a shared
 one would have the earlier tests spend it.
@@ -212,18 +214,24 @@ def two_cities_and_the_brick_for_one_wall(game):
     return {"home": home, "other": other}
 
 
-def a_hand_for_a_knight_and_a_settlement(game):
-    """Enough for a knight and then a settlement on the same intersection.
+def a_knight_standing_on_a_settlement(game):
+    """A knight and a settlement on one intersection, arranged in the state.
 
-    The engine lets a building go up on an intersection a knight is standing
-    on, which is how the two come to share a point at all — and sharing a point
-    is what the renderer has to survive.
+    No legal move puts them there: a knight goes on a vacant intersection and
+    a settlement will not go up where a knight stands. But a payload can still
+    carry both — a save written before that rule was enforced restores one —
+    and the renderer offsets the knight so the building underneath survives.
+    That offset is what this arranges, because the flows cannot.
     """
     actor = game.current_player_name()
     home = _inland_vertices(game)[0]
     _roads_around(game, actor, home)
-    _hand(game, actor, sheep=2, ore=1, wood=1, brick=1, wheat=1)
-    return {"home": home, "spots": list(game.vertices[home].neighbors["vertices"])}
+    _hand(game, actor)
+
+    game.vertices[home].building = {"type": "settlement", "player": actor}
+    game.get_player(actor).settlements.append(home)
+    game.ck.knights_of(actor).append(ck_module.Knight(home))
+    return {"home": home}
 
 
 # --- Fixtures --------------------------------------------------------------
@@ -257,7 +265,7 @@ def walled_cities(browser, tmp_path):
 
 @pytest.fixture
 def knight_under_a_building(browser, tmp_path):
-    with table(browser, tmp_path, a_hand_for_a_knight_and_a_settlement) as live:
+    with table(browser, tmp_path, a_knight_standing_on_a_settlement) as live:
         yield live
 
 
@@ -573,24 +581,13 @@ class TestAKnightSharingAnIntersection:
     def test_a_knight_steps_off_a_built_intersection(self, knight_under_a_building):
         """Both pieces stand on the point, so one of them has to move aside.
 
-        Driven the way it happens in a game: the knight goes down first and a
-        settlement is then built on the intersection it is standing on, which
-        the engine allows. The knight steps up and to the right with a leader
-        line back to the point, and the building's own footprint is untouched.
+        The knight steps up and to the right with a leader line back to the
+        point, and the building's own footprint is untouched.
         """
         player, marks = knight_under_a_building
+        spot = marks["home"]
 
-        arm(player, "build-knight-btn")
-        spot = aim_and_confirm(player, marks["spots"], "Knight")
         wait_for_knight_at(player, spot)
-
-        player.page.click("#place-settlement-btn")
-        assert aim_and_confirm(player, [spot], "Settlement") == spot
-        player.page.wait_for_function(
-            "([owner, vertex]) => (window.__catanDebug.getBoard()"
-            "  .vertices[vertex].building || {}).player === owner",
-            arg=[player.name, spot], timeout=8000,
-        )
         settle_frames(player)
         shot(player, "knight-sharing-a-vertex-1920x1080")
         assert knights_of(player)[0]["vertex"] == spot

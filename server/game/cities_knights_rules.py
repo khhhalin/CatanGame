@@ -33,6 +33,19 @@ class CitiesKnightsRules:
         owner, _knight = self.ck.knight_at(vertex_key)
         return owner is not None and owner != player_name
 
+    def knight_holds(self, vertex_key: str) -> bool:
+        """Whether any knight stands on this intersection, whoever owns it.
+
+        expansions.md 378 puts a new knight on a "vacant intersection" and 1398
+        sends a crossing knight to a neighbouring one when the target holds a
+        settlement of its *own* owner: a knight and a building never share an
+        intersection. The exception in 390 is about roads and longest road, so
+        it does not licence a player to build over their own knight.
+        """
+        if not self.rules['knights'] or self.ck is None:
+            return False
+        return self.ck.knight_at(vertex_key)[1] is not None
+
     def _rule_is_off(self, rule_id: str) -> dict | None:
         """A refusal naming the rule that would have to be on, or None."""
         if self.rules[rule_id] and self.ck is not None:
