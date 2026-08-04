@@ -1836,6 +1836,20 @@ button:disabled {
     text-align: center;
 }
 
+/* Commodities are a second kind of card, not three more resources: without a
+   rule between the two rows the dialog reads as one list of eight resources. */
+#discard-commodities {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border);
+}
+
+.discard-hand {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
 #submit-trade-btn,
 #submit-discard-btn,
 #confirm-invention-btn {

@@ -4,7 +4,7 @@
 
 import { ckEnabled, isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
-import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
+import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
 import { displayError } from './notices.js';
 import { repositionPopover } from './popovers.js';
 import { isSeaMode, seaRule, syncSeaModeButtons } from './seafarers.js';
@@ -14,6 +14,14 @@ import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVi
 // Mirrors server/data/costs.json. Duplicated here only to grey a button out and
 // say why before the round trip - the server checks all of it again and the
 // board is drawn from its answer, never from this.
+// Everything a 7 counts, which is what a discard may name. The five resources
+// and - on a table that plays them - the three commodities: the engine takes
+// both (`clean_card_counts`), and a hand that is over the limit on commodities
+// alone must be able to pay.
+const DISCARDABLE_CARDS = ['wood', 'brick', 'sheep', 'wheat', 'ore', ...COMMODITY_TYPES];
+
+const CARD_ICONS = { ...RESOURCE_ICONS, ...COMMODITY_ICONS };
+
 const BUILD_COSTS = {
     settlement: { wood: 1, brick: 1, wheat: 1, sheep: 1 },
     road: { wood: 1, brick: 1 },
@@ -741,10 +749,47 @@ function handlePlayDevCard(cardType) {
  */
 export function openDiscardModal(amount) {
     discardAmountSpan.textContent = amount;
-    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(resource => {
-        document.getElementById(`discard-${resource}`).value = 0;
+    DISCARDABLE_CARDS.forEach(card => {
+        const input = document.getElementById(`discard-${card}`);
+        if (input) {
+            input.value = 0;
+        }
     });
+
+    // Only the tables that play commodities have any to hand back. Read off
+    // the running game's rules rather than off "is this Cities & Knights":
+    // commodities is a switch of its own and a table may take it alone.
+    const commodities = getBoard()?.rules?.commodities === true;
+    discardCommodityRow?.classList.toggle('hidden', !commodities);
+
+    renderDiscardHand(commodities);
     discardModal.classList.add('show');
+}
+
+/**
+ * Say what is in hand, in the dialog that is asking for some of it back.
+ *
+ * The dialog covers the hand panel, so without this the numbers have to be
+ * typed from memory - and a player who guesses wrong is told only that the
+ * total was wrong, never which card they do not have.
+ *
+ * @param {boolean} commodities - Whether the table plays commodities
+ */
+function renderDiscardHand(commodities) {
+    if (!discardHandNote) {
+        return;
+    }
+    const player = findMyPlayer();
+    const held = { ...(player?.resources || {}) };
+    if (commodities) {
+        Object.assign(held, player?.commodities || {});
+    }
+    const parts = Object.entries(held)
+        .filter(([, count]) => count > 0)
+        .map(([card, count]) => `${count}${CARD_ICONS[card] || card}`);
+    discardHandNote.textContent = parts.length > 0
+        ? `In hand: ${parts.join(' ')}`
+        : '';
 }
 
 /**
@@ -1125,16 +1170,16 @@ victimList.addEventListener('click', (event) => {
 });
 
 submitDiscardBtn.addEventListener('click', () => {
-    const resources = {
-        wood: parseInt(document.getElementById('discard-wood').value) || 0,
-        brick: parseInt(document.getElementById('discard-brick').value) || 0,
-        sheep: parseInt(document.getElementById('discard-sheep').value) || 0,
-        wheat: parseInt(document.getElementById('discard-wheat').value) || 0,
-        ore: parseInt(document.getElementById('discard-ore').value) || 0
-    };
-    
-    const total = resources.wood + resources.brick + resources.sheep + resources.wheat + resources.ore;
-    
+    // Every card the limit counts, not the five resources: a commodity typed
+    // into a row the submit ignored was the shape of the tester's report.
+    const resources = {};
+    DISCARDABLE_CARDS.forEach(card => {
+        const input = document.getElementById(`discard-${card}`);
+        resources[card] = input ? (parseInt(input.value) || 0) : 0;
+    });
+
+    const total = Object.values(resources).reduce((sum, count) => sum + count, 0);
+
     if (total !== getDiscardAmount()) {
         displayError(`You must discard exactly ${getDiscardAmount()} cards`);
         return;

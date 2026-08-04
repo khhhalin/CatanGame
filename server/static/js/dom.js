@@ -138,6 +138,10 @@ export const victimModal = document.getElementById('victim-modal');
 export const victimList = document.getElementById('victim-list');
 export const submitDiscardBtn = document.getElementById('submit-discard-btn');
 export const discardAmountSpan = document.getElementById('discard-amount');
+// Commodities count toward the limit a 7 enforces, so the dialog has a row for
+// them - shown only when the table plays them.
+export const discardCommodityRow = document.getElementById('discard-commodities');
+export const discardHandNote = document.getElementById('discard-hand');
 
 // Side panel tabs - the log and the trade panel share one box
 export const sideTabs = document.getElementById('side-tabs');

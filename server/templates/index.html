@@ -556,7 +556,7 @@
     <!-- Discard Modal -->
     <div id="discard-modal" class="modal hidden">
         <div class="modal-content">
-            <h2>Discard Resources</h2>
+            <h2>Discard Cards</h2>
             <p>You must discard <span id="discard-amount">0</span> cards to the bank.</p>
             <div class="resource-selector">
                 <label>🌲 Wood: <input type="number" id="discard-wood" min="0" max="10" value="0"></label>
@@ -565,6 +565,19 @@
                 <label>🌾 Wheat: <input type="number" id="discard-wheat" min="0" max="10" value="0"></label>
                 <label>🪨 Ore: <input type="number" id="discard-ore" min="0" max="10" value="0"></label>
             </div>
+            <!-- The hand limit a 7 enforces counts commodities as well, and the
+                 engine accepts them in a discard - so a player over the limit on
+                 cloth, coin or paper alone had no way to comply at all. Shown
+                 only when the table plays commodities: panels.js reads that off
+                 the running game's rules, never from a mode. -->
+            <div id="discard-commodities" class="resource-selector hidden">
+                <label>🧵 Cloth: <input type="number" id="discard-cloth" min="0" max="10" value="0"></label>
+                <label>🪙 Coin: <input type="number" id="discard-coin" min="0" max="10" value="0"></label>
+                <label>📜 Paper: <input type="number" id="discard-paper" min="0" max="10" value="0"></label>
+            </div>
+            <!-- What is actually in hand, so the numbers can be typed without
+                 closing the dialog to go and look. -->
+            <p id="discard-hand" class="discard-hand"></p>
             <button id="submit-discard-btn">Discard</button>
         </div>
     </div>
