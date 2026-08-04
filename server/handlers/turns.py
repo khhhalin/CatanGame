@@ -200,7 +200,11 @@ def _announce_dice_roll(name, result):
     dice1, dice2, total = result['dice1'], result['dice2'], result['total']
 
     logger.info("roll player=%s dice=%s+%s total=%s", name, dice1, dice2, total)
-    log_event('dice', f"{name} rolled {dice1} + {dice2} = {total}", player=name, total=total)
+    # `modifiers` names the house rules that changed what this roll paid, so
+    # the client can say why a city yielded less than the player expected
+    # rather than leaving them to report it as a bug.
+    log_event('dice', f"{name} rolled {dice1} + {dice2} = {total}",
+              player=name, total=total, modifiers=result.get('modifiers') or [])
 
     if result['event']:
         _announce_event_die(result['event'])

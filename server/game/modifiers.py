@@ -117,10 +117,26 @@ def active(hook: str, rules: dict) -> tuple:
 
 def apply(hook: str, rules: dict, value, **context):
     """Fold every active modifier over `value`, in order."""
+    return apply_traced(hook, rules, value, **context)[0]
+
+
+def apply_traced(hook: str, rules: dict, value, **context) -> tuple:
+    """Fold, and say which modifiers actually changed the value.
+
+    The trace is what lets the client tell a player *why* a roll paid less
+    than they expected. A modifier that runs and leaves the value alone is
+    left out: naming it would be noise, and a player who collected exactly
+    what they expected has nothing to be told.
+    """
+    changed = []
     for modifier in _REGISTRY[hook]:
-        if modifier.applies(rules):
-            value = modifier.change(value, rules, context)
-    return value
+        if not modifier.applies(rules):
+            continue
+        after = modifier.change(value, rules, context)
+        if after != value:
+            changed.append(modifier.rule_id)
+        value = after
+    return value, changed
 
 
 @contextmanager

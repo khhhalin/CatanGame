@@ -150,6 +150,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # player who owes it and the options they may pick from.
         self.pending_choices = []
 
+        # Which house rules changed a production value while the last roll was
+        # resolved. A player who collects 1 where they expected 2 is otherwise
+        # told nothing, and reports it as a bug — the C&K starting commodity
+        # was reported exactly that way.
+        self.production_modifiers = set()
+
         # Exactly what the table set, and nothing else. Rules that suit a
         # different length say so in the catalogue (`suggests_victory_target`)
         # and the preset that ticks them sets it, so the lobby can see and
@@ -820,6 +826,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),
+            # How many combinations are left in a dealt dice deck. A count and
+            # never the contents: the order would turn a probabilistic draw
+            # into a certain one, which is why dev_cards_remaining is a total
+            # too. Zero when no deck is in play.
+            'dice_deck_remaining': len(self.dice_deck),
             'state_version': self.state_version,
             'trades': {'active': self.trade_manager.get_all_active(), 'my_offers': my_offers},
             'game_phase': self.game_phase,
@@ -861,7 +872,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         commodities, the robber — is a modifier folded over it in a fixed
         order. See `game/modifiers.py`.
         """
-        return modifiers_module.apply(
+        value, changed = modifiers_module.apply_traced(
             modifiers_module.PRODUCTION,
             self.rules,
             {'resources': 1, 'commodity': None},
@@ -870,6 +881,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             dice_total=dice_total,
             robber_here=robber_here,
         )
+        # Remembered rather than returned, so every caller of production_for
+        # keeps its signature: only the roll that collects the whole table's
+        # production reads this, and it reads it once.
+        self.production_modifiers.update(changed)
+        return value
 
     def distribute_resources(self, dice_total: int):
         """Distribute resources to players based on dice roll.
@@ -880,6 +896,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         Args:
             dice_total: The sum of the two dice rolled
         """
+        # One roll's worth: cleared here so the set never carries a rule over
+        # from the previous turn.
+        self.production_modifiers = set()
+
         if dice_total == 7:
             return
 
@@ -1085,6 +1105,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'total': total,
             'event': event,
             'discards': dict(self.players_needing_discard),
+            # The house rules that changed what this roll paid, so the log can
+            # say why. Sorted for a stable payload.
+            'modifiers': sorted(self.production_modifiers),
         }
 
     def next_dice(self) -> tuple:
