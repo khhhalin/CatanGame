@@ -5,6 +5,7 @@
 // the full set of server events is this file's table of contents.
 
 import { markDirty, setHighlight } from './board.js';
+import { renderPendingChoices } from './choices.js';
 import { describeLastAttack, noteBarbarianAttack, renderCitiesKnights } from './cities-knights.js';
 import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, turnSound, userScreen, victimModal } from './dom.js';
 import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
@@ -88,6 +89,7 @@ socket.on('game_started', (data) => {
     // at all, in a base game
     renderCitiesKnights();
     renderSeafarers();
+    renderPendingChoices();
 
     // Show what the table agreed to before the game began
     renderActiveRules();
@@ -129,6 +131,10 @@ socket.on('game_state', (data) => {
         renderActiveRules();
         renderCitiesKnights();
         renderSeafarers();
+        // A reload or a reconnect in the middle of a question: the snapshot
+        // carries the open choice, so the player is asked again rather than
+        // returning to a table that has silently stopped.
+        renderPendingChoices();
     }
 
     // Set color picker to current user's color
@@ -239,6 +245,7 @@ socket.on('board_updated', (data) => {
     renderActiveRules();
     renderCitiesKnights();
     renderSeafarers();
+    renderPendingChoices();
     checkLogGap(data);
 
     // Clear highlight after 2 seconds if there was one
@@ -280,6 +287,24 @@ socket.on('barbarian_attack', (data) => {
     if (summary) {
         showNotice(summary, data?.won ? 'success' : 'error');
     }
+});
+
+// The chooser's own sockets only, and it arrives a fraction before the board
+// broadcast that carries the same question redacted for everyone else. The
+// panel is drawn from that payload, not from here - this is the nudge, because
+// a question that opens while the player is reading the log is otherwise
+// silent. Nothing is read out of the event: doing so would give the panel a
+// second source that a reload could not reproduce.
+socket.on('choice_required', (data) => {
+    if (!data || typeof data !== 'object') {
+        console.warn('Ignoring malformed choice_required payload:', data);
+        return;
+    }
+    showNotice(`It is your decision: ${data.prompt || 'the game is waiting on you'}.`, 'info');
+});
+
+socket.on('choice_resolved', (data) => {
+    console.log('Choice resolved:', data);
 });
 
 socket.on('progress_card_played', (data) => {

@@ -114,6 +114,17 @@ export const progressCardsChipValue = document.getElementById('progress-cards-ch
 export const progressHandDiv = document.getElementById('progress-hand');
 export const activeRulesChipValue = document.getElementById('active-rules-chip-value');
 
+// The pending-choice phase. The panel is the chooser's own question and its
+// answers; the indicator is what everyone else is told while the table waits.
+// Both overlay the board rather than taking a row of their own - see
+// `.board-status` for why anything that resizes the board box is a bug.
+export const choicePanel = document.getElementById('choice-panel');
+export const choicePrompt = document.getElementById('choice-prompt');
+export const choiceContext = document.getElementById('choice-context');
+export const choiceOptions = document.getElementById('choice-options');
+export const choiceIndicator = document.getElementById('choice-indicator');
+export const choiceWaitingText = document.getElementById('choice-waiting-text');
+
 // Discard and victim modal elements
 export const discardModal = document.getElementById('discard-modal');
 export const victimModal = document.getElementById('victim-modal');

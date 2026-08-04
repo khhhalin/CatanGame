@@ -1,5 +1,6 @@
 // The board: one render loop, and the taps and gestures that reach it.
 
+import { choiceHighlightVertices, handleChoiceTap } from './choices.js';
 import { boardCanvas } from './dom.js';
 import { displayError } from './notices.js';
 import { clearHover, currentPreview, handlePlacementTap, samplePointer, updatePlacement } from './placement.js';
@@ -38,7 +39,8 @@ function frame() {
         try {
             if (getBoard() && window.BoardRenderer) {
                 window.BoardRenderer.render(
-                    getBoard(), 'board-canvas', viewState.render.highlightNumber, currentPreview()
+                    getBoard(), 'board-canvas', viewState.render.highlightNumber,
+                    currentPreview(), choiceHighlightVertices()
                 );
                 updateBoardLabel();
             }
@@ -86,6 +88,14 @@ function handleBoardTap(event) {
     // That gesture moved the view, it was not a tap. The movement threshold
     // below misses a slow pan that ends near where it started.
     if (window.BoardRenderer?.wasPanning?.()) {
+        return;
+    }
+
+    // Before placement, not after: a pending choice is owed by whoever the rule
+    // names, who is usually not the player on turn, so the placement path
+    // answers null for them and the tap would be thrown away.
+    if (handleChoiceTap(event.clientX, event.clientY)) {
+        markDirty();
         return;
     }
 

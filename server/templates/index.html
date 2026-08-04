@@ -334,6 +334,27 @@
                         <div id="free-roads-indicator" class="hidden">
                             <span id="free-roads-text">Free Roads: 2 remaining</span>
                         </div>
+                        <!-- The pending-choice phase freezes the whole table:
+                             the server refuses every action until one named
+                             player answers. This is what everyone else is told
+                             while that lasts - a table that stops with no
+                             explanation is the bug it exists to prevent. -->
+                        <div id="choice-indicator" class="hidden">
+                            <span id="choice-waiting-text"></span>
+                        </div>
+                        <!-- The chooser's own question. Deliberately an overlay
+                             and not a `.modal`: three of the eight kinds are
+                             answered by picking an intersection off the board,
+                             and a full-screen dialog would cover the very
+                             thing it is asking about. `pointer-events` is
+                             restored on the panel itself - the strip around it
+                             stays transparent to taps. -->
+                        <div id="choice-panel" class="choice-panel hidden"
+                             role="group" aria-live="assertive">
+                            <div id="choice-prompt" class="choice-prompt"></div>
+                            <div id="choice-context" class="choice-context"></div>
+                            <div id="choice-options" class="choice-options"></div>
+                        </div>
                     </div>
                     <!-- Raised where a click landed, over the board and never
                          in flow above it: anything that took a row of its own

@@ -331,6 +331,19 @@ function renderAwardSummary() {
         });
     }
 
+    // The merchant is worth a victory point for as long as its owner keeps it,
+    // and it changes hands the moment somebody else plays the card. Listed only
+    // once one is on the board: an award nobody is playing for is a row this
+    // panel cannot spare.
+    if (board.merchant_holder) {
+        rows.push({
+            icon: '🏪',
+            name: 'Merchant',
+            holder: board.merchant_holder,
+            value: '1 pt'
+        });
+    }
+
     const fragment = document.createDocumentFragment();
     rows.forEach(row => {
         const line = document.createElement('div');

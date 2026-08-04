@@ -796,6 +796,65 @@ button:disabled {
     box-shadow: var(--shadow-2);
 }
 
+#choice-indicator {
+    color: var(--on-status);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    font-weight: bold;
+    font-size: var(--text-sm);
+    display: flex;
+    align-items: center;
+    box-shadow: var(--shadow-2);
+    background-color: var(--info);
+}
+
+/* The chooser's own question. It lives in the same overlay strip as the
+   indicators above - anything that took a row of its own would resize the
+   drawing buffer and move the camera under the very board it may be asking
+   about. The strip is `pointer-events: none`, so the panel puts them back. */
+.choice-panel {
+    pointer-events: auto;
+    max-width: 26rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background-color: var(--surface-1);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-3);
+    color: var(--text);
+}
+
+.choice-prompt {
+    font-size: var(--text-lg);
+    font-weight: bold;
+    line-height: var(--leading-tight);
+}
+
+.choice-context,
+.choice-hint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.choice-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.choice-option {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+}
+
+/* A full-width line inside the wrapping option row, so "tap the board" reads
+   as an instruction rather than as one more answer. */
+.choice-options .choice-hint {
+    flex: 1 0 100%;
+}
+
 #setup-indicator {
     background-color: var(--warn);
 }

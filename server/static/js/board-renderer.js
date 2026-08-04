@@ -992,6 +992,67 @@ function drawPirate(ctx, centerX, centerY) {
 }
 
 /**
+ * Draw the merchant: a market stall with a striped awning.
+ *
+ * A silhouette rather than a letter or an emoji. The board is drawn at whatever
+ * scale the viewport allows, and text is unreadable at sizes a shape still
+ * reads at - the same reasoning as the robber and the pirate.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Centre y
+ */
+function drawMerchant(ctx, x, y) {
+    const width = 16;
+    const height = 11;
+    const awning = 5;
+    const left = x - width / 2;
+    const top = y - height / 2;
+
+    ctx.save();
+    ctx.strokeStyle = '#221a10';
+    ctx.lineWidth = 1;
+
+    ctx.fillStyle = '#f2ead8';
+    ctx.fillRect(left, top, width, height);
+    ctx.strokeRect(left, top, width, height);
+
+    const stripe = width / 4;
+    for (let i = 0; i < 4; i += 1) {
+        ctx.fillStyle = i % 2 === 0 ? '#b83227' : '#f2ead8';
+        ctx.fillRect(left + i * stripe, top - awning, stripe, awning);
+    }
+    ctx.strokeRect(left, top - awning, width, awning);
+    ctx.restore();
+}
+
+// How wide the ring around a choosable intersection is drawn.
+const CHOICE_RING_RADIUS = 13;
+
+/**
+ * Ring an intersection a pending choice is asking about.
+ *
+ * Two strokes, dark under bright: an option can stand on any terrain in either
+ * theme, and one colour is invisible against at least one of them.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Vertex x
+ * @param {number} y - Vertex y
+ */
+function drawChoiceRing(ctx, x, y) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, CHOICE_RING_RADIUS, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(10, 16, 24, 0.85)';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd54a';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+}
+
+/**
  * Compute the full board geometry from board data.
  * Pure: reads only boardData, touches no canvas and no module state, so hit
  * detection works before the first frame has been drawn.
@@ -1045,7 +1106,20 @@ function computeLayout(boardData) {
         }
     }
 
-    const padding = hexRadius + 20;
+    // Breathing room around the bounding box, and nothing more. It used to be
+    // `hexRadius + 20`, which on the standard board was about 17% of the
+    // layout: `fitToView` scales `width`/`height` down to the viewport, so
+    // every padded pixel came straight off the size of the drawn board and the
+    // table sat in dead space.
+    //
+    // 12 is what still has to be reserved. The bounds are hex centres ±
+    // hexRadius, which is the circumscribed circle and therefore already
+    // covers every corner, every vertex piece and every number token; what it
+    // does not cover is the stroke width on the outermost hexes and the ring a
+    // pending choice draws around a boundary intersection. Harbour badges reach
+    // further than this, but always *inwards* from an ocean hex whose own
+    // bounds are in the box already.
+    const padding = 12;
 
     return {
         hexPositions,
@@ -1425,9 +1499,12 @@ function markIfBlocked(ctx, preview, x, y) {
  * @param {string} canvasId - ID of the canvas element
  * @param {number|null} highlightNumber - Optional number to highlight on hexes
  * @param {object|null} preview - Placement ghost {kind, key, blocked, color}
+ * @param {Array<string>} choiceKeys - Intersections this player is being asked
+ *                                     to choose between, ringed on the board
  * @returns {object} - Object with canvas and position data for click detection
  */
-function renderBoard(boardData, canvasId, highlightNumber = null, preview = null) {
+function renderBoard(boardData, canvasId, highlightNumber = null, preview = null,
+                     choiceKeys = []) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
         console.error('Canvas not found:', canvasId);
@@ -1521,6 +1598,14 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
         drawPirate(ctx, piratePos.x, piratePos.y);
     }
 
+    // The merchant. Null until somebody plays the card; it is worth a victory
+    // point to whoever holds it, so where it stands has to be on the board and
+    // not only in the log line that announced it.
+    if (boardData.merchant_hex && hexPositions[boardData.merchant_hex]) {
+        const merchantPos = hexPositions[boardData.merchant_hex];
+        drawMerchant(ctx, merchantPos.x + hexRadius * 0.5, merchantPos.y + hexRadius * 0.4);
+    }
+
 
     // Draw roads first so buildings appear on top
     // Note: Empty edges are not drawn (only clickable)
@@ -1586,6 +1671,15 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
             }
             const occupied = Boolean((vertices[knight.vertex] || {}).building);
             drawKnight(ctx, pos.x, pos.y, knight, playerColor, occupied);
+        }
+    }
+
+    // The intersections a pending choice is asking about. Over the pieces,
+    // because the thing being chosen is usually one of them.
+    for (const key of choiceKeys || []) {
+        const pos = vertexPositions[key];
+        if (pos) {
+            drawChoiceRing(ctx, pos.x, pos.y);
         }
     }
 
