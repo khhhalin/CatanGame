@@ -1531,3 +1531,65 @@ class TestAnsweringAPendingChoice:
         actor.emit('buy_improvement', {'name': acting, 'track': 'trade'})
 
         assert last_error(actor)['code'] in ('MUST_CHOOSE', 'AWAITING_CHOICE')
+
+
+class TestCommoditiesReachTheTradeHandler:
+    """The bug: `propose_trade` validated with `clean_resource_counts`, which
+    knows only the five resources, so a player holding three paper could not
+    put any of it on the table — the payload bounced as INVALID_PAYLOAD before
+    the engine ever saw it."""
+
+    def _on_turn(self, clients):
+        alice, bob = clients
+        game = state.session().game
+        game.game_phase = "playing"
+        game.start_turn()
+        acting = game.players[game.current_player_index].name
+        # Trading is only legal after the roll, and this is about the payload,
+        # not about the dice.
+        game.set_dice_rolled()
+        actor = seated(acting, Alice=alice, Bob=bob)
+        actor.get_received()
+        return game, acting, actor
+
+    def test_a_commodity_offer_is_accepted_from_a_browser(self, clients):
+        game, acting, actor = self._on_turn(clients)
+        game.get_player(acting).commodities = {'paper': 3}
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {'paper': 1},
+                                     'wanted': {'wood': 1}})
+
+        # One drain: `events` empties the queue, so both facts come from it.
+        received = [msg['name'] for msg in actor.get_received()]
+        assert 'error' not in received
+        assert 'trade_proposed' in received, "the offer reached the table"
+
+    def test_four_paper_settles_against_the_bank(self, clients):
+        game, acting, actor = self._on_turn(clients)
+        game.get_player(acting).commodities = {'paper': 4}
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {'paper': 4},
+                                     'wanted': {'wood': 1}})
+
+        completed = events(actor, 'bank_trade_completed')
+        assert completed and completed[-1]['rate_used'] == 4
+        assert game.get_player(acting).resources['wood'] == 1
+
+    def test_a_card_type_nobody_ever_holds_is_still_refused(self, clients):
+        """The allowlist is eight names wide now, not open."""
+        _game, acting, actor = self._on_turn(clients)
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {'gold': 1},
+                                     'wanted': {'wood': 1}})
+
+        assert last_error(actor)['code'] == 'INVALID_PAYLOAD'
+
+    def test_a_commodity_the_player_does_not_hold_is_refused(self, clients):
+        """Untrusted input: the payload names the card, the server owns the
+        hand."""
+        _game, acting, actor = self._on_turn(clients)
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {'cloth': 2},
+                                     'wanted': {'wood': 1}})
+
+        assert last_error(actor)['code'] == 'INSUFFICIENT_RESOURCES'

@@ -6,7 +6,7 @@ import state
 from extensions import socketio
 from game.validation import (
     InvalidPayload,
-    clean_resource_counts,
+    clean_card_counts,
 )
 from state import (
     bump_and_broadcast,
@@ -33,8 +33,11 @@ def handle_propose_trade(data):
         return
 
     try:
-        offered = clean_resource_counts(data.get('offered'), 'offered')
-        wanted = clean_resource_counts(data.get('wanted'), 'wanted')
+        # Cards, not resources: commodities trade exactly as resources do
+        # (`expansions.md` 329), so a payload naming cloth, coin or paper is
+        # legal input. Anything outside those eight names still bounces.
+        offered = clean_card_counts(data.get('offered'), 'offered')
+        wanted = clean_card_counts(data.get('wanted'), 'wanted')
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
         return

@@ -2,6 +2,8 @@
 Player class for Catan game.
 """
 
+from game.validation import COMMODITY_TYPES
+
 
 class Player:
     """
@@ -56,6 +58,24 @@ class Player:
     def total_cards(self) -> int:
         """Everything that counts toward the hand limit on a 7."""
         return self.total_resources() + self.total_commodities()
+
+    def hand_for(self, card_type: str) -> dict:
+        """The pile a card of this type is held in.
+
+        Commodities live apart from resources because they buy different
+        things, but every rule that moves cards — trades, the robber, a
+        discard — treats the two the same, so those rules ask here instead of
+        naming a pile.
+        """
+        return self.commodities if card_type in COMMODITY_TYPES else self.resources
+
+    def all_cards(self) -> dict:
+        """Resources and commodities as one mapping.
+
+        Safe to merge because no card type appears in both piles. For readers
+        that only need "how many of this card does the player hold".
+        """
+        return {**self.resources, **self.commodities}
 
     def total_dev_cards(self) -> int:
         """Number of development cards held, without revealing which."""
