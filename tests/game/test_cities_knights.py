@@ -450,11 +450,58 @@ class TestCityWalls:
     def test_at_most_three_walls(self):
         game = ck_game()
         player = game.get_player('Alice')
+        player.cities = ['c1', 'c2', 'c3', 'c4']
+        player.resources = {'brick': 99}
+        for vertex_key in player.cities[:ck.MAX_CITY_WALLS]:
+            assert game.build_city_wall('Alice', vertex_key)['success']
+        assert not game.build_city_wall('Alice', 'c4')['success']
+
+    def test_a_second_wall_on_the_same_city_is_refused(self):
+        """Reported: "you can build multiple walls on same city".
+
+        The count was kept per player and attached to nothing, so three walls
+        could be stacked on one city. expansions.md 472: "A city wall may only
+        be placed under a city that the player already owns, and each city may
+        have at most one wall."
+        """
+        game = ck_game()
+        player = game.get_player('Alice')
         player.cities = ['c1']
         player.resources = {'brick': 99}
-        for _ in range(ck.MAX_CITY_WALLS):
-            assert game.build_city_wall('Alice', 'c1')['success']
+        assert game.build_city_wall('Alice', 'c1')['success']
+
         assert not game.build_city_wall('Alice', 'c1')['success']
+        assert game.ck.walls_of('Alice') == ['c1']
+        assert player.resources['brick'] == 97, 'the refused wall was still paid for'
+
+    def test_a_wall_needs_a_city_of_your_own(self):
+        """expansions.md 472: under a city that the player already owns."""
+        game = ck_game()
+        game.get_player('Bob').cities = ['c1']
+        game.get_player('Alice').resources = {'brick': 99}
+        assert not game.build_city_wall('Alice', 'c1')['success']
+        assert game.ck.walls_of('Alice') == []
+
+    def test_the_sacked_city_is_the_one_that_loses_its_wall(self):
+        """expansions.md 421: the wall is destroyed along with the city piece.
+
+        Which wall goes was unknowable while only a count was kept, so a
+        pillage took the bonus off an arbitrary city that still stood.
+        """
+        game = ck_game()
+        player = game.get_player('Alice')
+        walled, sacked = list(game.vertices)[:2]
+        for vertex_key in (walled, sacked):
+            game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+            player.cities.append(vertex_key)
+        player.resources = {'brick': 99}
+        game.build_city_wall('Alice', walled)
+        game.build_city_wall('Alice', sacked)
+
+        assert game._pillage_city('Alice', sacked)
+
+        assert game.ck.walls_of('Alice') == [walled]
+        assert game.ck.city_wall_bonus('Alice') == ck.CITY_WALL_HAND_BONUS
 
 
 class TestSerialization:

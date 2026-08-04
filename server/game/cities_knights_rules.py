@@ -235,26 +235,41 @@ class CitiesKnightsRules:
             player.resources[res] = player.resources.get(res, 0) - amount
             self.bank.return_resources(res, amount)
 
-    def build_city_wall(self, player_name: str, vertex_key: str) -> dict:
-        """Two brick for +2 hand limit on a 7. Max three per player."""
-        refusal = self._rule_is_off('city_walls')
-        if refusal is not None:
-            return refusal
+    def _wall_refusal(self, player_name: str, vertex_key: str) -> dict | None:
+        """Why this city may not be walled, or None. Shared with the Engineer.
 
+        expansions.md 472: "A city wall may only be placed under a city that
+        the player already owns, and each city may have at most one wall."
+        """
         player = self.get_player(player_name)
         if player is None or vertex_key not in player.cities:
             return {'success': False, 'error': 'You have no city there'}
-        if self.ck.city_walls.get(player_name, 0) >= self.ck.max_city_walls:
+        if self.ck.has_wall(vertex_key):
+            return {'success': False, 'error': 'That city already has a wall'}
+        if self.ck.wall_count(player_name) >= self.ck.max_city_walls:
             return {
                 'success': False,
                 'error': f'You have used all {self.ck.max_city_walls} city walls',
             }
+        return None
+
+    def build_city_wall(self, player_name: str, vertex_key: str) -> dict:
+        """Two brick for +2 hand limit on a 7. One per city, max three."""
+        refusal = self._rule_is_off('city_walls')
+        if refusal is not None:
+            return refusal
+
+        refusal = self._wall_refusal(player_name, vertex_key)
+        if refusal is not None:
+            return refusal
+
+        player = self.get_player(player_name)
         if not self._can_pay(player, ck_module.CITY_WALL_COST):
             return {'success': False, 'error': 'A city wall costs 2 brick'}
 
         self._pay(player, ck_module.CITY_WALL_COST)
-        self.ck.city_walls[player_name] = self.ck.city_walls.get(player_name, 0) + 1
-        return {'success': True, 'error': ''}
+        self.ck.build_wall(player_name, vertex_key)
+        return {'success': True, 'error': '', 'vertex': vertex_key}
 
     def roll_event_die(self) -> str:
         """One of three barbarian faces or a discipline's city gate."""
@@ -377,9 +392,8 @@ class CitiesKnightsRules:
         if vertex and vertex.building:
             vertex.building['type'] = 'settlement'
 
-        # A wall on the pillaged city is destroyed with it.
-        if self.ck.city_walls.get(player_name, 0) > 0:
-            self.ck.city_walls[player_name] -= 1
+        # A wall on the pillaged city is destroyed with it (expansions.md 421).
+        self.ck.destroy_wall(player_name, target)
         return True
 
     def _resolve_event_die(self, red_die: int) -> dict:
@@ -623,17 +637,12 @@ class CitiesKnightsRules:
         return {'success': True, 'promoted': promoted}
 
     def _progress_engineer(self, player_name: str, target) -> dict:
-        """One city wall, free."""
-        player = self.get_player(player_name)
-        if player is None or target not in player.cities:
-            return {'success': False, 'error': 'You have no city there'}
-        if self.ck.city_walls.get(player_name, 0) >= self.ck.max_city_walls:
-            return {
-                'success': False,
-                'error': f'You have used all {self.ck.max_city_walls} city walls',
-            }
+        """One city wall, free — on a city that could have paid for one."""
+        refusal = self._wall_refusal(player_name, target)
+        if refusal is not None:
+            return refusal
 
-        self.ck.city_walls[player_name] = self.ck.city_walls.get(player_name, 0) + 1
+        self.ck.build_wall(player_name, target)
         return {'success': True, 'vertex': target}
 
     def _progress_medicine(self, player_name: str, target) -> dict:

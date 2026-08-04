@@ -54,6 +54,31 @@ def _edges_on_board(game: Game, keys) -> list:
     return mapped
 
 
+def _walls_by_city(game: Game, saved: dict) -> dict:
+    """Saved city walls as {player: [city vertex, ...]}.
+
+    Walls used to be a bare per-player count attached to no city at all. Such a
+    save cannot say which cities were walled, so the count is laid onto that
+    player's own cities in key order: the hand limit they paid for survives the
+    restart, and every wall still lands on a city they really own, which is more
+    than dropping them would leave. A wall on the wrong city of one's own is a
+    smaller lie than a hand limit that quietly drops by two mid-game.
+    """
+    walls = {}
+    for name, saved_walls in saved.items():
+        if isinstance(saved_walls, list):
+            walls[name] = list(saved_walls)
+            continue
+        player = game.get_player(name)
+        cities = sorted(player.cities) if player else []
+        walls[name] = cities[:saved_walls]
+        logger.warning(
+            "save holds %s city walls for %s with no cities named; assigning them to %s",
+            saved_walls, name, walls[name],
+        )
+    return walls
+
+
 def _player_state(player) -> dict:
     return {
         'name': player.name,
@@ -314,7 +339,7 @@ def deserialize(data: dict, config=None) -> Game:
     saved_ck = data.get('cities_knights')
     if saved_ck and game.ck:
         game.ck.improvements = saved_ck.get('improvements', {})
-        game.ck.city_walls = saved_ck.get('city_walls', {})
+        game.ck.city_walls = _walls_by_city(game, saved_ck.get('city_walls', {}))
         game.ck.metropolis = saved_ck.get('metropolis', game.ck.metropolis)
         game.ck.metropolis_vertex = saved_ck.get('metropolis_vertex',
                                                  game.ck.metropolis_vertex)

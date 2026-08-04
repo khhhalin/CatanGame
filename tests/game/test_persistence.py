@@ -287,6 +287,42 @@ class TestCitiesKnightsSurvives:
         assert after.ck.metropolis[ck.TRADE] == 'Alice'
         assert after.victory_points_for('Alice') >= 2
 
+    def test_city_walls_come_back_on_their_own_cities(self, tmp_path):
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
+        walled = list(game.vertices)[0]
+        game.vertices[walled].building = {'type': 'city', 'player': 'Alice'}
+        game.get_player('Alice').cities.append(walled)
+        game.ck.build_wall('Alice', walled)
+
+        after = round_trip(game, tmp_path)
+
+        assert after.ck.walls_of('Alice') == [walled]
+
+    def test_a_wall_count_from_an_older_save_lands_on_that_players_cities(self, tmp_path):
+        """Walls used to be a per-player count naming no city.
+
+        The count cannot say which cities carried a wall, so it is laid onto
+        the player's own cities rather than dropped: the hand limit they bought
+        survives the restart and every wall sits on a city they really own.
+        """
+        game = a_game(rules_module.preset_rules('cities_and_knights'))
+        cities = sorted(list(game.vertices)[:3])
+        for vertex_key in cities:
+            game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+            game.get_player('Alice').cities.append(vertex_key)
+        path = str(tmp_path / "game.json")
+        persistence.save(game, path)
+
+        data = json.loads(open(path).read())
+        data['cities_knights']['city_walls'] = {'Alice': 2, 'Bob': 0}
+        open(path, 'w').write(json.dumps(data))
+
+        after = persistence.load(path)
+
+        assert after.ck.walls_of('Alice') == cities[:2]
+        assert after.ck.walls_of('Bob') == []
+        assert after.ck.city_wall_bonus('Alice') == 2 * ck.CITY_WALL_HAND_BONUS
+
     def test_commodities_come_back(self, tmp_path):
         game = a_game(rules_module.preset_rules('cities_and_knights'))
         game.get_player('Alice').commodities = {'cloth': 2, 'coin': 1}

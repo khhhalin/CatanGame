@@ -147,7 +147,9 @@ class CitiesKnights:
         self.improvements = {}
         # player -> list[Knight]
         self.knights = {}
-        # player -> number of city walls built
+        # player -> the city vertices they have walled. A wall belongs to one
+        # named city, not to its owner: it is lost with that city when the
+        # barbarians sack it, and no city may carry two.
         self.city_walls = {}
         # track -> player holding that metropolis
         self.metropolis = {TRADE: None, POLITICS: None, SCIENCE: None}
@@ -172,7 +174,7 @@ class CitiesKnights:
     def register(self, player_name: str):
         self.improvements.setdefault(player_name, {TRADE: 0, POLITICS: 0, SCIENCE: 0})
         self.knights.setdefault(player_name, [])
-        self.city_walls.setdefault(player_name, 0)
+        self.city_walls.setdefault(player_name, [])
         self.defender_cards.setdefault(player_name, 0)
         self.progress_hands.setdefault(player_name, [])
 
@@ -316,8 +318,29 @@ class CitiesKnights:
         self.barbarian_position = 0
         self.barbarians_have_attacked = True
 
+    # --- City walls --------------------------------------------------------
+
+    def walls_of(self, player_name: str) -> list:
+        """The city vertices this player has walled."""
+        return self.city_walls.setdefault(player_name, [])
+
+    def has_wall(self, vertex_key: str) -> bool:
+        return any(vertex_key in walls for walls in self.city_walls.values())
+
+    def build_wall(self, player_name: str, vertex_key: str):
+        self.walls_of(player_name).append(vertex_key)
+
+    def destroy_wall(self, player_name: str, vertex_key: str):
+        """Take the wall off a city. Silent when there was none to take."""
+        walls = self.walls_of(player_name)
+        if vertex_key in walls:
+            walls.remove(vertex_key)
+
+    def wall_count(self, player_name: str) -> int:
+        return len(self.walls_of(player_name))
+
     def city_wall_bonus(self, player_name: str) -> int:
-        return self.city_walls.get(player_name, 0) * CITY_WALL_HAND_BONUS
+        return self.wall_count(player_name) * CITY_WALL_HAND_BONUS
 
     def to_dict(self, viewer: str = None) -> dict:
         """Serialize for the client.
@@ -345,7 +368,12 @@ class CitiesKnights:
             "knights": {
                 name: [k.to_dict() for k in knights] for name, knights in self.knights.items()
             },
-            "city_walls": self.city_walls,
+            # Both shapes go out: the panel counts a player's walls, the board
+            # has to know which cities carry one in order to draw them.
+            "city_walls": {name: len(walls) for name, walls in self.city_walls.items()},
+            "city_wall_vertices": {
+                name: list(walls) for name, walls in self.city_walls.items()
+            },
             "metropolis": self.metropolis,
             "metropolis_vertex": self.metropolis_vertex,
             "barbarian_position": self.barbarian_position,
