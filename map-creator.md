@@ -1,19 +1,26 @@
 # Map Creator — Design
 
-Design document. No implementation. Written while `server/game/board.py`,
-`server/game/rules.py` and the frontend are being changed by other agents, so
-every plug point below is described as *one branch* or *one new module* rather
-than a rewrite of code someone else is holding.
+Design document. No implementation.
+
+**Revised after ships shipped.** The first version of this document was written
+when the ocean was scenery: it argued that v1 should let you *author* an island
+map and refuse to *start* a game on it, because a second landmass was
+unreachable. That compromise is dead. `server/game/seafarers.py`,
+`server/handlers/ships.py`, the sea edge graph in `board.py:284`, the `ships` /
+`ship_movement` / `pirate` / `longest_trade_route` / `island_victory_points`
+rules and a Seafarers UI with browser tests are all in the tree. Islands are
+playable today — the engine simply has no way to make one.
+
+That is what this feature is now: **the only missing half of Seafarers is the
+board.** Everything downstream of a second island already works and is tested.
 
 The goal, in the owner's words: define regions for landmass, oceans and
 islands, and set the pool of tiles for each region.
 
-The rulebook already blesses this. From `expansions.md`, Scenario: New World:
+The rulebook blesses it. From `expansions.md`, Scenario: New World:
 
 > Players may agree to adjust the randomly generated set-up if they are unhappy
 > with it, and may freely design and play scenarios of their own.
-
-And the same scenario describes exactly the mechanism this document builds:
 
 > The board is created by shuffling all listed hexes face down and placing them
 > face up at random within the assembled frame.
@@ -26,31 +33,27 @@ A *region with a shuffled pool* is that paragraph turned into data.
 
 ## 0. What this buys you, and what it does not
 
-Read this before the rest, because it changes what "done" means.
+A map creator now gives you: bigger and stranger boards, hand-chosen resource
+mixes, **multi-island maps you can actually play**, and a preview button. The
+special victory point for a first settlement on a new island scores by itself
+(`seafarers.py:332`), because an island is derived from the board as dealt and
+nothing about it was ever authored.
 
-A map creator gives you: bigger and stranger boards, hand-chosen resource
-mixes, hand-placed harbours, multi-island *geometry*, and a preview button. All
-of that is a few hundred lines and is genuinely useful on its own — a 37-hex
-board with a custom mix is playable today.
+It does **not** give you the published Seafarers scenarios verbatim:
 
-A map creator does **not** give you the Seafarers scenarios. "The Four
-Islands", "Heading for New Shores" and "The Fog Island" each need machinery the
-engine does not have:
-
-| Scenario | Also needs |
+| Scenario | Still needs, beyond a map |
 |---|---|
-| The Four Islands | ships, pirate, special VP chits, per-player home-island tracking |
-| Heading for New Shores | ships, pirate, special VP, robber start depending on player count |
-| The Fog Island | ships, pirate, lazy tile reveal on exploration, hidden server-side stack |
+| The Four Islands | nothing in the engine — but per-player *home island* setup restrictions ("starting settlements on the main island only") are not expressible |
+| Heading for New Shores | as above, plus the robber's start varying by player count |
+| The Fog Island | lazy tile reveal on exploration, a hidden server-side stack |
+| Any 5–6 player scenario | `MAX_PLAYERS = 4` in `server/config.py` |
+| Gold field scenarios | a `gold` terrain, a production hook, and a client for `pending_choice` — which has no UI at all (`OPEN-THREADS.md` §1) |
 
-Ships are the big one. `_generate_vertices_and_edges` is called with land hexes
-only (`board.py:161`), deliberately — "the ocean ring is scenery". Without
-vertices and edges over water there is nowhere to put a ship, so **a
-second island is unreachable**. The map format below is designed so those
-scenarios drop in later without a format change, but v1 will let you *author*
-a four-island map and refuse to *start* a game on it. Saying otherwise would be
-dishonest about the cost: the map creator is maybe 20% of "we can play
-Seafarers".
+So: the geometry and the resource mix are in scope and cheap; **scenario setup
+rules are the next expensive thing after this**, and this document does not
+plan them. Honest framing, replacing the old "this is 20% of Seafarers": the
+map creator is now most of what stands between this engine and a Seafarers
+game, and the remainder is per-scenario setup restrictions plus fog.
 
 ---
 
@@ -58,78 +61,98 @@ Seafarers".
 
 ### 1.1 The three things a map is
 
-1. **A frame.** How big the board is. One integer radius, in the existing
-   scaled-cube metric (`max(|x/3|, |y/3|, |z/3|)`), matching `_is_valid_hex`.
+1. **A frame.** How big the board is. One integer radius in the scaled-cube
+   metric (`max(|x/3|, |y/3|, |z/3|)`).
+   Note what changed: `board.py` no longer has a radius concept at all —
+   `_generate_board` derives the sea from *adjacency to land* (`board.py:266`),
+   because the 5–6 player island is not a hexagon and no radius describes it.
+   That derivation is wrong for a custom map: two islands three hexes apart
+   would have no water between them, only a hole where hexes do not exist. So a
+   map **authors its own sea**, and `frame.radius` exists to bound the editor
+   canvas and to give `"hexes": "remaining"` something to mean.
 2. **Regions.** A named set of hex coordinates, plus a kind, plus a pool.
    Regions partition the frame; every hex belongs to exactly one.
-3. **Harbours.** Edge keys with types, or a set of edge keys plus a bag of
-   types to shuffle over them.
+3. **Harbours.** In v1, a bag of harbour types the engine spaces around the
+   coastlines — the `ports` field of a `LAYOUTS` entry, promoted to data.
+   Hand-placing individual harbours is v2 (§6).
 
 ### 1.2 Region kind is about *rules*, not about *terrain*
 
-This is the design decision most likely to be got wrong, so it is stated up
-front: **`kind` must not decide what tiles a region contains.** The pool decides
-that. `kind` decides how the setup and scoring rules treat the region.
+The load-bearing decision, unchanged and now confirmed by shipped code:
+**`kind` must not decide what tiles a region contains.** The pool decides that.
+`kind` decides how setup and scoring treat the region.
 
-The reason is "Heading for New Shores", from `expansions.md`:
+The reason is "Heading for New Shores": the off-island area is a pool of
+terrain positions of which *some are sea*. If `kind: "island"` forced land, that
+scenario would be inexpressible. So a pool may legitimately contain `sea`, and
+the shape of the islands is only known after the draw.
 
-> Each time a player builds their first settlement on one of the small islands,
-> that player receives two special victory points.
+Which leads to the second decision: **the island that scores a special VP is
+derived at runtime, not authored.** It is already implemented exactly this way:
 
-and the scenario's off-island area is a pool of terrain positions of which
-*some are sea*. If `kind: "island"` forced land, that scenario would be
-inexpressible. So a pool may legitimately contain `sea` entries, and the shape
-of the islands is only known after the draw.
+```python
+# server/game/board.py:579
+def islands(self) -> dict:
+    """Land hex key -> the id of the island it belongs to.
 
-Which leads to the second decision: **the "island" that scores a special VP is
-derived at runtime, not authored.** It is a connected component of land hexes,
-found by flood fill after instantiation. A region is an *authoring* construct;
-an island is a *derived* one. Authoring them as the same thing works for The
-Four Islands and breaks immediately on New Shores.
+    An island is derived, never authored: a stretch of land the sea cuts
+    off from the rest of the board, found by flood fill over neighbouring
+    land hexes. A map file can group hexes into regions for its own
+    purposes, but which of them a player has landed on has to come from the
+    board as it was actually dealt — a region whose pool dealt it some sea
+    may end up as two islands, or none.
+    """
+```
+
+That docstring was written against this design and is the contract. `islands()`
+keys off `hex.type != 'ocean'`, the id is `min(component)`, and
+`island_of_vertex` (`seafarers.py:318`) sorts before choosing so the answer does
+not depend on iteration order. A region is an *authoring* construct; an island
+is a *derived* one, and nothing in `maps.py` may compute one.
 
 `kind` values:
 
-| kind | meaning |
-|---|---|
-| `main` | Land the scenario calls the main island. Starting settlements allowed. |
-| `island` | Land that is foreign to everyone at setup. Starting settlements refused. Source of special VP later. |
-| `sea` | Water. Ships and the pirate live here. Never takes a number token. |
-| `fog` | Hexes hidden at setup, drawn lazily on exploration. v3. |
+| kind | meaning | v1 |
+|---|---|---|
+| `main` | Land the scenario calls the main island | yes |
+| `island` | Land foreign to everyone at setup. Documentation and a colour, until setup restrictions exist | parses, plays, **has no mechanical effect** |
+| `sea` | Water. Ships and the pirate live here. Never takes a number token | yes |
+| `fog` | Hexes hidden at setup, drawn lazily on exploration | parses, refuses to start |
 
-For v1 only `main` and `sea` are *playable*; `island` and `fog` parse,
-validate and preview, but a game refuses to start on a map that uses them
-(see §3, rule R12).
+`island` is deliberately inert in v1 rather than removed. The thing it would
+mean — "no starting settlement here" — is a setup restriction, and setup
+restrictions are the scenario work this document does not plan. Keeping the
+value in the vocabulary costs nothing and stops the format changing later.
+**An `island` region is not what makes an island; the flood fill is.**
 
 ### 1.3 Pools
 
 ```
 pool := {
-  "mode":    "shuffled" | "fixed",
-  "terrain": {terrain: count}   when shuffled
-           | [terrain, ...]     when fixed, parallel to "hexes"
-  "numbers": [int, ...]         a multiset of tokens, shuffled when mode=shuffled
+  "mode":    "shuffled"          v1. "fixed" is v2.
+  "terrain": {terrain: count}
+  "numbers": [int, ...]          a multiset of tokens, shuffled
 }
 ```
 
 Terrain vocabulary: `wood`, `brick`, `sheep`, `wheat`, `ore`, `desert`, `sea`,
 and later `gold`. `sea` is the map-file word; the engine's `Hex.type` value
-stays `"ocean"` (see §7, open question 1).
+stays `"ocean"`. **Decided** — the alternative, renaming `"ocean"` everywhere,
+touches the renderer, `move_pirate` (`seafarers.py:301`), `islands()`,
+`land_hexes_of_edge`, the save format and a dozen tests for no gameplay
+benefit. The translation is one line in `_apply_map_instance` and one comment in
+`maps.py`.
 
-`numbers` is an explicit multiset rather than counts, because it reads better
-and because a fixed pool needs positional order anyway. Its length must equal
-the number of *token-requiring* tiles in the terrain pool — which is known
-statically even for a shuffled pool, because the multiset is known even though
-the placement is not. That is what makes rule R4 in §3 a static check rather
-than a runtime surprise.
-
-`mode: "fixed"` places tiles in the region's `hexes` order with no shuffling.
-This is how you reproduce a printed scenario diagram exactly. Recommended for
-v2, not v1 (§6).
+`numbers` is an explicit multiset rather than counts, because its length must
+equal the number of *token-requiring* tiles in the terrain pool, and that is
+known statically even though the placement is not. This is what makes rule R5
+in §3 a static check rather than a runtime surprise.
 
 ### 1.4 Worked example
 
-A small map: a 7-hex mainland, a 3-tile offshore position group of which one
-tile is sea, one hand-placed harbour, everything else water. Frame radius 4.
+A radius-4 frame: a 7-hex mainland, a 3-tile offshore position group of which
+one tile is sea, everything else water. The coordinates below are checked —
+this map builds, and yields two islands with a sea lane between them.
 
 ```json
 {
@@ -137,9 +160,9 @@ tile is sea, one hand-placed harbour, everything else water. Frame radius 4.
   "id": "little-shores",
   "name": "Little Shores",
   "author": "kalin",
-  "notes": "Smallest map that exercises regions, a mixed pool and a harbour.",
+  "notes": "Smallest map that exercises regions, a mixed pool and two islands.",
   "frame": { "radius": 4 },
-  "victory_target": 8,
+  "suggested_victory_target": 11,
   "robber_start": "auto",
   "regions": [
     {
@@ -176,53 +199,42 @@ tile is sea, one hand-placed harbour, everything else water. Frame radius 4.
       "pool": { "mode": "shuffled", "terrain": { "sea": 51 }, "numbers": [] }
     }
   ],
-  "harbours": {
-    "mode": "fixed",
-    "places": [
-      { "edge": "4,-4,0", "type": "generic" }
-    ]
-  }
+  "harbours": { "mode": "bag", "types": { "generic": 3, "wood": 1, "ore": 1 } }
 }
 ```
 
-Notes on the example, each of which is a deliberate feature:
+Each of these is a deliberate feature:
 
-- `"hexes": "remaining"` — exactly one region per map may claim every hex
-  inside the frame not claimed by another region. The ocean is always
-  "everything else", and without this the ocean region in a radius-4 map is a
-  51-entry array nobody will ever read. The parser expands it before anything
-  else runs, so the rest of the pipeline only ever sees explicit lists.
+- `"hexes": "remaining"` — exactly one region may claim every hex inside the
+  frame not claimed by another. The parser expands it before anything else
+  runs, so the rest of the pipeline only ever sees explicit lists. Without it
+  the ocean region of a radius-4 map is a 51-entry array nobody will read.
 - `far-shore` has three positions and a pool of three tiles, one of which is
-  `sea`. After the draw the region may be a 2-hex island, or two 1-hex islands,
-  or a 2-hex island plus water — decided by the shuffle. This is
-  "Heading for New Shores" in miniature, and it is why islands are derived.
-- `numbers` for `far-shore` has 2 entries for 2 token-requiring tiles (`ore`,
-  `sheep`). `sea` takes none. `mainland` has 6 entries for 7 hexes because one
-  is desert.
-- The harbour edge `"4,-4,0"` is hex `3,-3,0` plus edge direction `(1,-1,0)`,
-  which is the boundary between land hex `3,-3,0` and sea hex `6,-6,0`. Exactly
-  one coordinate is divisible by 3, so it is a well-formed edge key per
-  `hex.md`.
-- `victory_target` per map, because `expansions.md` says every scenario sets its
-  own, and offers a heuristic the editor should suggest: *"the victory point
-  target equals the number of terrain hexes minus the deserts, divided by two."*
-
-Shuffled harbours, per `expansions.md` — *"Harbour tokens listed in a scenario
-are shuffled face down and placed one at a time at the positions shown in the
-scenario diagram"* — use the other form:
-
-```json
-"harbours": {
-  "mode": "shuffled",
-  "edges": ["4,-4,0", "-1,4,-3", "-4,1,3"],
-  "types": { "generic": 2, "ore": 1 }
-}
-```
+  `sea`. After the draw it may be a 2-hex island, or two 1-hex islands, or a
+  1-hex island plus water. This is "Heading for New Shores" in miniature and it
+  is why islands are derived. It is also the case that trips every hazard in
+  §2.2 — a pool containing `sea` is the whole reason those fixes are v1 work
+  and not v2 work.
+- `numbers` for `far-shore` has 2 entries for 2 token-requiring tiles. `sea`
+  takes none. `mainland` has 6 entries for 7 hexes because one is desert.
+- Land sits at ring ≤ 3 inside a radius-4 frame, so every land hex has all six
+  neighbours (R8). Land on the rim has coastal edges with only one hex, which
+  `is_sea_edge` (`seafarers.py:26`) rejects — no ship could ever reach it and
+  `_assign_ports` would still hang a harbour there.
+- `suggested_victory_target`, not `victory_target`. `victory_target` is already
+  a rule (`rules.py`, INT 5–20) and the lobby owns it. A map that silently
+  overrode a rule the table set would be the one thing the rules registry was
+  built to prevent — see `rules.py`'s own note that "no rule below ever changes
+  it behind your back, though several suggest a different one", and the
+  `suggests_victory_target=11` extra already on `harbormaster`. The map uses the
+  same convention: it suggests, the editor shows the rulebook heuristic
+  (*"terrain hexes minus the deserts, divided by two"*), the lobby decides.
+- No `pirate_start`. `pirate_hex` is `None` until somebody first moves it
+  (`persistence.py:123`), and that is a real state, not a missing field.
 
 ### 1.5 Where the types live
 
-New module `server/game/maps.py`, importing nothing from Flask or Socket.IO
-(coding rule 4). Suggested surface:
+New module `server/game/maps.py`, importing nothing from Flask or Socket.IO.
 
 ```python
 class MapDefinition:      # parsed, normalised, validated-shape
@@ -234,235 +246,276 @@ class MapUnplayable(Exception)
 def parse_map(data: dict) -> MapDefinition          # shape only; raises InvalidPayload
 def validate_map(defn) -> tuple[list, list]         # (errors, warnings)
 def instantiate(defn, rng) -> MapInstance           # the deterministic draw
-def builtin(name: str) -> MapDefinition             # "standard", "beginner", ...
+def builtin(name: str) -> MapDefinition             # "standard", "beginner", "large"
 def sort_hex_keys(keys) -> list[str]                # by parsed (x, y, z), never string order
 ```
 
-`MapInstance` is deliberately dumb: `{hex_key: (terrain, number)}`,
-`{edge_key: port}`, `robber_hex`, and (later) the server-only `fog_stack`.
-It carries no graph — the graph is still derived by the existing
-`_generate_vertices_and_edges` / `_build_neighbor_relationships`, which do not
-change at all.
+`MapInstance` is deliberately dumb: `{hex_key: (terrain, number)}`, the harbour
+bag, `robber_hex`, and (later) the server-only `fog_stack`. It carries no graph
+— the graph is still derived by `_generate_vertices_and_edges` and
+`_build_neighbor_relationships`, which do not change.
 
 ---
 
 ## 2. Instantiating a map into a game
 
-### 2.1 The one branch in BoardBuilder
+### 2.1 Three prerequisite fixes in `board.py`
 
-`_generate_board` currently does five steps. The map path replaces step 1, 2
-and 5 and leaves 3 and 4 untouched:
+These are not part of the map format; they are bugs the map format is the first
+thing to reach. **Each is small, independently testable, and should land before
+`maps.py` exists.** All three were reproduced against the real engine by
+patching a two-island layout into `LAYOUTS` with one `ocean` entry in its
+resource pool.
+
+**(a) Land is what was dealt, not what the layout set aside.** `place_settlement`
+tests `vertex.neighbors['hexes']` (`game.py:460`), and that list is built from
+`land_hex_keys` — the *slots* — in `_build_neighbor_relationships`
+(`board.py:485`). Today slots and land terrain are identical for every built-in
+layout, so no test can tell them apart; `OPEN-THREADS.md` §3 records this as "a
+latent hole for the map creator". It is no longer latent: with one `sea` tile in
+a land region's pool, **2 vertices ringed entirely by ocean accepted a
+settlement on open water** in the reproduction. Fix, in `_generate_board`
+between `_create_hexes` and `_generate_vertices_and_edges`:
+
+```python
+self._create_hexes(land_hex_keys, ocean_hex_keys)
+# Land is what was dealt, not what the layout set aside for it. Identical for
+# every built-in layout; a map pool that contains sea is what makes them differ.
+land_hex_keys = {key for key in land_hex_keys if self.hexes[key].type != 'ocean'}
+ocean_hex_keys = set(self.hexes) - land_hex_keys
+```
+
+Two lines, and they fix `place_settlement`, `is_coastal_edge`,
+`land_hexes_of_edge` and the harbour ring at once, because all of them read
+terrain except this one list that did not.
+
+**(b) A sea tile must not take a number token.** `_create_hexes:332` exempts
+`desert` only:
+
+```python
+(hex_type, None if hex_type == 'desert' else number_tokens.pop())
+```
+
+In the reproduction, the ocean tile dealt into a land slot came out carrying a
+**9**. The renderer would draw a number on open water and `distribute_resources`
+would pay nobody. Exempt every type that is not a resource, and let R5 in §3
+guarantee the counts.
+
+**(c) A board can have more than one coastline.** `_coastal_edges_in_order`
+(`board.py:635`) walks *one* ring from the lowest coastal edge and returns it
+even when it is incomplete — it logs `coastline is not a single ring` and
+carries on. On the two-island board it walked **18 of 32** coastal edges; on a
+sunk-middle board, **18 of 54**, and *none* of the small island's edges were in
+the walk. `_assign_ports` then crowds every harbour onto whichever coast the
+walk happened to find, sometimes an interior lagoon.
+
+Fix: `_coastline_rings() -> list[list[str]]`, repeating the existing walk from
+the lowest unvisited coastal edge until every coastal edge is claimed, rings
+returned sorted by length descending then by lowest edge key. `_assign_ports`
+allocates harbours across rings in proportion to ring length, capped at
+`len(ring) // 2` (the existing "harbours never touch" spacing), remainder to the
+longest ring first, then runs today's spacing loop within each ring.
+
+> **Hard constraint on (c):** when there is exactly one ring, the sequence of
+> `self.rng` calls must be byte-for-byte what it is today. Otherwise every
+> existing seeded board moves its harbours, and `test_map_layouts.py` and the
+> browser suites are all pinned to current output. One ring is the only case
+> the built-in layouts produce, so this is achievable and must be asserted.
+
+### 2.2 The one branch in `_generate_board`
 
 ```python
 def _generate_board(self):
     if self.map_definition is None:
-        land, ocean = self._radius_hex_keys()      # today's steps 1
-        self._create_hexes(land | ocean)           # today's step 2
+        self.board_layout = LAYOUTS.get(...)          # today, unchanged
+        land_hex_keys, ocean_hex_keys = self._layout_hex_keys()
+        self._create_hexes(land_hex_keys, ocean_hex_keys)
     else:
         instance = maps.instantiate(self.map_definition, self.rng)
-        land, ocean = self._apply_map_instance(instance)   # fills self.hexes, self.robber_hex
+        land_hex_keys, ocean_hex_keys = self._apply_map_instance(instance)
 
-    self._generate_vertices_and_edges(land)        # unchanged
-    self._build_neighbor_relationships(land)       # unchanged
-
-    if self.map_definition is None:
-        self._assign_ports()                       # unchanged
-    else:
-        self._place_harbours_from_map(instance)
+    # fix (a) from §2.1 goes here, on both paths
+    ...
+    graph_hex_keys = land | ocean if self.rules['ships'] else land   # unchanged
+    self._generate_vertices_and_edges(graph_hex_keys)                # unchanged
+    self._build_neighbor_relationships(land, graph_hex_keys)         # unchanged
+    if self.rules['no_adjacent_red_numbers']:
+        self._separate_red_numbers()                                 # unchanged
+    self._assign_ports()                                             # unchanged
 ```
 
-That is the whole collision surface with the in-flight `board.py` work: one
-`if` in `_generate_board`, plus two new methods. `_create_hexes` and
-`_assign_ports` are the two functions being rewritten right now, so the map
-path must not touch their bodies.
+Note how much of the old plan this deletes:
 
-`_apply_map_instance` also sets `self.hex_radius = defn.frame.radius` and
-`self.edge_radius = defn.frame.radius`, so every existing consumer of those
-attributes keeps working; on a custom map the land/sea split is per-hex data,
-not a radius comparison. Anything that calls `self._is_ocean(x, y, z)` to ask
-"is this water" must be changed to consult `self.hexes[key].type == "ocean"`.
-Grep for `_is_ocean` before starting; it is currently used inside
-`_create_hexes` only, but the in-flight work may add callers.
+- The old draft had `instantiate` implement the rulebook's red-number swap
+  itself. **It must not.** `_separate_red_numbers` (`board.py:368`) exists, is
+  gated on the `no_adjacent_red_numbers` rule, runs after the graph is built
+  because it needs adjacency, is bounded by `MAX_RED_SEPARATION_PASSES`, and
+  degrades with a warning instead of raising. A second implementation inside
+  `maps.py` would be a second answer waiting to disagree. Drop `MapUnplayable`
+  for this cause; keep the class for pool-arithmetic failures.
+- The old draft's `_is_ocean` risk is gone — the function no longer exists.
+- The old draft's "`_create_hexes` and `_assign_ports` are being rewritten right
+  now, do not touch their bodies" caveat is gone. That work landed. Both bodies
+  are now fair game, and fixes (b) and (c) are inside them.
+- The old draft's harbour section waited on `Edge.port`. `Edge` has `port` and
+  `ship`, harbours live on edges, and `canonical_edge_key` (`board.py:234`)
+  guarantees one Edge per hex side since `111f714`. Anything in the map file
+  naming an edge must be run through `canonical_edge_key`; that is v2's problem,
+  since v1 harbours are a bag, not positions.
 
-### 2.2 Harbours
-
-The other agent is moving harbours onto coastal **edges**. That is exactly what
-this format assumes — `harbours.places[].edge` is an edge key. `Edge` in
-`server/game/hex_models.py` has no `port` field yet; when it gains one,
-`_place_harbours_from_map` is a loop over `instance.ports`.
-
-If that work has not landed when v1 starts, v1 ships with the map's `harbours`
-block **parsed and validated but ignored**, falling back to the existing
-`_assign_ports`, and the editor hides the Harbour tool. That keeps the two
-efforts from blocking each other.
+`_apply_map_instance` fills `self.hexes` from the instance (translating `sea` →
+`"ocean"`), sets `self.robber_hex`, and returns the land/ocean split by terrain.
+It also sets `self.board_layout` to a synthetic dict carrying `ports` and
+`fixed: False`, so `_assign_ports` needs no branch of its own.
 
 ### 2.3 The draw, and determinism
 
-Determinism is a hard requirement:
-`tests/game/test_board.py::test_the_whole_board_is_reproducible_across_processes`
-runs board generation in two subprocesses with different `PYTHONHASHSEED` and
-demands identical output. Everything below exists to satisfy it.
+Determinism is a hard requirement.
+`tests/game/test_map_layouts.py:157::test_every_map_is_reproducible_across_processes`
+already runs every layout, with ships off and on, in two subprocesses under
+`PYTHONHASHSEED=0` and `=1`, and compares hexes, vertices, edges, **islands**,
+ports and the robber. A custom map goes into that test's loop; it does not need
+a new test of its own shape.
 
-Rules the map pipeline must obey, each mirroring a bug the existing code
-already paid for (see the comments in `_create_hexes` and
-`_generate_vertices_and_edges`):
+Rules the map pipeline must obey:
 
-1. **Regions are a JSON array, never an object.** File order is the iteration
-   order. An object would give dict order, which is insertion order in CPython
-   but is not something a wire format should lean on.
-2. **Never iterate a set or a dict from the map file.** `pool.terrain` is
-   expanded through `sorted(counts.items())`; `region.hexes` is normalised at
-   parse time through `sort_hex_keys`, which sorts by the parsed `(x, y, z)`
-   tuple, not lexicographically. (The existing code sorts key *strings*, which
-   is stable but puts `"-3,0,3"` before `"0,0,0"` before `"3,-3,0"` in an order
-   nobody would predict. New code should use `sort_hex_keys`; do not churn the
-   existing calls, they are correct as-is.)
-3. **The rng is the injected one**, `self.rng`, threaded in as a parameter to
-   `instantiate`. No module-level `random.*` anywhere in `maps.py`.
-4. **The number of rng calls is a pure function of (definition, rng).** Retries
-   are allowed as long as they are driven by the same rng and bounded.
+1. **Regions are a JSON array, never an object.** File order is iteration order.
+2. **Never iterate a set or a dict from the map file.** `pool.terrain` expands
+   through `sorted(counts.items())`; `region.hexes` is normalised at parse time
+   through `sort_hex_keys`, which sorts by the parsed `(x, y, z)` tuple. (The
+   existing code sorts key *strings*, which is stable but orders `"-3,0,3"`
+   before `"0,0,0"` before `"3,-3,0"`. Use `sort_hex_keys` in new code; do not
+   churn the existing calls, they are correct as-is.)
+3. **The rng is `self.rng`**, threaded into `instantiate` as a parameter. No
+   module-level `random.*` anywhere in `maps.py`.
+4. **The number of rng calls is a pure function of the definition.** No retries
+   whose count depends on what was drawn.
 
-The algorithm:
-
-```
+```python
 def instantiate(defn, rng):
     placed = {}                                  # hex_key -> (terrain, number)
     for region in defn.regions:                  # file order
-        keys   = region.hexes                    # already sort_hex_keys'd at parse
+        keys   = region.hexes                    # sort_hex_keys'd at parse
         tiles  = expand_terrain(region.pool)     # sorted(items()) then repeat
         tokens = list(region.pool.numbers)       # file order
-
-        if region.pool.mode == "shuffled":
-            rng.shuffle(tiles)
-            rng.shuffle(tokens)
-
-        for key, terrain in zip(keys, tiles):
-            placed[key] = (terrain, None)
-
-        assign_tokens(placed, keys, tokens, defn, rng)
-
-    return MapInstance(placed, harbours(defn, rng), robber_start(defn, placed))
+        rng.shuffle(tiles)
+        rng.shuffle(tokens)
+        for key, terrain in zip(keys, tiles, strict=True):
+            placed[key] = (terrain, tokens.pop() if takes_a_token(terrain) else None)
+    return MapInstance(placed, defn.harbours, robber_start(defn, placed))
 ```
 
-`assign_tokens` walks `keys` in order, and for each hex whose terrain requires
-a token pops the next token off the stack. Sea, desert and (later) fog take
-none. When the popped token is a 6 or an 8 and a 6 or 8 already sits on an
-adjacent hex, apply the official rule from `expansions.md` (New World):
+`takes_a_token` is the same predicate as fix (b) — one function, imported by
+`board.py`, so the two cannot drift.
 
-> The red number tokens showing six and eight may not be placed on adjacent
-> hexes, and a second red token drawn next to a first must be replaced by
-> another token drawn at random.
+`robber_start: "auto"` picks the first desert in `sort_hex_keys` order, matching
+`_create_hexes:365`. An explicit hex key is validated to be a land *slot*, and
+re-checked after the draw: a pool that can deal sea into the robber's hex is an
+authoring error worth a warning, not a crash — fall back to the first desert,
+then to no robber if the map has no desert at all.
 
-Concretely: scan forward through the remaining stack for the first non-red
-token, swap it into this position, and push the red back where it came from.
-This is O(n), always terminates, and matches the rulebook more closely than
-reshuffling the whole region. If no non-red token remains — a map whose pool is
-mostly reds on a tight island — raise `MapUnplayable`. Fail closed: refuse to
-start the game with a named error rather than quietly placing adjacent reds.
-This is why R11 in §3 is a *warning* at authoring time and a hard failure at
-instantiation time.
+### 2.4 Persistence
 
-Adjacency is checked against `placed` globally, so a later region cannot put a
-red next to an earlier region's red.
+`persistence.py` regenerates board *structure* from geometry on load and
+overlays the saved decisions. With a custom map the structure comes from the
+definition, so:
 
-`robber_start: "auto"` picks the first desert in `sort_hex_keys` order,
-matching today's behaviour in `_create_hexes`. An explicit hex key is
-validated to be land.
-
-### 2.4 Testing determinism
-
-Add `tests/game/test_maps.py` with a subprocess test modelled directly on
-`test_the_whole_board_is_reproducible_across_processes`: instantiate the same
-custom map with `random.Random(99)` under `PYTHONHASHSEED=0` and `=1`, dump
-sorted hexes + ports + robber, assert equality. Without this the map path will
-regress the moment someone iterates a dict.
-
-Add property-style tests over seeds 0..25, as `test_board.py` already does for
-the standard board: pool multiset is exactly reproduced on the board, no 7,
-no token on sea or desert, no two reds adjacent.
-
-### 2.5 Persistence
-
-`server/game/persistence.py` regenerates board *structure* from geometry on
-load and overlays the saved decisions. With a custom map the structure comes
-from the map definition, so:
-
-- `serialize()` gains `'map': defn.to_json()` — **the whole definition,
-  inlined, not an id.** A map file can be edited or deleted between save and
-  load; a saved game that silently regenerates against a different map would
-  put buildings on hexes that no longer exist. Inlining is a few KB and keeps
-  the "one human-readable file" property the module was written for.
-- `deserialize()` passes it to `Game(..., map_definition=parse_map(data['map']))`.
-  It re-runs `validate_map` first: `load()`'s docstring already treats a save as
-  untrusted input, and a hand-edited `map` block is exactly that.
-- `SAVE_VERSION` goes 1 → 2. An old save has no `'map'` key and means "standard
-  board", so a compatibility shim is possible — but the module's stated policy
-  is to ignore old saves rather than half-load them, and a single in-progress
-  game is not worth the shim. Bump and move on.
+- `serialize()` gains `'map': defn.to_json()` — **the whole definition, inlined,
+  not an id.** A map file can be edited or deleted between save and load, and a
+  saved game that regenerated against a changed map would put buildings on hexes
+  that no longer exist. A few KB, and it keeps the "one human-readable file"
+  property.
+- `deserialize()` passes it as `Game(..., map_definition=parse_map(data['map']))`
+  after re-running `validate_map`. `load()`'s contract already treats a save as
+  untrusted, and a hand-edited `map` block is exactly that.
+- **`SAVE_VERSION` does not change.** The old draft said 1 → 2; that was wrong.
+  The key is additive and absent means "not a custom map", which is precisely
+  the reasoning the module already records for not bumping when hex sides
+  gained a single key: "Refusing them would have thrown away games in progress
+  to fix a bug the players did not cause."
+- The `rules` block already carries `board_layout` and will carry `board_map`,
+  and they must agree with the inlined `map`. On disagreement the **inlined
+  definition wins** and the load logs it, for the same reason it is inlined.
 - Fog (v3) additionally saves `revealed_hexes` and the remaining `fog_stack`.
-  The stack is server-only state and must never appear in `get_board_data`
-  (coding-rules, *Hidden information*: never send the deck order).
+  The stack is server-only and must never reach `get_board_data`.
 
 ---
 
 ## 3. Validation
 
 A map arriving over a socket is untrusted input, identical in status to a
-`place_settlement` payload. Two layers:
+`place_settlement` payload. Two layers.
 
 **Layer 1 — `parse_map`, shape only.** Raises `InvalidPayload` from
-`server/game/validation.py` so handlers report it the existing way
-(`reject(code, message)`). Allowlists, per coding-rules *Inbound event
-validation*:
+`server/game/validation.py` so handlers report it the existing way. Allowlists:
 
 - `map_version` is a known integer.
 - `id` matches `^[a-z0-9][a-z0-9-]{0,47}$`. This is also the filename, so it is
   the path-traversal guard; nothing else may build a path from client input.
 - `name` ≤ 64 chars, `notes` ≤ 512, `author` ≤ 64.
 - `frame.radius` ∈ [1, 6]. Radius 6 is 127 hexes.
-- ≤ 64 regions, ≤ 200 hexes total, ≤ 32 harbours. Bounded before anything
+- ≤ 64 regions, ≤ 200 hexes total, ≤ 32 harbours, bounded before anything
   quadratic runs.
 - Every hex key parses to three ints with `x + y + z == 0`, all divisible by 3.
-- `kind` ∈ the enum. Terrain names ∈ the enum. Token values ∈
-  {2,3,4,5,6,8,9,10,11,12}.
-- Counts are non-negative ints, `bool` rejected explicitly (`require_int`
-  already does this and explains why).
+- `kind` ∈ the enum, terrain ∈ the enum, tokens ∈ {2,3,4,5,6,8,9,10,11,12}.
+- Counts are non-negative ints, `bool` rejected explicitly.
+
+**A size note the old draft got backwards.** It proposed *tighter* payload caps
+for map events. The cap is `MAX_PAYLOAD_BYTES = 8192`, applied globally in
+`rate_limited()` (`state.py:212`) before any handler sees the payload, and there
+is no per-event override table. A 200-hex map with `"remaining"` for the ocean
+lands around 4–5 KB and fits; a 200-hex map with every hex listed explicitly, or
+v2's fixed pools, will not. So either the format stays inside 8 KB — which is
+the reason `"remaining"` is not merely a convenience — or `rate_limit.py` grows
+`EVENT_PAYLOAD_LIMITS` and `save_map` / `preview_map` get a *larger* one. **A
+test must assert that the largest map the validator accepts survives
+`payload_too_large`**, or the editor will refuse to save exactly the maps people
+work hardest on.
 
 **Layer 2 — `validate_map`, meaning.** Returns `(errors, warnings)` as
-structured `MapProblem`s. Errors block saving *and* starting. Warnings are
-shown in the editor and the lobby and do not block.
+structured `MapProblem`s. Errors block saving and starting; warnings are shown
+and do not block.
 
 | # | Rule | Level |
 |---|---|---|
 | R1 | Region ids unique; at most one region uses `"remaining"` | error |
-| R2 | No hex claimed by two regions; every frame hex claimed by exactly one | error |
+| R2 | No hex claimed twice; every frame hex claimed exactly once | error |
 | R3 | Every hex is inside the frame radius | error |
-| R4 | **Pool size == region size.** `sum(terrain.values()) == len(hexes)` | error |
+| R4 | **Pool size == region size**: `sum(terrain.values()) == len(hexes)` | error |
 | R5 | **Token count == token-requiring tile count** in the pool | error |
-| R6 | No token value of 7; no token on a `sea`/`desert`/`fog` tile (structural at instantiation, asserted post-hoc) | error |
-| R7 | **At least one land hex on the whole map** | error |
-| R8 | Every land hex has all six neighbours present in the frame — no land on the outer boundary. Seafarers frame pieces are all-sea; land at the rim has no coastline and breaks harbour and ship placement | error |
-| R9 | **A region declared `island` is a land component entirely surrounded by sea** — an `island` region adjacent to `main` land is a naming lie | error |
-| R10 | **Harbours sit on a coastal edge**: the edge's two adjacent hexes are one land, one sea; both its vertices are corners of the land hex. No two harbours on the same or adjacent edges (`expansions.md`, Forgotten Tribe: *"A harbour may never be placed on an edge adjacent to, or the same as, an edge already occupied by another harbour"*) | error |
-| R11 | Two red numbers (6/8) adjacent. Statically checkable for `mode: "fixed"` | error (fixed) / warning (shuffled — enforced at instantiation, §2.3) |
-| R12 | **More than one land component** — unreachable without ships | warning at save, **error at game start** until ships exist |
-| R13 | Any region of kind `island` or `fog` | warning at save, **error at game start** in v1 |
-| R14 | `robber_start` is a land hex (or `"auto"` with at least one desert); `pirate_start` is a sea hex | error |
-| R15 | Land hex count vs piece supply: warn if `max_roads` per player looks too small to cross the map | warning |
-| R16 | `victory_target` differs from the `(land − deserts) / 2` heuristic by more than 3 | warning |
+| R6 | No token value of 7 | error |
+| R7 | At least one land hex on the whole map | error |
+| R8 | Every land *slot* has all six neighbours inside the frame — no land on the rim. A rim edge has one hex, so `is_sea_edge` refuses it and no ship can ever arrive | error |
+| R9 | Every land slot is adjacent to at least one hex that can be sea, or the map has one component only. A landlocked second island is unreachable however many ships you build | error |
+| R10 | Harbour bag size ≤ half the shortest coastline it could land on — checked against the *possible* coastlines, so a warning, since the draw decides | warning |
+| R11 | Two red numbers may be dealt adjacent. Not an error: `no_adjacent_red_numbers` fixes it at generation if the table asked, and does not if they did not | warning, only when the rule is off |
+| R12 | **More than one land component and `ships` off** — the second island is unreachable | warning at save, **error at game start** |
+| R13 | Any region of kind `fog` | warning at save, **error at game start** in v1 and v2 |
+| R14 | `robber_start` is a land slot, or `"auto"` with at least one desert in some pool | error |
+| R15 | Land hex count vs `max_roads` / `max_ships`: warn if the supply looks too small to cross the map | warning |
+| R16 | `suggested_victory_target` differs from the `(land − deserts) / 2` heuristic by more than 3 | warning |
 
-R4 deserves its own note: the existing `_create_hexes` carries a comment about
-a 20-entry resource list silently dropping one tile so no two boards had the
-same mix. R4 is that bug promoted to a validation rule, which is the whole
-argument for pools being explicit multisets rather than "fill the rest with
-wheat".
+R4 deserves its own note: `_create_hexes` carries three asserts and a comment
+about a 20-entry resource list silently dropping a tile so no two boards had the
+same mix. R4 and R5 are that bug promoted to a validation rule, which is the
+whole argument for pools being explicit multisets rather than "fill the rest
+with wheat". They are also what let fix (b) be a one-liner instead of a policy.
+
+R12 is the honest inverse of the old R12. It used to say "multiple islands are
+unplayable, full stop". Now it says "multiple islands need the `ships` rule",
+which is a coherence check of exactly the kind `rules.dependency_problems`
+(`rules.py:418`) already performs and reports through `INCOHERENT_RULES` in
+`_start_game_locked`. **Put it there**, not in a new mechanism: the message
+should read like the existing ones — *"Little Shores has two islands and needs
+Ships"*. This is the one place where a map constrains the rules rather than the
+other way round, and it is worth being loud about.
 
 Where validation runs:
 
-- `save_map` handler — before writing to disk. Errors reject the save.
-- `preview_map` handler — before instantiating.
-- Game start (`_start_game_locked`) — re-read from disk and re-validate.
-  Never trust that the file on disk is the file that was validated.
+- `save_map` — before writing to disk. Errors reject the save.
+- `preview_map` — before instantiating.
+- `_start_game_locked` — re-read from disk and re-validate. Never trust that the
+  file on disk is the file that was validated.
 - `persistence.deserialize` — re-validate the inlined definition.
 
 ---
@@ -472,104 +525,99 @@ Where validation runs:
 ### 4.1 Constraints it has to live inside
 
 - Vanilla ES modules, no build step, one entry point (`main.js`), views are
-  sibling `<div>`s toggled with `.hidden`. No router.
-- The frontend is being reworked for a no-scroll layout with detail behind
-  buttons. So: compact controls, detail in popovers, nothing that grows the
-  page.
+  sibling `<div>`s in `index.html` toggled with `.hidden`. No router.
+- No-scroll layout at 1920×1080; detail lives behind popovers. Nothing may grow
+  the page.
 - `board-renderer.js` is a classic script exposing `window.BoardRenderer`; the
   camera is module-private. The editor reuses it rather than drawing its own
   canvas.
-- Every element handle goes in `dom.js` as a named export; nothing calls
-  `document.getElementById` inline.
-- Reference `tokens.css` custom properties only, never literals — the palette
-  is redeclared under `prefers-color-scheme: dark`.
+- Every element handle goes in `dom.js` as a named export.
+- Reference `tokens.css` custom properties only, never literals.
 
-### 4.2 What the renderer needs to expose
+### 4.2 What the renderer needs — most of it already exists
 
-Small, additive, and worth agreeing with the frontend agent before they land
-their rework:
+Re-checked against `board-renderer.js`. The old draft's asks have largely
+landed:
 
-- `BoardRenderer.clientToBoard`, `findNearestHex`, `findNearestEdge`,
-  `boardToClient`, `attachCameraControls` — already exist, need to be on the
-  exported object.
-- `BoardRenderer.invalidateLayout()` — `getLayout` memoises on board *object
-  identity*, so an editor mutating hexes in place will keep drawing the stale
-  layout. Adding or removing a hex is exactly the case that breaks. Either
-  expose this or have the editor replace the board object wholesale on every
-  edit (cheaper to reason about; measure before optimising).
-- One optional argument on `renderBoard(boardData, canvasId, highlight,
-  preview, overlay)` where `overlay = { regionOf: {hexKey: regionId}, colors:
-  {regionId: cssColor} }`. The editor needs region tinting and nothing else.
-  Backward compatible; existing calls pass four arguments.
-- `BOARD_CONFIG.colors` needs entries for `sea` (distinct from the current
-  `ocean`, if the naming question in §7 goes that way) and later `gold`, plus
-  matching `--terrain-*` tokens. The renderer hardcodes its palette today,
-  which is a pre-existing gap the editor will make visible.
+- `clientToBoard`, `boardToClient`, `findNearestVertex`, `findNearestEdge`,
+  `findNearestHex`, `attachCameraControls`, `wasPanning`, `computeLayout` are
+  **all exported** on `window.BoardRenderer` (`:1985`). Nothing to negotiate.
+- The palette is **no longer hardcoded**: `readPalette()` (`:70`) reads
+  `--terrain-*` custom properties with `PALETTE_TOKENS` / `PALETTE_FALLBACKS`
+  and caches on the theme signature. A new terrain (`gold`, v2) needs one entry
+  in each plus one token in `tokens.css`. Note the deliberate exception: the
+  ocean is *not* a token (`:87`) — "a light sea around it reads as a rendering
+  fault" — so an editor that wants a lighter sea must override the fill itself,
+  not add a token.
+- **Still needed:** `BoardRenderer.invalidateLayout()`. `getLayout` (`:1068`)
+  memoises on board *object identity*. An editor mutating `boardData.hexes` in
+  place keeps drawing the stale layout, which is harmless for terrain and a real
+  bug the moment a hex is added or removed. Verified unchanged; still in
+  `OPEN-THREADS.md` §3. Either expose it, or have the editor replace the board
+  object wholesale on every edit. **Replace the object** — it is cheaper to
+  reason about, and a 127-hex layout recompute is nothing. Measure before
+  optimising.
+- **Still needed:** one optional argument on `renderBoard(boardData, canvasId,
+  highlight, preview, overlay)` where
+  `overlay = { regionOf: {hexKey: regionId}, colors: {regionId: cssColor} }`.
+  Region tinting and nothing else. Backward compatible; existing calls pass four.
 
 ### 4.3 The screen
 
 A fourth sibling of `#join-screen` / `#user-screen` / `#game-screen`:
-`#map-editor-screen`, reached from a **Maps** button in the lobby, left by a
-**Done** button. Lobby-only: editing during a game is refused server-side, so
-the button is disabled while a game runs (same condition as `set_rules`
-locking).
+`#map-editor-screen`, reached from a **Maps** button in the lobby and left by
+**Done**. Lobby-only: editing is refused server-side while a game runs, so the
+button carries the same disabled condition as the rules picker.
 
 One full-height flex column, `min-height: 0` on the canvas so it never scrolls:
 
 ```
 ┌─ toolbar ───────────────────────────────────────────────────────┐
-│ [Paint][Erase][Harbour][Inspect] │ Region: [mainland ▾] [＋]     │
-│                                  │ [Pool ▾] │ [Preview] [Save ▾] │
+│ [Paint][Erase][Inspect] │ Region: [mainland ▾] [＋]              │
+│                         │ [Pool ▾] │ [Preview] [Save ▾]         │
 ├─ canvas (flex: 1, min-height: 0) ───────────────────────────────┤
-│                                                                 │
 │            existing pan/zoom canvas, region-tinted              │
-│                                                                 │
 ├─ status strip ──────────────────────────────────────────────────┤
-│ 61 hexes · 3 regions · pool 6/7 ▲ · 2 problems ▸                │
+│ 61 hexes · 3 regions · pool 6/7 ▲ · 2 islands · 2 problems ▸    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Everything with a `▾` or `▸` opens a popover. Nothing else is on screen.
+Everything with `▾` or `▸` opens a popover through the existing `popovers.js`
+(`openPopover` / `togglePopover` / `repositionPopover`), which is already the
+no-scroll mechanism the rest of the frontend uses. Nothing else is on screen.
+
+No Harbour tool in v1 — harbours are a bag, edited in the Save popover as five
+counters. That removes a whole interaction mode from v1 and costs nothing that
+the auto-placement in fix (c) does not already give.
 
 ### 4.4 Painting
 
-The tool is a mode, and the mode changes what a drag means. This is the one
-real interaction collision: **drag currently pans**, and drag is also the
-natural paint gesture.
+The tool is a mode, and the mode changes what a drag means. This is the one real
+interaction collision: **drag currently pans**, and drag is the natural paint
+gesture.
 
 Resolution — paint on drag, pan on modifier:
 
-- **Paint / Erase mode:** primary-button drag paints or erases continuously.
-  Panning requires space-held-drag, middle button, two-finger scroll, or the
-  arrow keys — all already bound by `attachCameraControls`. Wheel zoom is
-  unchanged.
-- **Harbour / Inspect mode:** drag pans as it does in game, since there is no
-  drag gesture to conflict with.
-- The existing `wasPanning()` guard in `board.js`'s tap handler is the model:
-  the editor's pointer handlers must be registered *before*
-  `attachCameraControls` for the same reason.
+- **Paint / Erase:** primary-button drag paints continuously. Panning needs
+  space-held drag, middle button, two-finger scroll or the arrow keys, all
+  already bound by `attachCameraControls`. Wheel zoom unchanged.
+- **Inspect:** drag pans as it does in game.
+- The editor's pointer handlers register *before* `attachCameraControls`, and
+  consult `wasPanning()` the way `board.js:88` does.
 
-Painting assigns the hex to the currently selected region and removes it from
-whichever region held it. Erase returns it to the `"remaining"` region if one
-exists, otherwise leaves it unassigned and R2 flags it. Region colours come
-from a fixed palette of eight, cycling; the owner can override per region.
+Painting assigns the hex to the selected region and removes it from whichever
+held it. Erase returns it to the `"remaining"` region if one exists, otherwise
+leaves it unassigned and R2 flags it. Region colours come from a fixed palette
+of eight, cycling, overridable per region.
 
-Keyboard: `1`–`9` select region, `P`/`E`/`H`/`I` select tool, `Ctrl+Z` one
-level of undo (a snapshot stack of the map document, capped at 30 — a real
-undo history is v2).
+Keyboard: `1`–`9` select region, `P`/`E`/`I` select tool, `Ctrl+Z` one level of
+undo (a snapshot stack of the map document, capped at 30 — real undo history is
+v2).
 
 ### 4.5 The pool popover
 
-Click **Pool ▾**, or click the region chip on a painted hex, and a popover
-opens anchored to the board using the same mechanism `placement.js` already
-uses for the placement confirm control — `anchorFor()` → `boardToClient()` →
-absolutely positioned inside `#game-board` at `--z-dropdown`. This is proven
-not to resize the canvas, which matters in a no-scroll layout.
-
-Contents, compact:
-
 ```
- mainland                    kind [ main ▾ ]   [shuffled ▾]
+ mainland                    kind [ main ▾ ]
  ────────────────────────────────────────────────────────────
  wood  [−] 2 [+]    brick [−] 1 [+]    desert [−] 1 [+]
  wheat [−] 2 [+]    sheep [−] 1 [+]    sea    [−] 0 [+]
@@ -579,44 +627,47 @@ Contents, compact:
  tiles 7/7 ✓        tokens 6/6 ✓        [Auto-fill]  [Done]
 ```
 
-The two badges are the whole validation story at authoring time: they mirror
-R4 and R5 exactly, turn red when they disagree, and mean the user never sees a
-server rejection for the most common mistake. **Auto-fill** proposes a pool
-scaled from the standard 19-hex mix to the region's size — the fastest path
-from "I painted an island" to "it is playable".
+Anchored with `boardToClient()` inside the board container, the way
+`placement.js` anchors its confirm control — proven not to resize the canvas,
+which is what matters in a no-scroll layout.
 
-Harbour tool: click a coastal edge and it cycles
-`generic → wood → brick → sheep → wheat → ore → none`. Non-coastal edges do not
-respond, and the status strip explains why (R10, phrased as
-"harbours sit between land and sea").
+The two badges are the whole authoring-time validation story: they mirror R4 and
+R5 exactly, turn red when they disagree, and mean the user never sees a server
+rejection for the most common mistake. **Auto-fill** proposes a pool scaled from
+the standard 19-hex mix to the region's size — the fastest path from "I painted
+an island" to "it is playable".
 
 ### 4.6 Preview
 
-**Preview** emits `preview_map { map }` to the server, which validates and
-calls `instantiate(defn, Random(seed))` with a fresh seed each press, and
-returns a board payload of the same shape `get_board_data` produces. The
-existing renderer draws it with no changes.
+**Preview** emits `preview_map { map, seed? }`; the server validates,
+instantiates with a fresh seed, and returns a payload of the shape
+`get_board_data` produces. The existing renderer draws it unchanged.
 
-Do the preview **server-side**. It is the same code path the real game uses, so
-what you preview is what you play, and it avoids a second implementation of
-pool drawing in JavaScript that would drift. The cost is one round trip per
-press, which is nothing.
+Do the preview **server-side**: same code path the real game uses, so what you
+preview is what you play, and no second implementation of pool drawing in
+JavaScript to drift. One round trip per press, which is nothing.
 
-Preview shows the drawn board, the derived island count, and any warnings.
-Pressing it repeatedly is how you sanity-check a pool's variance, which is the
-thing you actually want to know about a randomised map.
+Preview shows the drawn board, **the island count and their sizes from
+`islands()`**, and any warnings. Pressing it repeatedly is how you learn a
+pool's variance, which is the thing you actually want to know about a randomised
+map — and with a `sea` tile in an island pool, the island count is what varies.
 
 ### 4.7 Save, load, share
 
-**Save ▾** opens a popover: name field, Save, Save as copy, and a list of
-existing maps with Load / Duplicate / Delete. Server events in §5. Errors
-render through the existing `showNotice(message, 'error')`.
+**Save ▾** opens a popover: name, harbour counters, Save, Save as copy, and a
+list of existing maps with Load / Duplicate / Delete. Errors render through the
+existing `showNotice(message, 'error')`.
 
-Sharing between players at one table is solved by the architecture and needs no
-new machinery: **maps live on the server**, and there is one server per table.
-Selecting a map is a lobby rule, so it rides the existing `rules_changed`
-broadcast and every seat sees the same selection, with the same
-"frozen when the game starts" semantics as every other rule.
+**Delete requires confirmation and is refused while a game uses the map.**
+Decided; §5.3 has the wire form. Deleting the map a running game was built on
+would not corrupt the game — the definition is inlined in the save — but it
+would make the lobby's `board_map` selection dangle, and irreversible deletion
+behind a single click is a misclick waiting to happen.
+
+Sharing between players at one table needs no new machinery: **maps live on the
+server**, there is one server per table, and selecting a map is a rule, so it
+rides the existing `rules_changed` broadcast with the same freeze-on-start
+semantics as every other rule.
 
 ---
 
@@ -624,10 +675,10 @@ broadcast and every seat sees the same selection, with the same
 
 ### 5.1 On disk
 
-One JSON file per map, in `${CATAN_DATA_DIR}/maps/<id>.json`. `DATA_DIR` is
-already the "runtime state lives outside the repo tree" directory
-(`server/config.py`), and the tests already redirect it to a temp dir, so map
-tests get isolation for free.
+One JSON file per map in `${CATAN_DATA_DIR}/maps/<id>.json`. `DATA_DIR`
+(`config.py:31`) is already the "runtime state lives outside the repo tree"
+directory and tests already redirect it to a temp dir, so map tests get
+isolation for free.
 
 New module `server/game/map_store.py`:
 
@@ -635,59 +686,64 @@ New module `server/game/map_store.py`:
 MAPS_DIR = os.path.join(config.DATA_DIR, "maps")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
 
-def list_maps() -> list[dict]      # [{id, name, author, hexes, regions, problems}]
+def list_maps() -> list[dict]      # [{id, name, author, hexes, regions, islands_min_max, problems}]
 def read_map(map_id) -> dict       # raises UnknownMap
 def write_map(map_id, data)        # atomic, temp + fsync + os.replace
 def delete_map(map_id)
 ```
 
 `write_map` reuses the atomic-write pattern from `persistence.save` verbatim —
-temp file, flush, fsync, `os.replace` — for the reason stated there: an
-interrupted write must not turn "the server restarted" into "the map is gone".
+temp file, flush, fsync, `os.replace` — for the reason stated there.
 
 Every path is built as `os.path.join(MAPS_DIR, f"{map_id}.json")` after `SLUG`
-matches, and never any other way. That single rule is the entire path-traversal
-defence, which is why `id` is validated in layer 1 of §3 rather than later.
+matches, and never any other way. That single rule is the whole path-traversal
+defence, which is why `id` is validated in layer 1 rather than later.
 
-Built-in maps (`standard`, `beginner`, and whatever `board_layout` grows) ship
-read-only in `server/game/builtin_maps/*.json`, are listed alongside user maps
-with `"builtin": true`, and refuse writes and deletes. Duplicating a built-in
-into `DATA_DIR` is how you start from one.
+Built-in maps ship read-only in `server/game/builtin_maps/*.json`, list with
+`"builtin": true`, and refuse writes and deletes. Duplicating one is how you
+start from it.
 
-`list_maps` is called on a directory that a human may have dropped files into.
-It parses and validates each one; a file that fails becomes a listing entry
-with `problems` set rather than an exception that breaks the whole list.
+`list_maps` runs over a directory a human may have dropped files into. It
+validates each; a file that fails becomes a listing entry with `problems` set
+rather than an exception that breaks the whole list.
 
 ### 5.2 Selecting a map
 
-The in-flight work adds a `board_layout` rule with `random` / `beginner` /
-`large`. Build on it: add a fourth option `custom`, plus a companion rule
-`board_map` naming which custom map.
+**Decided: `board_map` lives in `rules`.** It inherits sharing, locking and
+persistence, and the cost the old draft worried about is already paid:
 
-That needs a third type in `server/game/rules.py`, which today has only `BOOL`
-and `INT`:
+- `rules.py` already has `CHOICE` (`:22`), used by `board_layout` and
+  `turn_order`. `coerce` (`:600`) already falls back to the default on an
+  unknown value, matching the "clamp and continue, never reject a lobby
+  setting" policy.
+- `lobby.js` already renders a `<select>` for `type === 'choice'` (`:232`),
+  with a comment recording that the beginner and large maps were unselectable
+  until it did. Nothing to coordinate.
 
-```python
-CHOICE = "choice"   # {"options": [{"value": ..., "label": ...}], "default": ...}
-```
+So: `board_layout` gains a fourth option `custom`, and a new `CHOICE` rule
+`board_map` names which. `catalogue()` computes `board_map`'s options from
+`map_store.list_maps()` at call time, so a newly saved map appears in every
+client's picker on the next `rules_changed` with no frontend change. That is the
+property the registry was designed for and the main argument against a
+standalone `selected_map` on `GameSession`.
 
-`coerce` gains one branch: value must be a string present in `options`,
-otherwise fall back to the default — matching the existing "clamp and continue,
-never reject a lobby setting" policy. `catalogue()` computes `board_map`'s
-options from `map_store.list_maps()` at call time, so a newly saved map appears
-in every client's picker on the next `rules_changed` with no frontend change.
-That is the same property the rules registry was designed for, and it is the
-main argument for putting map selection in `rules` rather than inventing a
-parallel `selected_map` field on `GameSession`.
+Two consequences to handle:
 
-The cost is honest: `lobby.js` needs a `CHOICE` row renderer (a `<select>`
-alongside the existing `.rule-toggle` and `.rule-number`), and `lobby.js` is
-being reworked. Coordinate or wait.
+- `board_map`'s options are dynamic, and `coerce` falls back to the default when
+  a value is not in `options`. A map deleted between selection and start
+  silently reverts the table to some other map. **`_start_game_locked` must
+  re-read the selection and refuse with a named error** rather than start a
+  game on a board nobody chose.
+- `rules.py` currently imports nothing from the rest of `game`. `catalogue()`
+  calling `map_store` introduces an import. Keep it lazy and inside the
+  function, or inject the list — a rules registry that cannot be imported
+  without touching the filesystem will be felt by every test in the suite.
 
 ### 5.3 Socket events
 
 Following the existing convention — imperative client→server, past-tense
-server→client, snake_case, errors as `{code, message}`:
+server→client, snake_case, errors as `{code, message}`, all through
+`rate_limited()`:
 
 | Direction | Event | Payload |
 |---|---|---|
@@ -695,163 +751,219 @@ server→client, snake_case, errors as `{code, message}`:
 | s→c | `map_list` | `{maps: [{id, name, author, hexes, regions, builtin, problems}]}` |
 | c→s | `save_map` | `{map: {...}}` |
 | s→c | `map_saved` | `{id}` — plus a fresh `map_list` and `rules_changed` broadcast |
-| c→s | `delete_map` | `{id}` |
+| c→s | `delete_map` | `{id, confirm: true}` |
+| s→c | `map_deleted` | `{id}` — plus a fresh `map_list` |
 | c→s | `preview_map` | `{map: {...}, seed?: int}` |
-| s→c | `map_preview` | `{board: {...}, warnings: [...], islands: int}` |
+| s→c | `map_preview` | `{board: {...}, warnings: [...], islands: [size, ...]}` |
 
-All of them go through `rate_limited()` like every other handler. `save_map`
-and `preview_map` carry the largest payloads on the wire, so they need an
-explicit size cap ahead of parsing — `payload_too_large` in
-`server/game/rate_limit.py` already exists for this; give map events a tighter
-limit than the default (a 200-hex map serialises to well under 32 KB).
+`delete_map` refuses without `confirm`, refuses a builtin, refuses while
+`session.game.game_state == "started"`, and refuses when `board_map` names it —
+`MAP_IN_USE`. The confirmation is client-side too (the popover asks), but the
+flag is on the wire so the server is not relying on the client having asked.
 
-Authorisation follows the existing `set_rules` policy: anyone in the lobby may
-save or select a map, refused once a game is running. Delete is the one that
-should probably be narrower — see §7.
+Authorisation follows `set_rules`: anyone in the lobby may save, select or
+delete, refused once a game is running. The old draft's "only the author may
+delete" is dropped — identity here is payload-based by design
+(`OPEN-THREADS.md` §6), so author-matching is theatre. The threat model is a
+misclick, and confirmation is the honest answer to a misclick.
 
 ### 5.4 Import and export
 
-v2. A textarea in the Save popover that dumps and accepts the JSON, which is
-the "real simple system, save to a text file" the owner asked for taken to its
-conclusion: the map *is* the text file, and copy-paste is the transport. No
-upload endpoint, no new dependency. Pasted JSON goes through exactly the same
-`parse_map` + `validate_map` as everything else.
+v2. A textarea in the Save popover that dumps and accepts JSON — the map *is*
+the text file, and copy-paste is the transport. No upload endpoint, no new
+dependency. Pasted JSON goes through the same `parse_map` + `validate_map` as
+everything else, and hits the same 8 KB question as §3.
 
 ---
 
-## 6. Staging
+## 6. Modifiers, and how the map format should ride on them
 
-### v0 — groundwork (small, unblocks everything)
+Another agent is turning `Game.get_cost` (`game.py:954`), production (the inline
+`self.rules['city_production'] if building_type == 'city' else 1` at
+`game.py:843`, becoming `production_for(vertex, hex)`) and `Game.next_dice`
+(`game.py:1044`) into hooks, so a rule can *apply* rather than only be read
+(`OPEN-THREADS.md` §2, which asks for this to land **before** the map creator
+precisely so the map creator does not add read sites 56–70).
 
-1. `sort_hex_keys` in `maps.py`.
-2. `map_store.py` with the slug guard and atomic write, plus tests.
-3. Agree the renderer surface in §4.2 with whoever owns the frontend.
+The map format must not invent a parallel mechanism. The rule:
 
-Ship nothing user-visible. This is deliberately a separate step so the
-renderer conversation happens before anything depends on its outcome.
+- **v1 contributes no modifiers at all.** A map decides what terrain is where
+  and nothing else. Every gameplay knob the map might want — cost changes, a
+  bonus on a number, a per-region yield — already has, or will have, a home in
+  `rules`.
+- **When per-region production arrives (v2+), it is a modifier registered
+  against `production_for(vertex, hex)`.** `instantiate` returns
+  `MapInstance.modifiers` as inert data; `Game.__init__` hands it to whatever
+  registry the funnel work creates, alongside the modifiers the rules
+  contribute. `maps.py` never computes a yield and never imports the engine.
+- **Order is the funnel's problem, not the map's.** Two modifiers touching
+  production have no defined order today; that is the whole reason for the
+  funnel. A map that shipped its own resolution order would have to be
+  rewritten when the funnel picks one.
+- **Gold fields are the test case.** A gold hex is a terrain name, a production
+  modifier that yields "choose a resource", and a `pending_choice`. Two of the
+  three exist. The third — the pending-choice *client* — does not exist at all
+  (`OPEN-THREADS.md` §1: the protocol is implemented and tested and **nothing
+  renders it**, and a card that opens a choice today freezes the table until a
+  30s timeout). So gold is blocked on the choice UI, not on the map format, and
+  the map format should reserve the word `gold` and do nothing else with it.
 
-### v1 — custom single-landmass maps
+If the funnel has not landed when v1 starts, nothing in v1 blocks: v1 adds no
+`self.rules[...]` reads beyond `board_layout` and `board_map`.
 
-Smallest thing that is actually useful.
+---
 
-- `maps.py`: `parse_map`, `validate_map`, `instantiate`, the builtin
-  `standard` map expressed in the format (which proves the format can express
-  today's board — do this first, it is the best possible test).
-- The one branch in `_generate_board`, plus `_apply_map_instance`.
-- `SAVE_VERSION` → 2, map inlined in the save.
-- `board_layout: custom` + `board_map` + `CHOICE` in `rules.py`.
+## 7. Staging
+
+### v0 — groundwork
+
+1. Fixes (a), (b) and (c) from §2.1, in `board.py`, each with a test that fails
+   before it. (a) and (b) need a two-island fixture, which today means the
+   `split_the_board` helper in `tests/game/test_islands.py`; (c) can use it
+   directly — it already produces the 18-of-54 walk.
+2. `sort_hex_keys` and `takes_a_token` in `maps.py`.
+3. `map_store.py` with the slug guard and atomic write, plus tests.
+
+Nothing user-visible. Fix (c) is worth landing on its own regardless of whether
+the map creator is ever built: it is a latent wrong answer in the base game the
+moment any board grows a second coastline.
+
+### v1 — custom maps that play
+
+The smallest genuinely useful version, and it is genuinely useful because ships
+exist: **a map you paint, save, preview, select in the lobby, and play — with
+more than one island, reachable by ship, scoring island points.**
+
+- `maps.py`: `parse_map`, `validate_map`, `instantiate`, and the builtin
+  `standard` / `beginner` / `large` maps expressed in the format. **Do the
+  builtins first** — proving the format can express today's three boards, hex
+  for hex and token for token against `test_map_layouts.py`'s existing
+  assertions, is the best possible test of the format and the cheapest place to
+  find out it is wrong.
+- The branch in `_generate_board`, plus `_apply_map_instance`.
+- `map_definition` inlined into the save; no `SAVE_VERSION` bump.
+- `board_layout: custom` + `board_map` in `rules.py`; the multi-island/`ships`
+  coherence check in `dependency_problems`.
 - Socket events from §5.3.
-- The editor: paint, erase, region create/rename/recolour, pool popover,
-  preview, save, load, delete, one-level undo.
-- Tests: subprocess determinism, seed sweep, round-trip
-  `parse(to_json(defn)) == defn`, every validation rule gets a test that a bad
-  map is refused.
+- The editor: paint, erase, region create/rename/recolour, pool popover, harbour
+  bag, preview, save, load, duplicate, delete-with-confirmation, one-level undo.
+- Tests: the custom map added to the existing cross-process determinism loop; a
+  seed sweep asserting the pool multiset is exactly reproduced on the board and
+  no token sits on sea or desert; `parse(to_json(defn)) == defn`; one refusal
+  test per validation rule; the payload-size test from §3; and **one browser
+  test that plays a settlement onto a second island of a hand-made map**, since
+  `OPEN-THREADS.md` §5 records that no seafaring game is played to a winner
+  anywhere.
 
 **v1 explicitly does NOT:**
 
-- Ships, the pirate, gold fields, special victory points, Catan chits.
-- Fog reveal. `kind: "fog"` parses and previews; starting a game refuses.
-- Multi-landmass *play*. You may author and preview a four-island map; the
-  game refuses to start on it (R12). This is the honest consequence of having
-  no ships and should be stated in the editor UI, not discovered.
-- Fixed pools / hand-placed individual tiles. Shuffled pools only.
-- Import/export, undo history, map thumbnails, per-scenario setup rules
-  ("starting settlements on the main island only"), 5–6 player frames.
-- Concurrent editing. One game per process, one table, last write wins. The
+- **Hand-place harbours.** A bag of types, spaced automatically. No Harbour
+  tool, no `harbours.places[]`, no edge keys in the map file at all — which also
+  means v1 never has to reason about `canonical_edge_key` in a map file.
+- **Fixed pools.** Shuffled only. You cannot reproduce a printed scenario
+  diagram tile for tile. Deferred, decided, and cheap to add later: `mode` is
+  already in the format. (~30 lines in `maps.py`, but it doubles the editor's
+  per-hex interaction surface, because you must then be able to set one hex's
+  terrain *and* its number directly.)
+- **Fog.** `kind: "fog"` parses and previews; starting refuses.
+- **Gold fields.** Blocked on the pending-choice client, not on this.
+- **Scenario setup rules.** `kind: "island"` is inert: nothing stops a starting
+  settlement going on a far island, and nothing tracks a home island beyond what
+  `record_island_settlement(award=False)` already does at setup. This is the
+  biggest single thing separating "a custom map" from "The Four Islands".
+- **Per-map victory target.** A suggestion the editor and lobby display; the
+  `victory_target` rule still decides.
+- **Any map-level modifier**, per §6.
+- **5–6 player frames.** `MAX_PLAYERS = 4`.
+- **Import/export, undo history, thumbnails.**
+- **Concurrent editing.** One game per process, one table, last write wins. The
   players are in the same room and can talk.
-- Any migration path for v1 maps. `map_version` exists so v2 can refuse them
-  loudly; nobody has a library of maps yet.
+- **Any migration path for v1 maps.** `map_version` exists so v2 can refuse them
+  loudly; nobody has a library yet.
 
-### v2 — depth without ships
+### v2 — depth
 
-Gold fields (one terrain, one "choose a resource" prompt — genuinely cheap and
-does not need ships), fixed pools, import/export textarea, larger frames,
-per-map `victory_target` wired into `Game`.
+Fixed pools and per-hex editing, hand-placed harbours on edges, import/export
+textarea, larger frames, gold once the pending-choice client exists, per-region
+production modifiers riding the funnel.
 
-### v3 — ships
+### v3 — scenarios
 
-Vertices and edges over sea hexes, ship pieces, the Longest Trade Route, the
-pirate. This is the expensive one and it is a separate project. Only after it
-lands do `island` and `fog` become playable, and only then do the special-VP
-rules from The Four Islands and Heading for New Shores mean anything.
+Setup restrictions (`kind: "island"` becoming mechanical), the fog stack and
+lazy reveal, per-player home islands, 5–6 player frames. This is where the
+published scenarios become reproducible, and it is a separate project.
 
 ---
 
-## 7. Risks and open questions
+## 8. Risks
 
-### Risks
+**Fix (c) moves harbours if it is done carelessly.** Every seeded board in the
+suite, and both browser suites, are pinned to where harbours currently land. The
+one-ring path must make the identical sequence of `rng` calls. Assert it: build
+the `random` layout at a fixed seed before and after and compare
+`harbour_edges(game)`.
 
-**The two functions this touches are the two being rewritten.** `_create_hexes`
-and `_assign_ports` are in flight right now. Mitigation is structural: all new
-logic lives in `maps.py`, and `board.py` gains one `if` plus two small methods
-that call into it. If the merge still conflicts, the conflict is in
-`_generate_board`, which is 15 lines.
+**Fix (a) is invisible until it is not.** Slots and land are identical for all
+three built-in layouts, so the fix changes no existing behaviour and no existing
+test can prove it works. Its test must use a layout whose pool contains `ocean`
+— which is the reproduction in §2.1, and which is the only way to reach the bug.
 
-**`getLayout` memoises on board object identity.** An editor that mutates
-`hexes[key].type` in place will silently draw the old layout. Harmless for
-terrain changes, a real bug the moment a hex is added or removed. Either
-`invalidateLayout()` or replace the board object per edit.
+**`getLayout` memoises on board object identity.** Unchanged and verified. An
+editor mutating hexes in place draws a stale layout the moment a hex is added or
+removed. Mitigation in §4.2: replace the board object per edit.
 
-**Paint-drag versus pan-drag.** The proposal in §4.4 (modifier to pan while
-painting) is the standard resolution but it is a learned gesture. If it tests
-badly the fallback is click-per-hex with no drag, which is tedious on a 127-hex
-frame but unambiguous.
+**Paint-drag versus pan-drag.** The modifier-to-pan proposal in §4.4 is the
+standard resolution but it is a learned gesture. If it tests badly the fallback
+is click-per-hex, tedious on a 127-hex frame but unambiguous.
 
-**Board size versus piece supply.** A 127-hex board with 15 roads per player is
-a different game, not a bigger one. R15 warns; it cannot decide for you.
-
-**`_is_ocean` as a water predicate.** It answers "is this hex in the ring
-between hex_radius and edge_radius", which on a custom map is meaningless. Any
-caller using it as "is this water" must move to `hexes[key].type`. Currently
-there is one caller; the in-flight work may add more.
-
-**Renderer palette is hardcoded** in `BOARD_CONFIG.colors` and does not read
-`--terrain-*`. The editor makes this visible immediately because it introduces
-new terrain names. Pre-existing, but it lands on this feature's plate.
+**Board size versus piece supply.** A 127-hex board with 15 roads and 15 ships
+per player is a different game, not a bigger one. R15 warns; it cannot decide.
 
 **Untrusted maps are a bigger attack surface than any existing event.** A map
-payload is nested, variable-length, and turns into filesystem paths. The
-mitigations are all in §3 and §5.1 and none of them are optional: bounded sizes
-before any traversal, slug regex before any path join, re-validate on every
-read including from disk.
+payload is nested, variable-length, and turns into a filesystem path. The
+mitigations in §3 and §5.1 are not optional: bounded sizes before any traversal,
+slug regex before any path join, re-validate on every read including from disk.
 
-### Open questions — need the owner's decision
+**A big map is slow in places nobody has measured.** `islands()` is a flood fill
+over every land hex and is called *per vertex* by `island_of_vertex`
+(`seafarers.py:328`), which `record_island_settlement` calls on every
+settlement. Fine for 19 hexes; a 127-hex board with ships doubles the graph and
+this becomes O(board) per placement. Not a v1 blocker — measure before caching,
+and if you cache, the invalidation point is "terrain changed", which after
+generation is never.
 
-1. **`sea` or `ocean`?** The engine says `"ocean"`, the Seafarers rulebook says
-   "sea". Map files could use either. My recommendation: `"sea"` in map files
-   (it is the published vocabulary and it is what the editor's UI will say),
-   translated to `"ocean"` at the engine boundary in `_apply_map_instance`, with
-   a note in `maps.py` explaining the one-word translation. The alternative —
-   renaming `"ocean"` everywhere — touches the renderer, the tests and the save
-   format for no gameplay benefit.
+**The map format can express boards the harbour spacing cannot serve.** A map
+of nine 1-hex islands has nine 6-edge coastlines and a bag of nine harbours;
+`len(ring) // 2` gives each ring three, the allocation gives each one, and the
+result is defensible but arbitrary. `_assign_ports` already logs and truncates
+in this situation rather than failing. Keep that behaviour and let R10 warn.
 
-2. **Is it acceptable that v1 authors multi-island maps but refuses to start
-   them?** I think yes, and I think the alternative (waiting for ships) delays
-   everything useful by weeks. But it means the headline feature you asked for —
-   islands — is a preview-only feature in v1. If that is not acceptable, the
-   staging in §6 needs to move ships into v1 and the whole thing becomes a much
-   bigger project.
+---
 
-3. **Who may delete a map?** `set_rules` policy is "anyone in the lobby, the
-   table can talk". That is right for *selecting* a map and probably wrong for
-   *deleting* someone's work, which is irreversible. Options: nobody (delete by
-   hand on the server), only the recorded `author`, or everyone with a
-   confirmation. I lean toward "only the author, matched against the joined
-   name" — weak, but the threat model here is a misclick, not an adversary.
+## 9. Still needs the owner to decide
 
-4. **Fixed pools in v1?** They are what you need to reproduce a printed
-   scenario diagram exactly, and they are maybe 30 extra lines. But they double
-   the editor's per-hex interaction surface (you must be able to set one hex's
-   terrain and number directly). I recommend deferring to v2 and would rather
-   be told I am wrong now than build it twice.
+Everything the old §7 listed as open is now settled — `sea` vs `ocean`
+(translate at the boundary), islands preview-only (obsolete, ships exist), who
+may delete (anyone, with confirmation, refused while in use), fixed pools
+(deferred past v1), `board_map` in `rules` (yes). What remains:
 
-5. **Frame radius cap of 6 (127 hexes) and `MAX_PLAYERS = 4`.** A Seafarers
-   5–6 player scenario needs both raised. Is that in scope at all, or is this a
-   four-player table forever?
+1. **Is `kind: "island"` being inert in v1 acceptable?** It means the editor
+   offers a label that changes nothing: you can paint a "far island" and a
+   player may put a *starting* settlement on it. The alternative is one setup
+   restriction in v1 — "starting settlements only on regions of kind `main`" —
+   which is maybe 20 lines in `place_settlement` and one line in the map format,
+   and is the single cheapest step toward a real scenario. I lean toward
+   including it and would rather be told now. **If you want it, say so before
+   §7's v1 is scoped**, because it is the one exclusion above that is cheap
+   enough to argue about.
 
-6. **Should `board_map` live in `rules`?** It gets sharing, locking and
-   persistence for free, at the cost of a third type in `rules.py` and a new
-   row renderer in a `lobby.js` that someone else is currently rewriting. The
-   alternative is a standalone `selected_map` on `GameSession` with its own
-   broadcast, which is more code but zero collision. I recommend `rules`, but
-   the timing is a coordination question, not a technical one.
+2. **Does the payload cap move, or does the format stay under 8 KB?** §3. It
+   decides whether `rate_limit.py` grows a per-event table. My recommendation:
+   stay under 8 KB in v1 and let `"remaining"` do the work; revisit when fixed
+   pools land in v2, which is when it will actually break.
+
+3. **Frame radius cap of 6 (127 hexes) and `MAX_PLAYERS = 4`.** A Seafarers 5–6
+   player scenario needs both raised. Is that ever in scope, or is this a
+   four-player table forever? It changes nothing in v1 either way, but it
+   changes whether the editor should warn about board sizes no table here can
+   fill.
