@@ -22,3 +22,7 @@ server/data/*.save.json
 
 # Screenshots from the browser suites - evidence for a run, not source.
 test-artifacts/
+
+# Documented a live authorisation hole with file/line detail. Kept out of the
+# public tree; the findings that still matter live in coding-rules.md.
+audit-report.md
