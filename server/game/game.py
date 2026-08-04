@@ -4,6 +4,7 @@ import os
 import random
 
 from game import cities_knights as ck_module
+from game import modifiers as modifiers_module
 from game import rules as rules_module
 from game.bank import Bank
 from game.board import BoardBuilder
@@ -821,6 +822,25 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'knights_played': {p.name: p.knights_played for p in self.players},
         }
 
+    def production_for(self, vertex, hex_obj, dice_total: int, robber_here: bool) -> dict:
+        """What one building takes from one hex when that hex's number comes up.
+
+        The single place production is decided: {'resources': how many cards of
+        the hex's own type, 'commodity': its commodity or None}. A settlement
+        takes one card, and every rule that changes that — the city's share,
+        commodities, the robber — is a modifier folded over it in a fixed
+        order. See `game/modifiers.py`.
+        """
+        return modifiers_module.apply(
+            modifiers_module.PRODUCTION,
+            self.rules,
+            {'resources': 1, 'commodity': None},
+            building_type=vertex.building.get('type'),
+            terrain=hex_obj.type,
+            dice_total=dice_total,
+            robber_here=robber_here,
+        )
+
     def distribute_resources(self, dice_total: int):
         """Distribute resources to players based on dice roll.
 
@@ -839,11 +859,6 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             if not vertex.building or vertex.building.get('type') not in ('settlement', 'city'):
                 continue
 
-            building_type = vertex.building.get('type')
-            resource_amount = (
-                self.rules['city_production'] if building_type == 'city' else 1
-            )
-
             player_name = vertex.building.get('player')
             if not player_name:
                 continue
@@ -857,23 +872,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                     continue
 
                 hex_obj = self.hexes[hex_key]
-                # Skip robber hex and non-matching numbers
-                if hex_key == self.robber_hex:
-                    continue
                 if hex_obj.number != dice_total or hex_obj.type in ('desert', 'ocean'):
                     continue
 
-                # With commodities on, a city on pasture, mountain or forest
-                # yields one resource plus one commodity instead of two
-                # resources. Fields and hills have no commodity, so a city
-                # there still produces two, exactly as in the base game.
-                commodity = None
-                if self.rules['commodities'] and building_type == 'city':
-                    commodity = ck_module.COMMODITY_FROM_TERRAIN.get(hex_obj.type)
+                produced = self.production_for(
+                    vertex, hex_obj, dice_total, hex_key == self.robber_hex
+                )
+                commodity = produced['commodity']
 
-                take_resources = 1 if commodity else resource_amount
-
-                for _ in range(take_resources):
+                for _ in range(produced['resources']):
                     if self.bank.take(hex_obj.type):
                         player.resources[hex_obj.type] = player.resources.get(hex_obj.type, 0) + 1
 
@@ -952,8 +959,17 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         return False
 
     def get_cost(self, building_type: str) -> dict:
-        """Get the cost for a building type."""
-        return self.building_costs.get(building_type, {})
+        """What this costs to build, once every active modifier has had its say.
+
+        The one place a price is decided, so a rule that makes something
+        cheaper has somewhere to attach. See `game/modifiers.py`.
+        """
+        return modifiers_module.apply(
+            modifiers_module.COST,
+            self.rules,
+            dict(self.building_costs.get(building_type, {})),
+            building_type=building_type,
+        )
 
     def can_afford(self, player_name: str, building_type: str) -> bool:
         """Check if player can afford the building cost."""
@@ -1053,19 +1069,38 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         An Alchemist played before the roll has already decided both faces, and
         those are used once and then forgotten — including in place of a dealt
         pair, since the card overrules the deck for exactly one roll.
+
+        A table playing with a dice set other than the standard pair draws from
+        that set instead, dealt or rolled the same way.
         """
         if self.pending_dice is not None:
             chosen, self.pending_dice = self.pending_dice, None
             return chosen
 
-        if not self.rules['dice_deck']:
+        if self.rules['dice_deck']:
+            if not self.dice_deck:
+                self.dice_deck = list(self.dice_combinations())
+                self.rng.shuffle(self.dice_deck)
+            return tuple(self.dice_deck.pop())
+
+        if not modifiers_module.active(modifiers_module.DICE, self.rules):
+            # Two dice, rolled. Deliberately still two `randint` calls rather
+            # than one draw from the 36: a seeded game has to reproduce the
+            # sequence it has always produced.
             return self.rng.randint(1, 6), self.rng.randint(1, 6)
 
-        if not self.dice_deck:
-            self.dice_deck = [(first, second)
-                              for first in range(1, 7) for second in range(1, 7)]
-            self.rng.shuffle(self.dice_deck)
-        return tuple(self.dice_deck.pop())
+        return self.rng.choice(self.dice_combinations())
+
+    def dice_combinations(self) -> tuple:
+        """The face pairs the dice may show, after every dice modifier.
+
+        Every combination of two six-sided dice, unless a modifier says
+        otherwise — a dice set is a list of combinations, which is what lets a
+        new one be data rather than another branch above.
+        """
+        return modifiers_module.apply(
+            modifiers_module.DICE, self.rules, modifiers_module.STANDARD_DICE,
+        )
 
     def in_robber_free_opening(self) -> bool:
         """Whether a 7 rolled now leaves the robber where it is.

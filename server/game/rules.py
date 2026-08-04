@@ -132,6 +132,41 @@ RULES = [
         ),
         "summary": "How the seating order is decided when the game starts.",
     },
+    {
+        "id": "dice_set",
+        "group": CORE,
+        "type": CHOICE,
+        "default": "standard",
+        "options": [
+            {
+                "id": "standard",
+                "name": "Two dice",
+                "summary": (
+                    "The pair out of the box: every number from 2 to 12, as "
+                    "often as two six-sided dice throw it."
+                ),
+            },
+            {
+                "id": "no_two_or_twelve",
+                "name": "No 2s or 12s",
+                "summary": (
+                    "A 2 or a 12 is re-rolled, so production only ever lands "
+                    "on 3 through 11. The two numbers nothing much sits on "
+                    "stop costing the table a turn."
+                ),
+            },
+        ],
+        "name": "Dice",
+        "source": (
+            "Base game rulebook (two dice); expansions.md 739, Traders & "
+            "Barbarians main scenario (\"When you roll a '2' or a '12' as your "
+            "production roll you re-roll the dice\")"
+        ),
+        "summary": (
+            "Which dice the table rolls for production. The set decides which "
+            "numbers can come up at all, and how often each one does."
+        ),
+    },
 ]
 
 
@@ -246,6 +281,17 @@ RULES += [
           "often as the odds say. This is the production half of the Event "
           "Cards variant only — the events printed on the cards are not part "
           "of it.",
+          group=VARIANT),
+    _bool("epidemic", "Epidemic", False,
+          "Traders & Barbarians, Catan Event Cards; expansions.md 775 (\"The "
+          "'Epidemic' event appears on production numbers '6' and '8' and "
+          "causes each player to receive only 1 resource for each of his "
+          "cities that produces that turn\")",
+          "The Epidemic standing over the whole game instead of turning up on "
+          "one card: on a 6 or an 8 every city collects a single card from "
+          "each of its hexes rather than its usual two. Settlements are "
+          "untouched, and so is the commodity a city takes with commodities "
+          "on — it was only ever one card either way.",
           group=VARIANT),
     _bool("no_adjacent_red_numbers", "Keep 6s and 8s apart", False,
           "Base game rulebook, variable setup; expansions.md 1509–1510",
