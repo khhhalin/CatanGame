@@ -285,6 +285,22 @@ class TestOverTheWire:
         assert game.free_roads_remaining == 2
         assert game.ck.hand_of(name) == []
 
+    def test_a_merchant_fleet_names_its_card_type_through_make_choice(self, ck_clients):
+        """The card carries no target on the wire; the type is answered as a
+        choice, and a type nobody was offered is refused there."""
+        client, name = self._current(ck_clients)
+        game = state.session().game
+        game.ck.progress_hands[name] = ['merchant_fleet']
+
+        client.emit('play_progress_card', {'name': name, 'card': 'merchant_fleet'})
+        client.emit('make_choice', {'name': name, 'kind': 'merchant_fleet', 'option': 'gold'})
+
+        errors = [m['args'][0] for m in client.get_received() if m['name'] == 'error']
+        assert errors[-1]['code'] == 'INVALID_CHOICE'
+
+        client.emit('make_choice', {'name': name, 'kind': 'merchant_fleet', 'option': 'paper'})
+        assert game.merchant_fleet_types == {name: ['paper']}
+
     def test_an_opponents_progress_hand_is_never_serialized(self, ck_clients):
         alice, _ = ck_clients
         state.session().game.ck.progress_hands['Bob'] = ['spy', 'warlord']

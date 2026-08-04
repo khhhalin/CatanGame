@@ -37,6 +37,7 @@ KINDS = {
     'progress_deck': 'choose which deck to draw a progress card from',
     'commercial_harbor': 'choose a commodity to hand over',
     'master_merchant': 'choose a card to take',
+    'merchant_fleet': 'choose a card type to trade at 2:1 this turn',
     'spy': 'choose a progress card to take',
     'wedding': 'choose a card to give away',
     'deserter': 'choose which of your knights deserts',

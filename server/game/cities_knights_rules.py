@@ -9,7 +9,7 @@ is a mixin on Game rather than methods on CitiesKnights.
 from game import cities_knights as ck_module
 from game import progress_cards
 from game import rules as rules_module
-from game.validation import COMMODITY_TYPES, RESOURCE_TYPES
+from game.validation import CARD_TYPES, COMMODITY_TYPES, RESOURCE_TYPES
 
 
 class CitiesKnightsRules:
@@ -932,6 +932,23 @@ class CitiesKnightsRules:
 
         self._move_card(taker, giver, resource)
         return {'traded': True, 'commodity': option, 'resource': resource}
+
+    def _progress_merchant_fleet(self, player_name: str, target) -> dict:
+        """Ask which card type trades at 2:1 with the bank for the rest of the turn.
+
+        All eight types are offered whether or not the player holds any right
+        now: the rate lasts the turn, and the cards they are about to earn from
+        a knight or a trade are the ones a fleet is usually named for.
+        """
+        self.open_choice('merchant_fleet', player_name, CARD_TYPES)
+        return {'success': True, 'awaiting': player_name}
+
+    def _choice_merchant_fleet(self, choice: dict, option: str) -> dict:
+        """Grant the 2:1 to the player who played the card, and to nobody else."""
+        granted = self.merchant_fleet_types.setdefault(choice['player'], [])
+        if option not in granted:
+            granted.append(option)
+        return {'card_type': option}
 
     def _progress_master_merchant(self, player_name: str, target) -> dict:
         """Look at the hand of a player who is ahead, and take two cards."""

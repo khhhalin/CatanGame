@@ -151,8 +151,9 @@ _LIST_TARGETS = {'knight': 'knights', 'two_number_tokens': 'hexes'}
 
 # Road Building names a road target on the card, but the two roads are placed
 # through the ordinary place_road flow afterwards, so nothing is chosen with the
-# card itself.
-_TARGET_CHOSEN_LATER = frozenset({'road_building'})
+# card itself. A Merchant Fleet's card type is asked for the same way, as a
+# pending choice the engine opens and checks its own options against.
+_TARGET_CHOSEN_LATER = frozenset({'road_building', 'merchant_fleet'})
 
 
 def _progress_target(card, data):
@@ -190,8 +191,8 @@ def _progress_target(card, data):
             raise InvalidPayload('INVALID_PAYLOAD', 'target must be a list of one or two keys')
         return [require_str(item, _LIST_TARGETS[needs]) for item in raw]
 
-    # 'resource_or_commodity' belongs to Merchant Fleet, which the engine
-    # cannot resolve yet; play_progress_card refuses it by name.
+    # A `needs_target` word no branch above handles is a card this handler
+    # cannot pass on safely, so it is refused rather than played with no target.
     raise InvalidPayload('NOT_IMPLEMENTED', f"{card['name']} cannot be played yet")
 
 

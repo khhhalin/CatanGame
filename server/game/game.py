@@ -197,6 +197,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.merchant_hex = None
         self.merchant_holder = None
 
+        # Merchant Fleet: {player: [card types they trade at 2:1 with the bank
+        # until their turn ends]}. Keyed by player because the rate is one
+        # player's, not the table's — a single "chosen type" field would hand
+        # the discount to whoever traded next.
+        self.merchant_fleet_types = {}
+
         self.turn_start_time = None  # timestamp when turn started
         self.dice_rolled_time = None  # timestamp when dice was rolled
         self.has_rolled_dice = False  # whether player has rolled in current turn
@@ -843,6 +849,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'robber_hex': self.robber_hex,
             'merchant_hex': self.merchant_hex,
             'merchant_holder': self.merchant_holder,
+            # Public: a 2:1 nobody can see is a 2:1 nobody uses, and the table
+            # is entitled to know why a player is buying cheaply this turn.
+            'merchant_fleet_types': self.merchant_fleet_types,
             # Filtered per recipient: only the player who owes a decision is
             # told what the options are, because they can be the contents of
             # somebody else's hand.

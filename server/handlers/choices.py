@@ -81,6 +81,11 @@ def _story(name: str, result: dict) -> str:
         return f"{name} drew a {result['option']} progress card for the joint defence"
     if kind == 'commercial_harbor':
         return f"{name} traded a commodity at the commercial harbor"
+    if kind == 'merchant_fleet':
+        return (
+            f"{name}'s merchant fleet trades {result['option']} "
+            'with the bank at 2:1 for the rest of the turn'
+        )
     if kind == 'master_merchant':
         return f"{name} took a card as Master Merchant"
     if kind == 'wedding':

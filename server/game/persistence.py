@@ -194,6 +194,10 @@ def serialize(game: Game) -> dict:
         'pending_dice': list(game.pending_dice) if game.pending_dice else None,
         'merchant_hex': game.merchant_hex,
         'merchant_holder': game.merchant_holder,
+        # Additive like `map` below: a save without it restores an empty
+        # mapping, which is a game where nobody has played a Merchant Fleet
+        # this turn — so old saves load and no rate is invented for them.
+        'merchant_fleet_types': game.merchant_fleet_types,
         'state_version': game.state_version,
         'longest_road_holder': game.longest_road_holder,
         'largest_army_holder': game.largest_army_holder,
@@ -355,7 +359,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'state_version', 'longest_road_holder', 'largest_army_holder',
                   'longest_road_length', 'harbormaster_holder', 'harbor_points',
                   'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
-                  'player_islands', 'island_points', 'merchant_hex', 'merchant_holder'):
+                  'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
+                  'merchant_fleet_types'):
         if field in data:
             setattr(game, field, data[field])
 

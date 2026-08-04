@@ -1,10 +1,9 @@
 """The progress cards that were refused by name until the engine could ask.
 
 Nine of the 54 cards had no resolver, so `play_progress_card` answered "not
-implemented yet" for a card the player was holding. Eight of them are here.
-Merchant Fleet is not: it lets a player trade a chosen resource *or commodity*
-at 2:1 with the bank, and the trade engine has no bank trade for commodities at
-all, so it is still refused rather than half implemented.
+implemented yet" for a card the player was holding. Eight of them are here; the
+ninth, Merchant Fleet, waited for commodity bank trades and has its own file
+(`test_merchant_fleet.py`).
 
 Each test asserts the effect a player would notice — a card leaving somebody
 else's hand, a road coming off the board, a die coming up on demand.
@@ -34,17 +33,6 @@ def game():
 
 def hold(game, player_name, *card_ids):
     game.ck.progress_hands[player_name] = list(card_ids)
-
-
-class TestMerchantFleetIsStillRefused:
-    def test_it_names_itself_rather_than_pretending(self, game):
-        hold(game, 'Alice', 'merchant_fleet')
-
-        result = game.play_progress_card('Alice', 'merchant_fleet', 'cloth')
-
-        assert not result['success']
-        assert 'not implemented' in result['error']
-        assert game.ck.hand_of('Alice') == ['merchant_fleet'], 'a refused card is not burned'
 
 
 class TestAlchemist:

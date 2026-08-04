@@ -90,6 +90,9 @@ class TurnClock:
         self.pending_invention = None
         self.pending_monopoly = None
         self.free_roads_remaining = 0
+        # "for the rest of the turn" — and this is the path the watchdog takes,
+        # so an abandoned turn cannot carry a Merchant Fleet into the next one.
+        self.merchant_fleet_types = {}
 
         self.start_turn()
         if self.rules['knights'] and self.ck is not None:

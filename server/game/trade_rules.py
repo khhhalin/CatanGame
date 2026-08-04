@@ -13,6 +13,11 @@ from game.validation import COMMODITY_TYPES
 # What the merchant piece is worth at the bank, for the hex it stands on.
 MERCHANT_TRADE_RATE = 2
 
+# What a Merchant Fleet is worth, for the card type it named. A constant of its
+# own rather than a shared 2: the two rules are unrelated and either could be
+# house-ruled without the other.
+MERCHANT_FLEET_TRADE_RATE = 2
+
 
 def _move_cards(giver, taker, card_type: str, count: int):
     """Hand `count` cards of one type from one player to another.
@@ -44,11 +49,21 @@ class TradeRules:
         at 3:1 (line 330). One commodity anywhere in the offer is enough to
         withdraw every 2:1 rate, otherwise a wood harbour would launder paper
         by pairing it with wood in the same offer.
+
+        A Merchant Fleet is read before that withdrawal rather than after it,
+        because the card names "one chosen resource *or commodity*"
+        (`expansions.md` 450): it is not a harbour, so line 331 does not touch
+        it. It takes the whole offer or none of it, for the reason above — the
+        fleet discounts the type it named, not everything travelling with it.
         """
         ports = self.get_player_ports(player_name)
         rate = self.rules['bank_trade_rate']
         if 'generic' in ports:
             rate = min(rate, self.rules['generic_harbour_rate'])
+
+        fleet = self.merchant_fleet_types.get(player_name, ())
+        if offered and all(card_type in fleet for card_type in offered):
+            rate = min(rate, MERCHANT_FLEET_TRADE_RATE)
 
         if any(card_type in COMMODITY_TYPES for card_type in offered):
             return rate
