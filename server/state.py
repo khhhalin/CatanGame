@@ -271,6 +271,21 @@ def broadcast_board(extra=None):
             payload.update(extra)
         emit('board_updated', payload, to=sid)
 
+def announce_choices():
+    """Tell each player who owes a decision what they are being asked.
+
+    Sent to that player's own sockets only, because the options can be the
+    contents of somebody else's hand. The table learns that the game is waiting
+    from the board snapshot, which carries every pending choice redacted.
+    """
+    game = session().game
+    if game is None or not game.pending_choices:
+        return
+    for sid, name in list(session().viewers.items()):
+        choice = game.pending_choice_for(name)
+        if choice is not None:
+            emit('choice_required', game.choice_to_dict(choice, viewer=name), to=sid)
+
 def save_game():
     """Write the game to disk so a restart does not lose it.
 

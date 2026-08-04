@@ -49,6 +49,13 @@ class TurnClock:
         if self.must_choose_victim:
             return refused('MUST_CHOOSE_VICTIM', 'You must choose a victim to steal from')
 
+        # A turn that ended with a decision outstanding would carry it into the
+        # next player's turn, which is the bug the robber flags already paid
+        # for. The watchdog answers an abandoned choice before it gets here.
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
+
         if player_name in self.players_needing_discard:
             return refused('MUST_DISCARD', 'You must discard resources first')
 

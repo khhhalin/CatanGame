@@ -21,6 +21,12 @@ def phase_block(name: str) -> tuple[str, str] | None:
         return 'MUST_MOVE_ROBBER', 'You must move the robber first'
     if game.must_choose_victim:
         return 'MUST_CHOOSE_VICTIM', 'You must choose a victim to steal from'
+    # A pending choice freezes the whole table, not only the player who owes
+    # it: the game has stopped on a question, and building on around it would
+    # let the current player spend cards a Wedding is about to take.
+    blocked = game.choice_block(name)
+    if blocked is not None:
+        return blocked['code'], blocked['error']
     # Anyone who owes a discard is frozen, whoever's turn it is: they are over
     # the hand limit, and building would let them spend their way under it
     # instead of paying the 7.

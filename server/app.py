@@ -27,6 +27,7 @@ from flask_socketio import emit
 from handlers import (  # noqa: F401  (imported for their side effects)
     building,
     chat,
+    choices,
     cities_knights,
     dev_cards,
     lobby,

@@ -14,6 +14,7 @@ import pytest
 import state
 from extensions import socketio
 from game import cities_knights as ck_module
+from game import progress_cards
 from game import rules as rules_module
 from game.game import Game
 
@@ -224,12 +225,21 @@ class TestDefenderOfCatan:
         game.ck.defender_cards['Alice'] = 2
         assert game.victory_points_for('Alice') == 2
 
-    def test_tied_defenders_each_draw_a_progress_card_instead(self, game):
+    def test_tied_defenders_each_choose_a_deck_to_draw_from(self, game):
+        """The card is drawn "of their choice", so each defender is asked.
+
+        The deck used to be picked at random for them, which is the same shape
+        of bug as the barbarians picking the pillaged city.
+        """
         result = self._defended(game, 2, 2)
 
         assert sorted(result['defenders']) == ['Alice', 'Bob']
         assert game.ck.defender_cards['Alice'] == 0
-        assert sorted(result['draws']) == ['Alice', 'Bob']
+        assert sorted(result['awaiting_draws']) == ['Alice', 'Bob']
+        assert game.pending_choice_for('Alice')['options'] == list(progress_cards.DECKS)
+
+        assert game.resolve_choice('Alice', 'progress_deck', 'science')['success']
+        assert len(game.ck.hand_of('Alice')) == 1
 
 
 class TestOverTheWire:

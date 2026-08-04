@@ -279,6 +279,10 @@ class CitiesKnightsRules:
             'contributions': contributions,
             'defenders': [],
             'pillaged': [],
+            # Players who still owe a decision before the attack is finished:
+            # which of their cities is lost, or which deck they draw from.
+            'awaiting': [],
+            'awaiting_draws': [],
         }
 
         if result['won']:
@@ -292,20 +296,21 @@ class CitiesKnightsRules:
                     self.ck.defender_cards[winners[0]] = (
                         self.ck.defender_cards.get(winners[0], 0) + 1
                     )
-                else:
-                    # Tied defenders each draw a progress card of their choice
-                    # from any deck. There is no mechanism for "of their
-                    # choice" yet, so the deck is picked at random rather than
-                    # the draw being skipped entirely.
-                    result['draws'] = {}
+                elif self.rules['progress_cards']:
+                    # Tied defenders each draw a progress card "of their choice"
+                    # from any deck, so each of them is asked which deck. A
+                    # table playing barbarians without progress cards has no
+                    # deck to draw from and the tie simply awards nothing.
                     for winner in winners:
-                        deck_name = self.rng.choice(progress_cards.DECKS)
-                        drawn = self._grant_progress_card(winner, deck_name)
-                        if drawn:
-                            result['draws'][winner] = drawn
+                        self.open_choice(
+                            'progress_deck', winner, list(progress_cards.DECKS),
+                            reason='defence',
+                        )
+                        result['awaiting_draws'].append(winner)
         else:
-            # The weakest defenders each lose a city. A player with no cities,
-            # or whose only cities are metropolises, is untouched.
+            # The weakest defenders each lose a city, and the rulebook lets the
+            # *player* choose which one. A player with no cities, or whose only
+            # cities are metropolises, is untouched.
             eligible = {
                 name: strength
                 for name, strength in contributions.items()
@@ -313,25 +318,56 @@ class CitiesKnightsRules:
             }
             if eligible:
                 worst = min(eligible.values())
-                for name, strength in eligible.items():
-                    if strength == worst:
-                        if self._pillage_city(name):
-                            result['pillaged'].append(name)
+                # Seating order rather than the dict's, so which player is asked
+                # first does not depend on how the contributions were built.
+                for player in self.players:
+                    if eligible.get(player.name) != worst:
+                        continue
+                    cities = self._pillageable_cities(player.name)
+                    # One city is no decision at all, so it goes without asking
+                    # and the table is not made to wait on a single button.
+                    if len(cities) == 1:
+                        if self._pillage_city(player.name, cities[0]):
+                            result['pillaged'].append(player.name)
+                    else:
+                        self.open_choice('barbarian_city', player.name, cities)
+                        result['awaiting'].append(player.name)
 
         self.ck.deactivate_all()
         self.ck.reset_barbarians()
         return result
 
+    def _choice_barbarian_city(self, choice: dict, option: str) -> dict:
+        """The city its owner picked for the barbarians to sack."""
+        pillaged = self._pillage_city(choice['player'], option)
+        return {'pillaged': pillaged, 'vertex': option}
+
+    def _choice_progress_deck(self, choice: dict, option: str) -> dict:
+        """The deck a joint defender chose to draw from."""
+        return {'drew': bool(self._grant_progress_card(choice['player'], option))}
+
     def _has_pillageable_city(self, player_name: str) -> bool:
+        return bool(self._pillageable_cities(player_name))
+
+    def _pillageable_cities(self, player_name: str) -> list:
+        """The player's cities the barbarians could take, in a fixed order.
+
+        Sorted because this list is offered to the player as their options, and
+        the timeout answers with the first of them — an order that varied with
+        the board's build history would make a replay depend on it.
+        """
+        player = self.get_player(player_name)
+        if player is None:
+            return []
+        return sorted(v for v in player.cities if not self.ck.is_metropolis(v))
+
+    def _pillage_city(self, player_name: str, vertex_key: str = None) -> bool:
+        """Turn one city back into a settlement. A metropolis is never taken."""
         player = self.get_player(player_name)
         if player is None:
             return False
-        return any(not self.ck.is_metropolis(v) for v in player.cities)
-
-    def _pillage_city(self, player_name: str) -> bool:
-        """Turn one city back into a settlement. A metropolis is never taken."""
-        player = self.get_player(player_name)
-        target = next((v for v in player.cities if not self.ck.is_metropolis(v)), None)
+        candidates = self._pillageable_cities(player_name)
+        target = vertex_key if vertex_key in candidates else next(iter(candidates), None)
         if target is None:
             return False
 
@@ -434,6 +470,10 @@ class CitiesKnightsRules:
         refusal = self._rule_is_off('progress_cards')
         if refusal is not None:
             return refusal
+
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
 
         card = progress_cards.CARDS_BY_ID.get(card_id)
         if card is None:
@@ -691,3 +731,322 @@ class CitiesKnightsRules:
                 hit[other.name] = owed
 
         return {'success': True, 'discards': hit}
+
+    def _progress_alchemist(self, player_name: str, target) -> dict:
+        """Decide both production dice before they are rolled.
+
+        Only the two production dice: the event die is still rolled, so the
+        barbarians advance and the city gates open as they would have.
+        """
+        faces = list(target or [])
+        if len(faces) != 2 or not all(
+            isinstance(face, int) and not isinstance(face, bool) and 1 <= face <= 6
+            for face in faces
+        ):
+            return {'success': False, 'error': 'Choose a value from 1 to 6 for each die'}
+        if self.pending_dice is not None:
+            return {'success': False, 'error': 'The dice for this roll are already chosen'}
+
+        self.pending_dice = (faces[0], faces[1])
+        return {'success': True, 'dice': list(faces)}
+
+    def _progress_merchant(self, player_name: str, target) -> dict:
+        """Put the merchant piece beside one of the player's own buildings.
+
+        Control passes with the piece: whoever played the card last holds the
+        2:1 rate on that hex and the victory point that goes with it.
+        """
+        hex_obj = self.hexes.get(target)
+        if hex_obj is None or hex_obj.type == 'ocean':
+            return {'success': False, 'error': 'The merchant stands on a land hex'}
+        if not self._touches_own_building(player_name, target):
+            return {
+                'success': False,
+                'error': 'The merchant goes on a hex touching one of your own buildings',
+            }
+
+        took_from = self.merchant_holder if self.merchant_holder != player_name else None
+        self.merchant_hex = target
+        self.merchant_holder = player_name
+        return {'success': True, 'hex': target, 'resource': hex_obj.type, 'took_from': took_from}
+
+    def _touches_own_building(self, player_name: str, hex_key: str) -> bool:
+        """Whether the player has a settlement or city on this hex."""
+        player = self.get_player(player_name)
+        if player is None:
+            return False
+        for vertex_key in player.settlements + player.cities:
+            vertex = self.vertices.get(vertex_key)
+            if vertex is not None and hex_key in vertex.neighbors.get('hexes', []):
+                return True
+        return False
+
+    def _progress_diplomat(self, player_name: str, target) -> dict:
+        """Remove an open road; if it was your own, rebuild it for free."""
+        edge = self.edges.get(target)
+        if edge is None or edge.road is None:
+            return {'success': False, 'error': 'There is no road there'}
+        if not self._road_is_open(target):
+            return {'success': False, 'error': 'That road is built up at both ends'}
+
+        owner = edge.road.get('player')
+        edge.road = None
+        holder = self.get_player(owner)
+        if holder is not None and target in holder.roads:
+            holder.roads.remove(target)
+        # Removing a road can break somebody's longest one, including a road
+        # the card's own player was relying on.
+        self.update_longest_road()
+
+        rebuilt = owner == player_name
+        if rebuilt:
+            # "they may rebuild it elsewhere for free" — the same allowance
+            # Road Building grants, and it expires with the turn for the same
+            # reason.
+            self.free_roads_remaining += 1
+        return {'success': True, 'road': target, 'owner': owner, 'free_road': rebuilt}
+
+    def _road_is_open(self, edge_key: str) -> bool:
+        """Whether a road has an end that leads nowhere.
+
+        An open road is one that "does not connect at both ends to another road
+        or building", so one free end is enough for the Diplomat to take it.
+        A ship counts as a connection: it is the same route continuing.
+        """
+        edge = self.edges.get(edge_key)
+        if edge is None:
+            return False
+
+        for vertex_key in edge.neighbors.get('vertices', []):
+            vertex = self.vertices.get(vertex_key)
+            if vertex is None or vertex.building is not None:
+                continue
+            connected = any(
+                other_key != edge_key
+                and self.edges.get(other_key) is not None
+                and (self.edges[other_key].road or self.edges[other_key].ship)
+                for other_key in vertex.neighbors.get('edges', [])
+            )
+            if not connected:
+                return True
+        return False
+
+    # --- Cards that stop the game and ask somebody else ---------------------
+
+    def _hand_card_types(self, player) -> list:
+        """The card types a player actually holds, in a fixed order.
+
+        Resources and commodities together: a Master Merchant or a Wedding
+        takes "cards", and a commodity is one. Sorted because this is offered
+        as an option list and the timeout answers with the first entry.
+        """
+        held = {**player.resources, **player.commodities}
+        return sorted(card_type for card_type, count in held.items() if count > 0)
+
+    def _move_card(self, giver, taker, card_type: str) -> bool:
+        """Move one card of any type between two hands."""
+        hand = giver.commodities if card_type in COMMODITY_TYPES else giver.resources
+        if hand.get(card_type, 0) < 1:
+            return False
+        hand[card_type] -= 1
+        other = taker.commodities if card_type in COMMODITY_TYPES else taker.resources
+        other[card_type] = other.get(card_type, 0) + 1
+        return True
+
+    def _progress_commercial_harbor(self, player_name: str, target) -> dict:
+        """Offer one resource to every opponent who holds a commodity.
+
+        Which commodity they part with is theirs to choose, so each of them is
+        asked; how many hold one at all is public from their card counts, so
+        refusing a card that would ask nobody gives nothing away.
+        """
+        player = self.get_player(player_name)
+        if player is None or player.resources.get(target, 0) < 1:
+            return {'success': False, 'error': f'You have no {target} to offer'}
+
+        asked = []
+        for other in self.players:
+            if other.name == player_name:
+                continue
+            held = sorted(c for c, count in other.commodities.items() if count > 0)
+            if not held:
+                continue
+            self.open_choice(
+                'commercial_harbor', other.name, held, to=player_name, resource=target
+            )
+            asked.append(other.name)
+
+        if not asked:
+            return {'success': False, 'error': 'Nobody has a commodity to trade'}
+        return {'success': True, 'resource': target, 'asked': asked}
+
+    def _choice_commercial_harbor(self, choice: dict, option: str) -> dict:
+        """One opponent hands over a commodity and takes the resource."""
+        giver = self.get_player(choice['player'])
+        taker = self.get_player(choice['context']['to'])
+        resource = choice['context']['resource']
+        if giver is None or taker is None:
+            return {'traded': False}
+        # The offered resource is paid out of a hand that may have been spent
+        # since the card was played, and a trade with nothing on one side is
+        # no trade.
+        if taker.resources.get(resource, 0) < 1:
+            return {'traded': False}
+        if not self._move_card(giver, taker, option):
+            return {'traded': False}
+
+        self._move_card(taker, giver, resource)
+        return {'traded': True, 'commodity': option, 'resource': resource}
+
+    def _progress_master_merchant(self, player_name: str, target) -> dict:
+        """Look at the hand of a player who is ahead, and take two cards."""
+        victim = self.get_player(target) if isinstance(target, str) else None
+        if victim is None or target == player_name:
+            return {'success': False, 'error': 'Name another player'}
+        if self.victory_points_for(target) <= self.victory_points_for(player_name):
+            return {'success': False, 'error': 'Only a player ahead of you can be robbed'}
+
+        options = self._hand_card_types(victim)
+        if not options:
+            return {'success': False, 'error': f'{target} is holding no cards'}
+
+        self.open_choice('master_merchant', player_name, options, victim=target, left=2)
+        return {'success': True, 'victim': target}
+
+    def _choice_master_merchant(self, choice: dict, option: str) -> dict:
+        """Take one named card, then ask again until two have been taken."""
+        return self._take_chosen_card(
+            choice, option, giver_name=choice['context']['victim'],
+            taker_name=choice['player'], kind='master_merchant',
+        )
+
+    def _progress_wedding(self, player_name: str, target) -> dict:
+        """Every player ahead gives two cards, each of the giver's choosing."""
+        threshold = self.victory_points_for(player_name)
+        asked = []
+        for other in self.players:
+            if other.name == player_name:
+                continue
+            if self.victory_points_for(other.name) <= threshold:
+                continue
+            options = self._hand_card_types(other)
+            if not options:
+                continue
+            self.open_choice('wedding', other.name, options, to=player_name, left=2)
+            asked.append(other.name)
+
+        if not asked:
+            return {'success': False, 'error': 'Nobody ahead of you has a card to give'}
+        return {'success': True, 'asked': asked}
+
+    def _choice_wedding(self, choice: dict, option: str) -> dict:
+        """The giver hands over one card, then is asked for the second."""
+        return self._take_chosen_card(
+            choice, option, giver_name=choice['player'],
+            taker_name=choice['context']['to'], kind='wedding',
+        )
+
+    def _take_chosen_card(self, choice, option, giver_name, taker_name, kind) -> dict:
+        """Move one chosen card, and re-ask while cards are still owed.
+
+        Master Merchant and Wedding both take two cards one at a time rather
+        than in one answer, because the second choice has to be offered against
+        the hand the first one left behind.
+        """
+        giver = self.get_player(giver_name)
+        taker = self.get_player(taker_name)
+        if giver is None or taker is None or not self._move_card(giver, taker, option):
+            return {'taken': None}
+
+        left = choice['context'].get('left', 1) - 1
+        if left > 0:
+            options = self._hand_card_types(giver)
+            if options:
+                context = dict(choice['context'])
+                context['left'] = left
+                self.open_choice(kind, choice['player'], options, **context)
+        return {'taken': option, 'left': left}
+
+    def _progress_spy(self, player_name: str, target) -> dict:
+        """Look at another player's progress cards and take one."""
+        if not isinstance(target, str) or self.get_player(target) is None:
+            return {'success': False, 'error': 'Name another player'}
+        if target == player_name:
+            return {'success': False, 'error': 'Name another player'}
+
+        # Deduplicated: the options are card types, and taking one takes one
+        # copy. How many cards the target holds is already public.
+        options = sorted(set(self.ck.hand_of(target)))
+        if not options:
+            return {'success': False, 'error': f'{target} is holding no progress cards'}
+
+        self.open_choice('spy', player_name, options, victim=target)
+        return {'success': True, 'victim': target}
+
+    def _choice_spy(self, choice: dict, option: str) -> dict:
+        """Take the named progress card out of the other player's hand."""
+        victim_hand = self.ck.hand_of(choice['context']['victim'])
+        if option not in victim_hand or self.ck.hand_is_full(choice['player']):
+            return {'taken': None}
+
+        victim_hand.remove(option)
+        self.ck.hand_of(choice['player']).append(option)
+        return {'taken': option}
+
+    def _progress_deserter(self, player_name: str, target) -> dict:
+        """Lure a knight away from a chosen opponent.
+
+        Which knight deserts is the opponent's choice, so they are asked; the
+        replacement is then placed by the player who played the card, which is
+        a second decision and a second choice.
+        """
+        if not isinstance(target, str) or self.get_player(target) is None:
+            return {'success': False, 'error': 'Name another player'}
+        if target == player_name:
+            return {'success': False, 'error': 'Name another player'}
+
+        knights = sorted(knight.vertex for knight in self.ck.knights_of(target))
+        if not knights:
+            return {'success': False, 'error': f'{target} has no knights on the board'}
+
+        self.open_choice('deserter', target, knights, to=player_name)
+        return {'success': True, 'opponent': target}
+
+    def _choice_deserter(self, choice: dict, option: str) -> dict:
+        """The opponent gives up a knight; the player is asked where theirs goes."""
+        owner = choice['player']
+        found, knight = self.ck.knight_at(option)
+        if knight is None or found != owner:
+            return {'deserted': None}
+
+        self.ck.knights_of(owner).remove(knight)
+        taker = choice['context']['to']
+
+        # A knight of the same rank, "if they have a matching knight token
+        # available" — and only if there is anywhere legal to stand.
+        if not self.ck.can_build_knight(taker, knight.rank):
+            return {'deserted': option, 'rank': knight.rank, 'replaced': False}
+        placements = self._knight_placements(taker)
+        if not placements:
+            return {'deserted': option, 'rank': knight.rank, 'replaced': False}
+
+        self.open_choice('deserter_placement', taker, placements, rank=knight.rank)
+        return {'deserted': option, 'rank': knight.rank, 'replaced': True}
+
+    def _choice_deserter_placement(self, choice: dict, option: str) -> dict:
+        """Stand the deserter's replacement on the chosen intersection."""
+        rank = choice['context']['rank']
+        if self.ck.knight_at(option)[1] is not None:
+            return {'placed': None}
+        self.ck.knights_of(choice['player']).append(ck_module.Knight(option, rank))
+        return {'placed': option, 'rank': rank}
+
+    def _knight_placements(self, player_name: str) -> list:
+        """Where this player could stand a new knight, in a fixed order."""
+        return sorted(
+            vertex_key
+            for vertex_key, vertex in self.vertices.items()
+            if vertex.building is None
+            and self.ck.knight_at(vertex_key)[1] is None
+            and self._touches_own_road(player_name, vertex_key)
+        )

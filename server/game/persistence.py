@@ -131,6 +131,18 @@ def serialize(game: Game) -> dict:
         'free_roads_remaining': game.free_roads_remaining,
         'pending_invention': game.pending_invention,
         'pending_monopoly': game.pending_monopoly,
+        # A restart in the middle of a decision must not deadlock the game, so
+        # who owes what is saved along with the options they were offered. The
+        # deadline is deliberately left out: it is wall-clock time, and a save
+        # reloaded an hour later would expire every choice before the players
+        # had a chance to answer it.
+        'pending_choices': [
+            {key: choice[key] for key in ('kind', 'player', 'options', 'context')}
+            for choice in game.pending_choices
+        ],
+        'pending_dice': list(game.pending_dice) if game.pending_dice else None,
+        'merchant_hex': game.merchant_hex,
+        'merchant_holder': game.merchant_holder,
         'state_version': game.state_version,
         'longest_road_holder': game.longest_road_holder,
         'largest_army_holder': game.largest_army_holder,
@@ -278,11 +290,22 @@ def deserialize(data: dict, config=None) -> Game:
                   'state_version', 'longest_road_holder', 'largest_army_holder',
                   'longest_road_length', 'harbormaster_holder', 'harbor_points',
                   'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
-                  'player_islands', 'island_points'):
+                  'player_islands', 'island_points', 'merchant_hex', 'merchant_holder'):
         if field in data:
             setattr(game, field, data[field])
 
     game.dice_deck = [tuple(pair) for pair in data.get('dice_deck', [])]
+    saved_dice = data.get('pending_dice')
+    game.pending_dice = tuple(saved_dice) if saved_dice else None
+
+    # Reopened rather than restored verbatim, so each choice starts its clock
+    # again from the moment the game came back up. An older save carries none
+    # of these and simply resumes with nothing pending.
+    for saved_choice in data.get('pending_choices', []):
+        game.open_choice(
+            saved_choice['kind'], saved_choice['player'], saved_choice['options'],
+            **saved_choice.get('context', {}),
+        )
 
     game.bank.resources = dict(data.get('bank', game.bank.resources))
     game.bank.dev_cards_deck = dict(data.get('dev_cards_deck', game.bank.dev_cards_deck))

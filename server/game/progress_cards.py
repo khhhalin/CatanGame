@@ -306,7 +306,10 @@ PROGRESS_CARDS = [
             "board for free, if they have a matching knight token available."
         ),
         "timing": TIMING_TURN,
-        "needs_target": "knight",
+        # The card names an *opponent*, not a knight: which of their knights
+        # deserts is that opponent's own decision, and the engine asks them for
+        # it once the card is played.
+        "needs_target": "player",
         "victory_points": 0,
     },
     {

@@ -12,9 +12,11 @@ from game.validation import (
     RESOURCE_TYPES,
     InvalidPayload,
     require_choice,
+    require_int,
     require_str,
 )
 from state import (
+    announce_choices,
     bump_and_broadcast,
     log_event,
     rate_limited,
@@ -167,14 +169,25 @@ def _progress_target(card, data):
     if needs in _SINGLE_KEY_TARGETS:
         return require_str(data.get('target'), _SINGLE_KEY_TARGETS[needs])
 
+    if needs == 'player':
+        # Only that it is a name; whether it is a player at this table, and one
+        # this card may be aimed at, is the engine's to decide.
+        return require_str(data.get('target'), 'player')
+
+    if needs == 'dice':
+        raw = data.get('target')
+        if not isinstance(raw, list) or len(raw) != 2:
+            raise InvalidPayload('INVALID_PAYLOAD', 'target must be two die values')
+        return [require_int(value, 'die', minimum=1, maximum=6) for value in raw]
+
     if needs in _LIST_TARGETS:
         raw = data.get('target')
         if not isinstance(raw, list) or not 1 <= len(raw) <= 2:
             raise InvalidPayload('INVALID_PAYLOAD', 'target must be a list of one or two keys')
         return [require_str(item, _LIST_TARGETS[needs]) for item in raw]
 
-    # 'player', 'resource_or_commodity' and 'dice' belong to cards the engine
-    # cannot resolve yet; play_progress_card refuses them by name.
+    # 'resource_or_commodity' belongs to Merchant Fleet, which the engine
+    # cannot resolve yet; play_progress_card refuses it by name.
     raise InvalidPayload('NOT_IMPLEMENTED', f"{card['name']} cannot be played yet")
 
 
@@ -216,6 +229,9 @@ def handle_play_progress_card(data):
         logger.info("progress card player=%s card=%s result=%s", name, card_id, result)
         log_event('build', f"{name} played {card_name}", player=name)
         socketio.emit('progress_card_played', {'player': name, 'card': card_id})
+        # Several cards ask somebody — often an opponent — to decide something
+        # before they finish resolving.
+        announce_choices()
         bump_and_broadcast()
 
 

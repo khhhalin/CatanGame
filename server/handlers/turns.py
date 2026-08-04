@@ -11,6 +11,7 @@ from game.validation import (
     require_str,
 )
 from state import (
+    announce_choices,
     bump_and_broadcast,
     log_event,
     rate_limited,
@@ -176,7 +177,9 @@ def _announce_event_die(event):
                     player=player_name,
                 )
     else:
-        losers = ', '.join(result['pillaged']) or 'nobody'
+        # A player with more than one city to lose picks which one, so the
+        # attack is not finished until they have answered.
+        losers = ', '.join(result['pillaged'] + result['awaiting']) or 'nobody'
         log_event(
             'game',
             f"The barbarians sack Catan! {losers} lost a city "
@@ -203,6 +206,10 @@ def _announce_dice_roll(name, result):
 
     socketio.emit('dice_rolled', {'player': name, 'dice1': dice1, 'dice2': dice2, 'total': total})
 
+    # A barbarian attack can stop the game on a question — which city is lost,
+    # which deck a joint defender draws from — so whoever owes an answer is
+    # told before the board goes out.
+    announce_choices()
     bump_and_broadcast({'highlight': total})
 
 
@@ -260,6 +267,25 @@ def _resolve_on_timeout():
         )
 
 
+def _resolve_choices_on_timeout():
+    """Answer the decisions nobody made in time. Caller holds session.lock.
+
+    Every one is answered rather than dropped: the rule that asked is half
+    applied until it has an answer, and clearing the queue instead would leave
+    a barbarian attack that sacked no city at all.
+    """
+    game = state.session().game
+
+    for settled in game.auto_resolve_choices():
+        logger.info("choice timer expired, answered automatically: %s", settled)
+        log_event(
+            'game',
+            f"{settled['player']} ran out of time, so the choice was made for them",
+            player=settled['player'],
+        )
+        socketio.emit('choice_resolved', {'player': settled['player'], 'kind': settled['kind']})
+
+
 def _turn_watchdog():
     """Expire turns server-side.
 
@@ -290,6 +316,15 @@ def _turn_watchdog():
                     if not session.game.is_round_expired():
                         continue
                     _resolve_on_timeout()
+
+                # A pending choice keeps its own clock rather than borrowing
+                # the round's: it can be owed by a player whose turn it is not,
+                # and the round timer does not even run before the dice are up,
+                # which would have parked the watchdog here exactly as before.
+                if session.game.pending_choices:
+                    if not session.game.choices_expired():
+                        continue
+                    _resolve_choices_on_timeout()
 
                 current_player = session.game.players[session.game.current_player_index]
 

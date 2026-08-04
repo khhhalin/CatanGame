@@ -9,6 +9,9 @@ through parameters would obscure the rules, which are the point.
 
 from game.results import refused
 
+# What the merchant piece is worth at the bank, for the hex it stands on.
+MERCHANT_TRADE_RATE = 2
+
 
 class TradeRules:
     """Everything that moves cards between players, the bank and a harbour."""
@@ -27,6 +30,13 @@ class TradeRules:
             rate = min(rate, self.rules['generic_harbour_rate'])
         if any(resource in ports for resource in offered):
             rate = min(rate, self.rules['special_harbour_rate'])
+        # "The player controlling the merchant may trade the resource type of
+        # the hex the merchant stands on with the bank at a 2:1 rate" — a
+        # harbour the player carries with them, so it is read here rather than
+        # written into their port list.
+        if self.merchant_holder == player_name and self.merchant_hex in self.hexes:
+            if self.hexes[self.merchant_hex].type in offered:
+                rate = min(rate, MERCHANT_TRADE_RATE)
         return rate
 
     def propose_trade(self, player_name: str, offered: dict, wanted: dict) -> dict:

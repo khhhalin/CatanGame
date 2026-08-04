@@ -9,6 +9,7 @@ from game.bank import Bank
 from game.board import BoardBuilder
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
+from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
 from game.robber_rules import RobberRules
@@ -20,7 +21,7 @@ from game.turn_clock import TurnClock
 logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
-           CitiesKnightsRules, TurnClock):
+           CitiesKnightsRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -131,6 +132,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Timer settings (in seconds)
         self.dice_roll_time_limit = getattr(config, 'DICE_ROLL_SECONDS', 15)
         self.round_time_limit = getattr(config, 'ROUND_SECONDS', 120)
+        # How long a player has to answer a pending choice before the server
+        # answers it for them. Shorter than a round: the whole table is frozen
+        # while one player decides, and often it is not even their turn.
+        self.choice_time_limit = getattr(config, 'CHOICE_SECONDS', 30)
+
+        # Decisions the engine has stopped to ask for — see
+        # `game/pending_choice.py`. Each entry names the kind of decision, the
+        # player who owes it and the options they may pick from.
+        self.pending_choices = []
 
         # Exactly what the table set, and nothing else. Rules that suit a
         # different length say so in the catalogue (`suggests_victory_target`)
@@ -165,6 +175,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # What is left of the shuffled dice deck, when the table plays with
         # one. Empty means the next roll deals a fresh 36.
         self.dice_deck = []
+        # The two production faces an Alchemist has already decided, or None.
+        self.pending_dice = None
+
+        # The merchant piece: which land hex it stands on and who put it there.
+        # Only a Merchant progress card ever moves it.
+        self.merchant_hex = None
+        self.merchant_holder = None
 
         self.turn_start_time = None  # timestamp when turn started
         self.dice_rolled_time = None  # timestamp when dice was rolled
@@ -413,6 +430,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         """
         if self.must_move_robber:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
@@ -495,6 +515,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         """
         if self.must_move_robber:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
@@ -558,6 +581,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         """Turn one of the player's own settlements into a city."""
         if self.must_move_robber:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
 
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')
@@ -653,6 +679,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # never lost, so they are simply added to the owner's total.
         if self.rules['island_victory_points']:
             points += self.island_points.get(player_name, 0)
+
+        # "The player controlling the merchant scores 1 victory point for as
+        # long as they control it" — and control passes the moment somebody
+        # else plays a Merchant card, so this is read rather than banked.
+        if self.merchant_holder == player_name:
+            points += 1
 
         if self.ck is not None:
             if self.rules['metropolis']:
@@ -765,6 +797,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             if self.game_phase == "setup"
             else self.players[self.current_player_index].name,
             'robber_hex': self.robber_hex,
+            'merchant_hex': self.merchant_hex,
+            'merchant_holder': self.merchant_holder,
+            # Filtered per recipient: only the player who owes a decision is
+            # told what the options are, because they can be the contents of
+            # somebody else's hand.
+            'pending_choices': self.pending_choices_for_client(viewer),
             'pirate_hex': self.pirate_hex,
             'ship_moved_this_turn': self.ship_moved_this_turn,
             'island_points': self.island_points,
@@ -957,6 +995,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot roll dice during setup phase')
 
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
+
         current_name = self.players[self.current_player_index].name
         if current_name != player_name:
             return refused('NOT_YOUR_TURN', f'Only {current_name} can roll dice')
@@ -1007,7 +1049,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         from observed outcomes. With the dice deck in play the faces are dealt
         instead: every one of the 36 combinations comes out once before any of
         them comes out twice, which is what evens the production out.
+
+        An Alchemist played before the roll has already decided both faces, and
+        those are used once and then forgotten — including in place of a dealt
+        pair, since the card overrules the deck for exactly one roll.
         """
+        if self.pending_dice is not None:
+            chosen, self.pending_dice = self.pending_dice, None
+            return chosen
+
         if not self.rules['dice_deck']:
             return self.rng.randint(1, 6), self.rng.randint(1, 6)
 
