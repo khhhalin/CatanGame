@@ -200,6 +200,50 @@ RULES = [
             "numbers can come up at all, and how often each one does."
         ),
     },
+    {
+        "id": "starting_city_yield",
+        "group": CORE,
+        "type": CHOICE,
+        "default": "resource_and_commodity",
+        "options": [
+            {
+                "id": "resource_and_commodity",
+                "name": "A resource and a commodity",
+                "summary": (
+                    "The Cities & Knights reading: the starting city collects "
+                    "one resource from every terrain hex it touches, and one "
+                    "commodity as well where that terrain has one."
+                ),
+            },
+            {
+                "id": "resource_only",
+                "name": "One resource a hex",
+                "summary": (
+                    "The Traders & Barbarians reading: the starting city "
+                    "collects one resource per adjacent terrain hex and "
+                    "nothing else, however the rest of the game pays."
+                ),
+            },
+        ],
+        "name": "Starting city yield",
+        # Two published readings of the same placement, which is why this is a
+        # choice and not a switch: the table says which rulebook it is playing.
+        "source": (
+            "expansions.md 302, Cities & Knights (\"Each player collects one "
+            "resource (and, where applicable, one commodity) from every "
+            "terrain hex adjacent to the city placed during the second setup "
+            "round\"); expansions.md 620 and 695, Traders & Barbarians "
+            "scenarios (\"he still receives only 1 resource for each terrain "
+            "hex adjacent to that starting city\")"
+        ),
+        "summary": (
+            "What the city placed in the second setup round pays out. Both "
+            "readings are official: Cities & Knights adds the commodity where "
+            "the terrain has one, the Traders & Barbarians scenarios pay one "
+            "resource a hex and nothing more. Either way it is one resource "
+            "per hex, and the desert and the sea pay nothing."
+        ),
+    },
 ]
 
 

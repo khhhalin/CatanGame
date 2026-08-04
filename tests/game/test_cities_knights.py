@@ -690,6 +690,22 @@ class TestSetupPhase:
         assert player.resources.get('sheep') == 1
         assert player.commodities.get('cloth') == 1
 
+    def test_a_table_can_play_the_starting_city_at_one_card_a_hex(self):
+        """Reported twice: the starting city pays too much.
+
+        Both readings are published — Cities & Knights (expansions.md 302) has
+        the city collect a resource "and, where applicable, one commodity",
+        while the Traders & Barbarians scenarios (expansions.md 620, 695) say
+        "he still receives only 1 resource for each terrain hex adjacent to
+        that starting city". The table picks which one it is playing.
+        """
+        game = ck_game({'starting_city_yield': 'resource_only'})
+        vertex_key, _ = city_on(game, 'Alice', 'sheep')
+        game.distribute_from_settlement(vertex_key, 'Alice')
+        player = game.get_player('Alice')
+        assert player.resources.get('sheep') == 1
+        assert player.commodities == {}
+
     def test_a_starting_settlement_yields_no_commodity(self):
         game = ck_game()
         for vertex_key, vertex in game.vertices.items():

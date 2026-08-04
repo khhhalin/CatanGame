@@ -1004,8 +1004,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
                 # The starting city yields "one resource and, where applicable,
                 # one commodity" from each adjacent hex — one of each, not the
-                # doubled production of a normal city turn.
-                if self.rules['commodities'] and is_city:
+                # doubled production of a normal city turn. A table playing the
+                # Traders & Barbarians reading takes the resource alone.
+                pays_commodity = self.rules['starting_city_yield'] == 'resource_and_commodity'
+                if self.rules['commodities'] and is_city and pays_commodity:
                     commodity = ck_module.COMMODITY_FROM_TERRAIN.get(hex_obj.type)
                     if commodity:
                         player.commodities[commodity] = player.commodities.get(commodity, 0) + 1
