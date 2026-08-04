@@ -369,17 +369,42 @@ button:disabled {
     overflow-wrap: anywhere;
 }
 
+/* Pushed to the end rather than left to `space-between`, which would spread the
+   award badges across the row once a player holds one. */
 .score-points {
     flex: none;
+    margin-left: auto;
     font-variant-numeric: tabular-nums;
+}
+
+/* The awards this player holds, beside their name. Kept out of `.score-name`
+   so a long name wraps without pushing a badge onto a line of its own. */
+.score-badge {
+    flex: none;
+    font-size: var(--text-xs);
 }
 
 /* Deliberately inherits the row's own text colour rather than --text-muted or
    an opacity: the row is filled with the player's colour, which the client
-   already picked a contrasting ink for, and either of those would undo that. */
-.score-meta {
-    font-size: var(--text-2xs);
-    line-height: var(--leading-tight);
+   already picked a contrasting ink for, and either of those would undo that.
+
+   A wrapping row of icon+number pairs rather than one run of abbreviations:
+   at rail width the old single line ran past the box and read as noise, and
+   every pair here is one fact a player can find by its icon. */
+.score-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--space-2);
+    margin-top: 0.15rem;
+    /* Not --text-2xs: at 11px an emoji is a blob, and "readable at a glance"
+       is the whole point of the row. The rail has the height for it. */
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+}
+
+.score-chip {
+    white-space: nowrap;
 }
 
 .user-list li.current-turn {

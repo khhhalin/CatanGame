@@ -29,7 +29,10 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
+    build_road,
+    build_settlement,
     launch_browser,
+    legal_setup_vertices,
     start_server,
     stop_server,
 )
@@ -279,3 +282,230 @@ class TestBuyCardIsNotOfferedWhereItIsRefused:
     def test_no_console_errors(self, progress_card_table):
         player, _ = progress_card_table
         assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- 3. Every player's state, readable at once ----------------------------
+#
+# The tester: "ui zrobic czytelniejsze przynajmniej graczy wszystkich stan
+# wyswietlac naraz". The row was `Rd 0 · Kn 0 · 🃏0 · 🏺0 com · 📜0` - a run of
+# abbreviations that named neither the pieces on the board nor what any of it
+# meant.
+#
+# The measurement is the layout suite's, because this is the change most likely
+# to push the rail off the bottom of the screen: nothing may scroll or clip at
+# 1920x1080 with four players and every expansion on.
+
+_OVERFLOWING = """
+() => {
+    const allowed = new Set(['log-entries']);
+    const out = [];
+    const describe = (el) => el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}.${el.className}`;
+    for (const el of document.querySelectorAll('#game-screen *, .table-aside *')) {
+        if (allowed.has(el.id) || el.closest('#log-entries')) {
+            continue;
+        }
+        const style = getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden'
+            || style.position === 'fixed') {
+            continue;
+        }
+        if (el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0) {
+            out.push({ el: describe(el), axis: 'y',
+                       content: el.scrollHeight, box: el.clientHeight });
+        }
+        if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) {
+            out.push({ el: describe(el), axis: 'x',
+                       content: el.scrollWidth, box: el.clientWidth });
+        }
+    }
+    return out;
+}
+"""
+
+_OFF_SCREEN = """
+() => {
+    const out = [];
+    const describe = (el) => el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}.${el.className}`;
+    for (const el of document.querySelectorAll(
+            '#game-screen .panel, #game-screen .fold, .table-aside .panel')) {
+        const style = getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            continue;
+        }
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 && box.height === 0) {
+            continue;
+        }
+        if (box.bottom > window.innerHeight + 1 || box.top < -1
+            || box.right > window.innerWidth + 1 || box.left < -1) {
+            out.push({ el: describe(el),
+                       box: [box.left, box.top, box.right, box.bottom] });
+        }
+    }
+    return out;
+}
+"""
+
+# One row per player, as a reader sees it: the name, the score, and every chip
+# with the label it carries for a screen reader.
+_SCOREBOARD = """
+() => Array.from(document.querySelectorAll('#game-players li')).map(row => ({
+    name: row.querySelector('.score-name').textContent,
+    points: row.querySelector('.score-points').textContent,
+    badges: Array.from(row.querySelectorAll('.score-badge'))
+        .map(b => b.getAttribute('aria-label')),
+    chips: Array.from(row.querySelectorAll('.score-chip')).map(chip => ({
+        text: chip.textContent,
+        label: chip.getAttribute('aria-label'),
+    })),
+}))
+"""
+
+
+def place_setup_round(players):
+    """Drive the whole setup phase, so the scoreboard has pieces to report."""
+    for _ in range(len(players) * 2 * 2 + 4):
+        board = players[0].board()
+        if board["game_phase"] != "setup":
+            return
+        actor = next(p for p in players if p.name == board["current_player"])
+        if board.get("setup_action") == "road":
+            vertex = next(
+                key for key, vertex_data in board["vertices"].items()
+                if (vertex_data.get("building") or {}).get("player") == actor.name
+                and not any(
+                    (board["edges"][edge].get("road") or {}).get("player") == actor.name
+                    for edge in vertex_data["neighbors"]["edges"]
+                )
+            )
+            # With ships on, the sides leaving a coastal settlement include sea
+            # edges, where a road may never go.
+            build_road(actor, [
+                edge for edge in board["vertices"][vertex]["neighbors"]["edges"]
+                if not board["edges"][edge]["sea"]
+            ])
+        else:
+            # Only intersections a road can leave: with ships on, an
+            # intersection touching one land hex has nothing but sea sides, and
+            # the next half of setup asks for a road.
+            build_settlement(actor, [
+                vertex for vertex in legal_setup_vertices(board)
+                if any(not board["edges"][edge]["sea"]
+                       for edge in board["vertices"][vertex]["neighbors"]["edges"])
+            ])
+
+
+@pytest.fixture(scope="module")
+def crowded_table(browser, tmp_path_factory):
+    """Four players, every expansion on, past setup: the worst case for the rail."""
+    proc, url = start_server(tmp_path_factory.mktemp("tester-crowded"), seed=GAME_SEED)
+    players = [
+        Player(browser, url, name, viewport=VIEWPORT, yolo=True)
+        for name in ("Alice", "Bob", "Carol", "Dave")
+    ]
+    for player in players:
+        player.join()
+    players[0].page.evaluate(SET_RULES, EVERY_EXPANSION)
+    players[0].page.wait_for_timeout(600)
+    players[0].page.wait_for_selector("#start-game-btn:not(.hidden)", timeout=8000)
+    players[0].page.click("#start-game-btn")
+    for player in players:
+        player.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
+    place_setup_round(players)
+    yield players
+    stop_server(proc)
+
+
+class TestTheWholeTableIsReadableAtAGlance:
+    def test_every_expansion_really_is_on(self, crowded_table):
+        """Asserted against the running game rather than against the dict that
+        was sent: a rule set the server rejected would leave a base game here
+        and every assertion below would be measuring the easy case."""
+        board = crowded_table[0].board()
+        for rule in ("commodities", "knights", "barbarians", "city_walls",
+                     "progress_cards", "ships", "island_victory_points"):
+            assert board["rules"][rule] is True, f"{rule} is off"
+        assert len(board["players"]) == 4
+
+    def test_each_row_states_points_cards_pieces_and_knights(self, crowded_table):
+        """The tester's ask, one item at a time. Every one of these is public in
+        the payload and none of it was on the scoreboard."""
+        rows = crowded_table[0].page.evaluate(_SCOREBOARD)
+        assert len(rows) == 4, rows
+        for row in rows:
+            assert "pts" in row["points"], row
+            labels = " ".join(chip["label"] for chip in row["chips"])
+            for subject in ("resource cards", "settlement", "cities", "roads",
+                            "knights", "ships", "commodit"):
+                assert subject in labels, (
+                    f"{row['name']} says nothing about {subject}: {labels}"
+                )
+
+    def test_the_numbers_are_the_ones_the_server_sent(self, crowded_table):
+        """A scoreboard that shows plausible numbers of its own is worse than
+        none, so each row is checked against that player's payload entry."""
+        player = crowded_table[0]
+        rows = {row["name"].split(" ")[0]: row for row in player.page.evaluate(_SCOREBOARD)}
+        for entry in player.board()["players"]:
+            row = rows[entry["name"]]
+            chips = {chip["label"]: chip["text"] for chip in row["chips"]}
+            settlements = next(
+                text for label, text in chips.items() if "settlement" in label
+            )
+            assert str(len(entry["settlements"])) in settlements, (
+                f"{entry['name']} has {len(entry['settlements'])} settlements, "
+                f"the row says {settlements!r}"
+            )
+            cards = next(text for label, text in chips.items() if "resource cards" in label)
+            assert str(entry["resource_count"]) in cards, (
+                f"{entry['name']} holds {entry['resource_count']} cards, "
+                f"the row says {cards!r}"
+            )
+
+    def test_an_opponents_hand_is_a_count_and_never_its_contents(self, crowded_table):
+        """Hidden information stays hidden: the payload sends no per-type hand
+        for anyone but the viewer, so the row cannot show one."""
+        player = crowded_table[0]
+        for entry in player.board()["players"]:
+            if entry["is_you"]:
+                continue
+            assert entry["resources"] is None, entry["name"]
+            assert entry["commodities"] is None, entry["name"]
+            assert entry["dev_cards"] is None, entry["name"]
+
+    def test_who_holds_each_award_is_on_the_row_that_holds_it(self, crowded_table):
+        """A badge beside the name, so "who has Longest Road" is answered
+        without reading the award panel underneath."""
+        player = crowded_table[0]
+        # Arranged on the client's own copy: the awards are won over a whole
+        # game, and this is a question about what the scoreboard draws for a
+        # given payload.
+        player.page.evaluate(
+            """async name => {
+                const board = window.__catanDebug.getBoard();
+                board.longest_road_holder = name;
+                board.largest_army_holder = name;
+                const panels = await import('/static/js/panels.js');
+                panels.renderGameSidebar({ players: board.players });
+            }""",
+            "Carol",
+        )
+        rows = {row["name"].split(" ")[0]: row for row in player.page.evaluate(_SCOREBOARD)}
+        held = " ".join(rows["Carol"]["badges"])
+        assert "Longest" in held or "Trade Route" in held, held
+        assert "Largest Army" in held, held
+        for name in ("Alice", "Bob", "Dave"):
+            assert rows[name]["badges"] == [], f"{name} wears an award they do not hold"
+
+    def test_nothing_scrolls_and_nothing_is_clipped(self, crowded_table):
+        """The standing requirement: 1920x1080, four players, every expansion."""
+        for player in crowded_table:
+            overflowing = player.page.evaluate(_OVERFLOWING)
+            assert overflowing == [], f"{player.name}: these boxes clip: {overflowing}"
+            off_screen = player.page.evaluate(_OFF_SCREEN)
+            assert off_screen == [], f"{player.name}: off the screen: {off_screen}"
+        shot(crowded_table[0], "scoreboard-4p-every-expansion-light")
+
+    def test_no_console_errors(self, crowded_table):
+        for player in crowded_table:
+            assert player.noisy_errors() == [], f"{player.name}: {player.noisy_errors()}"
