@@ -161,6 +161,11 @@ def test_every_map_is_reproducible_across_processes():
     so a new map cannot quietly depend on hash order. The seafaring board is in
     the list because it is the one that grew: the sea doubles the graph and
     islands are found by flood fill, both of which walk sets of string keys.
+
+    The custom maps are in the same loop rather than in a test of their own,
+    because they are the ones with the most to get wrong: a map file is full of
+    dicts and sets — regions, pools, hex keys — and every one of them has to be
+    walked in an order that does not depend on the hash seed.
     """
     import json
     import os
@@ -171,6 +176,7 @@ def test_every_map_is_reproducible_across_processes():
         "import sys, json, random;"
         "sys.path.insert(0, 'server');"
         "from game.game import Game;"
+        "from game import map_store, maps;"
         "boards = {};"
         "\n"
         "for layout in ('random', 'beginner', 'large'):\n"
@@ -178,6 +184,19 @@ def test_every_map_is_reproducible_across_processes():
         "    rules = {'board_layout': layout, 'ships': ships}\n"
         "    g = Game(['A','B'], [], rng=random.Random(99), rules=rules)\n"
         "    boards[layout + str(ships)] = {"
+        "'hexes': sorted((k, h.type, h.number) for k, h in g.hexes.items()),"
+        "'vertices': sorted(g.vertices),"
+        "'edges': sorted(g.edges),"
+        "'islands': sorted(g.islands().items()),"
+        "'ports': sorted((k, str(e.port)) for k, e in g.edges.items() if e.port),"
+        "'robber': g.robber_hex}\n"
+        "for map_id in ('standard', 'large-island', 'little-shores'):\n"
+        "  defn = maps.parse_map(map_store.read_map(map_id))\n"
+        "  for ships in (False, True):\n"
+        "    rules = {'board_layout': 'custom', 'board_map': map_id, 'ships': ships}\n"
+        "    g = Game(['A','B'], [], rng=random.Random(99), rules=rules,"
+        " map_definition=defn)\n"
+        "    boards[map_id + str(ships)] = {"
         "'hexes': sorted((k, h.type, h.number) for k, h in g.hexes.items()),"
         "'vertices': sorted(g.vertices),"
         "'edges': sorted(g.edges),"

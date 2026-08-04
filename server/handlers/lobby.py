@@ -8,6 +8,7 @@ import state
 from extensions import socketio
 from flask import request
 from flask_socketio import emit
+from game import map_store, maps
 from game import rules as rules_module
 from game.game import Game
 from game.validation import (
@@ -288,11 +289,29 @@ def _start_game_locked():
         if u.get('role') == 'player' and u.get('color'):
             player_colors[u.get('name')] = u.get('color')
 
+    # A custom map is read from disk here and not before. `board_map`'s options
+    # are whatever was on disk when the picker was drawn, and `coerce` falls
+    # back to the default on an id it does not know — so a map deleted between
+    # the choice and the start would quietly hand the table a different board.
+    # Refuse by name instead.
+    map_definition = None
+    if session.lobby_rules['board_layout'] == 'custom':
+        map_id = session.lobby_rules['board_map']
+        try:
+            map_definition = map_store.load_definition(map_id)
+        except (map_store.UnknownMap, InvalidPayload) as exc:
+            reject('UNKNOWN_MAP', f'The map "{map_id}" cannot be played: {exc}')
+            return
+
     # Some rules cannot do anything without another: a metropolis needs the
     # improvement tracks that award one, progress cards need the event die the
-    # barbarians bring. Say so and refuse rather than tick the missing box —
-    # switching on a rule nobody agreed to is a different game.
+    # barbarians bring. A map joins the same list from the other side — two
+    # islands and no Ships is a table that cannot reach half its board. Say so
+    # and refuse rather than tick the missing box; switching on a rule nobody
+    # asked for is a different game.
     problems = rules_module.dependency_problems(session.lobby_rules)
+    if map_definition is not None:
+        problems += maps.start_problems(map_definition, session.lobby_rules)
     if problems:
         reject('INCOHERENT_RULES', 'These rules do not work together: ' + '; '.join(problems))
         return
@@ -307,7 +326,8 @@ def _start_game_locked():
     seed = getattr(session.config, 'GAME_SEED', None)
     session.game = Game(players, observers, player_colors, config=session.config,
                         rules=session.lobby_rules,
-                        rng=random.Random(seed) if seed else None)
+                        rng=random.Random(seed) if seed else None,
+                        map_definition=map_definition)
     session.game.start()
     session.game.update_harbormaster()
     logger.info("game started players=%s observers=%s rules=%s",

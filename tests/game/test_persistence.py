@@ -412,3 +412,64 @@ class TestFileHandling:
         persistence.save(game, path)
         persistence.save(game, path)
         assert not (tmp_path / "game.json.tmp").exists()
+
+
+class TestACustomMapSurvives:
+    """The map is inlined in the save, never named.
+
+    A map file can be edited or deleted between the save and the load, and a
+    game that regenerated its board against a changed map would put buildings
+    on hexes that no longer exist.
+    """
+
+    def _game(self, seed=3):
+        from game import map_store, maps
+        return Game(['Alice', 'Bob'], [], rng=random.Random(seed),
+                    rules={'board_layout': 'custom', 'board_map': 'little-shores',
+                           'ships': True},
+                    map_definition=maps.parse_map(map_store.read_map('little-shores')))
+
+    def test_the_whole_definition_is_written_not_an_id(self):
+        saved = persistence.serialize(self._game())
+        assert saved['map']['regions'], "the map itself, so a deleted file cannot break it"
+        assert saved['map']['id'] == 'little-shores'
+
+    def test_the_board_comes_back_hex_for_hex(self, tmp_path):
+        game = self._game()
+        before = {k: (h.type, h.number) for k, h in game.hexes.items()}
+        after = round_trip(game, tmp_path)
+        assert {k: (h.type, h.number) for k, h in after.hexes.items()} == before
+        assert after.map_definition == game.map_definition
+
+    def test_the_save_version_does_not_move_for_an_added_key(self):
+        """The key is additive and absent means "not a custom map", which is
+        the same reasoning this module already recorded for edge keys. Bumping
+        it would throw away every game in progress."""
+        assert persistence.SAVE_VERSION == 1
+        assert 'map' not in persistence.serialize(a_game())
+
+    def test_a_save_whose_map_was_hand_edited_into_nonsense_is_refused(self, tmp_path):
+        path = str(tmp_path / 'game.json')
+        persistence.save(self._game(), path)
+        with open(path) as handle:
+            saved = json.load(handle)
+        saved['map']['regions'][0]['pool']['terrain']['ore'] = 99
+        with open(path, 'w') as handle:
+            json.dump(saved, handle)
+
+        with pytest.raises(ValueError):
+            persistence.load(path)
+
+    def test_the_saved_map_wins_over_the_rule_beside_it(self, tmp_path):
+        """They can only disagree if somebody edited the file, and the inlined
+        definition is the one the buildings were placed on."""
+        path = str(tmp_path / 'game.json')
+        persistence.save(self._game(), path)
+        with open(path) as handle:
+            saved = json.load(handle)
+        saved['rules']['board_map'] = 'standard'
+        with open(path, 'w') as handle:
+            json.dump(saved, handle)
+
+        restored = persistence.load(path)
+        assert restored.map_definition.id == 'little-shores'

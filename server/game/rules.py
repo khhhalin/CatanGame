@@ -90,16 +90,49 @@ RULES = [
                     "tokens and 11 harbours. Room for five or six."
                 ),
             },
+            {
+                "id": "custom",
+                "name": "Custom map",
+                "summary": (
+                    "A map from the map editor — its own frame, its own "
+                    "regions and its own pool of tiles per region. Which one "
+                    "is the setting below."
+                ),
+            },
         ],
         "name": "Map",
         "source": (
             "Base game rulebook, Illustration A (beginner); "
-            "Catan 5–6 Player Extension rulebook (large)"
+            "Catan 5–6 Player Extension rulebook (large); "
+            "Seafarers rulebook, Scenario: New World, on designing your own "
+            "(\"may freely design and play scenarios of their own\")"
         ),
         "summary": (
             "Which island to play on. The random board is the standard game; "
             "the beginner map is the one printed in the rulebook; the large "
-            "map is the 5–6 player extension board."
+            "map is the 5–6 player extension board; a custom map is one "
+            "somebody at this table drew."
+        ),
+    },
+    {
+        "id": "board_map",
+        "group": CORE,
+        "type": CHOICE,
+        "default": "standard",
+        # Filled in by `catalogue()` from whatever is on disk right now, so a
+        # map saved a second ago is in every client's picker on the next
+        # `rules_changed` with no front-end change at all.
+        "options": [],
+        "dynamic": True,
+        "name": "Custom map",
+        "source": (
+            "Seafarers rulebook, Scenario: New World (\"the board is created "
+            "by shuffling all listed hexes face down and placing them face up "
+            "at random within the assembled frame\")"
+        ),
+        "summary": (
+            "Which custom map to play, when the map above is set to Custom. "
+            "Ignored otherwise."
         ),
     },
     {
@@ -414,6 +447,17 @@ RULES += [
           "one route where their owner has a settlement or city at the "
           "intersection they meet on.",
           group=EXPANSION),
+    _bool("start_on_main_land", "Start on the main land only", False,
+          "Seafarers rulebook, Scenario: The Wonders of Catan; expansions.md 251 "
+          "(\"Players build their first two settlements with roads or ships on "
+          "the main island only\"); Heading for New Shores, expansions.md 131",
+          "A starting settlement may only go on a region the map calls the "
+          "main land. It does not restrict building later — sailing to a far "
+          "island and settling it is the point of the game this belongs to. On "
+          "the built-in boards every land region is main land, so this changes "
+          "nothing there; it takes effect on a custom map that names an island "
+          "region.",
+          group=EXPANSION),
     _bool("island_victory_points", "Special points for new islands", False,
           "Seafarers rulebook, 'Catan Chits'; expansions.md 121-122, 208-210",
           "Your first settlement on an island you did not start on scores "
@@ -645,7 +689,16 @@ def coerce(raw: dict) -> dict:
         if rule["type"] == BOOL:
             chosen[rule_id] = bool(value)
         elif rule["type"] == CHOICE:
-            if value in {option["id"] for option in rule["options"]}:
+            if rule.get("dynamic"):
+                # The options are whatever is on disk at this instant, and this
+                # module does not touch the disk. Accepting any well-formed id
+                # is safe because it is only ever a lookup key: the map has to
+                # be read and validated before a game can start on it, and
+                # `_start_game_locked` refuses if it cannot be.
+                from game import maps
+                if isinstance(value, str) and maps.SLUG.match(value):
+                    chosen[rule_id] = value
+            elif value in {option["id"] for option in rule["options"]}:
                 chosen[rule_id] = value
         elif rule["type"] == INT:
             if isinstance(value, bool) or not isinstance(value, int):
@@ -695,8 +748,34 @@ def needs_expansion_state(chosen: dict) -> bool:
 
 
 def catalogue() -> list:
-    """The registry, for the lobby to render."""
-    return [dict(rule) for rule in RULES]
+    """The registry, for the lobby to render.
+
+    `board_map`'s options are read off disk here rather than declared above, so
+    a map saved a moment ago appears in the picker on the next broadcast. The
+    import is inside the function on purpose: a rules registry that could not be
+    imported without touching the filesystem would be felt by every test in the
+    suite.
+    """
+    from game import map_store
+
+    listed = []
+    for rule in RULES:
+        rule = dict(rule)
+        if rule["id"] == "board_map":
+            rule["options"] = [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "summary": (
+                        f"{row['hexes']} hexes, {row['regions']} regions, "
+                        f"{row['islands']} island{'s' if row['islands'] != 1 else ''}"
+                        + (" — has problems and cannot be played" if row["problems"] else "")
+                    ),
+                }
+                for row in map_store.list_maps()
+            ]
+        listed.append(rule)
+    return listed
 
 
 def presets() -> list:

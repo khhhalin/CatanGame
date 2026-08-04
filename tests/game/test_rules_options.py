@@ -676,3 +676,73 @@ class TestLegacyModeFlag:
         game = make_game({'cities_and_knights': True})
         assert game.ck is not None
         assert game.rules['knights'] is True
+
+
+class TestStartOnMainLandOnly:
+    """"Players build their first two settlements ... on the main island only."
+
+    The one thing a region's `kind` decides. It is a setup restriction and
+    nothing else: sailing out to a far island and settling it is the game this
+    rule belongs to, so it must not touch a build made later.
+    """
+
+    def _game(self, seed=3, **rules):
+        from game import map_store, maps
+        chosen = {'ships': True, 'island_victory_points': True, 'turn_order': 'lobby'}
+        chosen.update(rules)
+        return Game(['Alice', 'Bob'], [], rng=random.Random(seed), rules=chosen,
+                    map_definition=maps.parse_map(map_store.read_map('little-shores')))
+
+    def _far_island_vertex(self, game):
+        """An intersection touching land the map calls an island and nothing else."""
+        island = game.map_definition.hexes_of_kind('island')
+        for key in sorted(game.vertices):
+            hexes = game.vertices[key].neighbors['hexes']
+            if hexes and all(hex_key in island for hex_key in hexes):
+                return key
+        raise AssertionError('this seed dealt no far island')
+
+    def test_a_starting_settlement_may_not_go_on_a_far_island(self):
+        game = self._game(start_on_main_land=True)
+        game.start()
+
+        refused = game.place_settlement(game.current_player_name(),
+                                        self._far_island_vertex(game))
+
+        assert refused['code'] == 'INVALID_PLACEMENT'
+        assert 'main land' in refused['error']
+
+    def test_the_same_placement_is_allowed_with_the_rule_off(self):
+        game = self._game(start_on_main_land=False)
+        game.start()
+
+        assert game.place_settlement(game.current_player_name(),
+                                     self._far_island_vertex(game))['success']
+
+    def test_it_does_not_stop_settling_the_island_later(self):
+        """Which is the whole point of the expansion it comes from."""
+        game = self._game(start_on_main_land=True)
+        game.start()
+        landing = self._far_island_vertex(game)
+        game.game_phase = 'playing'
+        sea_edge = next(
+            key for key in sorted(game.vertices[landing].neighbors['edges'])
+            if game.is_sea_edge(key)
+        )
+        game.edges[sea_edge].ship = {'player': game.current_player_name(), 'built_turn': 0}
+        game.get_player(game.current_player_name()).ships.append(sea_edge)
+        game.get_player(game.current_player_name()).resources = {
+            'wood': 1, 'brick': 1, 'wheat': 1, 'sheep': 1,
+        }
+
+        assert game.place_settlement(game.current_player_name(), landing)['success']
+
+    def test_it_changes_nothing_on_a_board_with_no_regions(self):
+        """Every hex of a built-in layout is main land, so the rule is a no-op
+        there rather than a rule that refuses every opening settlement."""
+        game = make_game({'start_on_main_land': True})
+        game.start()
+        vertex = next(key for key in sorted(game.vertices)
+                      if game.vertices[key].neighbors['hexes'])
+
+        assert game.place_settlement(game.current_player_name(), vertex)['success']

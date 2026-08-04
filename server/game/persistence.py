@@ -18,6 +18,7 @@ import logging
 import os
 
 from game import cities_knights as ck_module
+from game import maps
 from game.game import Game
 
 logger = logging.getLogger(__name__)
@@ -126,9 +127,34 @@ def _ck_state(ck) -> dict | None:
     }
 
 
+def _saved_map(data: dict):
+    """The custom map a save was played on, re-validated, or None.
+
+    `load` already treats a save as untrusted input, and a hand-edited `map`
+    block is exactly that, so it goes through the same parse and validation a
+    map arriving over a socket does. The inlined definition wins over the
+    `board_map` rule beside it if they disagree — that is the whole reason it is
+    inlined — and the disagreement is logged rather than silently resolved.
+    """
+    raw = data.get('map')
+    if raw is None:
+        return None
+
+    defn = maps.parse_map(raw)
+    errors, _ = maps.validate_map(defn)
+    if errors:
+        raise ValueError(f"the map saved with this game is not playable: {errors[0].message}")
+
+    chosen = (data.get('rules') or {}).get('board_map')
+    if chosen and chosen != defn.id:
+        logger.warning("save names map %r but carries %r; playing what it carries",
+                       chosen, defn.id)
+    return defn
+
+
 def serialize(game: Game) -> dict:
     """Everything needed to rebuild this game."""
-    return {
+    saved = {
         'save_version': SAVE_VERSION,
         'rules': game.rules,
         'players': [_player_state(p) for p in game.players],
@@ -192,6 +218,19 @@ def serialize(game: Game) -> dict:
         'cities_knights': _ck_state(game.ck),
     }
 
+    # The whole map definition, inlined, never its id. The file on disk can be
+    # edited or deleted between the save and the load, and a game that
+    # regenerated against a changed map would put its buildings on hexes that
+    # no longer exist. A few KB, and the save stays one readable file.
+    #
+    # SAVE_VERSION does not move for this: the key is additive and absent means
+    # "not a custom map", which is the same reasoning recorded above for edge
+    # keys. Refusing old saves would throw away games in progress to add a
+    # feature their players are not using.
+    if game.map_definition is not None:
+        saved['map'] = game.map_definition.to_json()
+    return saved
+
 
 def save(game: Game, path: str):
     """Write the game atomically.
@@ -228,7 +267,8 @@ def deserialize(data: dict, config=None) -> Game:
     names = [p['name'] for p in data['players']]
     colors = {p['name']: p['color'] for p in data['players']}
     game = Game(names, list(data.get('observers', [])), colors,
-                config=config, rules=data.get('rules'))
+                config=config, rules=data.get('rules'),
+                map_definition=_saved_map(data))
 
     # Board decisions
     for key, saved in data.get('hexes', {}).items():

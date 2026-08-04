@@ -71,10 +71,17 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         rng: random.Random = None,
         config=None,
         rules: dict = None,
+        map_definition=None,
     ):
         # Injected so tests can replay a game exactly; production passes nothing
         # and gets a real, non-reconstructable source.
         self.rng = rng or random.SystemRandom()
+
+        # A parsed map file, or None for one of the built-in layouts. Held on
+        # the game rather than looked up by id, because the file on disk can be
+        # edited or deleted while this game is being played and the board would
+        # then no longer be the one anybody agreed to.
+        self.map_definition = map_definition
 
         # Optional rules chosen in the lobby. Fixed for the whole game — a rule
         # that changed mid-game would invalidate decisions already made.
@@ -219,6 +226,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.hexes = {}  # key -> Hex object
         self.vertices = {}  # key -> Vertex object
         self.edges = {}  # key -> Edge object
+        # The hexes a custom map calls its main land; None means "all of it",
+        # which is every built-in layout.
+        self.main_hex_keys = None
 
         # Generate the complete board
         self._generate_board()
@@ -470,6 +480,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # intersection touching none of them is out at sea.
         if not vertex.neighbors['hexes']:
             return refused('INVALID_PLACEMENT', 'A settlement must stand on the coast or inland')
+        # The scenario setup restriction, when the table asked for it: you start
+        # at home and sail to the far islands, rather than starting on one. Only
+        # the *starting* settlements — nothing stops you settling there later,
+        # which is the game this rule belongs to.
+        if in_setup and self.rules['start_on_main_land'] and not any(
+            self.is_main_land(hex_key) for hex_key in vertex.neighbors['hexes']
+        ):
+            return refused(
+                'INVALID_PLACEMENT', 'Starting settlements go on the main land'
+            )
         if vertex.building is not None:
             return refused('OCCUPIED', 'This location already has a building')
         if not self._respects_distance_rule(vertex_key):

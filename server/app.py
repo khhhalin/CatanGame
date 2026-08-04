@@ -31,6 +31,7 @@ from handlers import (  # noqa: F401  (imported for their side effects)
     cities_knights,
     dev_cards,
     lobby,
+    maps,
     robber,
     ships,
     trading,

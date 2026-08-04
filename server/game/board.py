@@ -256,23 +256,34 @@ class BoardBuilder:
         3. Builds neighbor relationships algebraically
         4. Lays out terrain, number tokens and harbours
         """
-        self.board_layout = LAYOUTS.get(self.rules.get('board_layout'), LAYOUTS[DEFAULT_LAYOUT])
-        island = self.board_layout['hexes']
+        if self.map_definition is not None:
+            # A custom map authors its own sea, because deriving it from
+            # adjacency is wrong the moment there are two islands: two
+            # landmasses three hexes apart would have no water between them,
+            # only a hole where hexes do not exist.
+            land_hex_keys, ocean_hex_keys = self._apply_map_instance(
+                maps.instantiate(self.map_definition, self.rng)
+            )
+        else:
+            self.board_layout = LAYOUTS.get(
+                self.rules.get('board_layout'), LAYOUTS[DEFAULT_LAYOUT]
+            )
+            island = self.board_layout['hexes']
 
-        land_hex_keys = {self._hex_key(*coords) for coords in island}
+            land_hex_keys = {self._hex_key(*coords) for coords in island}
 
-        # The sea is whatever touches the island. Derived from adjacency rather
-        # than from a radius, because a layout can be any shape: the 5–6 player
-        # island is not a hexagon, so no radius describes it.
-        ocean_hex_keys = set()
-        for x, y, z in island:
-            for dx, dy, dz in self.HEX_DIRECTIONS:
-                neighbor_key = self._hex_key(x + dx, y + dy, z + dz)
-                if neighbor_key not in land_hex_keys:
-                    ocean_hex_keys.add(neighbor_key)
+            # The sea is whatever touches the island. Derived from adjacency
+            # rather than from a radius, because a layout can be any shape: the
+            # 5–6 player island is not a hexagon, so no radius describes it.
+            ocean_hex_keys = set()
+            for x, y, z in island:
+                for dx, dy, dz in self.HEX_DIRECTIONS:
+                    neighbor_key = self._hex_key(x + dx, y + dy, z + dz)
+                    if neighbor_key not in land_hex_keys:
+                        ocean_hex_keys.add(neighbor_key)
 
-        # Step 2: Create hex objects with resource types and numbers
-        self._create_hexes(land_hex_keys, ocean_hex_keys)
+            # Step 2: Create hex objects with resource types and numbers
+            self._create_hexes(land_hex_keys, ocean_hex_keys)
 
         # Step 2b: land is what was dealt, not what the layout set aside for it.
         # The two are the same set for every built-in layout, which is why this
@@ -316,6 +327,45 @@ class BoardBuilder:
             hex_types[hex_obj.type] = hex_types.get(hex_obj.type, 0) + 1
         logger.debug(f"Hex distribution: {hex_types}")
         logger.debug("=======================\n")
+
+    def _apply_map_instance(self, instance) -> tuple:
+        """Lay a dealt map onto the board, and say which of it is land.
+
+        The map file's `sea` becomes the engine's `ocean` here and nowhere
+        else. `board_layout` is filled in with the harbour bag the map carries
+        so `_assign_ports` needs no branch of its own — it asks a layout for its
+        harbours, and a map is a layout that came from a file.
+        """
+        self.board_layout = {
+            'hexes': (), 'resources': (), 'numbers': (),
+            'ports': instance.harbours, 'island': None, 'fixed': False,
+        }
+
+        for hex_key in maps.sort_hex_keys(instance.placed):
+            terrain, number = instance.placed[hex_key]
+            self.hexes[hex_key] = Hex(
+                hex_key, 'ocean' if terrain == 'sea' else terrain, number
+            )
+
+        self.robber_hex = instance.robber_hex
+        # The one thing a region's `kind` decides: where a starting settlement
+        # may go, when the table asked for that rule.
+        self.main_hex_keys = self.map_definition.hexes_of_kind('main')
+
+        land_hex_keys = {
+            hex_key for hex_key, (terrain, _) in instance.placed.items() if terrain != 'sea'
+        }
+        return land_hex_keys, set(instance.placed) - land_hex_keys
+
+    def is_main_land(self, hex_key: str) -> bool:
+        """Whether this hex belongs to a region the map calls the main land.
+
+        Every hex of a built-in layout is main land: there is one island and
+        nothing to distinguish. That is what makes the "start on the main land"
+        rule a no-op on the built-in boards rather than a rule that refuses
+        every placement on them.
+        """
+        return self.main_hex_keys is None or hex_key in self.main_hex_keys
 
     def _create_hexes(self, land_hex_keys: set, ocean_hex_keys: set):
         """

@@ -1,0 +1,88 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 4
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "generic": 3,
+      "ore": 1,
+      "wood": 1
+    }
+  },
+  "id": "little-shores",
+  "map_version": 1,
+  "name": "Little Shores",
+  "notes": "The smallest map that exercises regions, a mixed pool and two islands. The far shore has three positions and three tiles, one of which is sea, so how many islands it deals varies with the shuffle.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-3,0,3",
+        "-3,3,0",
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "3,-3,0",
+        "3,0,-3"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          3,
+          4,
+          5,
+          6,
+          9,
+          10
+        ],
+        "terrain": {
+          "brick": 1,
+          "desert": 1,
+          "sheep": 1,
+          "wheat": 2,
+          "wood": 2
+        }
+      }
+    },
+    {
+      "color": "#c9a227",
+      "hexes": [
+        "9,-9,0",
+        "9,-6,-3",
+        "9,-3,-6"
+      ],
+      "id": "far-shore",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          8,
+          11
+        ],
+        "terrain": {
+          "ore": 1,
+          "sea": 1,
+          "sheep": 1
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 51
+        }
+      }
+    }
+  ],
+  "robber_start": "auto"
+}
