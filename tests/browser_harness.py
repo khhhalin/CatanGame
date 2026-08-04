@@ -5,6 +5,12 @@ exists so a *whole game* can be played the same way — through the canvas and
 the real buttons — without every suite re-deriving the canvas click maths.
 
 Nothing here asserts. Suites assert; this only drives and observes.
+
+Take the browser from `browser_session()` and never from a `sync_playwright()`
+of your own. One browser process is shared by the whole run, and the sync
+driver holds an asyncio loop open for as long as it is running - so a second
+driver anywhere in the same process raises "please use the Async API" and
+every test in that file errors at setup.
 """
 
 import atexit
