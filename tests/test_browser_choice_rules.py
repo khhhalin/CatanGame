@@ -7,8 +7,13 @@ catalogue, honoured by the engine, and impossible to select.
 """
 
 import pytest
-from browser_harness import Player, launch_browser, start_server, stop_server
-from playwright.sync_api import sync_playwright
+from browser_harness import (
+    Player,
+    browser_session,
+    start_server,
+    stop_server,
+    wait_for_rule,
+)
 
 pytestmark = pytest.mark.slow
 
@@ -22,10 +27,8 @@ def server(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -79,7 +82,7 @@ class TestAChoiceRuleIsSelectable:
         """The picker showing a value the engine ignored is the failure mode."""
         open_rule(host.page, "board_layout")
         host.page.select_option("#rule-board_layout", "beginner")
-        host.page.wait_for_timeout(900)
+        wait_for_rule(host, "board_layout", "beginner")
 
         chosen = host.page.evaluate(
             "() => window.__catanDebug.getRules().selected.board_layout"
@@ -88,4 +91,4 @@ class TestAChoiceRuleIsSelectable:
 
         # Put it back so the module-scoped lobby is left as it was found.
         host.page.select_option("#rule-board_layout", "random")
-        host.page.wait_for_timeout(900)
+        wait_for_rule(host, "board_layout", "random")

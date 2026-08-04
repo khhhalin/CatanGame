@@ -14,11 +14,11 @@ Run: pytest tests/test_browser_trade_rate.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
     edges_next_to,
     end_turn,
-    launch_browser,
     legal_setup_vertices,
     resolve_discard,
     resolve_robber,
@@ -26,7 +26,6 @@ from browser_harness import (
     start_server,
     stop_server,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -36,10 +35,8 @@ GAME_SEED = 20260804
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 def _harbour_vertices(board, port_type):

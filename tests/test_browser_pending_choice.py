@@ -35,16 +35,16 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     client_point,
     first_clickable,
-    launch_browser,
+    next_frame,
     start_server,
     stop_server,
 )
 from game import persistence
 from game import rules as rules_module
 from game.game import Game
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -189,10 +189,8 @@ def alice_plays_a_commercial_harbor(game):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as playwright:
-        engine = launch_browser(playwright)
+    with browser_session() as engine:
         yield engine
-        engine.close()
 
 
 @pytest.fixture
@@ -243,7 +241,7 @@ class TestTheChooserIsAsked:
         bob.page.evaluate(
             "() => document.documentElement.setAttribute('data-theme', 'dark')"
         )
-        bob.page.wait_for_timeout(400)
+        next_frame(bob.page)
         shot(bob, "chooser-barbarian-city-dark-1920x1080")
         bob.page.evaluate(
             "() => document.documentElement.removeAttribute('data-theme')"

@@ -15,6 +15,7 @@ Run: pytest tests/test_browser_confirm_placement.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
     cancel_placement,
@@ -27,15 +28,15 @@ from browser_harness import (
     end_turn,
     first_clickable,
     hover_target,
-    launch_browser,
     legal_setup_vertices,
+    next_frame,
     resolve_discard,
     roll_dice,
+    server_round_trip,
     set_yolo_mode,
     start_server,
     stop_server,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -66,10 +67,8 @@ def server(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -167,7 +166,7 @@ def blocked_pixels(player, point, radius=26):
 
 def settle_frames(player):
     """Let the render loop draw what the last input changed."""
-    player.page.wait_for_timeout(250)
+    next_frame(player.page)
 
 
 def building_count(player):
@@ -219,8 +218,11 @@ class TestClickAsksRatherThanPlaces:
         before = building_count(player)
         click_vertex(player, chosen["vertex"])
         player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=3000)
-        # Give the server the time it would have needed to answer an emit
-        player.page.wait_for_timeout(500)
+        # Not a sleep: ask the server for a resync and wait for its answer, so
+        # anything the click might have sent has demonstrably been handled by
+        # the time the count is read. A fixed wait passes for the wrong reason
+        # on a machine slower than the guess.
+        server_round_trip(player)
         assert building_count(player) == before, "the click placed a piece by itself"
 
     def test_the_confirmation_is_two_named_buttons(self, table):
@@ -290,7 +292,7 @@ class TestClickAsksRatherThanPlaces:
             ".classList.contains('hidden')",
             timeout=3000,
         )
-        player.page.wait_for_timeout(400)
+        server_round_trip(player)
         assert building_count(player) == before, "Escape placed the piece"
 
     def test_confirming_places_the_settlement(self, table):
@@ -474,7 +476,7 @@ class TestTheRobberConfirmsToo:
 
         click_hex(player, target)
         player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=3000)
-        player.page.wait_for_timeout(400)
+        server_round_trip(player)
         assert player.board()["must_move_robber"] is True, (
             "the click moved the robber without being confirmed"
         )

@@ -29,21 +29,23 @@ import os
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
     edges_next_to,
-    launch_browser,
     legal_setup_vertices,
+    next_frame,
     resolve_discard,
     resolve_robber,
     roll_dice,
     start_server,
+    wait_for_preset,
+    wait_for_rule,
 )
 from browser_harness import (
     stop_server as harness_stop_server,
 )
 from game import rules
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -191,7 +193,7 @@ def set_rule(player, rule_id, value):
     else:
         control.fill(str(value))
         control.blur()
-    player.page.wait_for_timeout(300)
+    wait_for_rule(player, rule_id, value)
 
 
 def place_setup_round(players):
@@ -222,16 +224,14 @@ def place_setup_round(players):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 def choose_preset(player, preset_id):
     """Take a published rule set the way a host would - one button."""
     player.page.click(f"#preset-{preset_id}")
-    player.page.wait_for_timeout(400)
+    wait_for_preset(player, preset_id)
 
 
 def make_table(browser, url, names, rules=None, preset=None):
@@ -399,10 +399,10 @@ class TestCitiesAndKnightsFits:
         before = player.page.evaluate(measure)
         player.page.click("#knights-chip")
         player.page.wait_for_selector("#knights-popover:not(.hidden)", timeout=3000)
-        player.page.wait_for_timeout(250)
+        next_frame(player.page)
         during = player.page.evaluate(measure)
         player.page.click("#knights-chip")
-        player.page.wait_for_timeout(250)
+        next_frame(player.page)
         after = player.page.evaluate(measure)
 
         assert before == during == after, (
@@ -437,12 +437,12 @@ class TestCitiesAndKnightsFits:
         }
         """
         player.page.evaluate(set_state, [False, False])
-        player.page.wait_for_timeout(250)
+        next_frame(player.page)
         baseline = player.page.evaluate(measure)
 
         for armed, disabled in ((True, False), (False, True), (True, True)):
             player.page.evaluate(set_state, [armed, disabled])
-            player.page.wait_for_timeout(250)
+            next_frame(player.page)
             assert player.page.evaluate(measure) == baseline, (
                 f"armed={armed} disabled={disabled} moved the board or the console"
             )
@@ -626,7 +626,7 @@ def lobby(browser, tmp_path_factory):
     player = Player(browser, url, "Solo", viewport=VIEWPORT)
     player.join()
     player.page.wait_for_selector("#user-screen:not(.hidden)", timeout=8000)
-    player.page.wait_for_timeout(400)
+    next_frame(player.page)
     yield player
     harness_stop_server(proc)
 

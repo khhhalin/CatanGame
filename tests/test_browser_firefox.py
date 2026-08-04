@@ -34,16 +34,15 @@ Run: pytest tests/test_browser_firefox.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     click_vertex,
     confirm_placement,
     count_pieces,
     first_clickable,
-    launch_browser,
     legal_setup_vertices,
     start_server,
     stop_server,
 )
-from playwright.sync_api import sync_playwright
 from test_browser_layout import assert_nothing_scrolls_or_clips
 
 pytestmark = pytest.mark.slow
@@ -84,10 +83,8 @@ def firefox():
     Pinned rather than configured: a cross-browser check that only runs when
     someone remembers to set an environment variable is not a check.
     """
-    with sync_playwright() as play:
-        instance = launch_browser(play, browser="firefox")
+    with browser_session("firefox") as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")

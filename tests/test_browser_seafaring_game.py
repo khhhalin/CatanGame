@@ -22,17 +22,17 @@ Run: pytest tests/test_browser_seafaring_game.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
     build_ship,
     edges_next_to,
-    launch_browser,
     open_seafarers_fold,
     play_one_turn,
     start_server,
     stop_server,
+    wait_for_rule,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -51,10 +51,8 @@ GAME_SEED = 20260805
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -96,7 +94,7 @@ def set_rule(player, rule_id, value):
     control.fill(str(value))
     # The picker submits on `change`; blurring guarantees it fires.
     control.blur()
-    player.page.wait_for_timeout(300)
+    wait_for_rule(player, rule_id, value)
 
 
 # --- Reading a seafaring board --------------------------------------------

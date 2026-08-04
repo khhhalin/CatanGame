@@ -12,11 +12,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from browser_harness import (  # noqa: E402
     Player,
-    launch_browser,
+    browser_session,
+    next_frame,
     start_server,
     stop_server,
+    wait_for_board_painted,
+    wait_for_rules,
 )
-from playwright.sync_api import sync_playwright  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, "test-artifacts", "ui", "render")
@@ -56,7 +58,7 @@ def set_rules(player, rules):
         }""",
         rules,
     )
-    player.page.wait_for_timeout(500)
+    wait_for_rules(player, rules)
 
 
 def shoot(browser, url, label, size, rules, theme=None, knights=False):
@@ -75,7 +77,7 @@ def shoot(browser, url, label, size, rules, theme=None, knights=False):
             )
     alice.page.click("#start-game-btn")
     alice.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
-    alice.page.wait_for_timeout(1200)
+    wait_for_board_painted(alice)
 
     if knights:
         board = alice.board()
@@ -96,7 +98,7 @@ def shoot(browser, url, label, size, rules, theme=None, knights=False):
             "        window.BoardRenderer.render(window.__catanDebug.getBoard(),"
             "            'board-canvas', null, null); }"
         )
-        alice.page.wait_for_timeout(300)
+        next_frame(alice.page)
 
     path = os.path.join(OUT, f"{label}.png")
     alice.page.screenshot(path=path)
@@ -124,8 +126,7 @@ def data_dir(name):
 
 def main():
     stage = sys.argv[1] if len(sys.argv) > 1 else "shot"
-    with sync_playwright() as play:
-        browser = launch_browser(play)
+    with browser_session() as browser:
         for name, size in VIEWPORTS.items():
             proc, url = start_server(data_dir(f"{stage}-{name}"))
             try:

@@ -19,11 +19,12 @@ import os
 import pytest
 from browser_harness import (
     Player,
-    launch_browser,
+    browser_session,
     start_server,
     stop_server,
+    wait_for_board_painted,
+    wait_for_rules,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -106,10 +107,8 @@ def differing_pixels(before, after):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -121,10 +120,10 @@ def table(browser, tmp_path_factory):
     alice.join()
     bob.join()
     alice.page.evaluate(SET_RULES, CITIES_AND_KNIGHTS)
-    alice.page.wait_for_timeout(400)
+    wait_for_rules(alice, CITIES_AND_KNIGHTS)
     alice.page.click("#start-game-btn")
     alice.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
-    alice.page.wait_for_timeout(600)
+    wait_for_board_painted(alice)
     yield alice
     stop_server(proc)
 

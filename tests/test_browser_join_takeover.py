@@ -15,9 +15,16 @@ before that happens to somebody.
 Run: pytest tests/test_browser_join_takeover.py -m slow -v
 """
 
+import time
+
 import pytest
-from browser_harness import Player, launch_browser, start_server, stop_server
-from playwright.sync_api import sync_playwright
+from browser_harness import (
+    Player,
+    browser_session,
+    server_round_trip,
+    start_server,
+    stop_server,
+)
 
 pytestmark = pytest.mark.slow
 
@@ -33,10 +40,8 @@ def server(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -70,7 +75,14 @@ def click_join_as(player, name, answer):
     player.page.check("#role-player")
     player.page.fill("#username", name)
     player.page.click("#join-btn")
-    player.page.wait_for_timeout(1200)
+    # Wait for the question rather than for a guessed number of milliseconds:
+    # the prompt is the event this is about, and the resync after it proves the
+    # server has answered whatever the answer sent - so "the seat did not move"
+    # is read after the server has had its say, not before.
+    deadline = time.monotonic() + 5
+    while not asked and time.monotonic() < deadline:
+        player.page.wait_for_timeout(20)
+    server_round_trip(player)
     return asked[0] if asked else None
 
 

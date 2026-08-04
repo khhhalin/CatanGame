@@ -15,11 +15,11 @@ import os
 import pytest
 from browser_harness import (
     Player,
-    launch_browser,
+    browser_session,
     start_server,
     stop_server,
+    wait_for_rule,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -52,7 +52,7 @@ def set_rule(player, rule_id, value):
     control = player.page.locator(f"#rule-{rule_id}")
     control.scroll_into_view_if_needed()
     control.set_checked(value)
-    player.page.wait_for_timeout(400)
+    wait_for_rule(player, rule_id, value)
 
 
 def seat_two(browser, url, color_scheme=None):
@@ -105,10 +105,8 @@ def log_texts(player):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")

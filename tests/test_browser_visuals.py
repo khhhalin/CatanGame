@@ -20,11 +20,12 @@ Run: pytest tests/test_browser_visuals.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
-    launch_browser,
+    browser_session,
     start_server,
     stop_server,
+    wait_for_board_painted,
+    wait_for_rules,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -192,10 +193,12 @@ def start_table(browser, url, rules=None):
     bob.join()
     if rules:
         alice.page.evaluate(SET_RULES, rules)
-        alice.page.wait_for_timeout(400)
+        wait_for_rules(alice, rules)
     alice.page.click("#start-game-btn")
     alice.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
-    alice.page.wait_for_timeout(600)
+    # Not a settle: every assertion below reads pixels, and a canvas that has
+    # been inserted but not drawn on satisfies every DOM check there is.
+    wait_for_board_painted(alice)
     return alice, bob
 
 
@@ -208,10 +211,8 @@ def differing_pixels(before, after):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")

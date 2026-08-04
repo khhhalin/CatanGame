@@ -7,8 +7,14 @@ log filled with a dozen identical "changed the house rules" lines.
 """
 
 import pytest
-from browser_harness import Player, launch_browser, start_server, stop_server
-from playwright.sync_api import sync_playwright
+from browser_harness import (
+    Player,
+    browser_session,
+    server_round_trip,
+    start_server,
+    stop_server,
+    wait_for_rules,
+)
 
 pytestmark = pytest.mark.slow
 
@@ -26,10 +32,8 @@ def server(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
@@ -42,24 +46,34 @@ def host(browser, server):
     return alice
 
 
-def tick_quickly(page, rule_ids):
-    """Tick a run of rules as fast as a person clicking down a list."""
+def tick_quickly(player, rule_ids):
+    """Tick a run of rules as fast as a person clicking down a list.
+
+    The wait afterwards is the coalesced send landing, not a guess at how long
+    it takes: the ticks are debounced into one message, so the burst is over
+    only once the server has echoed the last rule back. The resync after it
+    puts a "slow down" toast - which the server would send before answering -
+    on the near side of the assertions.
+    """
+    ticked = []
     for rule_id in rule_ids:
-        page.evaluate(
+        player.page.evaluate(
             "id => { const el = document.getElementById(`rule-${id}`);"
             "        const group = el && el.closest('details');"
             "        if (group) { group.open = true; } }",
             rule_id,
         )
-        control = page.locator(f"#rule-{rule_id}")
+        control = player.page.locator(f"#rule-{rule_id}")
         if control.count():
             control.set_checked(True)
-    page.wait_for_timeout(1200)
+            ticked.append(rule_id)
+    wait_for_rules(player, {rule_id: True for rule_id in ticked})
+    server_round_trip(player)
 
 
 class TestABurstOfRuleChanges:
     def test_the_player_is_not_told_to_slow_down(self, host):
-        tick_quickly(host.page, BURST)
+        tick_quickly(host, BURST)
 
         notices = " ".join(host.notices()).lower()
         assert "slow down" not in notices, (

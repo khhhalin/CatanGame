@@ -19,15 +19,15 @@ Run: pytest tests/test_browser_a11y.py -m slow -v
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     click_vertex,
     client_point,
     first_clickable,
-    launch_browser,
     legal_setup_vertices,
     start_server,
     stop_server,
+    wait_for_transitions,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -166,16 +166,16 @@ AUDIT_CONTRAST = """
 """
 
 
-# Buttons transition `background-color` over --dur-med, and the Start button
-# crosses the whole way from the disabled grey to the accent fill the moment the
-# table fills up. Sampled mid-flight it reads as a 1.2:1 failure that exists in
-# neither the before state nor the after one. Longer than --dur-slow.
-TRANSITION_SETTLE_MS = 400
-
-
 def contrast_failures(player):
-    """Every on-screen text element below its WCAG AA threshold."""
-    player.page.wait_for_timeout(TRANSITION_SETTLE_MS)
+    """Every on-screen text element below its WCAG AA threshold.
+
+    Buttons transition `background-color` over --dur-med, and the Start button
+    crosses the whole way from the disabled grey to the accent fill the moment
+    the table fills up. Sampled mid-flight it reads as a 1.2:1 failure that
+    exists in neither the before state nor the after one - so wait for the
+    transitions themselves to finish rather than for a guess at their length.
+    """
+    wait_for_transitions(player.page)
     return [
         finding for finding in player.page.evaluate(AUDIT_CONTRAST)
         if finding["ratio"] < (AA_LARGE if finding["large"] else AA_NORMAL) - CONTRAST_EPSILON
@@ -203,38 +203,34 @@ def test_every_visible_label_meets_wcag_aa(tmp_path, theme):
     """
     proc, url = start_server(tmp_path)
     try:
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            try:
-                host = Player(browser, url, "Ann", viewport=VIEWPORT,
-                              color_scheme=theme)
-                lobby_failures = contrast_failures(host)
-                assert not lobby_failures, (
-                    f"join screen, {theme} theme:\n{describe(lobby_failures)}"
-                )
+        with browser_session() as browser:
+            host = Player(browser, url, "Ann", viewport=VIEWPORT,
+                          color_scheme=theme)
+            lobby_failures = contrast_failures(host)
+            assert not lobby_failures, (
+                f"join screen, {theme} theme:\n{describe(lobby_failures)}"
+            )
 
-                host.join()
-                guest = Player(browser, url, "Bo", viewport=VIEWPORT,
-                               color_scheme=theme)
-                guest.join()
-                # The lobby is where the disabled-label failure lived: Start is
-                # disabled until the table is full enough, and the disabled
-                # style is not reachable any other way.
-                seated_failures = contrast_failures(host)
-                assert not seated_failures, (
-                    f"lobby, {theme} theme:\n{describe(seated_failures)}"
-                )
+            host.join()
+            guest = Player(browser, url, "Bo", viewport=VIEWPORT,
+                           color_scheme=theme)
+            guest.join()
+            # The lobby is where the disabled-label failure lived: Start is
+            # disabled until the table is full enough, and the disabled
+            # style is not reachable any other way.
+            seated_failures = contrast_failures(host)
+            assert not seated_failures, (
+                f"lobby, {theme} theme:\n{describe(seated_failures)}"
+            )
 
-                host.page.click("#start-game-btn")
-                host.page.wait_for_selector("#game-screen:not(.hidden)", timeout=8000)
-                # The rail, the scoreboard, the build buttons and the log all
-                # carry text and none of them exist before the game starts.
-                playing_failures = contrast_failures(host)
-                assert not playing_failures, (
-                    f"game screen, {theme} theme:\n{describe(playing_failures)}"
-                )
-            finally:
-                browser.close()
+            host.page.click("#start-game-btn")
+            host.page.wait_for_selector("#game-screen:not(.hidden)", timeout=8000)
+            # The rail, the scoreboard, the build buttons and the log all
+            # carry text and none of them exist before the game starts.
+            playing_failures = contrast_failures(host)
+            assert not playing_failures, (
+                f"game screen, {theme} theme:\n{describe(playing_failures)}"
+            )
     finally:
         stop_server(proc)
 
@@ -253,36 +249,32 @@ def test_placement_confirmation_is_announced_and_takes_focus(tmp_path):
     """
     proc, url = start_server(tmp_path)
     try:
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            try:
-                actor = _player_to_move(*_start_game(browser, url))
+        with browser_session() as browser:
+            actor = _player_to_move(*_start_game(browser, url))
 
-                board = actor.board()
-                vertex = first_clickable(actor, 'vertex', legal_setup_vertices(board))
-                assert vertex, "no reachable vertex to place on"
-                click_vertex(actor, vertex)
-                actor.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+            board = actor.board()
+            vertex = first_clickable(actor, 'vertex', legal_setup_vertices(board))
+            assert vertex, "no reachable vertex to place on"
+            click_vertex(actor, vertex)
+            actor.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
 
-                announcement = actor.page.inner_text("#placement-announce")
-                assert "Settlement" in announcement, announcement
-                # The keys are the part that makes it operable at all: a screen
-                # reader user has no way to find a button positioned over a
-                # canvas by pixel coordinates.
-                assert "Enter" in announcement and "Escape" in announcement, announcement
+            announcement = actor.page.inner_text("#placement-announce")
+            assert "Settlement" in announcement, announcement
+            # The keys are the part that makes it operable at all: a screen
+            # reader user has no way to find a button positioned over a
+            # canvas by pixel coordinates.
+            assert "Enter" in announcement and "Escape" in announcement, announcement
 
-                assert actor.page.evaluate(
-                    "() => document.activeElement.id"
-                ) == "placement-confirm-yes"
+            assert actor.page.evaluate(
+                "() => document.activeElement.id"
+            ) == "placement-confirm-yes"
 
-                # And answering it hands focus back rather than dropping it on
-                # the body, which would send the next Tab to the top of the page.
-                actor.page.keyboard.press("Escape")
-                actor.page.wait_for_selector("#placement-confirm.hidden", state="attached")
-                assert actor.page.evaluate("() => document.activeElement.id") == "board-canvas"
-                assert actor.page.inner_text("#placement-announce") == ""
-            finally:
-                browser.close()
+            # And answering it hands focus back rather than dropping it on
+            # the body, which would send the next Tab to the top of the page.
+            actor.page.keyboard.press("Escape")
+            actor.page.wait_for_selector("#placement-confirm.hidden", state="attached")
+            assert actor.page.evaluate("() => document.activeElement.id") == "board-canvas"
+            assert actor.page.inner_text("#placement-announce") == ""
     finally:
         stop_server(proc)
 
@@ -315,24 +307,20 @@ def test_a_confirmation_does_not_steal_focus_from_the_chat_box(tmp_path):
     """
     proc, url = start_server(tmp_path)
     try:
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            try:
-                actor = _player_to_move(*_start_game(browser, url))
+        with browser_session() as browser:
+            actor = _player_to_move(*_start_game(browser, url))
 
-                board = actor.board()
-                vertex = first_clickable(actor, 'vertex', legal_setup_vertices(board))
-                assert vertex, "no reachable vertex to place on"
-                point = client_point(actor, 'vertex', vertex)
-                actor.page.evaluate(TAP_THEN_TYPE, [point["x"], point["y"]])
+            board = actor.board()
+            vertex = first_clickable(actor, 'vertex', legal_setup_vertices(board))
+            assert vertex, "no reachable vertex to place on"
+            point = client_point(actor, 'vertex', vertex)
+            actor.page.evaluate(TAP_THEN_TYPE, [point["x"], point["y"]])
 
-                actor.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
-                assert actor.page.evaluate("() => document.activeElement.id") == "chat-input"
-                # Announced anyway: not stealing focus is not a reason to leave
-                # the player unaware the confirmation is there.
-                assert "Enter" in actor.page.inner_text("#placement-announce")
-            finally:
-                browser.close()
+            actor.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+            assert actor.page.evaluate("() => document.activeElement.id") == "chat-input"
+            # Announced anyway: not stealing focus is not a reason to leave
+            # the player unaware the confirmation is there.
+            assert "Enter" in actor.page.inner_text("#placement-announce")
     finally:
         stop_server(proc)
 
@@ -359,49 +347,45 @@ def test_popover_opens_closes_and_returns_focus_from_the_keyboard(
     """
     proc, url = start_server(tmp_path)
     try:
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            try:
-                host, _ = _start_game(browser, url)
+        with browser_session() as browser:
+            host, _ = _start_game(browser, url)
 
-                host.page.focus(f"#{chip_id}")
-                host.page.keyboard.press("Enter")
-                host.page.wait_for_selector(f"#{popover_id}:not(.hidden)", timeout=5000)
-                assert host.page.get_attribute(f"#{chip_id}", "aria-expanded") == "true"
+            host.page.focus(f"#{chip_id}")
+            host.page.keyboard.press("Enter")
+            host.page.wait_for_selector(f"#{popover_id}:not(.hidden)", timeout=5000)
+            assert host.page.get_attribute(f"#{chip_id}", "aria-expanded") == "true"
 
-                # Reachable, not merely un-trapped. Tab landing anywhere other
-                # than the chip would satisfy "no trap" even if the popover's
-                # own controls were skipped entirely - which is the failure that
-                # matters, because the no-scroll layout moved whole panels in
-                # here and a keyboard user who cannot tab into one has lost the
-                # panel rather than a shortcut. The panel follows its chip in
-                # the document, so sequential focus order reaches it.
+            # Reachable, not merely un-trapped. Tab landing anywhere other
+            # than the chip would satisfy "no trap" even if the popover's
+            # own controls were skipped entirely - which is the failure that
+            # matters, because the no-scroll layout moved whole panels in
+            # here and a keyboard user who cannot tab into one has lost the
+            # panel rather than a shortcut. The panel follows its chip in
+            # the document, so sequential focus order reaches it.
+            host.page.keyboard.press("Tab")
+            assert host.page.evaluate(
+                "id => document.getElementById(id).contains(document.activeElement)",
+                popover_id,
+            ), f"Tab from #{chip_id} did not reach into #{popover_id}"
+
+            # And out again the other side: focus must not be held inside.
+            for _ in range(12):
                 host.page.keyboard.press("Tab")
-                assert host.page.evaluate(
+                if not host.page.evaluate(
                     "id => document.getElementById(id).contains(document.activeElement)",
                     popover_id,
-                ), f"Tab from #{chip_id} did not reach into #{popover_id}"
+                ):
+                    break
+            else:
+                raise AssertionError(f"focus is trapped inside #{popover_id}")
 
-                # And out again the other side: focus must not be held inside.
-                for _ in range(12):
-                    host.page.keyboard.press("Tab")
-                    if not host.page.evaluate(
-                        "id => document.getElementById(id).contains(document.activeElement)",
-                        popover_id,
-                    ):
-                        break
-                else:
-                    raise AssertionError(f"focus is trapped inside #{popover_id}")
-
-                host.page.keyboard.press("Escape")
-                host.page.wait_for_selector(f"#{popover_id}.hidden", state="attached")
-                assert host.page.get_attribute(f"#{chip_id}", "aria-expanded") == "false"
-                # Back on the chip, not on the body: focus dropped on the body
-                # sends the next Tab to the top of the document, which on this
-                # screen is a very long way from where the player was.
-                assert host.page.evaluate("() => document.activeElement.id") == chip_id
-            finally:
-                browser.close()
+            host.page.keyboard.press("Escape")
+            host.page.wait_for_selector(f"#{popover_id}.hidden", state="attached")
+            assert host.page.get_attribute(f"#{chip_id}", "aria-expanded") == "false"
+            # Back on the chip, not on the body: focus dropped on the body
+            # sends the next Tab to the top of the document, which on this
+            # screen is a very long way from where the player was.
+            assert host.page.evaluate("() => document.activeElement.id") == chip_id
     finally:
         stop_server(proc)
 
@@ -415,19 +399,15 @@ def test_popover_close_button_returns_focus_to_its_chip(tmp_path, chip_id, popov
     """
     proc, url = start_server(tmp_path)
     try:
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            try:
-                host, _ = _start_game(browser, url)
+        with browser_session() as browser:
+            host, _ = _start_game(browser, url)
 
-                host.page.click(f"#{chip_id}")
-                host.page.wait_for_selector(f"#{popover_id}:not(.hidden)", timeout=5000)
-                host.page.click(f"#{popover_id} [data-close-popover]")
-                host.page.wait_for_selector(f"#{popover_id}.hidden", state="attached")
+            host.page.click(f"#{chip_id}")
+            host.page.wait_for_selector(f"#{popover_id}:not(.hidden)", timeout=5000)
+            host.page.click(f"#{popover_id} [data-close-popover]")
+            host.page.wait_for_selector(f"#{popover_id}.hidden", state="attached")
 
-                assert host.page.evaluate("() => document.activeElement.id") == chip_id
-            finally:
-                browser.close()
+            assert host.page.evaluate("() => document.activeElement.id") == chip_id
     finally:
         stop_server(proc)
 

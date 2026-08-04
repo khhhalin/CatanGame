@@ -7,16 +7,20 @@ the real buttons — without every suite re-deriving the canvas click maths.
 Nothing here asserts. Suites assert; this only drives and observes.
 """
 
+import atexit
 import os
+import signal
 import socket
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 
 import pytest
 
 pytest.importorskip("playwright", reason="playwright is not installed")
 from playwright.sync_api import TimeoutError as PlaywrightTimeout  # noqa: E402
+from playwright.sync_api import sync_playwright  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_DIR = os.path.join(REPO, "server")
@@ -61,6 +65,221 @@ def launch_browser(playwright, browser=None):
     return engine.launch(headless=not HEADED, slow_mo=SLOW_MO)
 
 
+# One driver and one browser process for the whole run, keyed by engine name.
+# Launching Chromium costs about a second and every suite here used to pay it
+# again: twenty-two modules, twenty-two launches. A browser holds no game state
+# - the servers do, and those stay per-module - so sharing it is invisible to
+# the tests as long as each module's contexts are closed after it, which
+# `browser_session` does.
+_DRIVER = None
+_ENGINES = {}
+
+
+def _shared_engine(name):
+    global _DRIVER
+    if _DRIVER is None:
+        _DRIVER = sync_playwright().start()
+        atexit.register(_shutdown_shared_browsers)
+    if name not in _ENGINES:
+        _ENGINES[name] = launch_browser(_DRIVER, name)
+    return _ENGINES[name]
+
+
+def _shutdown_shared_browsers():
+    global _DRIVER
+    for engine in _ENGINES.values():
+        try:
+            engine.close()
+        except Exception:  # noqa: BLE001 - interpreter teardown, nothing to report to
+            pass
+    _ENGINES.clear()
+    if _DRIVER is not None:
+        try:
+            _DRIVER.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        _DRIVER = None
+
+
+@contextmanager
+def browser_session(browser=None):
+    """The run's shared browser, with this module's tabs closed on the way out.
+
+    A drop-in replacement for `with sync_playwright() as p: launch_browser(p)`.
+    Every context opened inside the block is closed at the end of it, so tabs do
+    not accumulate across modules the way they would on a browser nobody ever
+    closes - and a recorded video is still flushed, which only happens on
+    context close.
+    """
+    engine = _shared_engine(browser or BROWSER)
+    before = {id(context) for context in engine.contexts}
+    try:
+        yield engine
+    finally:
+        for context in list(engine.contexts):
+            if id(context) not in before:
+                try:
+                    context.close()
+                except Exception:  # noqa: BLE001 - a crashed tab is not this test's news
+                    pass
+
+
+def next_frame(page):
+    """Return once the render loop has painted what the last input changed.
+
+    Two frames, because a change made during one frame's callbacks is drawn in
+    the next. This is the honest version of a fixed settle: it is exact on a
+    fast machine and still correct on a loaded one, where a 250ms sleep is
+    merely a guess in both directions.
+    """
+    page.evaluate(
+        "() => new Promise(resolve =>"
+        "    requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
+
+
+_SETTLE_TRANSITIONS = """
+async cap => {
+    const finite = document.getAnimations().filter(animation => {
+        const timing = animation.effect && animation.effect.getComputedTiming();
+        return timing && timing.iterations !== Infinity;
+    });
+    await Promise.race([
+        Promise.all(finite.map(animation => animation.finished.catch(() => {}))),
+        new Promise(resolve => setTimeout(resolve, cap)),
+    ]);
+    await new Promise(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+"""
+
+
+def wait_for_transitions(page, cap_ms=1000):
+    """Return once every running CSS transition has finished.
+
+    Sampling a colour mid-transition reads a value that exists in neither the
+    before state nor the after one - which is what the contrast sweep's fixed
+    settle was for. Asking the animations themselves is exact where a guess is
+    both too long and too short; the cap is only there so a looping animation
+    cannot hang the sweep.
+    """
+    page.evaluate(_SETTLE_TRANSITIONS, cap_ms)
+
+
+def wait_for_rule(player, rule_id, value, timeout=8000):
+    """Wait for the server to echo a rule change back to this tab.
+
+    The picker sends on `change` and the table is only really set once the
+    server has answered - which is the condition a fixed sleep after every
+    tick was standing in for.
+    """
+    player.page.wait_for_function(
+        "([id, want]) => {"
+        "  const selected = window.__catanDebug.getRules().selected;"
+        "  return String(selected[id]) === String(want); }",
+        arg=[rule_id, value], timeout=timeout,
+    )
+
+
+_ASK_FOR_A_RESYNC = """
+async () => {
+    const socket = (await import('/static/js/socket.js')).socket;
+    if (window.__resyncs === undefined) {
+        window.__resyncs = 0;
+        socket.on('game_state', () => { window.__resyncs += 1; });
+    }
+    const before = window.__resyncs;
+    socket.emit('request_state');
+    return before;
+}
+"""
+
+
+def server_round_trip(player, timeout=3000, attempts=4):
+    """Wait out one full trip to the server and back.
+
+    This is what "give the server the time it would have needed to answer an
+    emit" means, said exactly. `request_state` is a read-only resync and
+    socket.io delivers in order, so once its answer is in, anything sent before
+    it has already been handled.
+
+    Better than a fixed sleep in both directions: it is a few milliseconds on
+    an idle machine, and on a loaded one it actually waits - where a 500ms
+    sleep would let a "nothing happened" assertion pass because the server had
+    not got round to the thing yet. Resyncs are rate limited to about one a
+    second, so a dropped ask is retried rather than treated as a failure.
+    """
+    for _ in range(attempts):
+        before = player.page.evaluate(_ASK_FOR_A_RESYNC)
+        try:
+            player.page.wait_for_function(
+                "before => window.__resyncs > before", arg=before, timeout=timeout,
+            )
+            return
+        except PlaywrightTimeout:
+            continue
+    raise AssertionError(f"{player.name}: the server never answered a resync")
+
+
+def wait_for_rules(player, rules, timeout=8000):
+    """Wait for the server to echo a whole set of rule changes back."""
+    player.page.wait_for_function(
+        "want => {"
+        "  const selected = window.__catanDebug.getRules().selected;"
+        "  return Object.entries(want).every("
+        "      ([id, value]) => String(selected[id]) === String(value)); }",
+        arg=dict(rules), timeout=timeout,
+    )
+
+
+def wait_for_preset(player, preset_id, timeout=8000):
+    """Wait for every rule a preset ticks to come back from the server.
+
+    The preset button sends one message and the table changes a dozen rules, so
+    "the click landed" is only true once the last of them has been echoed. Read
+    from the catalogue the server sent rather than from a copy here: a preset
+    that gained a rule would otherwise be waited on incompletely.
+    """
+    player.page.wait_for_function(
+        "id => {"
+        "  const state = window.__catanDebug.getRules();"
+        "  const preset = state.presets.find(entry => entry.id === id);"
+        "  if (!preset) { return false; }"
+        "  return Object.entries(preset.rules || {}).every("
+        "      ([rule, value]) => String(state.selected[rule]) === String(value)); }",
+        arg=preset_id, timeout=timeout,
+    )
+
+
+_PAINTED_PIXELS = """
+() => {
+    const canvas = document.getElementById('board-canvas');
+    if (!canvas || !canvas.width) { return 0; }
+    const data = canvas.getContext('2d')
+        .getImageData(0, 0, canvas.width, canvas.height).data;
+    let count = 0;
+    for (let i = 3; i < data.length; i += 4) {
+        if (data[i] !== 0) { count++; }
+    }
+    return count;
+}
+"""
+
+
+def wait_for_board_painted(player, timeout=10000):
+    """Wait until the board has actually been drawn, not merely inserted.
+
+    What the fixed settles after `#game-screen` appeared were standing in for.
+    A blank canvas satisfies every DOM assertion, so this is also the only
+    honest signal that a screenshot or a pixel comparison has something to look
+    at.
+    """
+    player.page.wait_for_function(
+        f"() => ({_PAINTED_PIXELS.strip()})() > 1000", timeout=timeout
+    )
+    next_frame(player.page)
+
+
 def free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -102,16 +321,25 @@ def start_server(data_dir, seed=None, config="development"):
          "-b", f"127.0.0.1:{port}", "wsgi:app"],
         cwd=SERVER_DIR, env=env,
         stdout=log, stderr=subprocess.STDOUT, text=True,
+        # Its own process group, so stop_server can take the worker down with
+        # the master. Killing the master alone leaves the worker holding the
+        # port, which is how orphaned gunicorns accumulated for hours.
+        start_new_session=True,
     )
     # Closed by stop_server, which is the only thing that knows the run is over.
     proc.log_file = log
 
-    for _ in range(100):
+    # Poll hard: gunicorn is usually listening within a few hundred
+    # milliseconds, and a 100ms interval spent up to half of that waiting for a
+    # server that was already up. The deadline, not the interval, is what keeps
+    # a wedged boot from hanging the run.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.2):
                 break
         except OSError:
-            time.sleep(0.1)
+            time.sleep(0.01)
     else:
         proc.kill()
         raise RuntimeError("server never came up")
@@ -120,7 +348,18 @@ def start_server(data_dir, seed=None, config="development"):
 
 
 def stop_server(proc):
-    proc.terminate()
+    """Kill the server outright rather than asking it to retire.
+
+    SIGTERM starts gunicorn's graceful shutdown, which runs to its 30-second
+    timeout while a test suite waits. The old code sent it, waited five
+    seconds, then killed the process anyway - so every server cost exactly
+    five wasted seconds, roughly three minutes across the suite. A test server
+    holds nothing worth draining: its data directory is a temp dir.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        proc.kill()
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:

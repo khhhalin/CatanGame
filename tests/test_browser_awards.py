@@ -22,10 +22,9 @@ import random
 from contextlib import contextmanager
 
 import pytest
-from browser_harness import Player, launch_browser, start_server, stop_server
+from browser_harness import Player, browser_session, start_server, stop_server
 from game import persistence
 from game.game import Game
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -120,10 +119,8 @@ def table(browser, data_dir, rules, build):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as playwright:
-        engine = launch_browser(playwright)
+    with browser_session() as engine:
         yield engine
-        engine.close()
 
 
 @pytest.fixture

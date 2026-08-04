@@ -27,6 +27,7 @@ import os
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
     click_edge,
@@ -37,15 +38,16 @@ from browser_harness import (
     end_turn,
     first_clickable,
     hover_target,
-    launch_browser,
+    next_frame,
     resolve_discard,
     resolve_robber,
     roll_dice,
+    server_round_trip,
     start_server,
     stop_server,
+    wait_for_preset,
     would_select,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -276,7 +278,8 @@ def halo_pixels(player, point, radius=16):
 
 
 def settle_frames(player):
-    player.page.wait_for_timeout(300)
+    """Let the render loop draw what the last input changed."""
+    next_frame(player.page)
 
 
 # --- Tables ---------------------------------------------------------------
@@ -284,10 +287,8 @@ def settle_frames(player):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 def make_sea_table(browser, url, names=("Alice", "Bob")):
@@ -301,7 +302,7 @@ def make_sea_table(browser, url, names=("Alice", "Bob")):
     for player in players:
         player.join()
     players[0].page.click("#preset-seafarers")
-    players[0].page.wait_for_timeout(400)
+    wait_for_preset(players[0], "seafarers")
     players[0].page.wait_for_selector("#start-game-btn:not(.hidden)", timeout=8000)
     players[0].page.click("#start-game-btn")
     for player in players:
@@ -498,7 +499,9 @@ class TestBuildingAShip:
         # The ✓ is offered even for a blocked target: the client's legality is a
         # copy, and only the server's answer is authoritative.
         player.page.click("#placement-confirm-yes")
-        player.page.wait_for_timeout(600)
+        # The server's refusal is what has to arrive before the board is read;
+        # a resync answered after it proves it has.
+        server_round_trip(player)
 
         assert ships_on_board(player.board()) == before, (
             "a ship was built on a land edge"

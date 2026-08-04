@@ -21,19 +21,19 @@ import re
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     click_edge,
     click_vertex,
     count_pieces,
     edges_next_to,
     first_clickable,
-    launch_browser,
     legal_setup_vertices,
     resolve_discard,
     resolve_robber,
     start_server,
     stop_server,
+    wait_for_rule,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -84,7 +84,7 @@ def set_rule(player, rule_id, value):
     else:
         control.fill(str(value))
         control.blur()
-    player.page.wait_for_timeout(400)
+    wait_for_rule(player, rule_id, value)
 
 
 def seat_two(browser, url, color_scheme=None, yolo=False):
@@ -117,10 +117,8 @@ def catalogue_option_name(player, rule_id, option_id):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 # --- The dice say which dice they are -------------------------------------

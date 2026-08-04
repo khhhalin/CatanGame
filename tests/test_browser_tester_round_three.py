@@ -28,9 +28,10 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     click_vertex,
     first_clickable,
-    launch_browser,
+    next_frame,
     start_server,
     stop_server,
 )
@@ -38,7 +39,6 @@ from game import cities_knights as ck_module
 from game import persistence
 from game import rules as rules_module
 from game.game import Game
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -70,7 +70,7 @@ def shot(player, label):
         player.page.evaluate(
             "t => document.documentElement.setAttribute('data-theme', t)", theme
         )
-        player.page.wait_for_timeout(150)
+        next_frame(player.page)
         path = os.path.join(SHOT_DIR, f"{label}-{theme}-1920x1080.png")
         player.page.screenshot(path=path, full_page=False)
         paths.append(path)
@@ -194,10 +194,8 @@ def an_active_knight(game):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as playwright:
-        engine = launch_browser(playwright)
+    with browser_session() as engine:
         yield engine
-        engine.close()
 
 
 @pytest.fixture
@@ -367,8 +365,14 @@ def overlay_state(player):
 
 
 def tap_knight(player, vertex_key):
+    """Tap an intersection and let the click be handled.
+
+    A tap on a knight raises the overlay and a tap away dismisses it, so what
+    every caller is waiting for is the click having been dealt with - not a
+    particular outcome. Two frames is that, exactly.
+    """
     click_vertex(player, vertex_key)
-    player.page.wait_for_timeout(300)
+    next_frame(player.page)
 
 
 class TestClickingYourOwnKnightOffersItsActions:
@@ -411,7 +415,11 @@ class TestClickingYourOwnKnightOffersItsActions:
         assert player.page.evaluate(
             "() => window.__catanDebug.getBoard().players.find(p => p.is_you).resources.wheat"
         ) == 0, "activating did not spend the wheat"
-        player.page.wait_for_timeout(300)
+        player.page.wait_for_function(
+            "() => document.getElementById('knight-actions')"
+            "        .classList.contains('hidden')",
+            timeout=5000,
+        )
         assert overlay_state(player) is None, "the overlay stayed up after the action"
 
     def test_a_tap_away_from_the_knight_dismisses_it(self, sleeping_knight):
@@ -475,7 +483,10 @@ class TestTheOverlayDoesNotFightTheTwoTapMove:
         offered = {entry["action"]: entry["enabled"] for entry in overlay_state(player)}
         assert offered["move"] is True, "an active knight was refused a move"
         player.page.click("#knight-action-move")
-        player.page.wait_for_timeout(300)
+        player.page.wait_for_function(
+            "() => window.__catanDebug.getSelection().mode === 'knight_move'",
+            timeout=5000,
+        )
 
         selection = player.page.evaluate("() => window.__catanDebug.getSelection()")
         assert selection["mode"] == "knight_move"

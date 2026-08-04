@@ -38,9 +38,10 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     click_vertex,
     first_clickable,
-    launch_browser,
+    next_frame,
     start_server,
     stop_server,
 )
@@ -48,7 +49,6 @@ from game import cities_knights as ck_module
 from game import persistence
 from game import rules as rules_module
 from game.game import Game
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -239,10 +239,8 @@ def a_knight_standing_on_a_settlement(game):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as playwright:
-        engine = launch_browser(playwright)
+    with browser_session() as engine:
         yield engine
-        engine.close()
 
 
 @pytest.fixture
@@ -315,7 +313,8 @@ def hand(player):
 
 
 def settle_frames(player):
-    player.page.wait_for_timeout(300)
+    """Let the render loop draw what the last input changed."""
+    next_frame(player.page)
 
 
 def aim(player, candidates):

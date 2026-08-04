@@ -29,17 +29,18 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
-    launch_browser,
     legal_setup_vertices,
+    next_frame,
     start_server,
     stop_server,
+    wait_for_rules,
 )
 from game import persistence
 from game import rules as rules_module
 from game.game import Game
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -145,10 +146,8 @@ def a_hand_of_commodities_owing_a_discard(game):
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as playwright:
-        engine = launch_browser(playwright)
+    with browser_session() as engine:
         yield engine
-        engine.close()
 
 
 def a_hand_that_could_buy_a_development_card(game):
@@ -243,7 +242,13 @@ class TestACommodityHandCanPayADiscard:
 
         player.page.fill("#discard-cloth", "1")
         player.page.click("#submit-discard-btn")
-        player.page.wait_for_timeout(400)
+        # The refusal is the client's own, so wait for what it says rather than
+        # for a guessed number of milliseconds.
+        player.page.wait_for_function(
+            "() => [...document.querySelectorAll('#notice-region *')]"
+            "        .some(el => el.textContent.includes('exactly 3'))",
+            timeout=5000,
+        )
 
         assert player.page.is_visible("#discard-modal.show"), (
             "a short discard closed the dialog"
@@ -446,7 +451,7 @@ def crowded_table(browser, tmp_path_factory):
     for player in players:
         player.join()
     players[0].page.evaluate(SET_RULES, EVERY_EXPANSION)
-    players[0].page.wait_for_timeout(600)
+    wait_for_rules(players[0], EVERY_EXPANSION)
     players[0].page.wait_for_selector("#start-game-btn:not(.hidden)", timeout=8000)
     players[0].page.click("#start-game-btn")
     for player in players:
@@ -642,7 +647,7 @@ class TestPlacementSoundsAndTheMuteToggle:
         player.page.evaluate(SET_MUTE, False)
 
         build_one_road(player)
-        player.page.wait_for_timeout(300)
+        player.page.wait_for_function("() => window.__cues.length > 0", timeout=5000)
 
         assert player.page.evaluate("() => window.__cues.length") > 0, (
             "a road went down and nothing was played"
@@ -656,7 +661,10 @@ class TestPlacementSoundsAndTheMuteToggle:
         player.page.evaluate(SET_MUTE, True)
 
         build_one_road(player)
-        player.page.wait_for_timeout(300)
+        # `build_one_road` already waited for the piece to appear, and the cue
+        # is played by the same board update that put it there - so there is
+        # nothing still in flight, only a frame left to draw.
+        next_frame(player.page)
 
         assert player.page.evaluate("() => window.__cues") == [], (
             "muted, and a placement still played something"

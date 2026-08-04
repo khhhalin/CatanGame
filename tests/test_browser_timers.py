@@ -24,15 +24,14 @@ import re
 import pytest
 from browser_harness import (
     Player,
+    browser_session,
     build_road,
     build_settlement,
     edges_next_to,
-    launch_browser,
     legal_setup_vertices,
     start_server,
     stop_server,
 )
-from playwright.sync_api import sync_playwright
 
 pytestmark = pytest.mark.slow
 
@@ -53,10 +52,8 @@ ROUND_TIMER_RUNNING = re.compile(r"Round: \d+s")
 
 @pytest.fixture(scope="module")
 def browser():
-    with sync_playwright() as play:
-        instance = launch_browser(play)
+    with browser_session() as instance:
         yield instance
-        instance.close()
 
 
 @pytest.fixture(scope="module")
