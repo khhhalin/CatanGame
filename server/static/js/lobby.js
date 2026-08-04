@@ -8,6 +8,39 @@ import { displayError, showNotice } from './notices.js';
 import { emitGame, socket } from './socket.js';
 import { getBoard, getRole, isGameRunning, viewState } from './state.js';
 
+// This browser's last seat, so a reload mid-game does not ask the player to
+// remember how they spelled their own name. Personal and local, like the YOLO
+// preference in placement.js: it reaches no other tab and no server.
+const NAME_STORAGE_KEY = 'catan.playerName';
+
+/**
+ * Remember the name this browser last joined under.
+ *
+ * @param {string} name - The name that was just sent to the server
+ */
+function rememberName(name) {
+    try {
+        window.localStorage.setItem(NAME_STORAGE_KEY, name);
+    } catch {
+        // Private mode or storage denied: joining still works, it just will
+        // not be pre-filled next time.
+    }
+}
+
+/**
+ * Pre-fill the join box with the last name used in this browser.
+ */
+function restoreRememberedName() {
+    if (!usernameInput || usernameInput.value) {
+        return;
+    }
+    try {
+        usernameInput.value = window.localStorage.getItem(NAME_STORAGE_KEY) || '';
+    } catch {
+        // Nothing to restore; the player types it as before.
+    }
+}
+
 /**
  * Handle join button click - connect to game
  */
@@ -17,6 +50,7 @@ function join(takeover = false) {
         displayError('Please enter a name');
         return;
     }
+    rememberName(name);
 
     const role = document.querySelector('input[name="role"]:checked').value;
     const color = joinColorPicker.value;
@@ -62,7 +96,14 @@ export function handleNameTaken(message) {
     }
 }
 
-joinBtn.addEventListener('click', join);
+// Wrapped, not passed straight in: a listener is handed the MouseEvent, which
+// arrives as `takeover` and is truthy, so every Join click claimed a seat
+// somebody else was holding and `handleNameTaken` never ran. The Enter path
+// below always called `join()` with no argument and was never affected, which
+// is what made this survive so long.
+joinBtn.addEventListener('click', () => join());
+
+restoreRememberedName();
 
 usernameInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
