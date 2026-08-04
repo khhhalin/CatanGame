@@ -697,6 +697,62 @@
         </div>
     </div>
 
+    <!-- What changed, and which build this is.
+
+         Outside `.container` and `position: fixed` on purpose, exactly as the
+         popovers are: it is in no flow on the page, so opening it can neither
+         reflow a panel nor resize the board box nor move the camera. It also
+         keeps it out of the layout suite's per-element overflow sweep, which
+         walks `#game-screen` and `.table-aside` — a floating panel is not part
+         of either and must not be measured as if it were.
+
+         Bottom left: the hand and the chat box are in the aside on the right
+         and the board's zoom controls are at the board's top right, so this
+         corner is the one place a panel can be expanded without covering
+         something a player is using. It is available in the lobby and in a
+         running game, because a tester mid-game is exactly who needs it.
+
+         A disclosure, not a dialog: one button carrying aria-expanded and
+         aria-controls, one region it controls. The build id is on the button
+         itself rather than inside the panel - it is the half that saves a
+         triage round, so it must be readable without opening anything. -->
+    <div id="changelog-panel" class="changelog-panel">
+        <button type="button" id="changelog-toggle" class="changelog-toggle"
+                aria-expanded="false" aria-controls="changelog-body">
+            <span class="changelog-toggle-name">What changed</span>
+            <span id="changelog-build" class="changelog-build">build …</span>
+            <!-- The count is repeated into the button's aria-label, because a
+                 badge announces nothing. -->
+            <span id="changelog-badge" class="changelog-badge hidden" aria-hidden="true"></span>
+        </button>
+        <div id="changelog-body" class="changelog-body hidden" role="region"
+             aria-label="What changed">
+            <div class="changelog-head">
+                <span>What changed</span>
+                <button type="button" id="changelog-close" class="popover-close"
+                        aria-label="Close">×</button>
+            </div>
+            <!-- The line a tester pastes into a bug report. First, and not a
+                 footnote: "which build were you on" is the question that costs
+                 a round trip when it goes unanswered. -->
+            <div class="changelog-identity">
+                <p id="changelog-line" class="changelog-line"></p>
+                <button type="button" id="changelog-copy" class="changelog-copy">
+                    Copy for a bug report
+                </button>
+                <p id="changelog-copied" class="changelog-copied" role="status"
+                   aria-live="polite"></p>
+            </div>
+            <!-- Raised when the server answers on a build this tab did not
+                 load with: the tab is stale, which is the failure this whole
+                 panel exists for. -->
+            <p id="changelog-stale" class="changelog-stale hidden" role="alert"></p>
+            <!-- Built by changelog.js from the server's parsed CHANGELOG.md.
+                 No entry is written in this file or in JavaScript. -->
+            <div id="changelog-releases" class="changelog-releases"></div>
+        </div>
+    </div>
+
     <!-- Served from our own static tree, not a CDN: the game has to work
          offline and must not depend on a third party at runtime. See the
          header of the vendored file for the version and how to upgrade it.

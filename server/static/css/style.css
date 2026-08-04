@@ -2479,6 +2479,284 @@ button:disabled {
 .resource-display .com-coin { color: var(--com-coin); }
 .resource-display .com-paper { color: var(--com-paper); }
 
+/* ------------------------------------------------------- the changelog panel */
+
+/* Floating, collapsed by default, and available in the lobby and in a game.
+   `position: fixed` for the same reason the popovers are fixed: it is in no
+   flow on the page, so expanding it cannot reflow a panel, resize the board box
+   or move the camera.
+
+   Bottom left is the one free corner. The hand and the chat box are in the
+   aside on the right; the board's zoom controls are at the board's top right.
+   Under the modals in the stack, over everything else: a dialog asking a
+   question must not be argued with by a reference panel. */
+.changelog-panel {
+    position: fixed;
+    left: var(--space-3);
+    bottom: var(--space-3);
+    z-index: var(--z-dropdown);
+    display: flex;
+    /* Reversed so the panel grows upward off the button while the button stays
+       first in the document - the trigger has to come before the region it
+       controls, or Tab reaches the content before the thing that opened it. */
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: var(--space-2);
+    max-width: calc(100vw - 2 * var(--space-3));
+}
+
+.changelog-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    font-size: var(--text-xs);
+    box-shadow: var(--shadow-2);
+}
+
+.changelog-toggle:hover {
+    background-color: var(--surface-2);
+}
+
+.changelog-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+}
+
+.changelog-toggle-name {
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: bold;
+}
+
+/* The build id, on the collapsed button. It is the half of this panel that
+   saves a triage round, so it is readable without opening anything. Monospaced
+   because it is a sha being read character by character into a bug report. */
+.changelog-build {
+    font-family: var(--font-num);
+    font-size: var(--text-xs);
+    color: var(--text);
+}
+
+.changelog-badge {
+    min-width: 1.25rem;
+    padding: 0 0.3rem;
+    border-radius: var(--radius-pill);
+    background-color: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--text-2xs);
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.changelog-body {
+    width: min(30rem, calc(100vw - 2 * var(--space-3)));
+    /* Bounded, and it is the panel's own content that scrolls - never the page,
+       and never anything else on it. */
+    max-height: min(60vh, 34rem);
+    display: flex;
+    flex-direction: column;
+    background-color: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-3);
+    overflow: hidden;
+}
+
+.changelog-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--panel-rule);
+    font-size: var(--text-xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+/* The line a tester pastes into a report, and the button that puts it on the
+   clipboard. Deliberately the first thing in the panel. */
+.changelog-identity {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--surface-2);
+    border-bottom: 1px solid var(--panel-rule);
+}
+
+.changelog-line {
+    flex: 1 1 14rem;
+    min-width: 0;
+    font-family: var(--font-num);
+    font-size: var(--text-xs);
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.changelog-copy {
+    flex: none;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+}
+
+.changelog-copied {
+    flex: 1 0 100%;
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+}
+
+.changelog-copied:empty {
+    display: none;
+}
+
+/* The server answered on a build this tab did not load with. That is the exact
+   failure the panel exists for, so it is stated in the panel and marked on the
+   collapsed button - a tester who never opens it still sees the ring. */
+.changelog-stale {
+    flex: none;
+    margin: var(--space-2) var(--space-3) 0;
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    background-color: var(--bad-soft);
+    color: var(--bad);
+    font-size: var(--text-xs);
+    font-weight: bold;
+}
+
+.changelog-panel-stale .changelog-toggle {
+    border-color: var(--bad);
+}
+
+.changelog-releases {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+}
+
+.changelog-release + .changelog-release {
+    margin-top: var(--space-4);
+}
+
+.changelog-release-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding-bottom: var(--space-1);
+    border-bottom: 1px solid var(--panel-rule);
+    font-size: var(--text-xs);
+}
+
+.changelog-release-build {
+    font-family: var(--font-num);
+    color: var(--text);
+}
+
+.changelog-release-when {
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+.changelog-latest {
+    margin-left: auto;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-3);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.changelog-entries {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.changelog-entry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text);
+    line-height: var(--leading-normal);
+}
+
+/* Fixed, New and Known issue are the whole taxonomy - a tester scanning for
+   what to re-test reads these before the sentence. */
+.changelog-kind {
+    flex: none;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-2xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.changelog-entry-fixed .changelog-kind {
+    background-color: var(--good-soft);
+    color: var(--good);
+}
+
+.changelog-entry-new .changelog-kind {
+    background-color: var(--info-soft);
+    color: var(--info);
+}
+
+.changelog-entry-known .changelog-kind {
+    background-color: var(--warn-soft);
+    color: var(--warn);
+}
+
+.changelog-text {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.changelog-reported {
+    display: inline-block;
+    white-space: nowrap;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-3);
+    color: var(--text-muted);
+    font-size: var(--text-2xs);
+}
+
+.changelog-error,
+.changelog-empty {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* One column: the panel is as wide as the screen allows and shorter, so it
+   cannot end up covering the whole of a phone-sized board. */
+@media (max-width: 900px) {
+    .changelog-body {
+        max-height: 50vh;
+    }
+}
+
 /* --------------------------------------------------------------- utilities */
 
 .hidden {

@@ -6,6 +6,7 @@ import { getCommandCatalogue } from './commands.js';
 import { displayError } from './notices.js';
 import { getBoard, getCurrentPlayer, getRole, isGameRunning, viewState } from './state.js';
 import './board.js';
+import './changelog.js';
 import './lobby.js';
 import './panels.js';
 import './cities-knights.js';

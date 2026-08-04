@@ -5,6 +5,7 @@
 // the full set of server events is this file's table of contents.
 
 import { markDirty, setHighlight } from './board.js';
+import { noteBuild, renderChangelog } from './changelog.js';
 import { renderPendingChoices } from './choices.js';
 import { describeLastAttack, noteBarbarianAttack, renderCitiesKnights } from './cities-knights.js';
 import { setCommandCatalogue } from './commands.js';
@@ -53,6 +54,13 @@ socket.on('command_result', (data) => {
     appendCommandResult(data.lines);
 });
 
+// The changelog and the build that served it. Asked for on every connect, in
+// the lobby as well as in a game: a tester who has not joined yet still has to
+// be able to read which build they are looking at.
+socket.on('changelog', (data) => {
+    renderChangelog(data);
+});
+
 socket.on('user_list', (data) => {
     setRoster(data.players, data.observers, data.min_players);
     renderUserList();
@@ -60,6 +68,7 @@ socket.on('user_list', (data) => {
 });
 
 socket.on('game_started', (data) => {
+    noteBuild(data.build);
     // The board payload is what every later question is answered from, so it
     // goes in before anything renders. The roster decides whether this tab is
     // playing or watching - the server seats people, the client does not.
@@ -123,6 +132,7 @@ socket.on('game_started', (data) => {
 });
 
 socket.on('game_state', (data) => {
+    noteBuild(data.build);
     // The server answers every join with a snapshot, including "no game is
     // running" so a client that reconnects in the lobby is not left blank.
     // That snapshot used to be read as "a game started", because a local flag
@@ -257,6 +267,10 @@ socket.on('dice_rolled', (data) => {
 
 socket.on('board_updated', (data) => {
     console.log('Board updated');
+    // Every board payload names the build that served it, so a tab open across
+    // a deploy is told by the next thing it is sent rather than by the tester
+    // thinking to check.
+    noteBuild(data.build);
     // Before the payload is stored, so what changed is still answerable.
     notePlacements(data.board);
     viewState.server.board = data.board;
@@ -479,6 +493,10 @@ socket.on('error', (data) => {
 socket.on('connect', () => {
     setConnectionStatus('connected', 'Connected');
     updateChatAvailability();
+    // Before the rejoin and outside the `if` below: a socket with no seat is
+    // exactly the tab that has been sitting on an old build, and it is entitled
+    // to know which build it just reconnected to.
+    socket.emit('request_changelog');
     if (viewState.identity.name) {
         // Re-join on every reconnect - the server replies with a full snapshot.
         // takeover: true because this IS the same player reclaiming their own

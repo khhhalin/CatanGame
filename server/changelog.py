@@ -189,8 +189,13 @@ def load() -> list:
 
 
 def newest_build() -> str | None:
-    """The build id of the top release, for `build_info`'s last fallback."""
-    releases = load()
-    if not releases or releases[0]['build'] == UNRELEASED:
-        return None
-    return releases[0]['build']
+    """The newest released build, for `build_info`'s last fallback.
+
+    Skips an `unreleased` group at the top: it is a placeholder for work that
+    has not gone out, and answering "which build is this server" with the word
+    "unreleased" tells a tester nothing they can quote.
+    """
+    for release in load():
+        if release['build'] != UNRELEASED:
+            return release['build']
+    return None
