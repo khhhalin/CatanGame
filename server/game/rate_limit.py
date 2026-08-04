@@ -69,6 +69,13 @@ EVENT_LIMITS: dict[str, Limit] = {
     "request_log": Limit(capacity=10, refill_per_second=1.0),
     "request_users": Limit(capacity=10, refill_per_second=1.0),
     "request_rules": Limit(capacity=10, refill_per_second=1.0),
+    # Maps: listing reads and validates every file in the maps directory, and
+    # a preview deals a whole board through the real engine. Both are far more
+    # work per message than anything else a lobby client sends.
+    "request_maps": Limit(capacity=10, refill_per_second=1.0),
+    "preview_map": Limit(capacity=10, refill_per_second=1.0),
+    "save_map": Limit(capacity=10, refill_per_second=0.5),
+    "delete_map": Limit(capacity=10, refill_per_second=0.5),
     # Enough for a fast typist trading banter, not enough to fill the panel.
     "chat_message": Limit(capacity=8, refill_per_second=0.5),  # 30/min
 }
