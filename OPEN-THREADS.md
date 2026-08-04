@@ -63,10 +63,14 @@ pending-choice phase.
 
 ## 3. Known-wrong, with the correct behaviour understood
 
-- **`merchant_fleet`** is the last refused progress card. It needs a 2:1 bank
-  trade on a resource **or commodity**, and the bank holds no commodity supply
-  (`propose_trade` reads `player.resources` only). Implementing it for resources
-  alone would silently do nothing for three of its eight legal choices.
+- **`merchant_fleet`** is the last refused progress card, and it is **no longer
+  blocked**. It needs a 2:1 bank trade on a resource *or commodity*, which was
+  impossible while `propose_trade` read `player.resources` only. Commodity
+  trading now works (`expansions.md` 329–331), so the rate is expressible: the
+  card can be implemented, or this note deleted if the table does not want it.
+  Note there is deliberately no bank commodity *supply* — a commodity given to
+  the bank leaves play and one taken is minted, which is how production already
+  treats them.
 - **The board does not fill its pane.** `computeLayout` pads by `hexRadius + 20`
   on every side, ~17% of the layout. Left alone because `offsetX`/`offsetY` are
   coordinates several suites assert against — a sizing-contract change, not a CSS
