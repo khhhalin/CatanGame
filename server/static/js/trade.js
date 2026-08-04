@@ -1,8 +1,8 @@
 // Player-to-player trade, and the two development cards that need a choice
 // made in a dialog before the server can resolve them.
 
-import { RESOURCE_ICONS } from './constants.js';
-import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict } from './dom.js';
+import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
+import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './panels.js';
@@ -16,6 +16,29 @@ import { getBoard, isMyTurn, viewState } from './state.js';
 const TRADE_OFFER_SECONDS = 10;
 
 const TRADE_RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+
+// Everything the trade handler accepts. Commodities trade exactly as resources
+// do - `propose_trade` runs both sides through `clean_card_counts` - so the
+// dialog offers all eight on a table that plays them, and the five resources
+// on one that does not.
+const TRADE_CARDS = [...TRADE_RESOURCES, ...COMMODITY_TYPES];
+
+const CARD_ICONS = { ...RESOURCE_ICONS, ...COMMODITY_ICONS };
+
+/**
+ * Whether the running game deals cloth, coin and paper at all.
+ */
+function commoditiesInPlay() {
+    return getBoard()?.rules?.commodities === true;
+}
+
+/**
+ * The card types the dialog is currently offering, which is what its inputs
+ * are read and reset over.
+ */
+function tradableCards() {
+    return commoditiesInPlay() ? TRADE_CARDS : TRADE_RESOURCES;
+}
 
 // What the merchant is worth at the bank for the hex it stands on. Duplicated
 // from MERCHANT_TRADE_RATE in server/game/trade_rules.py, like the build costs
@@ -81,6 +104,12 @@ function bestTradeRate(offered) {
     if (ports.generic) {
         rate = Math.min(rate, rules.generic_harbour_rate ?? 3);
     }
+    // "Commodities may never be traded at a 2:1 resource-specific harbor"
+    // (expansions.md 331) - and one commodity anywhere in the offer withdraws
+    // every 2:1 rate, or a wood harbour would launder paper alongside wood.
+    if (offered.some(card => COMMODITY_TYPES.includes(card))) {
+        return rate;
+    }
     if (offered.some(resource => ports[resource])) {
         rate = Math.min(rate, rules.special_harbour_rate ?? 2);
     }
@@ -104,7 +133,7 @@ function bestTradeRate(offered) {
 function formatTradeBundle(resources) {
     return Object.entries(resources || {})
         .filter(([, count]) => count > 0)
-        .map(([resource, count]) => `${count}${RESOURCE_ICONS[resource] || resource}`)
+        .map(([card, count]) => `${count}${CARD_ICONS[card] || card}`)
         .join(' ');
 }
 
@@ -391,11 +420,11 @@ function readTradeInputs() {
     const offered = {};
     const wanted = {};
 
-    TRADE_RESOURCES.forEach(res => {
-        const giveCount = parseInt(document.getElementById(`give-${res}`).value) || 0;
-        const wantCount = parseInt(document.getElementById(`want-${res}`).value) || 0;
-        if (giveCount > 0) offered[res] = giveCount;
-        if (wantCount > 0) wanted[res] = wantCount;
+    tradableCards().forEach(card => {
+        const giveCount = parseInt(document.getElementById(`give-${card}`).value) || 0;
+        const wantCount = parseInt(document.getElementById(`want-${card}`).value) || 0;
+        if (giveCount > 0) offered[card] = giveCount;
+        if (wantCount > 0) wanted[card] = wantCount;
     });
 
     return { offered, wanted };
@@ -419,15 +448,15 @@ function renderBankRates() {
     label.textContent = 'Your bank rate:';
     fragment.appendChild(label);
 
-    for (const resource of TRADE_RESOURCES) {
-        const rate = bestTradeRate([resource]);
+    for (const card of tradableCards()) {
+        const rate = bestTradeRate([card]);
         const chip = document.createElement('span');
         chip.className = 'trade-rate-chip';
-        chip.dataset.resource = resource;
+        chip.dataset.resource = card;
         // A harbour is only worth having if the player can see they hold one,
         // so the ones better than the table's flat rate are marked as such.
         chip.classList.toggle('is-harbour', rate < baseRate);
-        chip.textContent = `${RESOURCE_ICONS[resource]} ${rate}:1`;
+        chip.textContent = `${CARD_ICONS[card]} ${rate}:1`;
         fragment.appendChild(chip);
     }
 
@@ -527,6 +556,9 @@ function showTradeModal() {
     }
     tradeModal.classList.remove('hidden');
     tradeModal.classList.add('show');
+    const commodities = commoditiesInPlay();
+    tradeGiveCommodities?.classList.toggle('hidden', !commodities);
+    tradeWantCommodities?.classList.toggle('hidden', !commodities);
     renderBankRates();
     renderTradeVerdict();
 }
@@ -537,10 +569,12 @@ function showTradeModal() {
 function hideTradeModal() {
     tradeModal.classList.remove('show');
     tradeModal.classList.add('hidden');
-    // Reset inputs
-    TRADE_RESOURCES.forEach(res => {
-        document.getElementById(`give-${res}`).value = 0;
-        document.getElementById(`want-${res}`).value = 0;
+    // Reset inputs. Every one of them, not only the ones currently shown: a
+    // number left in a hidden commodity row would be sent by the next trade on
+    // a table that switched them off.
+    TRADE_CARDS.forEach(card => {
+        document.getElementById(`give-${card}`).value = 0;
+        document.getElementById(`want-${card}`).value = 0;
     });
     clearOverpayOffer();
     renderTradeVerdict();

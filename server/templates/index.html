@@ -540,6 +540,15 @@
                     <label>🌾 Wheat: <input type="number" id="give-wheat" min="0" max="10" value="0"></label>
                     <label>🪨 Ore: <input type="number" id="give-ore" min="0" max="10" value="0"></label>
                 </div>
+                <!-- "Commodities may be traded with other players in all the
+                     same ways that resources may be traded" (expansions.md
+                     329). Shown only when the table plays them; trade.js reads
+                     that off the running game's rules. -->
+                <div id="trade-give-commodities" class="resource-selector hidden">
+                    <label>🧵 Cloth: <input type="number" id="give-cloth" min="0" max="10" value="0"></label>
+                    <label>🪙 Coin: <input type="number" id="give-coin" min="0" max="10" value="0"></label>
+                    <label>📜 Paper: <input type="number" id="give-paper" min="0" max="10" value="0"></label>
+                </div>
             </div>
             <div class="trade-modal-section">
                 <h3>You Want:</h3>
@@ -549,6 +558,11 @@
                     <label>🐑 Sheep: <input type="number" id="want-sheep" min="0" max="10" value="0"></label>
                     <label>🌾 Wheat: <input type="number" id="want-wheat" min="0" max="10" value="0"></label>
                     <label>🪨 Ore: <input type="number" id="want-ore" min="0" max="10" value="0"></label>
+                </div>
+                <div id="trade-want-commodities" class="resource-selector hidden">
+                    <label>🧵 Cloth: <input type="number" id="want-cloth" min="0" max="10" value="0"></label>
+                    <label>🪙 Coin: <input type="number" id="want-coin" min="0" max="10" value="0"></label>
+                    <label>📜 Paper: <input type="number" id="want-paper" min="0" max="10" value="0"></label>
                 </div>
             </div>
             <p id="trade-verdict" class="trade-verdict" role="status" aria-live="polite"></p>

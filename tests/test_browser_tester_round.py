@@ -101,8 +101,12 @@ def build_game(build):
 
 
 @contextmanager
-def table(browser, data_dir, build):
-    """A running server restored from `build`, with both players connected."""
+def table(browser, data_dir, build, color_scheme=None):
+    """A running server restored from `build`, with both players connected.
+
+    `color_scheme` is the only way to see the dark theme: the app has no theme
+    control, both themes come from prefers-color-scheme.
+    """
     game, marks = build_game(build)
     persistence.save(game, os.path.join(str(data_dir), "game.json"))
 
@@ -110,7 +114,8 @@ def table(browser, data_dir, build):
     tabs = {}
     try:
         for name in TABLE:
-            player = Player(browser, url, name, viewport=VIEWPORT)
+            player = Player(browser, url, name, viewport=VIEWPORT,
+                            color_scheme=color_scheme)
             # Not Player.join(): that waits for the lobby, and a join into a
             # running game is answered with the game screen instead.
             player.page.check("#role-player")
@@ -172,6 +177,22 @@ def progress_card_table(browser, tmp_path):
         yield live
 
 
+# Both themes are a standing requirement, and the only way to see the dark one
+# is a context that asks for it.
+@pytest.fixture
+def owes_a_commodity_discard_dark(browser, tmp_path):
+    with table(browser, tmp_path, a_hand_of_commodities_owing_a_discard,
+               color_scheme="dark") as live:
+        yield live
+
+
+@pytest.fixture
+def progress_card_table_dark(browser, tmp_path):
+    with table(browser, tmp_path, a_hand_that_could_buy_a_development_card,
+               color_scheme="dark") as live:
+        yield live
+
+
 # --- 1. Discarding commodities --------------------------------------------
 
 
@@ -229,6 +250,14 @@ class TestACommodityHandCanPayADiscard:
         )
         assert any("exactly 3" in text for text in player.notices()), player.notices()
 
+    def test_the_dialog_reads_in_the_dark_theme_too(self, owes_a_commodity_discard_dark):
+        """Both themes, every time: seven contrast failures have been fixed in
+        this client and the way each one was found was by looking."""
+        player, _ = owes_a_commodity_discard_dark
+        player.page.wait_for_selector("#discard-modal.show", timeout=8000)
+        assert player.page.is_visible("#discard-cloth")
+        shot(player, "discard-commodities-dark")
+
     def test_no_console_errors(self, owes_a_commodity_discard):
         player, _ = owes_a_commodity_discard
         assert player.noisy_errors() == [], player.noisy_errors()
@@ -278,6 +307,14 @@ class TestBuyCardIsNotOfferedWhereItIsRefused:
         player.page.wait_for_selector("#progress-cards-popover:not(.hidden)", timeout=3000)
         shot(player, "progress-cards-panel-light")
         player.page.click("#progress-cards-chip")
+
+    def test_the_progress_panel_reads_in_the_dark_theme_too(
+        self, progress_card_table_dark
+    ):
+        player, _ = progress_card_table_dark
+        player.page.click("#progress-cards-chip")
+        player.page.wait_for_selector("#progress-cards-popover:not(.hidden)", timeout=3000)
+        shot(player, "progress-cards-panel-dark")
 
     def test_no_console_errors(self, progress_card_table):
         player, _ = progress_card_table
@@ -399,8 +436,11 @@ def place_setup_round(players):
 def crowded_table(browser, tmp_path_factory):
     """Four players, every expansion on, past setup: the worst case for the rail."""
     proc, url = start_server(tmp_path_factory.mktemp("tester-crowded"), seed=GAME_SEED)
+    # Dave plays in the dark theme: both themes have to be looked at, and a
+    # fourth server for one screenshot is a minute of the suite for nothing.
     players = [
-        Player(browser, url, name, viewport=VIEWPORT, yolo=True)
+        Player(browser, url, name, viewport=VIEWPORT, yolo=True,
+               color_scheme="dark" if name == "Dave" else None)
         for name in ("Alice", "Bob", "Carol", "Dave")
     ]
     for player in players:
@@ -505,6 +545,7 @@ class TestTheWholeTableIsReadableAtAGlance:
             off_screen = player.page.evaluate(_OFF_SCREEN)
             assert off_screen == [], f"{player.name}: off the screen: {off_screen}"
         shot(crowded_table[0], "scoreboard-4p-every-expansion-light")
+        shot(crowded_table[3], "scoreboard-4p-every-expansion-dark")
 
     def test_no_console_errors(self, crowded_table):
         for player in crowded_table:
@@ -677,4 +718,64 @@ class TestPlacementSoundsAndTheMuteToggle:
 
     def test_no_console_errors(self, road_builder):
         player, _ = road_builder
+        assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- 5. Commodity trading, now that the engine takes it -------------------
+#
+# `propose_trade` runs both sides through `clean_card_counts`, and
+# `TradeRules._move_cards` hands a commodity over exactly as it hands over a
+# resource (`expansions.md` 329). Until that landed the modal deliberately did
+# not offer commodities: a control that sends what the server rejects is worse
+# than none.
+
+
+def a_hand_of_cloth_and_a_partner_with_ore(game):
+    """One player holding cloth, the other holding ore. Between them, a trade."""
+    actor = game.current_player_name()
+    other = next(name for name in TABLE if name != actor)
+    giver = game.get_player(actor)
+    giver.resources.update(EMPTY_HAND)
+    giver.commodities.update({"cloth": 3, "coin": 0, "paper": 0})
+    taker = game.get_player(other)
+    taker.resources.update(EMPTY_HAND)
+    taker.resources.update({"ore": 2})
+    return {"actor": actor, "other": other}
+
+
+@pytest.fixture
+def commodity_traders(browser, tmp_path):
+    with table(browser, tmp_path, a_hand_of_cloth_and_a_partner_with_ore) as live:
+        yield live
+
+
+class TestCommoditiesCanBeOffered:
+    def test_the_dialog_offers_commodities_when_the_table_plays_them(
+        self, commodity_traders
+    ):
+        player, _ = commodity_traders
+        player.page.click("#tab-trade")
+        player.page.click("#propose-trade-btn")
+        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
+        for card in ("cloth", "coin", "paper"):
+            assert player.page.is_visible(f"#give-{card}"), f"no give input for {card}"
+            assert player.page.is_visible(f"#want-{card}"), f"no want input for {card}"
+
+    def test_an_offer_of_cloth_reaches_the_table(self, commodity_traders):
+        """The whole point: the server takes it, so the client may send it."""
+        player, marks = commodity_traders
+        player.page.click("#tab-trade")
+        player.page.click("#propose-trade-btn")
+        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
+        player.page.fill("#give-cloth", "2")
+        player.page.fill("#want-ore", "1")
+        player.page.click("#submit-trade-btn")
+
+        player.page.wait_for_function(
+            "() => (window.__catanDebug.getBoard().trades.active || []).length > 0",
+            timeout=8000,
+        )
+        offer = player.board()["trades"]["active"][0]
+        assert offer["offered_resources"] == {"cloth": 2}, offer
+        assert offer["wanted_resources"] == {"ore": 1}, offer
         assert player.noisy_errors() == [], player.noisy_errors()

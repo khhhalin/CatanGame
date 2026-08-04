@@ -54,6 +54,10 @@ export const submitTradeBtn = document.getElementById('submit-trade-btn');
 // only worth having if the player can see they hold one.
 export const tradeBankRates = document.getElementById('trade-bank-rates');
 export const tradeVerdict = document.getElementById('trade-verdict');
+// The commodity halves of the two trade rows, shown only when the table plays
+// commodities - they trade exactly as resources do.
+export const tradeGiveCommodities = document.getElementById('trade-give-commodities');
+export const tradeWantCommodities = document.getElementById('trade-want-commodities');
 export const tradeSendAnywayBtn = document.getElementById('trade-send-anyway');
 export const diceTimerEl = document.getElementById('dice-timer');
 export const roundTimerEl = document.getElementById('round-timer');
