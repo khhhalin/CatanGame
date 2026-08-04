@@ -81,6 +81,8 @@ export const placementConfirm = document.getElementById('placement-confirm');
 export const placementConfirmYes = document.getElementById('placement-confirm-yes');
 export const placementConfirmNo = document.getElementById('placement-confirm-no');
 export const yoloToggle = document.getElementById('yolo-mode-toggle');
+// Silences the placement cues and the turn sound. See sound.js.
+export const muteToggle = document.getElementById('mute-toggle');
 // The ✓/✗ is raised by a canvas click, which announces nothing on its own.
 export const placementAnnounce = document.getElementById('placement-announce');
 

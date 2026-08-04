@@ -509,3 +509,172 @@ class TestTheWholeTableIsReadableAtAGlance:
     def test_no_console_errors(self, crowded_table):
         for player in crowded_table:
             assert player.noisy_errors() == [], f"{player.name}: {player.noisy_errors()}"
+
+
+# --- 4. A sound on every placement, and a way to turn it off ---------------
+#
+# The cues are synthesised with the Web Audio API - no audio files were added -
+# so "was a sound made" is answerable by counting the oscillators the page
+# started. Patched on the prototype rather than on the context, because the
+# context is built lazily on the first cue and there is nothing to patch before
+# then.
+
+COUNT_OSCILLATORS = """
+() => {
+    if (window.__cues) {
+        window.__cues.length = 0;
+        return;
+    }
+    window.__cues = [];
+    const start = OscillatorNode.prototype.start;
+    OscillatorNode.prototype.start = function (...args) {
+        window.__cues.push(this.type);
+        return start.apply(this, args);
+    };
+    const play = HTMLMediaElement.prototype.play;
+    window.__samples = [];
+    HTMLMediaElement.prototype.play = function (...args) {
+        window.__samples.push(this.src);
+        return play.apply(this, args);
+    };
+}
+"""
+
+SET_MUTE = """
+async wanted => {
+    const toggle = document.getElementById('mute-toggle');
+    if (toggle.checked !== wanted) {
+        toggle.click();
+    }
+}
+"""
+
+PLAY_TURN_SOUND = """
+async () => {
+    const sound = await import('/static/js/sound.js');
+    sound.playTurnSound();
+}
+"""
+
+
+def a_hand_for_two_roads(game):
+    """Roads to build from, and exactly four cards: two roads and no more."""
+    actor = game.current_player_name()
+    player = game.get_player(actor)
+    home = next(
+        key for key in sorted(game.vertices)
+        if len(game.vertices[key].neighbors["hexes"]) == 3
+        and all(game.hexes[h].type != "ocean"
+                for h in game.vertices[key].neighbors["hexes"])
+    )
+    for edge_key in game.vertices[home].neighbors["edges"]:
+        game.edges[edge_key].road = {"player": actor}
+        player.roads.append(edge_key)
+    player.resources.update(EMPTY_HAND)
+    player.resources.update({"wood": 2, "brick": 2})
+    return {"home": home}
+
+
+@pytest.fixture
+def road_builder(browser, tmp_path):
+    with table(browser, tmp_path, a_hand_for_two_roads) as live:
+        yield live
+
+
+def build_one_road(player):
+    board = player.board()
+    build_road(player, [
+        key for key, edge in sorted(board["edges"].items())
+        if not edge.get("road") and not edge["sea"]
+        and any(
+            (board["edges"][other].get("road") or {}).get("player") == player.name
+            for vertex in edge["neighbors"]["vertices"]
+            for other in board["vertices"][vertex]["neighbors"]["edges"]
+        )
+    ])
+
+
+class TestPlacementSoundsAndTheMuteToggle:
+    def test_a_placement_makes_a_sound(self, road_builder):
+        player, _ = road_builder
+        player.page.evaluate(COUNT_OSCILLATORS)
+        player.page.evaluate(SET_MUTE, False)
+
+        build_one_road(player)
+        player.page.wait_for_timeout(300)
+
+        assert player.page.evaluate("() => window.__cues.length") > 0, (
+            "a road went down and nothing was played"
+        )
+
+    def test_muting_silences_the_placement_cue(self, road_builder):
+        """The point of the toggle: with a cue on every placement, a player who
+        cannot turn it off has a real problem."""
+        player, _ = road_builder
+        player.page.evaluate(COUNT_OSCILLATORS)
+        player.page.evaluate(SET_MUTE, True)
+
+        build_one_road(player)
+        player.page.wait_for_timeout(300)
+
+        assert player.page.evaluate("() => window.__cues") == [], (
+            "muted, and a placement still played something"
+        )
+
+    def test_muting_silences_the_turn_sound_too(self, road_builder):
+        """The sample that was here before the cues were, and the only sound
+        the game had. Muting has to reach it as well."""
+        player, _ = road_builder
+        player.page.evaluate(COUNT_OSCILLATORS)
+
+        player.page.evaluate(SET_MUTE, False)
+        player.page.evaluate(PLAY_TURN_SOUND)
+        assert player.page.evaluate("() => window.__samples.length") == 1
+
+        player.page.evaluate(SET_MUTE, True)
+        player.page.evaluate(PLAY_TURN_SOUND)
+        assert player.page.evaluate("() => window.__samples.length") == 1, (
+            "muted, and the turn sound still played"
+        )
+
+    def test_the_setting_survives_a_reload(self, road_builder):
+        """Personal, per-browser, in localStorage - the `catan.yoloMode`
+        pattern. A mute that has to be set again every reload is not one."""
+        player, _ = road_builder
+        player.page.evaluate(SET_MUTE, True)
+        assert player.page.evaluate(
+            "() => window.localStorage.getItem('catan.muted')"
+        ) == "1"
+
+        player.page.reload(wait_until="networkidle")
+        player.page.check("#role-player")
+        player.page.fill("#username", player.name)
+        player.page.click("#join-btn")
+        player.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
+
+        assert player.page.is_checked("#mute-toggle"), (
+            "the mute setting did not survive a reload"
+        )
+
+    def test_reduced_motion_starts_the_game_muted(self, browser, road_builder):
+        """A browser asking for reduced motion is asking for less of
+        everything, so it is taken as the *starting* setting - a stored
+        preference still wins, which is why this tab is a fresh one."""
+        player, _ = road_builder
+        context = browser.new_context(viewport=VIEWPORT, reduced_motion="reduce")
+        page = context.new_page()
+        try:
+            page.goto(player.page.url, wait_until="networkidle")
+            page.check("#role-player")
+            page.fill("#username", "Quiet")
+            page.click("#join-btn")
+            page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
+            assert page.is_checked("#mute-toggle"), (
+                "a browser asking for reduced motion was given sound anyway"
+            )
+        finally:
+            context.close()
+
+    def test_no_console_errors(self, road_builder):
+        player, _ = road_builder
+        assert player.noisy_errors() == [], player.noisy_errors()

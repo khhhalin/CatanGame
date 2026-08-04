@@ -7,12 +7,13 @@
 import { markDirty, setHighlight } from './board.js';
 import { renderPendingChoices } from './choices.js';
 import { describeLastAttack, noteBarbarianAttack, renderCitiesKnights } from './cities-knights.js';
-import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, turnSound, userScreen, victimModal } from './dom.js';
+import { colorPicker, diceDisplay, discardModal, gameScreen, rollDiceBtn, userScreen, victimModal } from './dom.js';
 import { appendLogEntries, checkLogGap, requestLogCatchUp, updateChatAvailability } from './event-log.js';
 import { handleNameTaken, renderActiveRules, renderDiceSet, renderRulesPanel, renderUserList, returnToLobby, updateStartButton } from './lobby.js';
 import { displayError, logToGameConsole, showNotice } from './notices.js';
 import { offerVictimChoice, openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
 import { renderSeafarers } from './seafarers.js';
+import { forgetPlacements, notePlacements, playTurnSound } from './sound.js';
 import { setConnectionStatus, socket, socketAvailable } from './socket.js';
 import { applyBoardFacts, getBoard, getCurrentPlayer, getRole, isMyTurn, setRoster, viewState } from './state.js';
 import { noteServerClocks, updateTimers } from './timers.js';
@@ -51,6 +52,10 @@ socket.on('game_started', (data) => {
     userScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
     setHighlight(null);
+    // The first payload of a game is the state to start from, not a board's
+    // worth of placements to announce.
+    forgetPlacements();
+    notePlacements(data.board);
 
     renderGameSidebar({ players: data.board.players });
     updateConsoleVisibility();
@@ -119,6 +124,11 @@ socket.on('game_state', (data) => {
 
     viewState.server.board = data.board;
     viewState.winnerAnnounced = false;
+    // A join into a running game arrives here, not through `game_started`.
+    // Without this baseline the next piece anyone placed would be the payload
+    // that set it, and it would go down in silence.
+    forgetPlacements();
+    notePlacements(data.board);
     setRoster(data.players, data.observers);
     userScreen.classList.add('hidden');
     gameScreen.classList.remove('hidden');
@@ -181,7 +191,7 @@ socket.on('turn_changed', (data) => {
 
     // Play sound if it's now my turn
     if (isMyTurn() && !wasMyTurn) {
-        turnSound.play().catch(e => console.log('Could not play sound:', e));
+        playTurnSound();
     }
     
     // Enable dice button for the current player
@@ -230,6 +240,8 @@ socket.on('dice_rolled', (data) => {
 
 socket.on('board_updated', (data) => {
     console.log('Board updated');
+    // Before the payload is stored, so what changed is still answerable.
+    notePlacements(data.board);
     viewState.server.board = data.board;
     setHighlight(data.highlight || null);
     renderResourcePanel();
@@ -340,6 +352,7 @@ socket.on('game_won', (data) => {
 });
 
 socket.on('game_ended', (data) => {
+    forgetPlacements();
     // The server follows this with a fresh user_list and rules_changed, so the
     // lobby - including the rules panel - comes back unlocked on its own
     returnToLobby();
