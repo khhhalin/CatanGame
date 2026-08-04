@@ -7,6 +7,7 @@ the boundary a browser actually talks to.
 import pytest
 import state
 from extensions import socketio
+from game import rate_limit
 from game import rules as rules_module
 from seafarers_board import build_ships_along, ship_path
 
@@ -973,6 +974,169 @@ class TestChatAndEventLog:
         assert events(a, 'log_history'), "falls back to everything rather than erroring"
 
 
+class TestSlashCommands:
+    """Commands over the wire: who may run one, and what the table is told.
+
+    The engine's own refusals live in tests/game/test_commands.py. These are
+    about the boundary — identity comes from the socket, the shared log names
+    the runner, and a command cannot buy a client more talking than chat allows.
+    """
+
+    def _table(self, socket_app, rules=None):
+        """Two players in a started game, with the rules the test asks for."""
+        alice = socketio.test_client(socket_app)
+        bob = socketio.test_client(socket_app)
+        alice.emit('join', {'name': 'Alice', 'role': 'player'})
+        bob.emit('join', {'name': 'Bob', 'role': 'player'})
+        if rules:
+            alice.emit('set_rules', {'rules': dict(rules)})
+        alice.emit('start_game')
+        state.session().game.game_phase = 'playing'
+        alice.get_received()
+        bob.get_received()
+        return alice, bob
+
+    def test_the_catalogue_reaches_a_client_that_only_joined(self, socket_app):
+        client = socketio.test_client(socket_app)
+        client.emit('join', {'name': 'A', 'role': 'player'})
+
+        listed = events(client, 'commands_changed')[-1]['commands']
+        assert [entry['name'] for entry in listed][:1] == ['/help']
+        assert all(entry['summary'] for entry in listed)
+
+    def test_the_catalogue_says_which_commands_this_table_allows(self, socket_app):
+        alice, bob = self._table(socket_app)
+        alice.emit('request_commands')
+        listed = {entry['id']: entry
+                  for entry in events(alice, 'commands_changed')[-1]['commands']}
+        assert listed['add_resource']['available'] is False
+        assert 'Chat commands' in listed['add_resource']['unavailable']
+
+        bob.emit('end_game')
+        alice.get_received()
+        alice.emit('set_rules', {'rules': {'chat_commands': True}})
+        alice.emit('start_game')
+
+        listed = {entry['id']: entry
+                  for entry in events(alice, 'commands_changed')[-1]['commands']}
+        assert listed['add_resource']['available'] is True
+
+    def test_a_socket_with_no_seat_cannot_run_a_command(self, socket_app):
+        lurker = socketio.test_client(socket_app)
+        lurker.emit('run_command', {'text': '/help'})
+        assert last_error(lurker)['code'] == 'NOT_IN_LOBBY'
+
+    def test_the_acting_seat_is_the_socket_s_not_the_payload_s(self, socket_app):
+        """The payload's name is a claim; the seat is what the server knows."""
+        alice, _bob = self._table(socket_app, {'chat_commands': True})
+
+        alice.emit('run_command', {'text': '/add_resource wood 1', 'name': 'Bob'})
+
+        game = state.session().game
+        assert game.get_player('Alice').resources['wood'] == 1
+        assert game.get_player('Bob').resources.get('wood', 0) == 0
+
+    def test_a_command_that_changes_the_game_is_logged_for_everyone(self, socket_app):
+        alice, bob = self._table(socket_app, {'chat_commands': True})
+
+        alice.emit('run_command', {'text': '/add_resource wood 2'})
+
+        for client in (alice, bob):
+            entries = [e['entry'] for e in events(client, 'event_logged')]
+            ran = [e for e in entries if e['kind'] == 'command']
+            assert ran[-1]['player'] == 'Alice'
+            assert 'added 2 wood' in ran[-1]['text']
+
+    def test_the_reply_reaches_only_the_player_who_typed_it(self, socket_app):
+        alice, bob = self._table(socket_app)
+
+        alice.emit('run_command', {'text': '/whoami'})
+
+        assert 'Alice' in ' '.join(events(alice, 'command_result')[-1]['lines'])
+        assert not events(bob, 'command_result')
+
+    def test_a_refused_command_reaches_only_its_caller(self, socket_app):
+        alice, bob = self._table(socket_app)
+
+        alice.emit('run_command', {'text': '/add_resource wood 1'})
+
+        assert last_error(alice)['code'] == 'RULE_IS_OFF'
+        assert not events(bob, 'error')
+        assert state.session().game.get_player('Alice').resources == {}
+
+    def test_an_observer_may_ask_but_not_act(self, socket_app):
+        alice, _bob = self._table(socket_app, {'chat_commands': True})
+        watcher = socketio.test_client(socket_app)
+        watcher.emit('join', {'name': 'W', 'role': 'observer'})
+        watcher.get_received()
+
+        watcher.emit('run_command', {'text': '/help'})
+        assert events(watcher, 'command_result'), "watching does not stop you reading"
+
+        watcher.emit('run_command', {'text': '/add_resource wood 1 Alice'})
+        assert last_error(watcher)['code'] == 'NOT_A_PLAYER'
+
+    def test_the_board_goes_back_out_after_a_command(self, socket_app):
+        """Without the broadcast the cards exist and nobody's screen shows them."""
+        alice, bob = self._table(socket_app, {'chat_commands': True})
+
+        alice.emit('run_command', {'text': '/add_resource wheat 1 Bob'})
+
+        board = events(bob, 'board_updated')[-1]['board']
+        seat = next(p for p in board['players'] if p['name'] == 'Bob')
+        assert seat['resources'] == {'wheat': 1}
+
+    def test_a_command_spends_the_chat_budget(self, socket_app):
+        """Otherwise the command bar is a second mouth on the same socket."""
+        alice, _bob = self._table(socket_app)
+        limit = rate_limit.limit_for('chat_message')
+        for _ in range(int(limit.capacity)):
+            alice.emit('chat_message', {'text': 'hi'})
+        alice.get_received()
+
+        alice.emit('run_command', {'text': '/help'})
+
+        assert last_error(alice)['code'] == 'RATE_LIMITED'
+        assert not events(alice, 'command_result')
+
+    def test_a_message_containing_a_slash_is_still_chat(self, socket_app):
+        alice, _bob = self._table(socket_app)
+
+        alice.emit('chat_message', {'text': 'back in 5 w/ coffee'})
+
+        entries = [e['entry'] for e in events(alice, 'event_logged')]
+        assert entries[-1]['kind'] == 'chat'
+        assert entries[-1]['text'] == 'back in 5 w/ coffee'
+
+    def test_a_command_is_not_posted_to_chat(self, socket_app):
+        alice, _bob = self._table(socket_app)
+
+        alice.emit('run_command', {'text': '/whoami'})
+
+        entries = [e['entry'] for e in events(alice, 'event_logged')]
+        assert not [e for e in entries if e['kind'] == 'chat']
+
+    @pytest.mark.parametrize('payload', [None, {}, {'text': 42}, {'text': '   '},
+                                         {'text': 'not a command'}])
+    def test_a_malformed_command_payload_is_refused_not_crashed(self, socket_app, payload):
+        alice, _bob = self._table(socket_app)
+
+        alice.emit('run_command', payload)
+
+        assert last_error(alice)['code'] in ('INVALID_PAYLOAD', 'NOT_A_COMMAND')
+        assert alice.is_connected()
+
+    def test_skipping_a_turn_tells_the_table_whose_turn_it_now_is(self, socket_app):
+        alice, bob = self._table(socket_app, {'chat_commands': True})
+        game = state.session().game
+        was = game.current_player_name()
+
+        seated(was, Alice=alice, Bob=bob).emit('run_command', {'text': '/skip'})
+
+        announced = events(bob, 'turn_changed')[-1]['current_player']
+        assert announced == game.current_player_name() != was
+
+
 class TestHandlersToleratePayloads:
     """Socket.IO passes whatever the client emitted straight to the handler.
 
@@ -983,7 +1147,7 @@ class TestHandlersToleratePayloads:
     """
 
     NO_PAYLOAD_EVENTS = [
-        'request_users', 'request_rules', 'request_state',
+        'request_users', 'request_rules', 'request_state', 'request_commands',
         'end_game', 'start_game', 'refresh_board', 'request_log',
     ]
 

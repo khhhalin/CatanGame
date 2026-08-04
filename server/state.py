@@ -20,6 +20,7 @@ from config import get_config
 from extensions import socketio
 from flask import request
 from flask_socketio import disconnect, emit
+from game import commands as commands_module
 from game import persistence
 from game import rules as rules_module
 from game.event_log import EventLog
@@ -197,18 +198,23 @@ def reject(code, message):
     # what they tried to do leaks what they hold.
     emit('error', {'code': code, 'message': message})
 
-def rate_limited() -> bool:
+def rate_limited(budget_event=None) -> bool:
     """Whether this event should be dropped. Call at the top of a handler.
 
     Checks payload size first: deserialising hostile input is itself the denial
     of service, so an oversized message is refused before it is looked at.
     Persistent offenders are disconnected rather than merely throttled — a
     client behaving that way is not a player having a bad network day.
+
+    `budget_event` spends another event's bucket instead of this one's. It
+    exists for the slash commands, which are typed into the chat box: given a
+    bucket of their own, a client could take turns between `chat_message` and
+    `run_command` and talk to the table at twice the rate chat allows.
     """
     event = request.event.get('message') if request else '?'
     args = request.event.get('args') if request else None
     sid = getattr(request, 'sid', '?')
-    key = f"{sid}:{event}"
+    key = f"{sid}:{budget_event or event}"
 
     if args and payload_too_large(args[0] if args else None):
         logger.warning("oversized payload for %s from sid=%s", event, sid)
@@ -217,10 +223,11 @@ def rate_limited() -> bool:
         return True
 
     limiters = session()
-    if limiters.rate_limiter.allow(key, limit=limit_for(event)):
+    budget = limit_for(budget_event or event)
+    if limiters.rate_limiter.allow(key, limit=budget):
         return False
 
-    wait = limiters.rate_limiter.retry_after(key, limit=limit_for(event))
+    wait = limiters.rate_limiter.retry_after(key, limit=budget)
     strikes = limiters.abuse_tracker.record_violation(sid)
     logger.warning("rate limited %s from sid=%s viewer=%s (strike %s, retry in %.1fs)",
                    event, sid, limiters.viewers.get(sid), strikes, wait)
@@ -396,6 +403,27 @@ def emit_rules(to_sender_only=False):
         emit('rules_changed', payload)
     else:
         socketio.emit('rules_changed', payload)
+
+    # The command bar renders from the server's catalogue for the same reason
+    # the rules picker does, and which commands this table may run is decided by
+    # the rules that just went out — so the two travel together rather than
+    # leaving the client to work out availability from a rule id.
+    emit_commands(to_sender_only)
+
+def emit_commands(to_sender_only=False):
+    """Publish the slash command catalogue, availability already worked out."""
+    live = session()
+    running = live.game is not None and live.game.game_state == "started"
+    payload = {
+        'commands': commands_module.catalogue(
+            live.game.rules if running else live.lobby_rules, running,
+        ),
+        'prefix': commands_module.PREFIX,
+    }
+    if to_sender_only:
+        emit('commands_changed', payload)
+    else:
+        socketio.emit('commands_changed', payload)
 
 def send_state_snapshot():
     """Send the full current state to the requesting socket only."""

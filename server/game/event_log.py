@@ -26,6 +26,11 @@ KINDS = (
     "turn",
     "game",
     "rules",
+    # A slash command that changed the game. Its own kind because the table has
+    # to be able to pick these out: a card that appeared because somebody typed
+    # /add_resource reads exactly like one that was produced, and the whole
+    # bargain of allowing commands is that they are visible.
+    "command",
 )
 
 # A game left open for hours must not grow without limit: an unbounded list

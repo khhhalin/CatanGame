@@ -426,6 +426,17 @@ RULES += [
           "and it moves to anyone who later has more. The published variant "
           "suggests raising the target by 1 to keep the game the same length.",
           suggests_victory_target=11),
+    _bool("chat_commands", "Chat commands", False,
+          "No published rule: the online table's version of reaching into the "
+          "box mid-game, which a table sitting round a real board can do "
+          "without asking anybody's permission",
+          "Slash commands typed into chat may change the game: hand out cards, "
+          "move cards between players, fix the next roll, skip a stuck turn, "
+          "move the barbarian ship. Every one of them is written into the game "
+          "log naming who ran it, so the table can see what was done. The "
+          "commands that only report — /help, /whoami, /rules, /deck — work "
+          "whether this is on or off.",
+          group=VARIANT),
     _int("robber_free_opening_rounds", "Robber-free opening rounds", 0, 0, 10,
          "Cities & Knights rulebook (no robber until the first barbarian "
          "attack); expansions.md 317",

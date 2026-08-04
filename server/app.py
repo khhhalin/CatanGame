@@ -29,6 +29,7 @@ from handlers import (  # noqa: F401  (imported for their side effects)
     chat,
     choices,
     cities_knights,
+    commands,
     dev_cards,
     lobby,
     maps,

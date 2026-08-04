@@ -78,6 +78,11 @@ EVENT_LIMITS: dict[str, Limit] = {
     "delete_map": Limit(capacity=10, refill_per_second=0.5),
     # Enough for a fast typist trading banter, not enough to fill the panel.
     "chat_message": Limit(capacity=8, refill_per_second=0.5),  # 30/min
+    # The command bar is drawn from this, once per client.
+    "request_commands": Limit(capacity=10, refill_per_second=1.0),
+    # `run_command` is deliberately absent: it spends the `chat_message` bucket
+    # instead (see `state.rate_limited`), because the command bar *is* the chat
+    # box and a budget of its own would be a way to talk at twice the rate.
 }
 
 # A socket that has been silent for this long is either gone or has a fully
