@@ -224,7 +224,10 @@ def handle_play_progress_card(data):
         if current_player.name != name:
             reject('NOT_YOUR_TURN', f'Only {current_player.name} can do that')
             return
-        if blocked_by_phase(name):
+        # The Alchemist is played before the dice (expansions.md 437), so the
+        # roll gate is left to play_progress_card, which knows each card's
+        # timing.
+        if blocked_by_phase(name, needs_roll=False):
             return
 
         result = session.game.play_progress_card(name, card_id, target)

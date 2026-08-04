@@ -84,7 +84,10 @@ def handle_play_dev_card(data):
         reject(exc.code, exc.message)
         return
 
-    if _dev_cards_disabled(session.game) or blocked_by_phase(name):
+    # A card is the one thing that may be played before the dice, and which
+    # cards those are is `can_play_dev_card`'s to say — the knight, and nothing
+    # else. Gating the roll here would take that decision away from it.
+    if _dev_cards_disabled(session.game) or blocked_by_phase(name, needs_roll=False):
         return
 
     result = session.game.play_dev_card(name, card_type)

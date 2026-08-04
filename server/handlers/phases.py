@@ -11,11 +11,24 @@ import state
 from state import reject
 
 
-def phase_block(name: str) -> tuple[str, str] | None:
-    """(code, message) if this player may not act right now, else None."""
+def phase_block(name: str, needs_roll: bool = True) -> tuple[str, str] | None:
+    """(code, message) if this player may not act right now, else None.
+
+    `needs_roll` is what tells the trade-and-build actions from the cards: the
+    turn runs roll, then trade, then build (expansions.md 1121), so everything
+    that spends or builds waits for the dice. A card is the exception the
+    rulebook names — a knight before the roll, and the Alchemist in Cities &
+    Knights (expansions.md 437) — and those handlers pass False. Which cards
+    those are stays with the cards, in `can_play_dev_card` and
+    `play_progress_card`.
+    """
     game = state.session().game
     if game is None:
         return None
+
+    # Setup deals no dice at all, so the roll gate has nothing to say there.
+    if needs_roll and game.game_phase != 'setup' and not game.has_rolled_dice:
+        return 'MUST_ROLL_FIRST', 'You must roll the dice first'
 
     if game.must_move_robber:
         return 'MUST_MOVE_ROBBER', 'You must move the robber first'
@@ -40,9 +53,9 @@ def phase_block(name: str) -> tuple[str, str] | None:
     return None
 
 
-def blocked_by_phase(name: str) -> bool:
+def blocked_by_phase(name: str, needs_roll: bool = True) -> bool:
     """Whether to stop. Rejects the sender itself, so callers just return."""
-    block = phase_block(name)
+    block = phase_block(name, needs_roll=needs_roll)
     if block is None:
         return False
     reject(*block)

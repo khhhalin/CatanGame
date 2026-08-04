@@ -223,6 +223,7 @@ class TestPieceLimitsOverTheWire:
 
         # Turn order is shuffled, so ask who is actually up rather than
         # assuming — otherwise this fails on NOT_YOUR_TURN half the time.
+        game.set_dice_rolled()
         acting = game.players[game.current_player_index].name
         player = game.get_player(acting)
         player.settlements = [f"v{i}" for i in range(game.MAX_SETTLEMENTS)]
@@ -1114,6 +1115,7 @@ class TestCitiesKnightsOverTheWire:
         a, b = self._ck_game(socket_app)
         game = state.session().game
         game.game_phase = "playing"
+        game.set_dice_rolled()
         acting = game.players[game.current_player_index].name
         player = game.get_player(acting)
         player.cities.append('a-city')
@@ -1130,6 +1132,7 @@ class TestCitiesKnightsOverTheWire:
         a, b = self._ck_game(socket_app)
         game = state.session().game
         game.game_phase = "playing"
+        game.set_dice_rolled()
         acting = game.players[game.current_player_index].name
         game.get_player(acting).cities.append('a-city')
         actor = seated(acting, A=a, B=b)
@@ -1293,6 +1296,9 @@ class TestSeafarersOverTheWire:
         game = state.session().game
         game.game_phase = 'playing'
         game.start_turn()
+        # Building comes after the dice, so these start where a player would
+        # actually be building: their roll already made.
+        game.set_dice_rolled()
         a.get_received()
         b.get_received()
         return a, b, game
