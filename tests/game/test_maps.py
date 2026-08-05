@@ -155,7 +155,7 @@ class TestParsingRefusesRubbish:
     @pytest.mark.parametrize('description, document', [
         ('not an object', 'a map'),
         ('no version', make_map(map_version=None)),
-        ('a version from the future', make_map(map_version=2)),
+        ('a version from the future', make_map(map_version=3)),
         ('an id that is a path', make_map(id='../../etc/passwd')),
         ('an id with a slash', make_map(id='maps/mine')),
         ('an empty id', make_map(id='')),
@@ -405,3 +405,195 @@ class TestTheMapFitsInAPayload:
         assert errors == []
         assert not payload_too_large({'map': document})
         assert len(json.dumps(document)) < 8192
+
+
+# --- map-format v2: hidden pools, new terrains, fixed pools, metadata -------
+
+def make_v2_map(mainland_pool, *, meta=None, harbours=None) -> dict:
+    """A v2 map: a 7-hex mainland with the given pool, ringed by shuffled sea.
+
+    The mainland is `_hexagon(1)`, fully surrounded inside a radius-3 frame, so
+    every land hex has its six neighbours and nothing lands on the rim.
+    """
+    mainland = maps.sort_hex_keys('{},{},{}'.format(*c) for c in board_module._hexagon(1))
+    sea_count = len(maps.frame_hex_keys(3)) - len(mainland)
+    region = {'id': 'mainland', 'kind': 'main', 'hexes': mainland, 'pool': mainland_pool}
+    if meta is not None:
+        region['meta'] = meta
+    return {
+        'map_version': 2, 'id': 'v2-map', 'name': 'V2 Map', 'frame': {'radius': 3},
+        'regions': [
+            region,
+            {'id': 'ocean', 'kind': 'sea', 'hexes': 'remaining',
+             'pool': {'mode': 'shuffled', 'terrain': {'sea': sea_count}, 'numbers': []}},
+        ],
+        'harbours': {'mode': 'bag', 'types': harbours or {}},
+    }
+
+
+def mainland_keys() -> list:
+    return maps.sort_hex_keys('{},{},{}'.format(*c) for c in board_module._hexagon(1))
+
+
+class TestTheNewTerrains:
+    """gold, fish and spice: accepted in a v2 file, refused in a v1 one."""
+
+    @pytest.mark.parametrize('terrain, number', [
+        ('gold', 6), ('fish', None), ('spice', None),
+    ])
+    def test_a_v2_map_accepts_the_terrain_v1_refused(self, terrain, number):
+        pool = {'mode': 'shuffled',
+                'terrain': {terrain: 1, 'wood': 5, 'desert': 1},
+                'numbers': [3, 4, 5, 8, 9] + ([number] if number is not None else [])}
+        document = make_v2_map(pool)
+        errors, _ = maps.validate_map(maps.parse_map(document))
+        assert errors == []
+
+        document['map_version'] = 1
+        with pytest.raises(InvalidPayload):
+            maps.parse_map(document)
+
+    def test_only_gold_carries_a_number_token(self):
+        """gold pays out on its roll; a fish-shoal and a spice hex do not, so a
+        token on one is a number floating where production pays nobody."""
+        assert maps.takes_a_token('gold')
+        assert not maps.takes_a_token('fish')
+        assert not maps.takes_a_token('spice')
+
+
+class TestHiddenPools:
+    def test_a_hidden_pool_deals_every_tile_face_down_with_no_number(self):
+        """Exploration places the tiles icon-side-up; the number is drawn per
+        icon at reveal, a later wave, so none sits on the board yet."""
+        pool = {'mode': 'hidden',
+                'terrain': {'wood': 2, 'wheat': 2, 'sheep': 1, 'brick': 1, 'desert': 1},
+                'numbers': [3, 4, 5, 6, 9, 10]}
+        defn = maps.parse_map(make_v2_map(pool))
+        assert maps.validate_map(defn)[0] == []
+
+        instance = maps.instantiate(defn, random.Random(7))
+        assert instance.hidden == frozenset(mainland_keys())
+        assert all(instance.placed[key][1] is None for key in mainland_keys())
+
+    def test_a_hidden_tile_is_redacted_to_every_viewer(self):
+        """Its identity is secret like a dev card until discovery reveals it."""
+        pool = {'mode': 'hidden',
+                'terrain': {'wood': 3, 'wheat': 2, 'desert': 2},
+                'numbers': [3, 4, 5, 6, 9]}
+        game = played(make_v2_map(pool))
+        data = game.get_board_data(viewer='B')
+
+        for key in mainland_keys():
+            assert data['hexes'][key]['type'] == 'hidden'
+            assert data['hexes'][key]['number'] is None
+            assert data['hexes'][key]['hidden'] is True
+        # A face-up sea hex is not touched by the redaction.
+        sea_key = next(k for k, h in data['hexes'].items() if k not in mainland_keys())
+        assert data['hexes'][sea_key]['type'] == 'ocean'
+        assert 'hidden' not in data['hexes'][sea_key]
+
+    def test_a_hidden_pool_needs_v2(self):
+        pool = {'mode': 'hidden', 'terrain': {'desert': 7}, 'numbers': []}
+        with pytest.raises(InvalidPayload):
+            maps.parse_map(make_v2_map(pool, harbours={}) | {'map_version': 1})
+
+
+class TestFixedPools:
+    def _fixed_pool(self):
+        keys = mainland_keys()
+        placements = {'0,0,0': {'terrain': 'desert'}}
+        tiles = [('wood', 2), ('brick', 3), ('sheep', 4), ('wheat', 5), ('ore', 6),
+                 ('wood', 8)]
+        for key, (terrain, number) in zip(
+            [k for k in keys if k != '0,0,0'], tiles, strict=True
+        ):
+            placements[key] = {'terrain': terrain, 'number': number}
+        return {'mode': 'fixed', 'placements': placements}, placements
+
+    def test_a_fixed_pool_places_tiles_at_the_declared_positions(self):
+        pool, placements = self._fixed_pool()
+        defn = maps.parse_map(make_v2_map(pool))
+        assert maps.validate_map(defn)[0] == []
+
+        for seed in (1, 99):
+            game = played(make_v2_map(pool), seed=seed)
+            for key, spec in placements.items():
+                assert game.hexes[key].type == spec['terrain']
+                assert game.hexes[key].number == spec.get('number')
+
+    def test_a_fixed_producing_tile_must_print_its_number(self):
+        pool, placements = self._fixed_pool()
+        del placements[next(k for k in placements if placements[k].get('number'))]['number']
+        with pytest.raises(InvalidPayload):
+            maps.parse_map(make_v2_map(pool))
+
+    def test_a_fixed_pool_that_does_not_cover_its_hexes_is_refused(self):
+        pool, placements = self._fixed_pool()
+        placements.pop('0,0,0')
+        assert 'FIXED_PLACEMENT' in problems(make_v2_map(pool))[0]
+
+    def test_a_fixed_pool_needs_v2(self):
+        pool, _ = self._fixed_pool()
+        with pytest.raises(InvalidPayload):
+            maps.parse_map(make_v2_map(pool) | {'map_version': 1})
+
+
+class TestPerHexMetadata:
+    def test_metadata_round_trips_and_reaches_the_board(self):
+        pool = {'mode': 'shuffled',
+                'terrain': {'wood': 3, 'wheat': 3, 'desert': 1},
+                'numbers': [3, 4, 5, 6, 9, 10]}
+        meta = {'0,0,0': {'docks': [0, 3], 'village': True},
+                '3,-3,0': {'lair': True}}
+        defn = maps.parse_map(make_v2_map(pool, meta=meta))
+        assert maps.validate_map(defn)[0] == []
+        assert maps.parse_map(defn.to_json()) == defn
+
+        game = played(make_v2_map(pool, meta=meta))
+        assert game.hexes['0,0,0'].meta.docks == (0, 3)
+        assert game.hexes['0,0,0'].meta.village is True
+        assert game.hexes['3,-3,0'].meta.lair is True
+        assert game.get_board_data(viewer='A')['hexes']['0,0,0']['meta'] == {
+            'docks': [0, 3], 'village': True,
+        }
+
+    def test_metadata_on_a_hex_the_region_does_not_own_is_refused(self):
+        pool = {'mode': 'shuffled', 'terrain': {'wood': 6, 'desert': 1},
+                'numbers': [3, 4, 5, 6, 8, 9]}
+        # A sea hex outside the mainland region.
+        assert 'META_OFF_REGION' in problems(make_v2_map(pool, meta={'6,-6,0': {'lair': True}}))[0]
+
+    def test_metadata_needs_v2(self):
+        document = make_map(map_version=1)
+        region_named(document, 'mainland')['meta'] = {'0,0,0': {'lair': True}}
+        with pytest.raises(InvalidPayload):
+            maps.parse_map(document)
+
+
+def test_a_v2_map_with_every_new_feature_round_trips():
+    """Hidden and fixed regions, new terrains and per-hex metadata all at once,
+    so `parse_map(defn.to_json()) == defn` covers the whole v2 surface."""
+    keys = mainland_keys()
+    placements = {}
+    for key in keys:
+        if key == '0,0,0':
+            placements[key] = {'terrain': 'gold', 'number': 6}
+        else:
+            placements[key] = {'terrain': 'wood', 'number': 8}
+    document = {
+        'map_version': 2, 'id': 'v2-everything', 'name': 'Everything',
+        'frame': {'radius': 3},
+        'regions': [
+            {'id': 'mainland', 'kind': 'main', 'hexes': keys,
+             'pool': {'mode': 'fixed', 'placements': placements},
+             'meta': {'0,0,0': {'docks': [1, 4], 'lair': True}}},
+            {'id': 'ocean', 'kind': 'sea', 'hexes': 'remaining',
+             'pool': {'mode': 'shuffled',
+                      'terrain': {'sea': len(maps.frame_hex_keys(3)) - len(keys)},
+                      'numbers': []}},
+        ],
+        'harbours': {'mode': 'bag', 'types': {}},
+    }
+    defn = maps.parse_map(document)
+    assert maps.validate_map(defn)[0] == []
+    assert maps.parse_map(defn.to_json()) == defn

@@ -19,10 +19,17 @@ class Hex:
         key (str): Unique identifier in "x,y,z" format from cube coordinates.
                    Example: "3,-3,0" for the center hex in a radius-1 board.
         type (str): Resource type - "ore", "wheat", "sheep", "brick", "wood",
-                    "desert", or "ocean".
+                    "desert", or "ocean"; a v2 map may also deal the E&P terrains
+                    "gold", "fish" and "spice".
         number (int or None): Dice number token (2-12) for resource hexes,
                               None for desert and ocean tiles.
         neighbors (list): List of adjacent hex keys.
+        hidden (bool): An exploration tile dealt face-down by a v2 hidden pool.
+                       Its type and number are real on the server but secret to
+                       clients until discovery reveals it (a later wave), so
+                       `get_board_data` redacts them per viewer.
+        meta: The tile's `maps.HexMeta` (docks, village, lair) when a v2 map
+              prints per-hex metadata, else None.
     """
 
     def __init__(self, key: str, hex_type: str, number: int | None):
@@ -38,6 +45,8 @@ class Hex:
         self.type = hex_type
         self.number = number
         self.neighbors = []
+        self.hidden = False
+        self.meta = None
 
 
 class Vertex:

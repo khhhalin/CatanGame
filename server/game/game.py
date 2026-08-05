@@ -837,11 +837,22 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         """
         hexes = {}
         for key, hex_obj in self.hexes.items():
-            hexes[key] = {
-                'type': hex_obj.type,
-                'number': hex_obj.number,
-                'neighbors': hex_obj.neighbors,
-            }
+            if hex_obj.hidden:
+                # Face-down: its identity is secret like a dev card until
+                # discovery reveals it. No viewer sees an undiscovered tile yet,
+                # so it redacts for everyone; the per-viewer reveal set lands
+                # with the exploration wave.
+                entry = {'type': 'hidden', 'number': None, 'hidden': True,
+                         'neighbors': hex_obj.neighbors}
+            else:
+                entry = {
+                    'type': hex_obj.type,
+                    'number': hex_obj.number,
+                    'neighbors': hex_obj.neighbors,
+                }
+            if hex_obj.meta:
+                entry['meta'] = hex_obj.meta.to_json()
+            hexes[key] = entry
 
         vertices = {}
         for key, vertex_obj in self.vertices.items():
