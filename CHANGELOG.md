@@ -11,17 +11,25 @@ hours before the report came in. Every one of them was a tab left open on an
 older build.
 
 Adding to it, for whoever deploys next: put a new release at the top, newest
-first. The heading is `## <build id> — <YYYY-MM-DD HH:MM>`, where the build id
-is `git rev-parse --short HEAD` at the moment of the deploy, or `unreleased`
-while the work has not gone out yet. Every line under it is
+first. The heading is `## <build id> — <YYYY-MM-DD HH:MM>`, where the build id is
+a **version** — `v<MAJOR>.<MINOR>.<PATCH>`, e.g. `v1.0.0` — the moment it goes
+out, or `unreleased` while the work has not shipped, or a bare
+`git rev-parse --short HEAD` for a one-off dev build. The version is the identity
+a deployed server shows (a container carries no `.git`), so cutting a release is:
+bump `VERSION` at the repo root — **patch** for a bug-fix deploy, **minor** for a
+batch of features, **major** for a milestone — and rename the top `unreleased`
+heading to `v<the new VERSION>`. `VERSION` and this heading must agree; a test
+enforces it. Every line under the heading is
 `- **Fixed|New|Known issue** <one line>`, with an optional `[reported]` straight
 after the kind for anything that answers something a tester filed — that marker
 is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
-## unreleased — 2026-08-04 22:00
+## v1.0.0 — 2026-08-05 12:00
 
+- **New** The whole interface swapped its emoji for one matching set of drawn icons — resources are small coloured tiles in the board's own colours, everything else a clean line icon. The player list reads as a card per player now, not a run of abbreviations.
+- **New** Two house rules that cannot both be on now say so: tick one and its rival unticks itself with a line explaining why, instead of one silently cancelling the other out.
 - **Fixed** [reported] The give and want pickers in Propose Trade are evenly spaced. Ore and cloth sat flush against each other because commodities are a second block, so the one seam in the list was tighter than every other gap.
 - **Fixed** [reported] Propose Trade is shorter and fits a phone without scrolling inside itself. The pickers are two columns rather than one, which took the dialog from 927px to 680px with commodities in play — Propose used to be below the fold at 390x780.
 - **Fixed** [reported] Every trade number has its own − and + button now, 48x40px to aim at instead of the browser's hairline arrows, on a phone as well as a desk — and the dialog is no taller for it. The give side stops at the cards you hold, and Clear puts all sixteen numbers back to zero.
