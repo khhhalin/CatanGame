@@ -60,6 +60,7 @@ export const tradeVerdict = document.getElementById('trade-verdict');
 export const tradeGiveCommodities = document.getElementById('trade-give-commodities');
 export const tradeWantCommodities = document.getElementById('trade-want-commodities');
 export const tradeSendAnywayBtn = document.getElementById('trade-send-anyway');
+export const tradeClearBtn = document.getElementById('trade-clear-btn');
 export const diceTimerEl = document.getElementById('dice-timer');
 export const roundTimerEl = document.getElementById('round-timer');
 export const devCardsPanel = document.getElementById('dev-cards-panel');

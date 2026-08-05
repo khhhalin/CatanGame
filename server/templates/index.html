@@ -580,40 +580,48 @@
             <p id="trade-bank-rates" class="trade-rates"></p>
             <div class="trade-modal-section">
                 <h3>You Give:</h3>
+                <!-- The word beside each icon is hidden on a narrow screen and
+                     read out on every screen - see .picker-word in style.css.
+                     trade.js puts a - and a + button either side of each field
+                     and the room for them has to come from somewhere. -->
                 <div class="resource-selector">
-                    <label>🌲 Wood: <input type="number" inputmode="numeric" id="give-wood" min="0" max="10" value="0"></label>
-                    <label>🧱 Brick: <input type="number" inputmode="numeric" id="give-brick" min="0" max="10" value="0"></label>
-                    <label>🐑 Sheep: <input type="number" inputmode="numeric" id="give-sheep" min="0" max="10" value="0"></label>
-                    <label>🌾 Wheat: <input type="number" inputmode="numeric" id="give-wheat" min="0" max="10" value="0"></label>
-                    <label>🪨 Ore: <input type="number" inputmode="numeric" id="give-ore" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🌲<span class="picker-word"> Wood</span></span><input type="number" inputmode="numeric" id="give-wood" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🧱<span class="picker-word"> Brick</span></span><input type="number" inputmode="numeric" id="give-brick" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🐑<span class="picker-word"> Sheep</span></span><input type="number" inputmode="numeric" id="give-sheep" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🌾<span class="picker-word"> Wheat</span></span><input type="number" inputmode="numeric" id="give-wheat" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🪨<span class="picker-word"> Ore</span></span><input type="number" inputmode="numeric" id="give-ore" min="0" max="10" value="0"></label>
                 </div>
                 <!-- "Commodities may be traded with other players in all the
                      same ways that resources may be traded" (expansions.md
                      329). Shown only when the table plays them; trade.js reads
                      that off the running game's rules. -->
                 <div id="trade-give-commodities" class="resource-selector hidden">
-                    <label>🧵 Cloth: <input type="number" inputmode="numeric" id="give-cloth" min="0" max="10" value="0"></label>
-                    <label>🪙 Coin: <input type="number" inputmode="numeric" id="give-coin" min="0" max="10" value="0"></label>
-                    <label>📜 Paper: <input type="number" inputmode="numeric" id="give-paper" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🧵<span class="picker-word"> Cloth</span></span><input type="number" inputmode="numeric" id="give-cloth" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🪙<span class="picker-word"> Coin</span></span><input type="number" inputmode="numeric" id="give-coin" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">📜<span class="picker-word"> Paper</span></span><input type="number" inputmode="numeric" id="give-paper" min="0" max="10" value="0"></label>
                 </div>
             </div>
             <div class="trade-modal-section">
                 <h3>You Want:</h3>
                 <div class="resource-selector">
-                    <label>🌲 Wood: <input type="number" inputmode="numeric" id="want-wood" min="0" max="10" value="0"></label>
-                    <label>🧱 Brick: <input type="number" inputmode="numeric" id="want-brick" min="0" max="10" value="0"></label>
-                    <label>🐑 Sheep: <input type="number" inputmode="numeric" id="want-sheep" min="0" max="10" value="0"></label>
-                    <label>🌾 Wheat: <input type="number" inputmode="numeric" id="want-wheat" min="0" max="10" value="0"></label>
-                    <label>🪨 Ore: <input type="number" inputmode="numeric" id="want-ore" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🌲<span class="picker-word"> Wood</span></span><input type="number" inputmode="numeric" id="want-wood" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🧱<span class="picker-word"> Brick</span></span><input type="number" inputmode="numeric" id="want-brick" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🐑<span class="picker-word"> Sheep</span></span><input type="number" inputmode="numeric" id="want-sheep" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🌾<span class="picker-word"> Wheat</span></span><input type="number" inputmode="numeric" id="want-wheat" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🪨<span class="picker-word"> Ore</span></span><input type="number" inputmode="numeric" id="want-ore" min="0" max="10" value="0"></label>
                 </div>
                 <div id="trade-want-commodities" class="resource-selector hidden">
-                    <label>🧵 Cloth: <input type="number" inputmode="numeric" id="want-cloth" min="0" max="10" value="0"></label>
-                    <label>🪙 Coin: <input type="number" inputmode="numeric" id="want-coin" min="0" max="10" value="0"></label>
-                    <label>📜 Paper: <input type="number" inputmode="numeric" id="want-paper" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🧵<span class="picker-word"> Cloth</span></span><input type="number" inputmode="numeric" id="want-cloth" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">🪙<span class="picker-word"> Coin</span></span><input type="number" inputmode="numeric" id="want-coin" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name">📜<span class="picker-word"> Paper</span></span><input type="number" inputmode="numeric" id="want-paper" min="0" max="10" value="0"></label>
                 </div>
             </div>
             <p id="trade-verdict" class="trade-verdict" role="status" aria-live="polite"></p>
             <div class="trade-actions">
+                <!-- Sixteen fields and no way back to zero except sixteen
+                     taps: a mistyped offer used to be cleared by closing the
+                     dialog, which is also how a player loses the rest of it. -->
+                <button type="button" id="trade-clear-btn" class="trade-clear">Clear</button>
                 <button id="submit-trade-btn">Propose</button>
                 <!-- Shown only after the numbers have been lowered to the
                      player's own rate, so the choice to overpay stays available

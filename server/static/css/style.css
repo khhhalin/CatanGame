@@ -2050,7 +2050,10 @@ button:disabled {
    its controls got bigger. */
 .trade-modal-section {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    /* Two, not `auto-fit`: the stepper buttons either side of each field need
+       every pixel of the column they are in, and a third column at the width
+       this dialog grew to left them overlapping their neighbour. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-2);
     margin-top: var(--space-2);
 }
@@ -2064,24 +2067,100 @@ button:disabled {
     display: contents;
 }
 
-/* "in trade tab its hard to click the small arrows": Chromium draws a number
-   field's spinner inside the field, sizes it off the field's height and only
-   paints it on hover, so a 24px field offered about 12px of arrow that a
-   player had to find first. The field is the touch target - it is now as tall
-   as a button, and the arrows are pinned visible and widened to match. A
-   stepper wider than the field itself would need script, so this is as large
-   as the field alone can make it. */
+/* "in trade tab its hard to click the small arrows". Widening the field's own
+   spinner was as far as CSS went: the browser draws it inside the field and
+   splits the field's height between up and down, so a row short enough to
+   keep this dialog on a phone can never hold an arrow worth aiming at - and
+   Chromium only paints one on hover. trade.js puts a real button either side
+   of each field instead, and `has-steppers` is what it sets once they are
+   there: without the script the fields keep the arrows they came with rather
+   than losing both. */
 .trade-modal-section input {
-    width: 100%;
-    max-width: 4.5rem;
+    flex: 0 1 2.75rem;
+    min-width: 2.25rem;
     min-height: 2.5rem;
     font-size: var(--text-md);
 }
 
-.trade-modal-section input::-webkit-inner-spin-button {
-    opacity: 1;
-    width: 1.25rem;
-    height: 100%;
+#trade-modal.has-steppers .trade-modal-section input {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+#trade-modal.has-steppers .trade-modal-section input::-webkit-inner-spin-button,
+#trade-modal.has-steppers .trade-modal-section input::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+}
+
+/* Each picker is one filled cell. Two columns of icon-then-stepper put a + and
+   the next picker's icon side by side, and with nothing drawn between them the
+   row read as one long strip of buttons belonging to nothing in particular. */
+.trade-modal-section label {
+    gap: var(--space-1);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--surface-3);
+}
+
+.trade-stepper {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1);
+}
+
+/* As tall as the field, so the taller target costs the dialog no height at
+   all, and as wide as there is room for - two columns of pickers in a 350px
+   dialog is where the width comes from. */
+.trade-step {
+    flex: 1 1 2.5rem;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--text-lg);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.trade-step:hover:not(:disabled) {
+    background: var(--surface);
+}
+
+/* Greyed and not gone: a button that vanishes at zero reflows the row under
+   the finger that just pressed it. */
+.trade-step:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* The icon is the picker's name on a phone, where the buttons need every
+   pixel; the word comes back as soon as the dialog has room for it. It is
+   never removed from the page, only from the screen, so it stays part of what
+   the field is called for a screen reader. */
+.picker-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* 34rem is where the dialog reaches its full 30rem and the columns have room
+   for a word as well as three controls; below it the icon is the name. */
+@media (min-width: 34rem) {
+    .picker-word {
+        position: static;
+        width: auto;
+        height: auto;
+        clip-path: none;
+    }
 }
 
 /* Commodities are a second kind of card, not three more resources: without a
@@ -2107,9 +2186,24 @@ button:disabled {
    other dialogs keep the padding they were designed with. */
 #trade-modal .modal-content {
     padding: var(--space-4);
+    /* Wider than the other dialogs where the screen allows it: the stepper
+       buttons are as big as the picker column is wide, and on a desk there is
+       no reason for them to be phone-sized. */
+    width: min(30rem, 90%);
     /* `dvh` for the same reason the shell uses it: on a phone the browser's own
        chrome must not be what pushes Propose under a scrollbar. */
     max-height: calc(100dvh - var(--space-5));
+}
+
+/* On a phone the two picker columns and the six buttons in each row are what
+   the width is for: the dialog takes almost the whole screen and spends the
+   padding it saves on the steppers. */
+@media (max-width: 30rem) {
+    #trade-modal .modal-content {
+        width: 96%;
+        max-width: 96%;
+        padding: var(--space-2);
+    }
 }
 
 #trade-modal h2 {
@@ -2122,7 +2216,29 @@ button:disabled {
 }
 
 #trade-modal #submit-trade-btn {
+    flex: 1 1 auto;
+    width: auto;
     margin-top: var(--space-2);
+}
+
+/* Clear shares Propose's row rather than taking one of its own: the height of
+   this dialog is what put Propose under a scrollbar on a phone. */
+.trade-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: var(--space-2);
+}
+
+.trade-clear {
+    flex: 0 0 auto;
+    margin-top: var(--space-2);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
 }
 
 /* The bank rate a player actually holds, and what their numbers will do with
@@ -2186,8 +2302,11 @@ button:disabled {
 /* Deliberately quieter than Propose: overpaying is legal and stays available,
    but it is not the button the eye should land on. */
 .trade-anyway {
+    /* Its own line under Clear and Propose: it answers what the verdict just
+       said, and it is not the button the eye should land on. */
+    flex: 1 0 100%;
     width: 100%;
-    margin-top: var(--space-2);
+    margin-top: 0;
     padding: var(--space-2);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);

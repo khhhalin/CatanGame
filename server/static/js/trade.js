@@ -2,7 +2,7 @@
 // made in a dialog before the server can resolve them.
 
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
-import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
+import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
 import { displayError } from './notices.js';
 import { renderDialogHands } from './panels.js';
@@ -445,6 +445,166 @@ function readTradeInputs() {
     return { offered, wanted };
 }
 
+// --------------------------------------------------------------- steppers
+//
+// "in trade tab its hard to click the small arrows". A number field's spinner
+// is drawn inside the field and splits its height between up and down, so no
+// field short enough to keep this dialog on a phone can carry an arrow worth
+// aiming at - 40px of field is 20px of arrow, and only where the browser
+// paints one at all. These are real buttons either side of the field instead,
+// at the field's own height, and the native spinner is hidden once they exist.
+
+// What the button does to the offer, for a screen reader: there are sixteen of
+// these in one dialog and "increase" names none of them.
+const STEP_VERBS = { give: 'give', want: 'ask for' };
+
+/**
+ * How many of one card this player is holding.
+ *
+ * The give side's real ceiling: the fields were capped at 10 for every card,
+ * so the dialog let a player build an offer of ore they did not have and only
+ * the server ever said no.
+ *
+ * @param {string} card - Resource or commodity id
+ * @returns {number}
+ */
+function heldCount(card) {
+    const me = findMyPlayer();
+    if (!me) {
+        return 0;
+    }
+    return COMMODITY_TYPES.includes(card)
+        ? (me.commodities?.[card] || 0)
+        : (me.resources?.[card] || 0);
+}
+
+/**
+ * Move one field by one card, inside the bounds the field itself carries.
+ *
+ * The field's own `min` and `max` are the limit - `applyHandLimits` keeps the
+ * give side's `max` on the hand - so the ceiling lives in one place and a
+ * stepper cannot disagree with what typing the same number would do.
+ *
+ * @param {HTMLInputElement} input - The field to change
+ * @param {number} delta - +1 or -1
+ */
+function stepField(input, delta) {
+    const current = parseInt(input.value) || 0;
+    const stepped = Math.min(Number(input.max), Math.max(Number(input.min), current + delta));
+    if (stepped === current) {
+        return;
+    }
+    input.value = String(stepped);
+    // Everything a keystroke sets off - the verdict, the standing overpay
+    // offer, the buttons' own bounds - hangs off the delegated `input`
+    // listener below, so a step goes through the same door.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
+ * One - or + button for a field.
+ *
+ * @param {HTMLInputElement} input - The field it steps
+ * @param {number} delta - +1 or -1
+ * @param {string} card - Resource or commodity id, for the accessible name
+ * @param {string} side - 'give' or 'want', likewise
+ * @returns {HTMLButtonElement}
+ */
+function buildStepButton(input, delta, card, side) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'trade-step';
+    button.dataset.step = String(delta);
+    button.textContent = delta < 0 ? '−' : '+';
+    button.setAttribute(
+        'aria-label',
+        `${delta < 0 ? 'One less' : 'One more'} ${card} to ${STEP_VERBS[side]}`
+    );
+    button.addEventListener('click', () => stepField(input, delta));
+    return button;
+}
+
+/**
+ * Put a stepper around every trade field, once, at load.
+ *
+ * The class on the dialog is what hides the native spinner: without the
+ * script the fields keep the arrows they came with rather than losing both.
+ */
+function buildTradeSteppers() {
+    for (const side of Object.keys(STEP_VERBS)) {
+        for (const card of TRADE_CARDS) {
+            const input = document.getElementById(`${side}-${card}`);
+            if (!input) {
+                continue;
+            }
+            const stepper = document.createElement('div');
+            stepper.className = 'trade-stepper';
+            input.replaceWith(stepper);
+            stepper.append(
+                buildStepButton(input, -1, card, side),
+                input,
+                buildStepButton(input, 1, card, side)
+            );
+        }
+    }
+    tradeModal?.classList.add('has-steppers');
+}
+
+/**
+ * Grey out each button that would step past its field's bounds.
+ *
+ * Disabled and not hidden: a button that disappears at zero reflows the row
+ * under the finger that just pressed it, which is how the same thumb ends up
+ * on the wrong resource.
+ */
+function refreshStepBounds() {
+    for (const stepper of tradeModal?.querySelectorAll('.trade-stepper') || []) {
+        const input = stepper.querySelector('input');
+        const value = parseInt(input.value) || 0;
+        for (const button of stepper.querySelectorAll('.trade-step')) {
+            button.disabled = Number(button.dataset.step) < 0
+                ? value <= Number(input.min)
+                : value >= Number(input.max);
+        }
+    }
+}
+
+/**
+ * Cap the give side at the cards this player is holding.
+ *
+ * Read on open rather than fixed in the markup: a hand changes every roll, and
+ * only the give side is bounded by it - asking for eight wheat nobody has is a
+ * trade the table is allowed to refuse.
+ */
+function applyHandLimits() {
+    for (const card of TRADE_CARDS) {
+        const input = document.getElementById(`give-${card}`);
+        const held = heldCount(card);
+        input.max = String(held);
+        if ((parseInt(input.value) || 0) > held) {
+            input.value = String(held);
+        }
+    }
+}
+
+/**
+ * Put every field in the dialog back to zero.
+ *
+ * @returns {void}
+ */
+function clearTradeInputs() {
+    // Every one of them, not only the ones currently shown: a number left in a
+    // hidden commodity row would be sent by the next trade on a table that
+    // switched them off.
+    TRADE_CARDS.forEach(card => {
+        document.getElementById(`give-${card}`).value = 0;
+        document.getElementById(`want-${card}`).value = 0;
+    });
+    clearOverpayOffer();
+    refreshStepBounds();
+    renderTradeVerdict();
+}
+
 /**
  * One chip per resource, saying what the bank charges this player for it.
  *
@@ -578,6 +738,8 @@ function showTradeModal() {
     // decides an offer. Board updates keep it live from here on.
     renderDialogHands();
     renderBankRates();
+    applyHandLimits();
+    refreshStepBounds();
     renderTradeVerdict();
 }
 
@@ -587,15 +749,7 @@ function showTradeModal() {
 function hideTradeModal() {
     tradeModal.classList.remove('show');
     tradeModal.classList.add('hidden');
-    // Reset inputs. Every one of them, not only the ones currently shown: a
-    // number left in a hidden commodity row would be sent by the next trade on
-    // a table that switched them off.
-    TRADE_CARDS.forEach(card => {
-        document.getElementById(`give-${card}`).value = 0;
-        document.getElementById(`want-${card}`).value = 0;
-    });
-    clearOverpayOffer();
-    renderTradeVerdict();
+    clearTradeInputs();
 }
 
 // The numbers a player asked to send that were lowered for them, kept so the
@@ -642,6 +796,7 @@ function submitTrade() {
         tradeSendAnywayBtn.textContent =
             `Give the bank ${verdict.given} anyway`;
         tradeSendAnywayBtn.classList.remove('hidden');
+        refreshStepBounds();
         renderTradeVerdict();
         if (tradeVerdict) {
             tradeVerdict.classList.add('is-warning');
@@ -787,10 +942,15 @@ if (tradeModal) {
             // Typing past a correction is a new trade, so the old numbers stop
             // being on offer.
             clearOverpayOffer();
+            refreshStepBounds();
             renderTradeVerdict();
         }
     });
 }
+
+buildTradeSteppers();
+
+if (tradeClearBtn) tradeClearBtn.addEventListener('click', clearTradeInputs);
 
 if (tradeSendAnywayBtn) {
     tradeSendAnywayBtn.addEventListener('click', () => {

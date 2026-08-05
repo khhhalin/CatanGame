@@ -24,6 +24,7 @@ never a half-drawn panel.
 
 - **Fixed** [reported] The give and want pickers in Propose Trade are evenly spaced. Ore and cloth sat flush against each other because commodities are a second block, so the one seam in the list was tighter than every other gap.
 - **Fixed** [reported] Propose Trade is shorter and fits a phone without scrolling inside itself. The pickers are two columns rather than one, which took the dialog from 927px to 680px with commodities in play — Propose used to be below the fold at 390x780.
+- **Fixed** [reported] Every trade number has its own − and + button now, 48x40px to aim at instead of the browser's hairline arrows, on a phone as well as a desk — and the dialog is no taller for it. The give side stops at the cards you hold, and Clear puts all sixteen numbers back to zero.
 - **Fixed** [reported] The little up/down arrows on each trade number are easier to hit: the fields are now 40px tall rather than 27px, and the arrows are drawn at the field's height. Tapping the field itself brings up a number pad on a phone.
 - **New** This panel. It names the build the server is running and when that server started, so a tab left open across a deploy is obvious before a bug is filed rather than after.
 - **New** [reported] Tap one of your own knights on the board and its actions appear over the piece itself — activate, promote, move — with a reason on any it cannot do. They used to be a row in a panel, identified by a coordinate no player ever sees.
