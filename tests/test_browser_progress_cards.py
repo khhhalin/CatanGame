@@ -356,6 +356,20 @@ def smith(browser, tmp_path):
         yield live
 
 
+def a_merchant_fleet_card(game):
+    """The card that asks its own player which card type trades at 2:1."""
+    actor = game.current_player_name()
+    _hand(game, actor)
+    _give_card(game, actor, "merchant_fleet")
+    return {}
+
+
+@pytest.fixture
+def merchant_fleet(browser, tmp_path):
+    with table(browser, tmp_path, a_merchant_fleet_card) as live:
+        yield live
+
+
 def a_diplomat_card(game):
     """Roads with a free end apiece, which is what a Diplomat may remove."""
     actor = game.current_player_name()
@@ -733,6 +747,29 @@ class TestInventor:
         assert selection(player)["progressPick"]["card"] is None
         assert selection(player)["mode"] is None
         assert hand_of(player) == ["inventor"], "cancelling ate the card"
+
+
+class TestMerchantFleet:
+    def test_the_question_says_which_card_asked_it(self, merchant_fleet):
+        """The dialog was headed "Your decision" with nothing to say why.
+
+        Every other pending choice names the rule that raised it; this one had
+        no title of its own, so a player was handed eight card types and no
+        clue which of their cards had asked.
+        """
+        player, _marks, _tabs = merchant_fleet
+
+        press_play(player, "merchant_fleet")
+        player.page.wait_for_selector("#choice-panel:not(.hidden)", timeout=8000)
+        assert "Merchant Fleet" in player.page.inner_text("#choice-prompt")
+        assert player.page.inner_text("#choice-context").strip() != ""
+        shot(player, "merchant-fleet-choice")
+
+        player.page.click("#choice-options .choice-option")
+        player.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().pending_choices.length === 0",
+            timeout=8000,
+        )
 
 
 # --- Nothing may be permanently unplayable ---------------------------------

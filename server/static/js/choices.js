@@ -1,6 +1,6 @@
 // The pending-choice phase: the game stops and one named player decides.
 //
-// Eight rules need the server to interrupt play and ask a *particular* player
+// Nine rules need the server to interrupt play and ask a *particular* player
 // to pick one of a set of legal options - which city the barbarians sack, which
 // commodity a Commercial Harbor takes, which knight a Deserter lures away.
 // While one is open the server refuses every action from everybody, so the two
@@ -39,6 +39,7 @@ const CHOICE_TITLES = {
     barbarian_city: '🏛️ The barbarians are sacking a city',
     progress_deck: '🎴 Draw a progress card',
     commercial_harbor: '⚓ Commercial Harbor',
+    merchant_fleet: '⛵ Merchant Fleet',
     master_merchant: '💰 Master Merchant',
     spy: '🕵️ Spy',
     wedding: '💍 Wedding',
@@ -216,6 +217,12 @@ function describeContext(choice) {
 
     if (choice.kind === 'commercial_harbor') {
         return `${context.to} offers you ${describeCard(context.resource)} for one commodity.`;
+    }
+    if (choice.kind === 'merchant_fleet') {
+        // All eight types are offered whether or not any are held right now,
+        // which is the part of the card a player asks about when they see a
+        // list including cards they do not have.
+        return 'The rate lasts the rest of your turn, held or not.';
     }
     if (choice.kind === 'master_merchant') {
         return `Take a card out of ${context.victim}'s hand${remaining}.`;
