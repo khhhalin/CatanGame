@@ -29,7 +29,7 @@ def ck_game(extra=None, players=('Alice', 'Bob')):
 
 def buying_hand(game, player_name):
     """Exactly the price of one development card."""
-    game.get_player(player_name).resources = dict(game.get_cost('knight'))
+    game.get_player(player_name).resources = dict(game.get_cost('dev_card'))
 
 
 def stack(game, deck_name, *card_ids):

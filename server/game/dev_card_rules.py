@@ -41,14 +41,14 @@ class DevCardRules:
         if not player:
             return refused('ACTION_FAILED', 'Player not found')
 
-        if not self.can_afford(player_name, 'knight'):
+        if not self.can_afford(player_name, 'dev_card'):
             return refused('ACTION_FAILED', 'Cannot afford development card')
 
         card_type = self.bank.draw_dev_card()
         if not card_type:
             return refused('ACTION_FAILED', 'No development cards left')
 
-        if not self.deduct_cost(player_name, 'knight'):
+        if not self.deduct_cost(player_name, 'dev_card'):
             self.bank.return_dev_card(card_type)
             return refused('ACTION_FAILED', 'Failed to deduct cost')
 

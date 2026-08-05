@@ -1071,7 +1071,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             priced = ck_module.improvement_price(building_type, level)
             if priced is not None:
                 return priced
-        return dict(self.building_costs.get(building_type, {}))
+        if building_type not in self.building_costs:
+            # An unlisted type used to price at nothing, so a typo bought the
+            # piece for free and said nothing. Better to stop here than to
+            # deduct an empty hand and call it a sale.
+            raise KeyError(f'no listed price for {building_type!r}')
+        return dict(self.building_costs[building_type])
 
     def get_cost(self, building_type: str, **context) -> dict:
         """What this costs to build, once every active modifier has had its say.

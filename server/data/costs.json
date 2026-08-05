@@ -1,15 +1,43 @@
 {
-    "road": {"wood": 1, "brick": 1},
-    "ship": {"wood": 1, "sheep": 1},
-    "settlement": {"wood": 1, "brick": 1, "wheat": 1, "sheep": 1},
-    "city": {"wheat": 2, "ore": 3},
-    "knight": {"wheat": 1, "sheep": 1, "ore": 1},
-    "two_roads": {"brick": 1, "wheat": 1, "wood": 1},
-    "invention": {"wheat": 1, "sheep": 1, "ore": 1},
-    "monopoly": {"wheat": 1, "brick": 1, "ore": 1},
-    "build_knight": {"sheep": 1, "ore": 1},
-    "activate_knight": {"wheat": 1},
-    "promote_knight": {"sheep": 1, "ore": 1},
-    "city_wall": {"brick": 2},
-    "medicine_city": {"ore": 2, "wheat": 1}
+    "road": {
+        "wood": 1,
+        "brick": 1
+    },
+    "ship": {
+        "wood": 1,
+        "sheep": 1
+    },
+    "settlement": {
+        "wood": 1,
+        "brick": 1,
+        "wheat": 1,
+        "sheep": 1
+    },
+    "city": {
+        "wheat": 2,
+        "ore": 3
+    },
+    "build_knight": {
+        "sheep": 1,
+        "ore": 1
+    },
+    "activate_knight": {
+        "wheat": 1
+    },
+    "promote_knight": {
+        "sheep": 1,
+        "ore": 1
+    },
+    "city_wall": {
+        "brick": 2
+    },
+    "medicine_city": {
+        "ore": 2,
+        "wheat": 1
+    },
+    "dev_card": {
+        "wheat": 1,
+        "sheep": 1,
+        "ore": 1
+    }
 }
