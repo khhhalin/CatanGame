@@ -386,6 +386,13 @@ class CitiesKnights:
                     "summary": card["summary"],
                     "timing": card["timing"],
                     "needs_target": card["needs_target"],
+                    # Road Building names a road and Merchant Fleet a card
+                    # type, but neither is picked before the card is played.
+                    # Without this the client greys both out waiting for a
+                    # target the server never reads.
+                    "target_chosen_later": (
+                        card["id"] in progress_cards.TARGET_CHOSEN_LATER
+                    ),
                 }
                 for card in progress_cards.PROGRESS_CARDS
             },

@@ -149,12 +149,6 @@ def handle_build_city_wall(data):
 _SINGLE_KEY_TARGETS = {'vertex': 'vertex', 'hex': 'hex', 'road': 'road'}
 _LIST_TARGETS = {'knight': 'knights', 'two_number_tokens': 'hexes'}
 
-# Road Building names a road target on the card, but the two roads are placed
-# through the ordinary place_road flow afterwards, so nothing is chosen with the
-# card itself. A Merchant Fleet's card type is asked for the same way, as a
-# pending choice the engine opens and checks its own options against.
-_TARGET_CHOSEN_LATER = frozenset({'road_building', 'merchant_fleet'})
-
 
 def _progress_target(card, data):
     """Pull this card's target out of the payload, or raise InvalidPayload.
@@ -162,7 +156,7 @@ def _progress_target(card, data):
     Returns None for a card that needs no extra input.
     """
     needs = card['needs_target']
-    if needs is None or card['id'] in _TARGET_CHOSEN_LATER:
+    if needs is None or card['id'] in progress_cards.TARGET_CHOSEN_LATER:
         return None
 
     if needs == 'resource':

@@ -2,6 +2,7 @@
 // registers its own listeners as it evaluates, and `net.js` last of all binds
 // the socket handlers that drive them.
 
+import { progressCardHasNoFlow } from './cities-knights.js';
 import { getCommandCatalogue } from './commands.js';
 import { displayError } from './notices.js';
 import { getBoard, getCurrentPlayer, getRole, isGameRunning, viewState } from './state.js';
@@ -51,6 +52,10 @@ window.__catanDebug = {
     // the rules above: the command bar renders from the server's catalogue, and
     // a test holding its own copy could not notice it failing to draw one.
     getCommands: getCommandCatalogue,
+    // Whether one progress card in the server's catalogue has no way to be
+    // played at all. Asked of the catalogue rather than of a list in a test,
+    // so a card added with no client flow is caught the day it is added.
+    progressCardHasNoFlow,
     // What the next tap on the board would be an attempt at. A two-tap
     // placement - a knight move, a ship move - has a half-finished state that
     // nothing on screen names, so "it did nothing" and "it is waiting for the

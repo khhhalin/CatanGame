@@ -398,6 +398,14 @@ PROGRESS_CARDS = [
 
 CARDS_BY_ID = {card["id"]: card for card in PROGRESS_CARDS}
 
+# Cards that name a target on the card and take none when they are played.
+# Road Building's two roads go down afterwards through the ordinary free-road
+# flow, and a Merchant Fleet's card type is asked for as a pending choice the
+# engine opens and checks its own options against. It lives with the cards
+# rather than in the socket handler because the client needs the same answer:
+# these are played by pressing Play, with nothing picked first.
+TARGET_CHOSEN_LATER = frozenset({"road_building", "merchant_fleet"})
+
 
 def deck_counts() -> dict[str, int]:
     """Total cards in each deck, for asserting the 18/18/18 composition."""

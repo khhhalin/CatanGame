@@ -806,6 +806,42 @@ const TARGET_CHOICES = {
 // naming one yet, so a card needing one is shown and explained, not offered.
 const BOARD_TARGETS = ['vertex', 'hex', 'road', 'knight', 'two_number_tokens', 'player', 'dice'];
 
+/**
+ * Why this card cannot be offered for play at all, or ''.
+ *
+ * `target_chosen_later` is the server's own answer for the two cards that name
+ * a target on the card and are handed none when they are played: Road
+ * Building's roads go down afterwards through the free-road flow, and a
+ * Merchant Fleet's card type is asked for as a pending choice. Both were greyed
+ * out for want of a pick nothing was ever going to ask for.
+ *
+ * @param {object} card - Catalogue entry from the board payload
+ * @returns {string}
+ */
+function missingTargetFlowReason(card) {
+    if (card.target_chosen_later === true) {
+        return '';
+    }
+    return BOARD_TARGETS.includes(card.needs_target)
+        ? 'Needs a target picked on the board, which has no flow yet'
+        : '';
+}
+
+/**
+ * Whether a card in the catalogue can be held but never played.
+ *
+ * Exposed on the debug hook because that is the only honest way to test it:
+ * 26 of the 54 cards were dealt and unplayable for as long as this answered
+ * true for them, and a test that listed the card ids itself would have gone on
+ * passing when a new card joined them.
+ *
+ * @param {object} card - Catalogue entry from the board payload
+ * @returns {boolean}
+ */
+export function progressCardHasNoFlow(card) {
+    return Boolean(missingTargetFlowReason(card));
+}
+
 const DECK_ICONS = { science: '🟢', trade: '🟡', politics: '🔵' };
 
 /**
@@ -884,8 +920,8 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
     if (!reason && card.timing !== 'before_roll' && !rolled) {
         reason = 'Roll the dice first';
     }
-    if (!reason && BOARD_TARGETS.includes(card.needs_target)) {
-        reason = 'Needs a target picked on the board, which has no flow yet';
+    if (!reason) {
+        reason = missingTargetFlowReason(card);
     }
 
     const actions = document.createElement('div');
