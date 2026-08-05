@@ -295,13 +295,15 @@ class BoardBuilder:
 
         # Step 3: Generate the graph. Without ships the ocean ring is scenery
         # and only the land carries intersections and hex sides. Ships need
-        # somewhere to be built, so with the rule on the sea is generated too —
+        # somewhere to be built — Seafarers ships or E&P transport ships alike,
+        # so either rule grows the sea — so with the rule on the sea is generated too —
         # which is a bigger graph, not a different one: `is_coastal_edge` picks
         # the coastline out by counting *land* neighbours rather than by
         # counting neighbours, so the harbours land in the same places either
         # way, and `vertices` still list land hexes only, which is what keeps a
         # settlement off the open water.
-        graph_hex_keys = land_hex_keys | ocean_hex_keys if self.rules['ships'] else land_hex_keys
+        needs_sea = self.rules['ships'] or self.rules['transport_ships']
+        graph_hex_keys = land_hex_keys | ocean_hex_keys if needs_sea else land_hex_keys
         self._generate_vertices_and_edges(graph_hex_keys)
 
         # Step 4: Build all neighbor relationships

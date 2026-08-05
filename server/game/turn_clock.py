@@ -40,6 +40,9 @@ class TurnClock:
         # Seafarers allows one ship to be moved per turn, and the allowance
         # does not accumulate.
         self.ship_moved_this_turn = False
+        # A transport ship may move once per turn; the allowance does not
+        # accumulate, so the record of which ships have moved starts empty.
+        self.transport_ships_moved = set()
         # The gold-supply conversions are each capped per turn (game/gold.py),
         # so the counts start fresh with the turn.
         self.gold_conversions = {}

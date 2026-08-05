@@ -20,13 +20,14 @@ from game.robber_rules import RobberRules
 from game.seafarers import SeafarersRules
 from game.trade import TradeManager
 from game.trade_rules import TradeRules
+from game.transport import TransportShipRules
 from game.turn_clock import TurnClock
 
 logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
-           CitiesKnightsRules, GoldRules, HarborSettlementRules, PendingChoiceRules,
-           TurnClock):
+           CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -228,6 +229,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions
         # are capped per turn — see game/gold.py.
         self.gold_conversions = {}
+        # Transport ships get a per-game id so a ship is still the same ship
+        # after it sails to another edge, and the set of ids that have already
+        # moved this turn enforces one move per ship per turn. Both are E&P
+        # transport state and never touch a Seafarers ship. See game/transport.py.
+        self.transport_ship_counter = 0
+        self.transport_ships_moved = set()
         # What the last production roll paid in gold (player -> amount), the way
         # `production_modifiers` records which rules changed a roll. Read once by
         # the roll payload, cleared at the top of every distribution.
@@ -755,8 +762,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return False
         for edge_key in vertex.neighbors.get('edges', []):
             edge = self.edges.get(edge_key)
-            if edge and edge.ship and edge.ship.get('player') == player_name:
-                return True
+            if not edge or not edge.ship or edge.ship.get('player') != player_name:
+                continue
+            # An E&P transport ship extends no network (866); it must never be
+            # read as a route extender. The `sea_ship_model` exclusion already
+            # forbids transport ships with `ships`, so this branch is only
+            # reachable in a table that has no transports — the guard is defence
+            # in depth, not a live case.
+            if edge.ship.get('kind') == 'transport':
+                continue
+            return True
         return False
 
     def victory_points_for(self, player_name: str) -> int:

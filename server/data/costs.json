@@ -21,6 +21,10 @@
         "wheat": 2,
         "ore": 2
     },
+    "transport_ship": {
+        "wood": 1,
+        "sheep": 1
+    },
     "build_knight": {
         "sheep": 1,
         "ore": 1
