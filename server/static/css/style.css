@@ -2259,7 +2259,10 @@ button:disabled {
 }
 
 .trade-rate-chip {
-    padding: 0.1rem var(--space-1);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0.1rem var(--space-1) 0.1rem 0.15rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
     background: var(--surface-2);
@@ -2956,6 +2959,14 @@ button:disabled {
     display: none !important;
 }
 
+/* Aligned counts. The scoreboard, hand and bank mark every changing number with
+   `.num` so a two-digit count sits under a one-digit one without the digits
+   jittering as the game moves - proportional figures would shift the column on
+   every change. */
+.num {
+    font-variant-numeric: tabular-nums;
+}
+
 .modal.show {
     display: flex !important;
 }
@@ -3115,6 +3126,20 @@ button:disabled {
     vertical-align: 0;
 }
 
+/* A compact tile for dense horizontal strips (the trade rate row) where a full
+   30px tile per card would push the dialog past a phone's height budget
+   (test_browser_trade_panel). Same fill and ink as .tile, smaller box and
+   glyph. Placed after .tile so it wins on a `tile tile-sm` element by order. */
+.tile-sm {
+    width: 20px;
+    height: 20px;
+}
+
+.tile-sm .icon {
+    width: 14px;
+    height: 14px;
+}
+
 .t-wood { --tile: var(--terrain-wood); }
 .t-brick { --tile: var(--terrain-brick); }
 .t-sheep { --tile: var(--terrain-sheep); }
@@ -3197,6 +3222,16 @@ button:disabled {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: var(--space-2) var(--space-3);
+}
+
+/* `#game-players` is a `.user-list` <ul>, so `.user-list li` (0,1,1) would
+   otherwise outweigh `.pcard` (0,1,0) and hand each card the list row's sunken
+   fill and its bottom margin. The id lifts the card's own surface back over it.
+   The fill is not just cosmetic: `.pturn`'s accent ink meets WCAG AA on
+   `--surface-2` and drops below it on the darker `--sunken`. */
+#game-players .pcard {
+    background: var(--surface-2);
+    margin-bottom: 0;
 }
 
 .pcard + .pcard {

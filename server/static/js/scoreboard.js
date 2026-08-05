@@ -151,15 +151,6 @@ export function renderGameSidebar(data) {
         // scoreboard.
         const card = document.createElement('li');
         card.className = playerData.is_you ? 'pcard me' : 'pcard';
-        // `#game-players` is still a `.user-list` <ul>, and `.user-list li`
-        // outweighs `.pcard` on specificity - so without this the card takes the
-        // list row's sunken fill and its bottom margin instead of the card's own
-        // surface and spacing. The fill matters for more than looks: `.pturn`'s
-        // accent ink is WCAG-contrast against `--surface-2` (the card's colour),
-        // and drops below AA on the darker sunken. Restored here rather than in
-        // CSS; a `#game-players` without `.user-list` would retire both lines.
-        card.style.background = 'var(--surface-2)';
-        card.style.marginBottom = '0';
 
         const head = document.createElement('div');
         head.className = 'pcard-head';
