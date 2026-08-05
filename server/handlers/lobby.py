@@ -317,6 +317,11 @@ def _start_game_locked():
     # and refuse rather than tick the missing box; switching on a rule nobody
     # asked for is a different game.
     problems = rules_module.dependency_problems(session.lobby_rules)
+    # Mutual exclusions come from the other direction: two rules that claim one
+    # slot. The client auto-unchecks a rival live, so a set that still arrives
+    # both-on is a crafted payload or an old save — refuse it here rather than
+    # silently letting one member win.
+    problems += rules_module.exclusion_problems(session.lobby_rules)
     if map_definition is not None:
         problems += maps.start_problems(map_definition, session.lobby_rules)
     if problems:

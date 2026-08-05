@@ -665,6 +665,29 @@ class TestLobbyRules:
         assert 'City improvements' in error['message'], "name what is missing"
         assert state.session().game is None, "nothing was started"
 
+    def test_a_crafted_both_on_exclusion_refuses_the_start(self, socket_app):
+        """The client auto-unchecks a rival live, but a payload that arrives
+        with both Longest Road awards on — an old save, a crafted set_rules —
+        must be refused, not quietly resolved to trade-route-wins."""
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'A', 'role': 'player'})
+        b.emit('join', {'name': 'B', 'role': 'player'})
+        a.emit('set_rules', {'rules': {
+            'ships': True,
+            'longest_trade_route': True,
+            'longest_road_card': True,
+        }})
+        a.get_received()
+
+        a.emit('start_game')
+
+        error = last_error(a)
+        assert error['code'] == 'INCOHERENT_RULES'
+        assert 'Longest Road card' in error['message']
+        assert 'Longest Trade Route' in error['message']
+        assert state.session().game is None, "nothing was started"
+
     def test_an_old_client_still_gets_the_game_it_asked_for(self, socket_app):
         """A browser cached from before the decomposition sends one boolean."""
         a = socketio.test_client(socket_app)
