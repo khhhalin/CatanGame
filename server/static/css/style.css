@@ -43,8 +43,17 @@
 body {
     font-family: var(--font-ui);
     font-size: var(--text-md);
+    /* v2: the board is the focus, so the page is warm space with a single
+       soft light lifting off the top-centre where the board sits. Layered over
+       the flat parchment fill rather than replacing it, so a browser that
+       cannot paint the gradient still gets the right base colour. */
     background-color: var(--page-bg);
+    background-image: radial-gradient(120% 85% at 50% -8%,
+        color-mix(in srgb, var(--accent) 5%, transparent), transparent 55%);
     color: var(--text);
+    /* Slight negative tracking: the refined type scale reads tighter without
+       shrinking anything. Counts opt back to tabular via `.num`. */
+    letter-spacing: -0.006em;
     height: 100dvh;
     overflow: hidden;
     padding: 0;
@@ -56,9 +65,11 @@ body {
     width: 100%;
     min-width: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    /* Header, the table, and the v2 bottom tray. The tray row is `auto`, so it
+       takes only what the hand needs and collapses to nothing when hidden (in
+       the lobby and on the join screen). */
+    grid-template-rows: auto minmax(0, 1fr) auto;
     text-align: left;
-    background-color: var(--page-bg);
     padding: var(--space-3);
     gap: var(--space-2);
 }
@@ -109,9 +120,68 @@ body {
     min-height: 0;
 }
 
-/* Resources and the bank only mean anything once a game is running */
-.table:has(#game-screen.hidden) #info-panel {
+/* ----------------------------------------------------------- bottom tray
+
+   v2 shell: a full-width region under the table holding the trade zone above
+   the player's hand of cards. The hand's container (`#info-panel`) was moved
+   here from the aside; the trade zone slot is a placeholder a later component
+   fills. The tray only means anything in a running game, so it collapses in the
+   lobby and on the join screen - keyed off `#game-screen` being hidden, which
+   it is in both. */
+.game-tray {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) 0;
+    border-top: 1px solid var(--hairline);
+    min-width: 0;
+}
+
+.container:has(#game-screen.hidden) .game-tray {
     display: none;
+}
+
+/* The slot a later component drops the physical trade zone into. Empty for now
+   and out of the accessibility tree until it holds something. */
+.tray-trade {
+    width: 100%;
+    max-width: 48rem;
+}
+
+.tray-trade:empty {
+    display: none;
+}
+
+/* The hand sits centred so the fixed changelog pill in the bottom-left corner
+   stays clear of it, and so a wide screen does not stretch the cards edge to
+   edge. */
+.tray-hand {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+}
+
+/* In the tray the hand is not a boxed panel - it is cards on the table. The
+   panel chrome is dropped and the "Your Hand" label sits inline to the left of
+   the tiles (the row is laid out on `#player-resources-panel`, the element the
+   changelog test measures as "the hand"). */
+#info-panel {
+    flex: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    max-width: 100%;
+}
+
+#player-resources-panel {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
 }
 
 /* A compact bar, not a hero. Every row the header takes is a row the board
@@ -152,6 +222,9 @@ h2 {
 
 /* ---------------------------------------------------------------- panels */
 
+/* v2 minimalist chrome: a panel is a quiet surface marked by a hairline, not a
+   boxed border with a drop shadow. The surface still lifts off the warm page,
+   so text contrast is unchanged; only the weight of the frame came down. */
 .panel {
     display: flex;
     flex-direction: column;
@@ -159,9 +232,8 @@ h2 {
     min-width: 0;
     text-align: left;
     background-color: var(--panel-bg);
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--hairline);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-1);
     padding: var(--space-2) var(--space-3);
 }
 
@@ -174,7 +246,7 @@ h2 {
     color: var(--text-muted);
     margin-bottom: var(--space-2);
     padding-bottom: var(--space-1);
-    border-bottom: 1px solid var(--panel-rule);
+    border-bottom: 1px solid var(--hairline);
 }
 
 /* The one place variable-length content is allowed to overflow, and it
@@ -694,7 +766,7 @@ button:disabled {
    flow inside it, so nothing in here can impose a size on the layout. */
 .game-board {
     background-color: var(--board-backdrop);
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--hairline);
     border-radius: var(--radius);
     position: relative;
     overflow: hidden;
@@ -857,9 +929,8 @@ button:disabled {
 .game-console {
     padding: var(--space-2);
     background-color: var(--panel-bg);
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--hairline);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-1);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1395,15 +1466,17 @@ button:disabled {
 
 /* --------------------------------------------------- resources and bank */
 
-#info-panel {
-    flex: none;
-    gap: 0.5rem;
-}
-
+/* In the tray the "Your Hand" title is a quiet inline label to the left of the
+   cards, not a stacked panel heading - so its underline and bottom spacing come
+   off. (The horizontal layout, transparent surface and dropped chrome are set
+   in the bottom-tray block above.) */
 #info-panel .panel-title {
+    flex: none;
     font-size: 0.72rem;
-    margin-bottom: 0.3rem;
-    padding-bottom: 0.2rem;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+    white-space: nowrap;
 }
 
 .resource-display,
@@ -3261,23 +3334,31 @@ button:disabled {
     padding: var(--space-2) var(--space-3);
 }
 
-/* `#game-players` is a `.user-list` <ul>, so `.user-list li` (0,1,1) would
-   otherwise outweigh `.pcard` (0,1,0) and hand each card the list row's sunken
-   fill and its bottom margin. The id lifts the card's own surface back over it.
-   The fill is not just cosmetic: `.pturn`'s accent ink meets WCAG AA on
-   `--surface-2` and drops below it on the darker `--sunken`. */
+/* v2: quiet cards separated by a hairline rather than each being a filled box.
+   `#game-players` is a `.user-list` <ul>, so the id is needed to outweigh
+   `.user-list li` (0,1,1) and strip the list row's sunken fill and margin. The
+   card sits on the players panel's own `--surface-1`, where `.pturn`'s accent
+   ink clears WCAG AA (its `--sunken` fill did not). */
 #game-players .pcard {
-    background: var(--surface-2);
+    background: transparent;
     margin-bottom: 0;
+    padding: var(--space-2) var(--space-1);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 .pcard + .pcard {
-    margin-top: var(--space-2);
+    margin-top: 0;
+    border-top: 1px solid var(--hairline-soft);
 }
 
+/* The player's own row, marked by a warm quiet wash and an accent edge rather
+   than a heavy box. */
 .pcard.me {
-    border-color: var(--accent);
-    box-shadow: inset 3px 0 0 var(--accent);
+    background: linear-gradient(90deg, var(--accent-soft), transparent 72%);
+    box-shadow: inset 2px 0 0 var(--accent);
+    border-radius: var(--radius-sm);
 }
 
 .pcard-head {
@@ -3299,9 +3380,12 @@ button:disabled {
     font-size: var(--text-sm);
 }
 
+/* accent-hover, not accent: this small label can land on the `.me` card's warm
+   accent-soft wash, where the base accent drops below WCAG AA. The deeper
+   hover shade clears it on every surface it can sit on. */
 .pturn {
     font-size: var(--text-2xs);
-    color: var(--accent);
+    color: var(--accent-hover);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;

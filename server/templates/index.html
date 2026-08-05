@@ -574,13 +574,6 @@
         </div><!-- /.table-main -->
 
             <aside class="table-aside">
-                <section class="panel" id="info-panel">
-                    <div id="player-resources-panel">
-                        <h2 class="panel-title">Your Hand</h2>
-                        <div id="resource-display" class="resource-display"></div>
-                    </div>
-                </section>
-
                 <!-- The log is never hidden - it and chat are the two things a
                      player reads continuously. Trade is the tab that folds: the
                      Trade button opens `#trade-panel` as a popover over this
@@ -659,6 +652,24 @@
                 </section>
             </aside>
         </div><!-- /.table -->
+
+        <!-- v2 bottom tray: the trade zone above the player's hand of cards,
+             full width under the table. The hand's container (`#info-panel`)
+             was moved here from the aside and keeps its ids, so hand.js renders
+             into it unchanged. `.tray-trade` is the slot a later component
+             fills with the physical trade zone; it collapses while empty. The
+             whole tray is hidden until a game is running (style.css). -->
+        <div class="game-tray">
+            <div class="tray-trade"></div>
+            <div class="tray-hand">
+                <section class="panel" id="info-panel">
+                    <div id="player-resources-panel">
+                        <h2 class="panel-title">Your Hand</h2>
+                        <div id="resource-display" class="resource-display"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
     </div>
 
     <!-- Trade Modal -->
