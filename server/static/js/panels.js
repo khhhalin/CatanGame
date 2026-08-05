@@ -3,18 +3,19 @@
 // of seven opens.
 
 import { isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
-import { COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
+import { RESOURCE_ICONS } from './constants.js';
 import { getContrastColor } from './contrast.js';
 import { renderDevCards } from './dev-cards.js';
-import { activeRulesChipValue, buyDevCardBtn, colorPicker, discardAmountSpan, discardCommodityRow, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, submitDiscardBtn, upgradeCityBtn, victimList, victimModal } from './dom.js';
+import { activeRulesChipValue, buyDevCardBtn, colorPicker, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, upgradeCityBtn } from './dom.js';
 import { renderBank, renderDialogHands, renderResourcePanel } from './hand.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
 import { repositionPopover } from './popovers.js';
 import { renderGameSidebar, renderTurnIndicator } from './scoreboard.js';
 import { isSeaMode, syncSeaModeButtons } from './seafarers.js';
+import { offerVictimChoice, openDiscardModal, renderVictimList, resetAutoVictim } from './seven.js';
 import { emitGame } from './socket.js';
-import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVictims, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
+import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
 
 // Names that used to be defined here and now live in their own modules. They
 // are re-exported so this module's public surface is unchanged: net.js imports
@@ -25,12 +26,7 @@ export { renderDevCards };
 export { findMyPlayer };
 export { renderBank, renderDialogHands, renderResourcePanel };
 export { renderGameSidebar, renderTurnIndicator };
-
-// Everything a 7 counts, which is what a discard may name. The five resources
-// and - on a table that plays them - the three commodities: the engine takes
-// both (`clean_card_counts`), and a hand that is over the limit on commodities
-// alone must be able to pay.
-const DISCARDABLE_CARDS = ['wood', 'brick', 'sheep', 'wheat', 'ore', ...COMMODITY_TYPES];
+export { offerVictimChoice, openDiscardModal, renderVictimList };
 
 // Mirrors server/data/costs.json. Duplicated here only to grey a button out and
 // say why before the round trip - the server checks all of it again and the
@@ -191,32 +187,6 @@ buyDevCardBtn.addEventListener('click', () => {
 });
 
 /**
- * Open the discard dialog for a fresh discard.
- * The inputs are zeroed here and nowhere else, so a board update that arrives
- * while the dialog is open cannot reset what has been typed into it.
- *
- * @param {number} amount - Cards the server says this player owes the bank
- */
-export function openDiscardModal(amount) {
-    discardAmountSpan.textContent = amount;
-    DISCARDABLE_CARDS.forEach(card => {
-        const input = document.getElementById(`discard-${card}`);
-        if (input) {
-            input.value = 0;
-        }
-    });
-
-    // Only the tables that play commodities have any to hand back. Read off
-    // the running game's rules rather than off "is this Cities & Knights":
-    // commodities is a switch of its own and a table may take it alone.
-    const commodities = getBoard()?.rules?.commodities === true;
-    discardCommodityRow?.classList.toggle('hidden', !commodities);
-
-    renderDialogHands();
-    discardModal.classList.add('show');
-}
-
-/**
  * Update game UI based on phase (setup vs playing)
  */
 export function updateGameUI(boardData) {
@@ -241,7 +211,7 @@ export function updateGameUI(boardData) {
     if (mustChooseVictim() && isMyTurn()) {
         offerVictimChoice();
     } else {
-        autoVictimSent = false;
+        resetAutoVictim();
     }
 
     // The dialog's own visibility is the record of whether it has already been
@@ -545,94 +515,3 @@ export function updateButtonColors() {
         }
     });
 }
-
-// Whether the single-candidate answer has already gone. Reset by updateGameUI
-// as soon as the server says nothing is pending.
-let autoVictimSent = false;
-
-/**
- * Ask who to rob - but only when there is actually a question.
- *
- * A dialog offering one button is not a choice, it is a click the player has to
- * make to carry on. With a single candidate the answer is settled here and the
- * modal never opens.
- */
-export function offerVictimChoice() {
-    const victims = getRobberVictims();
-
-    if (victims.length === 1) {
-        // This runs on every board payload while the flag is up, and the flag
-        // stays up until the server has answered, so the send is latched. It is
-        // cleared again the moment nothing is pending.
-        if (!autoVictimSent) {
-            autoVictimSent = true;
-            emitGame('choose_robber_victim', { name: viewState.identity.name, victim: victims[0] });
-        }
-        victimModal.classList.remove('show');
-        return;
-    }
-
-    if (victims.length === 0) {
-        // Nothing to steal. The dialog has no way to close itself, so opening
-        // it would strand the turn.
-        victimModal.classList.remove('show');
-        return;
-    }
-
-    renderVictimList();
-    victimModal.classList.add('show');
-}
-
-export function renderVictimList() {
-    victimList.innerHTML = '';
-    
-    const players = getBoard()?.players || [];
-    
-    getRobberVictims().forEach(victimName => {
-        const player = players.find(p => p.name === victimName);
-        const color = player?.color || '#cccccc';
-        
-        const item = document.createElement('div');
-        item.className = 'victim-item';
-        item.dataset.victim = victimName;
-
-        // Built rather than interpolated: a player named with markup would
-        // otherwise be parsed as HTML in everyone else's robber dialog.
-        const swatch = document.createElement('div');
-        swatch.className = 'victim-color';
-        swatch.style.backgroundColor = color;
-        item.appendChild(swatch);
-        item.appendChild(document.createTextNode(victimName));
-
-        victimList.appendChild(item);
-    });
-}
-
-// One delegated listener - the victim list is rebuilt on every robber move
-victimList.addEventListener('click', (event) => {
-    const item = event.target.closest('[data-victim]');
-    if (!item) {
-        return;
-    }
-    emitGame('choose_robber_victim', { name: viewState.identity.name, victim: item.dataset.victim });
-    victimModal.classList.remove('show');
-});
-
-submitDiscardBtn.addEventListener('click', () => {
-    // Every card the limit counts, not the five resources: a commodity typed
-    // into a row the submit ignored was the shape of the tester's report.
-    const resources = {};
-    DISCARDABLE_CARDS.forEach(card => {
-        const input = document.getElementById(`discard-${card}`);
-        resources[card] = input ? (parseInt(input.value) || 0) : 0;
-    });
-
-    const total = Object.values(resources).reduce((sum, count) => sum + count, 0);
-
-    if (total !== getDiscardAmount()) {
-        displayError(`You must discard exactly ${getDiscardAmount()} cards`);
-        return;
-    }
-    
-    emitGame('discard_resources', { name: viewState.identity.name, resources: resources });
-});
