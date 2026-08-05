@@ -700,6 +700,39 @@ DEPENDENCIES = {
     "island_victory_points": ("ships",),
 }
 
+# Rules that contradict or subsume one another: at most one member of a group
+# may be on. Unlike DEPENDENCIES (A needs B), these are refused *and* the lobby
+# auto-unchecks a rival when its partner is ticked. `reason` is shown to the
+# player so an auto-uncheck is never silent.
+EXCLUSIONS = [
+    {
+        "id": "longest_line_award",
+        "rules": ("longest_road_card", "longest_trade_route"),
+        "kind": "hard",
+        "reason": (
+            "Both award the one Longest Road / Trade Route card. The Trade "
+            "Route counts ships as well as roads and replaces the roads-only "
+            "Longest Road — a table plays one or the other, not both."
+        ),
+    },
+    # Reserved for Explorers & Pirates (rules not yet in the catalogue):
+    # {
+    #     "id": "sea_ship_model",
+    #     "rules": ("transport_ships", "ships", "ship_movement",
+    #               "longest_trade_route"),
+    #     "kind": "hard",
+    #     "reason": "Seafarers ships form routes; E&P transport ships carry "
+    #               "cargo and form none. They are one physical piece read two "
+    #               "opposite ways on the same board — pick one sea system.",
+    # },
+]
+
+EXCLUSIONS_BY_RULE = {
+    rule_id: group
+    for group in EXCLUSIONS
+    for rule_id in group["rules"]
+}
+
 # The rules that need the expansion's own state object — its tracks, knight
 # tokens, wall counts, barbarian ship and progress decks. Commodities live on
 # the players and starting with a city decides nothing beyond setup, so
@@ -783,6 +816,9 @@ PRESETS = [
             "ships": True,
             "ship_movement": True,
             "pirate": True,
+            # The Trade Route replaces the roads-only Longest Road; leaving the
+            # base card on too is the both-on state the exclusion model refuses.
+            "longest_road_card": False,
             "longest_trade_route": True,
             "island_victory_points": True,
             "victory_target": 14,
@@ -949,6 +985,22 @@ def dependency_problems(chosen: dict) -> list:
     return problems
 
 
+def exclusion_problems(chosen: dict) -> list:
+    """Groups with more than one member switched on, as sentences.
+
+    Empty means coherent. Reported and refused the same way dependencies are;
+    nothing is auto-unchecked server-side — the client does that live, and a
+    payload that still arrives incoherent is refused, not quietly fixed.
+    """
+    problems = []
+    for group in EXCLUSIONS:
+        on = [rid for rid in group["rules"] if chosen.get(rid)]
+        if len(on) > 1:
+            names = " and ".join(RULES_BY_ID[rid]["name"] for rid in on)
+            problems.append(f"{names} exclude each other: {group['reason']}")
+    return problems
+
+
 def needs_expansion_state(chosen: dict) -> bool:
     """Whether this rule set requires the Cities & Knights state object."""
     return any(chosen.get(rule_id) for rule_id in EXPANSION_STATE_RULES)
@@ -988,3 +1040,8 @@ def catalogue() -> list:
 def presets() -> list:
     """The one-click rule sets, for the lobby to offer as buttons."""
     return [dict(preset) for preset in PRESETS]
+
+
+def exclusions() -> list:
+    """The mutual-exclusion groups, for the lobby to decorate and enforce."""
+    return [dict(group) for group in EXCLUSIONS]

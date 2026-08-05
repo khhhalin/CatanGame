@@ -746,3 +746,52 @@ class TestStartOnMainLandOnly:
                       if game.vertices[key].neighbors['hexes'])
 
         assert game.place_settlement(game.current_player_name(), vertex)['success']
+
+
+class TestExclusions:
+    """Rules that contradict or subsume one another: at most one may be on.
+
+    Unlike a dependency, both-on does not crash — the exclusion is about
+    coherence, and the start is refused rather than one member silently winning.
+    """
+
+    def test_both_longest_line_awards_on_is_a_problem(self):
+        problems = rules_module.exclusion_problems(
+            rules_module.coerce({'longest_road_card': True,
+                                 'longest_trade_route': True, 'ships': True})
+        )
+        assert len(problems) == 1
+        assert 'Longest Road card' in problems[0]
+        assert 'Longest Trade Route' in problems[0]
+
+    def test_one_of_the_pair_alone_is_no_problem(self):
+        assert rules_module.exclusion_problems(
+            rules_module.coerce({'longest_road_card': True})
+        ) == []
+        assert rules_module.exclusion_problems(
+            rules_module.coerce({'longest_road_card': False,
+                                 'longest_trade_route': True, 'ships': True})
+        ) == []
+
+    def test_the_seafarers_preset_does_not_both_on_the_award(self):
+        """The shipped Seafarers preset once left longest_road_card ticked
+        alongside longest_trade_route, an incoherent both-on state that played
+        only because the trade route silently won the one award slot."""
+        assert rules_module.exclusion_problems(
+            rules_module.preset_rules('seafarers')
+        ) == []
+
+    def test_no_preset_ships_an_excluded_pair(self):
+        for preset in rules_module.presets():
+            chosen = rules_module.preset_rules(preset['id'])
+            assert rules_module.exclusion_problems(chosen) == [], preset['id']
+
+    def test_every_excluded_id_is_a_bool_rule(self):
+        """A CHOICE member would be a design error — choices are already
+        one-of-N exclusive and need nothing from this map."""
+        for group in rules_module.EXCLUSIONS:
+            for rule_id in group['rules']:
+                assert rule_id in rules_module.RULES_BY_ID, \
+                    f"{group['id']} excludes {rule_id}, which is not a rule"
+                assert rules_module.RULES_BY_ID[rule_id]['type'] == rules_module.BOOL, \
+                    f"{group['id']} member {rule_id} must be a BOOL"
