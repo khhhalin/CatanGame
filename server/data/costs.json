@@ -17,6 +17,10 @@
         "wheat": 2,
         "ore": 3
     },
+    "harbor_settlement": {
+        "wheat": 2,
+        "ore": 2
+    },
     "build_knight": {
         "sheep": 1,
         "ore": 1

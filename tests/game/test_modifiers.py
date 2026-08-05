@@ -24,15 +24,17 @@ class TestTheOrderIsExplicit:
     def test_production_runs_in_this_order_and_no_other(self):
         """Pinned as a list, because the order is the whole point.
 
-        `city_production` decides a city's share, `commodities` replaces half
-        of it with a commodity, `gold_field` turns a gold field's share into
-        gold, `epidemic` caps whatever came out, and the robber takes the lot.
-        Any other sequence pays a different number.
+        `city_production` decides a city's share, `harbor_settlement_yield`
+        holds a harbor settlement to one card, `commodities` replaces half of it
+        with a commodity, `gold_field` turns a gold field's share into gold,
+        `epidemic` caps whatever came out, and the robber takes the lot. Any
+        other sequence pays a different number.
         """
         assert [
             modifier.rule_id
             for modifier in modifiers_module.registered(modifiers_module.PRODUCTION)
-        ] == ['city_production', 'commodities', 'gold_field', 'epidemic', 'robber']
+        ] == ['city_production', 'harbor_settlement_yield', 'commodities',
+              'gold_field', 'epidemic', 'robber']
 
     def test_two_modifiers_may_not_claim_one_place_in_the_line(self):
         """A tie would be broken by import order, which is not an order."""

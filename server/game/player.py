@@ -38,6 +38,11 @@ class Player:
         }
         self.settlements = []
         self.cities = []
+        # Explorers & Pirates only: coastal settlements upgraded into harbor
+        # settlements, worth 2 points each and carrying a cargo basin. Held
+        # apart from `settlements` because they score double and are the sites
+        # ships, settlers and crews are built from (expansions.md 894-902).
+        self.harbor_settlements = []
         self.roads = []
         self.ships = []
         self.victory_points = 0
@@ -109,6 +114,7 @@ class Player:
             'dev_card_count': self.total_dev_cards(),
             'settlements': self.settlements,
             'cities': self.cities,
+            'harbor_settlements': self.harbor_settlements,
             'roads': self.roads,
             'ships': self.ships,
             'gold': self.gold,
@@ -127,8 +133,14 @@ class Player:
         """
         # Settlement: 1 point each
         # City: 2 points each (not 1+2, it replaces the settlement)
+        # Harbor settlement: 2 points each (E&P; replaces the settlement)
         # Victory Point cards: 1 point each (already played, not in hand)
-        points = len(self.settlements) + (len(self.cities) * 2) + self.victory_points
+        points = (
+            len(self.settlements)
+            + (len(self.cities) * 2)
+            + (len(self.harbor_settlements) * 2)
+            + self.victory_points
+        )
 
         # Add bonus points for longest road and largest army
         if self.name == longest_road_holder:

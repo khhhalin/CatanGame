@@ -236,10 +236,11 @@ class TestReservedModifierSlots:
     the feature agents do not race for a number; `register` refuses a clash. A
     slot stays free until the wave that reads its rule lands and claims it."""
 
-    def test_harbor_settlement_yield_stays_free_until_its_wave(self):
-        taken = {m.order for m in modifiers_module.registered(modifiers_module.PRODUCTION)}
-        assert modifiers_module._EP_RESERVED_PRODUCTION_ORDERS["harbor_settlement_yield"] \
-            not in taken
+    def test_harbor_settlement_yield_claims_its_reserved_order(self):
+        """The harbor-settlement wave has landed, so it now sits at its slot."""
+        by_id = {m.rule_id: m for m in modifiers_module.registered(modifiers_module.PRODUCTION)}
+        assert by_id["harbor_settlement_yield"].order == \
+            modifiers_module._EP_RESERVED_PRODUCTION_ORDERS["harbor_settlement_yield"]
 
     def test_gold_field_claims_its_reserved_order(self):
         """The gold wave has landed, so `gold_field` now sits at its slot."""

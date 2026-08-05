@@ -197,6 +197,18 @@ def _epidemic(value, _rules, context):
     return {**value, 'resources': min(value['resources'], 1)}
 
 
+def _harbor_settlement_yield(value, _rules, context):
+    """A harbor settlement takes one card, never a city's two (901).
+
+    It is a settlement that scores double, not a city that produces double, so
+    its production stays a settlement's one. Runs after the city amount (10) and
+    before commodities (20) so nothing upstream can have handed it two.
+    """
+    if context['building_type'] != 'harbor_settlement':
+        return value
+    return {**value, 'resources': 1}
+
+
 def _gold_field(value, _rules, context):
     """A gold field pays gold, not a resource card: 2 gold per building (998).
 
@@ -222,6 +234,8 @@ def _robber_takes_it_all(value, _rules, context):
 
 
 register(Modifier('city_production', PRODUCTION, 10, _always, _city_production))
+register(Modifier('harbor_settlement_yield', PRODUCTION, 15,
+                  _rule_is_on('harbor_settlements'), _harbor_settlement_yield))
 register(Modifier('commodities', PRODUCTION, 20,
                   _rule_is_on('commodities'), _commodity_instead))
 register(Modifier('gold_field', PRODUCTION, 25, _rule_is_on('gold'), _gold_field))
@@ -232,10 +246,9 @@ register(Modifier('robber', PRODUCTION, 40, _always, _robber_takes_it_all))
 # its feature agents do not race for a number: `harbor_settlement_yield` takes
 # order 15 (a harbor settlement yields 1, not 2, so it must run after the city
 # amount at 10 and before commodities at 20) and `gold_field` takes order 25 (a
-# gold field pays 2 gold per adjacent building, 998). `gold_field` is registered
-# above now that the gold rule has landed; `harbor_settlement_yield` waits on the
-# wave that reads `harbor_settlements`. The slots are recorded here because
-# `register` refuses a clash.
+# gold field pays 2 gold per adjacent building, 998). Both are registered above
+# now that the gold and harbor-settlement rules have landed. The slots are
+# recorded here because `register` refuses a clash.
 _EP_RESERVED_PRODUCTION_ORDERS = {'harbor_settlement_yield': 15, 'gold_field': 25}
 
 

@@ -12,6 +12,7 @@ from game.board import BoardBuilder
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
 from game.gold import GoldRules
+from game.harbor_settlements import HarborSettlementRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -24,7 +25,8 @@ from game.turn_clock import TurnClock
 logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
-           CitiesKnightsRules, GoldRules, PendingChoiceRules, TurnClock):
+           CitiesKnightsRules, GoldRules, HarborSettlementRules, PendingChoiceRules,
+           TurnClock):
     """
     Represents a Catan game session.
 
@@ -197,6 +199,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.MAX_CITIES = self.rules['max_cities']
         self.MAX_ROADS = self.rules['max_roads']
         self.MAX_SHIPS = self.rules['max_ships']
+        self.MAX_HARBOR_SETTLEMENTS = self.rules['max_harbor_settlements']
 
         # Somewhere to keep improvement tracks, knights, walls, the barbarian
         # ship and the progress decks — built when any rule needs it. Its
@@ -309,6 +312,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return len(player.settlements) < self.MAX_SETTLEMENTS
         if piece == 'city':
             return len(player.cities) < self.MAX_CITIES
+        if piece == 'harbor_settlement':
+            return len(player.harbor_settlements) < self.MAX_HARBOR_SETTLEMENTS
         if piece == 'road':
             return len(player.roads) < self.MAX_ROADS
         if piece == 'ship':
@@ -1017,7 +1022,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         gained_resources = {}
 
         for _vertex_key, vertex in self.vertices.items():
-            if not vertex.building or vertex.building.get('type') not in ('settlement', 'city'):
+            if not vertex.building or vertex.building.get('type') not in (
+                'settlement', 'city', 'harbor_settlement'
+            ):
                 continue
 
             player_name = vertex.building.get('player')
