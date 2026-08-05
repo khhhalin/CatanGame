@@ -3,7 +3,6 @@
 // of seven opens.
 
 import { isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
-import { RESOURCE_ICONS } from './constants.js';
 import { getContrastColor } from './contrast.js';
 import { renderDevCards } from './dev-cards.js';
 import { activeRulesChipValue, buyDevCardBtn, colorPicker, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, upgradeCityBtn } from './dom.js';
@@ -415,14 +414,15 @@ function updateAffordability() {
 }
 
 /**
- * Render a cost as "1🌾 1🐑 1🪨", the way the Cities & Knights buttons do.
+ * Render a build cost as words, e.g. "1 wheat 1 sheep 1 ore". This is only ever
+ * a button's title, and a tooltip is plain text - it cannot carry icon markup.
  *
  * @param {object} cost - {resource: amount}
  * @returns {string}
  */
 function formatBuildCost(cost) {
     return Object.entries(cost)
-        .map(([resource, amount]) => `${amount}${RESOURCE_ICONS[resource] || resource}`)
+        .map(([resource, amount]) => `${amount} ${resource}`)
         .join(' ');
 }
 

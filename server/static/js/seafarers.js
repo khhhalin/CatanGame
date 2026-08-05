@@ -19,7 +19,7 @@
 // round trip. The server checks it again and the board is drawn from its
 // answer, never from this.
 
-import { RESOURCE_ICONS } from './constants.js';
+import { resourceTile, statusIcon } from './icons.js';
 import { buildShipBtn, gameBoard, islandPoints, moveShipBtn, placeRoadBtn, placeSettlementBtn, robberText, seafarersChipValue, seafarersPanel, shipHint, upgradeCityBtn } from './dom.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
@@ -64,14 +64,14 @@ export function isSeaMode(mode) {
 }
 
 /**
- * Render a cost as "1🌲 1🐑".
+ * Render a cost as its resource tiles, e.g. one wood tile then one sheep tile.
  *
  * @param {object} cost - {resource: amount}
- * @returns {string}
+ * @returns {string} HTML (resource tiles), so the caller must use innerHTML.
  */
 function formatCost(cost) {
     return Object.entries(cost)
-        .map(([resource, amount]) => `${amount}${RESOURCE_ICONS[resource] || resource}`)
+        .map(([resource, amount]) => `${amount}${resourceTile(resource, { label: resource })}`)
         .join(' ');
 }
 
@@ -333,7 +333,7 @@ function renderShipActions(player) {
         buildReason = shortfall(player.resources, SHIP_COST);
     }
 
-    buildShipBtn.textContent = `Build ship · ${formatCost(SHIP_COST)}`;
+    buildShipBtn.innerHTML = `Build ship · ${formatCost(SHIP_COST)}`;
     buildShipBtn.disabled = Boolean(buildReason);
     buildShipBtn.title = buildReason
         || (inSetup ? 'A ship may replace your starting road: tap a sea side of your settlement'
@@ -370,7 +370,8 @@ function renderShipActions(player) {
         const movement = seaRule('ship_movement')
             ? ` · ${moved ? 'move spent' : 'move ready'}`
             : '';
-        seafarersChipValue.textContent = `🚢 ${ships.length}/${maxShips}${movement}`;
+        seafarersChipValue.innerHTML =
+            `${statusIcon('ship', { label: 'Ships' })} ${ships.length}/${maxShips}${movement}`;
     }
 }
 
@@ -397,9 +398,15 @@ function renderIslandPoints() {
         .filter(player => (scored[player.name] || 0) > 0)
         .map(player => `${player.name} ${scored[player.name]}`);
 
-    islandPoints.textContent = names.length > 0
-        ? `🏝️ New islands: ${names.join(' · ')}`
-        : `🏝️ ${perIsland} points for your first settlement on a new island`;
+    const summary = names.length > 0
+        ? `New islands: ${names.join(' · ')}`
+        : `${perIsland} points for your first settlement on a new island`;
+    // Built, not interpolated: player names reach `summary`, so the island
+    // glyph goes in its own span and the names stay in a text node.
+    islandPoints.textContent = '';
+    const marker = document.createElement('span');
+    marker.innerHTML = statusIcon('island');
+    islandPoints.append(marker, ` ${summary}`);
     islandPoints.classList.remove('hidden');
 }
 

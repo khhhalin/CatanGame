@@ -376,7 +376,7 @@ socket.on('dev_card_played', (data) => {
 
 socket.on('game_won', (data) => {
     console.log('Game won:', data);
-    showNotice(`🎉 GAME OVER! ${data.player} wins with ${data.victory_points} victory points!`, 'success', true);
+    showNotice(`GAME OVER! ${data.player} wins with ${data.victory_points} victory points!`, 'success', true);
     // A one-shot notice that no later payload repeats, so the win is latched
     // here - it is what stops the turn countdown.
     viewState.winnerAnnounced = true;
