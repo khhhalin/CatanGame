@@ -187,6 +187,34 @@ def wait_for_rule(player, rule_id, value, timeout=8000):
     )
 
 
+def reveal_rule(player, rule_id, timeout=10000):
+    """Wait for one rule's control to exist, and open the group it sits in.
+
+    The groups are `<details>`, so a collapsed section has to be opened before
+    Playwright will treat the control as visible - and the picker is not there
+    to be opened the moment `join()` returns. `#user-screen` is un-hidden
+    synchronously in the Join click handler, while `request_rules` is still in
+    flight, so the rows arrive one socket round trip later.
+
+    Waiting is what makes that safe. A one-shot `getElementById` finds nothing,
+    silently leaves the `<details>` shut, and the fill that follows spends its
+    whole 30-second timeout on a control nobody will ever open -
+    `scroll_into_view_if_needed` does not object, because it does not wait for
+    visibility. On an idle machine the round trip usually wins the race; under
+    the load of the full browser suite it lost it every time, and
+    `test_browser_six_players.py` reported six setup errors that read as
+    cross-suite interference.
+    """
+    player.page.wait_for_function(
+        "id => { const el = document.getElementById(`rule-${id}`);"
+        "        if (!el) { return false; }"
+        "        const group = el.closest('details');"
+        "        if (group) { group.open = true; }"
+        "        return true; }",
+        arg=rule_id, timeout=timeout,
+    )
+
+
 # Deliberately `request_log` and not `request_state`: a resync answers with a
 # whole board, and a board payload is not inert. It runs the client's
 # placement bookkeeping, which is what decides whether an armed build mode

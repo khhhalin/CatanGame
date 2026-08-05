@@ -10,6 +10,7 @@ import pytest
 from browser_harness import (
     Player,
     browser_session,
+    reveal_rule,
     server_round_trip,
     start_server,
     stop_server,
@@ -55,19 +56,10 @@ def tick_quickly(player, rule_ids):
     puts a "slow down" toast - which the server would send before answering -
     on the near side of the assertions.
     """
-    ticked = []
     for rule_id in rule_ids:
-        player.page.evaluate(
-            "id => { const el = document.getElementById(`rule-${id}`);"
-            "        const group = el && el.closest('details');"
-            "        if (group) { group.open = true; } }",
-            rule_id,
-        )
-        control = player.page.locator(f"#rule-{rule_id}")
-        if control.count():
-            control.set_checked(True)
-            ticked.append(rule_id)
-    wait_for_rules(player, {rule_id: True for rule_id in ticked})
+        reveal_rule(player, rule_id)
+        player.page.locator(f"#rule-{rule_id}").set_checked(True)
+    wait_for_rules(player, {rule_id: True for rule_id in rule_ids})
     server_round_trip(player)
 
 

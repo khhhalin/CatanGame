@@ -11,7 +11,9 @@ Three things a tester filed after playing a game with commodities on:
     to find a scrollbar inside a dialog to send an offer.
   - "in trade tab its hard to click the small arrows". Chromium paints the
     number field's spinners only on hover and sizes them off the field, which
-    was 24.6px tall - about 12px of arrow to aim at.
+    was 24.6px tall - about 12px of arrow to aim at. Growing the field was as
+    far as CSS reached: the spinner is drawn inside it and splits its height,
+    so the arrows are now real buttons either side of the field instead.
 
 Every assertion here is a measurement of the rendered box, not of the DOM: the
 markup was correct through all three of these.
@@ -29,6 +31,7 @@ from browser_harness import (
     build_settlement,
     edges_next_to,
     legal_setup_vertices,
+    reveal_rule,
     start_server,
     stop_server,
     wait_for_rule,
@@ -89,6 +92,28 @@ def _gaps(rows):
     ]
 
 
+def _measure_steppers(player):
+    """Every - and + button in the dialog, as rendered boxes with their names."""
+    return player.page.evaluate("""
+    () => [...document.querySelectorAll('#trade-modal .trade-step')].map(button => {
+      const box = button.getBoundingClientRect();
+      return {
+        name: button.getAttribute('aria-label'),
+        width: box.width, height: box.height,
+      };
+    })
+    """)
+
+
+def _step_button(card, delta):
+    sign = "-1" if delta < 0 else "1"
+    return f'#trade-modal .trade-stepper:has(#give-{card}) .trade-step[data-step="{sign}"]'
+
+
+def _field_value(player, field_id):
+    return player.page.input_value(f"#{field_id}")
+
+
 def _open_trade_modal(player):
     player.page.click("#tab-trade")
     player.page.wait_for_selector("#propose-trade-btn", state="visible", timeout=5000)
@@ -122,12 +147,7 @@ def trader(browser, tmp_path_factory):
     alice.join()
     bob.join()
     for rule_id, value in RULES.items():
-        alice.page.evaluate(
-            "id => { const el = document.getElementById(`rule-${id}`);"
-            "        const group = el && el.closest('details');"
-            "        if (group) { group.open = true; } }",
-            rule_id,
-        )
+        reveal_rule(alice, rule_id)
         control = alice.page.locator(f"#rule-{rule_id}")
         control.scroll_into_view_if_needed()
         control.set_checked(value)
@@ -210,3 +230,86 @@ def test_every_trade_field_is_tall_enough_to_carry_its_stepper(trader):
     assert len(fields) == 16, f"expected eight pickers a side, measured {len(fields)}"
     too_small = [f for f in fields if f["height"] < MIN_TAP]
     assert not too_small, f"fields too short for their arrows: {too_small}"
+
+
+def test_every_trade_stepper_is_a_target_a_thumb_can_hit(trader):
+    """Regression: "in trade tab its hard to click the small arrows".
+
+    The native spinner is drawn inside the field and splits its height, so at
+    the height this dialog can afford it was never going to be hittable. These
+    are the buttons that replaced it - measured at both sizes the game is
+    played at, because the phone is where the columns are tightest and the
+    buttons are what has to give way there.
+    """
+    for label, viewport in (("desk", DESK), ("phone", PHONE)):
+        trader.page.set_viewport_size(viewport)
+        trader.page.wait_for_timeout(150)
+        try:
+            buttons = _measure_steppers(trader)
+            shot(trader, f"trade-steppers-{label}")
+            assert len(buttons) == 32, (
+                f"expected a - and a + on all sixteen fields, measured {len(buttons)}"
+            )
+            too_small = [b for b in buttons
+                         if b["width"] < MIN_TAP or b["height"] < MIN_TAP]
+            assert not too_small, f"steppers too small to hit at {label}: {too_small}"
+            # Sixteen fields in one dialog: "increase" would name none of them.
+            assert len({b["name"] for b in buttons}) == 32, (
+                f"steppers share accessible names: {sorted(b['name'] for b in buttons)}"
+            )
+        finally:
+            trader.page.set_viewport_size(DESK)
+            trader.page.wait_for_timeout(150)
+
+
+def test_a_stepper_moves_its_field_and_stops_at_zero_and_at_the_hand(trader):
+    """The buttons have to do what the arrows did, and refuse what the player
+    cannot pay: the fields were capped at ten for every card, so the dialog let
+    an offer of ore nobody held be typed and only the server said no."""
+    hand = trader.me()["resources"]
+    card = max(hand, key=hand.get)
+    held = hand[card]
+    assert held >= 1, f"the fixture's player holds nothing to give: {hand}"
+
+    try:
+        assert _field_value(trader, f"give-{card}") == "0"
+        assert trader.page.is_disabled(_step_button(card, -1)), (
+            "the - button is live at zero"
+        )
+
+        for _click in range(held):
+            trader.page.click(_step_button(card, 1))
+        assert _field_value(trader, f"give-{card}") == str(held)
+
+        assert trader.page.is_disabled(_step_button(card, 1)), (
+            f"+ is still live at {held} {card}, which is the whole hand"
+        )
+        assert not trader.page.is_disabled(_step_button(card, -1))
+
+        trader.page.click(_step_button(card, -1))
+        assert _field_value(trader, f"give-{card}") == str(held - 1)
+    finally:
+        trader.page.click("#trade-clear-btn")
+
+    assert _field_value(trader, f"give-{card}") == "0", "Clear left a number behind"
+
+
+def test_a_stepper_that_reaches_its_bound_is_greyed_out_without_moving(trader):
+    """`test_arming_or_disabling_a_build_button_never_resizes_it` exists because
+    a control that changes size under the finger moved the camera. A stepper
+    disables at 0 and at the hand, sixteen times over, so it must disable in
+    place."""
+    hand = trader.me()["resources"]
+    card = max(hand, key=hand.get)
+    plus = _step_button(card, 1)
+
+    before = trader.page.locator(plus).bounding_box()
+    try:
+        for _click in range(hand[card]):
+            trader.page.click(plus)
+        assert trader.page.is_disabled(plus), "the + never reached its bound"
+        after = trader.page.locator(plus).bounding_box()
+    finally:
+        trader.page.click("#trade-clear-btn")
+
+    assert before == after, f"the + moved or resized when it disabled: {before} -> {after}"

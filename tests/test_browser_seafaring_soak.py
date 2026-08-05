@@ -37,6 +37,7 @@ from browser_harness import (
     game_is_over,
     resolve_discard,
     resolve_robber,
+    reveal_rule,
     roll_dice,
     spend_what_you_can,
     start_server,
@@ -102,12 +103,7 @@ def tally():
 
 def set_rule(player, rule_id, value):
     """Set one rule through the picker, as a host would."""
-    player.page.evaluate(
-        "id => { const el = document.getElementById(`rule-${id}`);"
-        "        const group = el && el.closest('details');"
-        "        if (group) { group.open = true; } }",
-        rule_id,
-    )
+    reveal_rule(player, rule_id)
     control = player.page.locator(f"#rule-{rule_id}")
     control.scroll_into_view_if_needed()
     control.fill(str(value))

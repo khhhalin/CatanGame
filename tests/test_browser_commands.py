@@ -16,6 +16,7 @@ import pytest
 from browser_harness import (
     Player,
     browser_session,
+    reveal_rule,
     start_server,
     stop_server,
     wait_for_rule,
@@ -43,12 +44,7 @@ def shot(player, label):
 
 def set_rule(player, rule_id, value):
     """Tick one rule in the picker, as a host would."""
-    player.page.evaluate(
-        "id => { const el = document.getElementById(`rule-${id}`);"
-        "        const group = el && el.closest('details');"
-        "        if (group) { group.open = true; } }",
-        rule_id,
-    )
+    reveal_rule(player, rule_id)
     control = player.page.locator(f"#rule-{rule_id}")
     control.scroll_into_view_if_needed()
     control.set_checked(value)

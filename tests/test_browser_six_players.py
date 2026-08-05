@@ -16,6 +16,7 @@ import pytest
 from browser_harness import (
     Player,
     browser_session,
+    reveal_rule,
     start_server,
     stop_server,
     wait_for_board_painted,
@@ -32,15 +33,10 @@ SIX = ["Ana", "Ben", "Cleo", "Dev", "Esi", "Finn"]
 def set_rule(player, rule_id, value):
     """Set one rule through the picker, as a host would.
 
-    The groups are `<details>`, so a collapsed section has to be opened before
-    Playwright will treat the control as visible.
+    `reveal_rule` is what makes the control clickable: the groups are
+    `<details>`, and the picker is not even rendered yet when `join()` returns.
     """
-    player.page.evaluate(
-        "id => { const el = document.getElementById(`rule-${id}`);"
-        "        const group = el && el.closest('details');"
-        "        if (group) { group.open = true; } }",
-        rule_id,
-    )
+    reveal_rule(player, rule_id)
     control = player.page.locator(f"#rule-{rule_id}")
     control.scroll_into_view_if_needed()
     if isinstance(value, bool):
