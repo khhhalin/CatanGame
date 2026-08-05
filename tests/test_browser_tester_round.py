@@ -787,3 +787,53 @@ class TestCommoditiesCanBeOffered:
         assert offer["offered_resources"] == {"cloth": 2}, offer
         assert offer["wanted_resources"] == {"ore": 1}, offer
         assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- 6. The trade clock the table set --------------------------------------
+#
+# The countdown on an offer card was a client literal, so a table that set a
+# minute to think watched its offers tick down from ten and get pruned by the
+# server it disagreed with. The number now travels in `board.rules`, and this
+# reads it off the screen the proposer is actually looking at.
+
+
+def a_hand_of_wood_and_a_partner_with_brick(game):
+    """One card each side of an offer no bank rate would settle."""
+    actor = game.current_player_name()
+    other = next(name for name in TABLE if name != actor)
+    game.get_player(actor).resources.update({**EMPTY_HAND, "wood": 1})
+    game.get_player(other).resources.update({**EMPTY_HAND, "brick": 1})
+    # The table's clock, set the way a lobby would set it before the start.
+    game.rules["trade_offer_seconds"] = 60
+    game.trade_manager.offer_expiry_seconds = 60
+    return {"actor": actor, "other": other}
+
+
+@pytest.fixture
+def slow_trade_table(browser, tmp_path):
+    with table(browser, tmp_path, a_hand_of_wood_and_a_partner_with_brick) as live:
+        yield live
+
+
+class TestTheTradeClockOnScreen:
+    def test_the_countdown_shows_the_minute_the_table_asked_for(
+        self, slow_trade_table
+    ):
+        player, _ = slow_trade_table
+        player.page.click("#tab-trade")
+        player.page.click("#propose-trade-btn")
+        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
+        player.page.fill("#give-wood", "1")
+        player.page.fill("#want-brick", "1")
+        player.page.click("#submit-trade-btn")
+
+        player.page.wait_for_function(
+            "() => document.querySelector('.trade-timer')?.textContent.trim()",
+            timeout=8000,
+        )
+        shown = player.page.text_content(".trade-timer").strip()
+
+        assert shown.endswith("s"), shown
+        # A client counting its own ten down could never print more than 10.
+        assert int(shown[:-1]) > 10, shown
+        assert player.noisy_errors() == [], player.noisy_errors()

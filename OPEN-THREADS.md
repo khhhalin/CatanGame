@@ -45,8 +45,10 @@ client's literal is gone. These remain, found in the same sweep:
 - **Already in `board.rules`, still hardcoded**: `hand.js` `RESOURCE_LIMIT = 19`
   (bank bars read over 100% if a table raises `bank_resource_limit`), plus
   `?? 4 / ?? 3 / ?? 2 / ?? 15` fallbacks in `trade.js` and `seafarers.js`.
-- **No field exists yet**: `trade.js` `MERCHANT_TRADE_RATE`,
-  `TRADE_OFFER_SECONDS`, and `scoreboard.js` Harbormaster "needs 3".
+- **No field exists yet**: `trade.js` `MERCHANT_TRADE_RATE` and `scoreboard.js`
+  Harbormaster "needs 3". (The trade countdown is now the `trade_offer_seconds`
+  rule, carried in `board.rules`; the server refuses an accept or a completion
+  past the deadline rather than only pruning the list.)
 - **Engine constants mirrored in JS**: `MAX_CITY_WALLS`, `MAX_KNIGHTS_PER_RANK`,
   `MAX_IMPROVEMENT_LEVEL`, `ABILITY_LEVEL`, the improvement price formula, knight
   rank names (in `cities-knights.js` *and* `choices.js`), and a client-side

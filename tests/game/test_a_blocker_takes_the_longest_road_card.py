@@ -5,6 +5,10 @@ and the first fix stopped there — nothing recomputed the award when a knight
 appeared, moved, was displaced or deserted. So the route stayed broken in the
 walk and whole on the scoreboard until somebody happened to build a road, and
 the card sat with a player whose road no longer existed.
+
+The audit that followed found the base game's own version of the same defect:
+an opponent's settlement breaks a route exactly as a knight does, and placing
+one recomputed nothing either.
 """
 
 import random
@@ -174,6 +178,23 @@ class TestAKnightTakesTheLongestRoadCard:
 
         choice = {'player': 'Bob', 'context': {'rank': ck.BASIC}}
         assert game._choice_deserter_placement(choice, middle)['placed'] == middle
+
+        assert game.longest_road_length['Alice'] == 3
+        assert game.longest_road_holder is None
+
+
+class TestASettlementTakesTheLongestRoadCard:
+    """The base game's half of the same bug, found auditing the knight paths."""
+
+    def test_settling_mid_route_takes_the_card_away(self, route):
+        game, middle, _ = route
+        game.game_phase = 'playing'
+        game.current_player_index = [p.name for p in game.players].index('Bob')
+        game.get_player('Bob').resources.update(
+            {'wood': 1, 'brick': 1, 'sheep': 1, 'wheat': 1}
+        )
+
+        assert game.place_settlement('Bob', middle)['success']
 
         assert game.longest_road_length['Alice'] == 3
         assert game.longest_road_holder is None

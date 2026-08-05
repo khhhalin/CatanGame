@@ -11,10 +11,15 @@ import { emitGame } from './socket.js';
 import { getBoard, isMyTurn, viewState } from './state.js';
 
 /**
- * How long an offer stays open, in seconds. Mirrors the server's trade timeout;
- * the countdown here is display only and the server decides when an offer dies.
+ * How long an offer stays open, in seconds, as the table set it. The countdown
+ * here is display only - the server refuses an accept or a completion past this
+ * deadline - and 0 is the table asking for no clock at all.
+ *
+ * @returns {number}
  */
-const TRADE_OFFER_SECONDS = 10;
+function tradeOfferSeconds() {
+    return getBoard()?.rules?.trade_offer_seconds ?? 10;
+}
 
 const TRADE_RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 
@@ -371,6 +376,15 @@ function updateTradeTimers() {
         return;
     }
 
+    const limit = tradeOfferSeconds();
+    if (!limit) {
+        // No clock at this table: an offer stands until it is taken or
+        // cancelled, so a countdown - stuck at 0 or otherwise - would be a
+        // deadline nothing enforces.
+        timers.forEach(timer => { timer.textContent = ''; });
+        return;
+    }
+
     const currentTime = Date.now() / 1000;
     let needsRefresh = false;
 
@@ -382,7 +396,7 @@ function updateTradeTimers() {
         if (isNaN(createdAt)) return;
 
         const elapsed = currentTime - createdAt;
-        const remaining = Math.max(0, TRADE_OFFER_SECONDS - Math.floor(elapsed));
+        const remaining = Math.max(0, limit - Math.floor(elapsed));
 
         timer.textContent = `${remaining}s`;
 

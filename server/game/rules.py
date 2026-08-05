@@ -361,6 +361,17 @@ RULES += [
          "How long the rest of a turn lasts once the roll — and any discard "
          "and robber move it caused — is settled. 0 keeps this server's own "
          "default."),
+    # The one clock in this block whose zero means "no clock at all": there is
+    # no deployment setting behind it to fall back to, and a table that never
+    # wanted a trade timer is playing the physical game, where an offer stands
+    # until it is taken or withdrawn.
+    _int("trade_offer_seconds", "Trade offer clock", 10, 0, 600,
+         "No published rule: the physical game leaves an offer on the table "
+         "until it is taken or withdrawn, and this is the online table's "
+         "stand-in for picking the cards back up",
+         "How long an offer stays open for the rest of the table to accept "
+         "before the server drops it. 0 leaves an offer standing until its "
+         "proposer cancels it or somebody trades."),
     _int("choice_timer_seconds", "Decision clock", 0, 0, 600,
          "No published rule; the decisions themselves are the rules that ask "
          "for them (which city the barbarians sack, which card a Wedding "

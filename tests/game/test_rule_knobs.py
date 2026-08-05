@@ -435,3 +435,83 @@ class TestPieceSupplies:
         assert refused['code'] == 'NO_PIECES_LEFT'
         assert 'all 2 roads' in refused['error']
         assert game.edges[third].road is None
+
+
+class TestTradeOfferClock:
+    """`trade_offer_seconds`. The countdown a proposer and a responder both
+    watch was a client literal, and the server's own expiry was a matching
+    literal a table could not change.
+
+    What a player would notice: an offer whose timer reads 0 that the proposer
+    can still complete, or a table that asked for a minute to think and got ten
+    seconds.
+    """
+
+    @staticmethod
+    def an_offer(game):
+        """Alice offers 1 wood for 1 brick, which no bank rate would take."""
+        game.get_player('Alice').resources = {'wood': 1}
+        game.get_player('Bob').resources = {'brick': 1}
+        proposed = game.propose_trade('Alice', {'wood': 1}, {'brick': 1})
+        assert proposed['success'] and proposed['kind'] == 'offer'
+        return proposed['offer']
+
+    @staticmethod
+    def wind_back(offer, seconds):
+        """Age an offer without waiting for it, as the turn timers do."""
+        offer['created_at'] -= seconds
+
+    @staticmethod
+    def listed(game):
+        return [offer['id'] for offer in game.get_board_data('Alice')['trades']['active']]
+
+    def test_the_default_ten_seconds_outlives_nine_and_not_eleven(self):
+        game = base_game()
+        offer = self.an_offer(game)
+        self.wind_back(offer, 9)
+        assert self.listed(game) == [offer['id']]
+
+        self.wind_back(offer, 2)
+        assert self.listed(game) == []
+
+    def test_a_table_that_asks_for_a_minute_keeps_the_offer_that_long(self):
+        game = base_game({'trade_offer_seconds': 60})
+        offer = self.an_offer(game)
+        self.wind_back(offer, 30)
+        assert self.listed(game) == [offer['id']]
+
+    def test_an_expired_offer_can_no_longer_be_completed(self):
+        """The countdown was a lie: nothing on the completion path looked at
+        the deadline, so an offer whose timer had reached 0 still moved cards
+        as long as no board update had pruned it first."""
+        game = base_game()
+        offer = self.an_offer(game)
+        assert game.accept_trade(offer['id'], 'Bob')['success']
+
+        self.wind_back(offer, 11)
+        refused = game.complete_trade(offer['id'], 'Alice', 'Bob')
+
+        assert refused['success'] is False
+        assert game.get_player('Alice').resources == {'wood': 1}
+        assert game.get_player('Bob').resources == {'brick': 1}
+
+    def test_an_expired_offer_can_no_longer_be_accepted(self):
+        game = base_game()
+        offer = self.an_offer(game)
+        self.wind_back(offer, 11)
+
+        refused = game.accept_trade(offer['id'], 'Bob')
+
+        assert refused['success'] is False
+        assert offer['accepted_by'] == {}
+
+    def test_zero_means_an_offer_stands_until_somebody_takes_it(self):
+        """A table that wants the physical game's non-existent trade clock."""
+        game = base_game({'trade_offer_seconds': 0})
+        offer = self.an_offer(game)
+        self.wind_back(offer, 3600)
+
+        assert self.listed(game) == [offer['id']]
+        assert game.accept_trade(offer['id'], 'Bob')['success']
+        assert game.complete_trade(offer['id'], 'Alice', 'Bob')['success']
+        assert game.get_player('Bob').resources == {'brick': 0, 'wood': 1}

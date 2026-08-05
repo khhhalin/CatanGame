@@ -42,6 +42,20 @@ class TradeManager:
         self.offers[offer_id] = offer
         return offer
 
+    def has_expired(self, offer: dict) -> bool:
+        """Whether this offer's clock has run out, and mark it if it has.
+
+        An expiry of 0 is no clock at all: the table asked for the physical
+        game, where an offer stays on the table until it is taken or picked
+        back up.
+        """
+        if offer['status'] != 'active' or not self.offer_expiry_seconds:
+            return False
+        if time.time() - offer['created_at'] <= self.offer_expiry_seconds:
+            return False
+        offer['status'] = 'expired'
+        return True
+
     def accept(self, offer_id: int, player_name: str, player_resources: dict) -> bool:
         """Player accepts a trade offer.
 
@@ -51,6 +65,11 @@ class TradeManager:
             return False
 
         offer = self.offers[offer_id]
+        # Checked here and in `complete`, not only where the offers are listed:
+        # an offer whose countdown has reached 0 on every screen at the table
+        # still moved cards whenever no board update had pruned it first.
+        if self.has_expired(offer):
+            return False
         if offer['status'] != 'active':
             return False
 
@@ -99,6 +118,9 @@ class TradeManager:
         if offer['proposer'] != proposer:
             return None
 
+        if self.has_expired(offer):
+            return None
+
         if offer['status'] != 'active':
             return None
 
@@ -144,13 +166,10 @@ class TradeManager:
     def get_active_offers(self, exclude_proposer: str = None) -> list:
         """Get all active offers, optionally excluding a player's own offers."""
         offers = []
-        current_time = time.time()
 
         for _offer_id, offer in self.offers.items():
             if offer['status'] == 'active':
-                # Check expiry
-                if current_time - offer['created_at'] > self.offer_expiry_seconds:
-                    offer['status'] = 'expired'
+                if self.has_expired(offer):
                     continue
 
                 if exclude_proposer and offer['proposer'] == exclude_proposer:
@@ -162,14 +181,11 @@ class TradeManager:
 
     def get_my_offers(self, player_name: str) -> list:
         """Get all active offers made by a specific player."""
-        current_time = time.time()
         offers = []
 
         for _offer_id, offer in self.offers.items():
             if offer['proposer'] == player_name and offer['status'] == 'active':
-                # Check expiry
-                if current_time - offer['created_at'] > self.offer_expiry_seconds:
-                    offer['status'] = 'expired'
+                if self.has_expired(offer):
                     continue
                 offers.append(offer)
 
@@ -180,9 +196,6 @@ class TradeManager:
         return [o for o in self.offers.values() if o['status'] == 'active']
 
     def cleanup_expired(self):
-        """Remove expired offers."""
-        current_time = time.time()
+        """Mark every offer whose clock has run out as expired."""
         for _offer_id, offer in self.offers.items():
-            if offer['status'] == 'active':
-                if current_time - offer['created_at'] > self.offer_expiry_seconds:
-                    offer['status'] = 'expired'
+            self.has_expired(offer)

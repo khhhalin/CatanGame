@@ -268,8 +268,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Generate the complete board
         self._generate_board()
 
-        # Trade manager
-        self.trade_manager = TradeManager()
+        # Trade manager. How long an offer stays open is the table's, and the
+        # server is the only clock that counts: the countdown a proposer and a
+        # responder watch is drawn from this number, and every path that could
+        # still move the cards checks it.
+        self.trade_manager = TradeManager(
+            offer_expiry_seconds=self.rules['trade_offer_seconds'],
+        )
 
     def has_piece_available(self, player_name: str, piece: str) -> bool:
         """Whether the player still has an unplaced piece of this type.
@@ -560,6 +565,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Recorded for the starter resources the second placement grants.
         self.track_settlement(player_name, vertex_key)
         self.update_harbormaster()
+        if not in_setup:
+            # A building blocks an opponent's route through its intersection,
+            # so settling mid-route takes the card off them — the same reason
+            # a knight standing there does.
+            self.update_longest_road()
         # The islands a player starts on are theirs already, so setup records
         # them without scoring them.
         island_points = self.record_island_settlement(
