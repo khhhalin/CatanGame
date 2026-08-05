@@ -13,7 +13,7 @@
 // cannot reach it.
 
 import { markDirty } from './board.js';
-import { ckEnabled, handleCkVertexTap } from './cities-knights.js';
+import { ckEnabled, handleCkVertexTap, handleProgressTargetTap, isProgressMode, progressCardName, progressPickCompletes } from './cities-knights.js';
 import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
 import { emitGame } from './socket.js';
 import { handleShipEdgeTap, selectShipToMove } from './seafarers.js';
@@ -49,7 +49,7 @@ const PLACEMENT_NOUNS = {
 // lists for drawing; both are short and both would be wrong in the same way if
 // a kind were added to one and not the other.
 const EDGE_KINDS = ['road', 'ship', 'ship_move'];
-const HEX_KINDS = ['robber', 'pirate'];
+const HEX_KINDS = ['robber', 'pirate', 'progress_hex'];
 
 // What the announcement last said, so aiming at the same spot twice does not
 // repeat itself into the live region.
@@ -282,6 +282,46 @@ function shipCanLie(board, edgeKey, me, ignoring) {
 }
 
 /**
+ * Whether a hex has one of this player's buildings on it.
+ */
+function touchesOwnBuilding(board, hexKey, me) {
+    return Object.values(board.vertices).some(
+        vertex => vertex.building?.player === me
+            && (vertex.neighbors.hexes || []).includes(hexKey)
+    );
+}
+
+/**
+ * Whether the card being aimed would be refused this target.
+ *
+ * One branch per card and not per target shape: a Merchant and a Bishop both
+ * take a hex and want very different ones, and a ghost that says "allowed"
+ * where the server refuses is the half of this that a player cannot argue with.
+ *
+ * @param {object} board - Board payload
+ * @param {string} key - Board key the pointer snapped to
+ * @param {string} me - This player's name
+ * @returns {boolean}
+ */
+function progressTargetIsBlocked(board, key, me) {
+    // Aiming at something already picked takes that pick back, which is never
+    // illegal.
+    if (viewState.progressPick.picked.includes(key)) {
+        return false;
+    }
+
+    switch (viewState.progressPick.card) {
+        case 'merchant':
+            return board.hexes[key]?.type === 'ocean'
+                || !touchesOwnBuilding(board, key, me);
+        case 'bishop':
+            return board.hexes[key]?.type === 'ocean';
+        default:
+            return false;
+    }
+}
+
+/**
  * Whether the server would refuse this placement, as far as the client can
  * tell.
  *
@@ -296,6 +336,10 @@ function isBlocked(kind, key) {
 
     if (kind === 'robber') {
         return board.hexes[key]?.type === 'ocean';
+    }
+
+    if (isProgressMode(kind)) {
+        return progressTargetIsBlocked(board, key, me);
     }
 
     if (kind === 'pirate') {
@@ -509,6 +553,15 @@ export function handlePlacementTap(clientX, clientY) {
         return true;
     }
 
+    // And so is every pick of a progress card's target but the last: an
+    // Inventor's first number token is recorded and nothing is sent, so there
+    // is nothing to confirm. Tapping a pick again takes it back the same way.
+    if (isProgressMode(kind) && !progressPickCompletes(key)) {
+        handleProgressTargetTap(key);
+        markDirty();
+        return true;
+    }
+
     const aimed = resolveKind(kind, key);
 
     if (yoloMode) {
@@ -545,6 +598,8 @@ function commit(target) {
         emitGame('place_road', { name, edge: target.key });
     } else if (target.kind === 'city') {
         emitGame('upgrade_city', { name, vertex: target.key });
+    } else if (isProgressMode(target.kind)) {
+        handleProgressTargetTap(target.key);
     } else {
         handleCkVertexTap(target.key);
     }
@@ -643,7 +698,11 @@ function announcePending(pending) {
     if (!placementAnnounce) {
         return;
     }
-    const noun = PLACEMENT_NOUNS[pending.kind] || 'Placement';
+    // A card names itself: "Merchant selected" says which of the two cards that
+    // take a hex is about to be played, where "Hex selected" says nothing.
+    const noun = isProgressMode(pending.kind)
+        ? (progressCardName() || 'Progress card')
+        : (PLACEMENT_NOUNS[pending.kind] || 'Placement');
     // Blocked is otherwise carried only by the ghost's colour, which is exactly
     // the half of the message a screen reader cannot get at.
     const status = pending.blocked

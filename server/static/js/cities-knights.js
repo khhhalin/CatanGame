@@ -222,9 +222,14 @@ export function ckEnabled() {
 
 /**
  * Whether a selection mode belongs to this expansion.
+ *
+ * The progress-card picking modes count: `updateGameUI` disarms every mode that
+ * is not one of this expansion's or Seafarers' on each board update, and a card
+ * being aimed has to survive somebody else's trade landing exactly as a
+ * half-finished knight move does.
  */
 export function isCkMode(mode) {
-    return CK_MODES.includes(mode);
+    return CK_MODES.includes(mode) || isProgressMode(mode);
 }
 
 /**
@@ -404,6 +409,12 @@ export function syncCkModeButtons() {
 
     if (viewState.selectedBuilding !== 'knight_move') {
         viewState.knightMoveFrom = null;
+    }
+
+    // Arming anything else abandons a card that was waiting for a target. The
+    // card is untouched: nothing was sent for it, so it is still in hand.
+    if (!isProgressMode(viewState.selectedBuilding)) {
+        viewState.progressPick = { card: null, picked: [] };
     }
 }
 
@@ -792,9 +803,9 @@ function renderKnights(player) {
 // here.
 //
 // A card's `needs_target` says what the player must supply before the server
-// can resolve it. Three of those are a choice from a short list and are offered
-// inline; the rest need a target picked off the board, which has no flow yet,
-// so those cards say so instead of failing on click.
+// can resolve it. Some of those are a choice from a short list and are offered
+// inline; the rest are picked off the board, by arming one of the modes below
+// and tapping - the same flow a knight or a city wall goes through.
 
 const TARGET_CHOICES = {
     resource: ['wood', 'brick', 'sheep', 'wheat', 'ore'],
@@ -802,9 +813,14 @@ const TARGET_CHOICES = {
     improvement: TRACK_ORDER
 };
 
-// Targets that would have to be picked on the board. There is no flow for
-// naming one yet, so a card needing one is shown and explained, not offered.
-const BOARD_TARGETS = ['vertex', 'hex', 'road', 'knight', 'two_number_tokens', 'player', 'dice'];
+// What a card that is picked on the board arms. Keyed by `needs_target`,
+// because that is what the server validates the answer against.
+const PROGRESS_MODES = {
+    hex: 'progress_hex'
+};
+
+// The two shapes the server takes: a single key, or a list of them.
+const LIST_TARGETS = ['knight', 'two_number_tokens'];
 
 /**
  * Why this card cannot be offered for play at all, or ''.
@@ -819,12 +835,12 @@ const BOARD_TARGETS = ['vertex', 'hex', 'road', 'knight', 'two_number_tokens', '
  * @returns {string}
  */
 function missingTargetFlowReason(card) {
-    if (card.target_chosen_later === true) {
+    if (card.target_chosen_later === true || card.needs_target === null) {
         return '';
     }
-    return BOARD_TARGETS.includes(card.needs_target)
-        ? 'Needs a target picked on the board, which has no flow yet'
-        : '';
+    const offered = Boolean(TARGET_CHOICES[card.needs_target])
+        || Boolean(PROGRESS_MODES[card.needs_target]);
+    return offered ? '' : 'Needs a target this client cannot ask for yet';
 }
 
 /**
@@ -843,6 +859,179 @@ export function progressCardHasNoFlow(card) {
 }
 
 const DECK_ICONS = { science: '🟢', trade: '🟡', politics: '🔵' };
+
+// ------------------------------------------------- picking a card's target
+//
+// A card whose target is on the board arms a placement mode and is played by
+// the tap that follows, which is the flow every other piece in the game already
+// uses: the tap pins a ghost, the ✓ sends it, and ✗ or Escape drops it. The
+// card itself is held here until then, because nothing reaches the server
+// before the pick is complete - so cancelling costs the player nothing, and a
+// refused play leaves the card in hand exactly as a refused build leaves the
+// resources.
+
+/**
+ * Whether a mode is one of the target-picking ones.
+ */
+export function isProgressMode(mode) {
+    return Object.values(PROGRESS_MODES).includes(mode);
+}
+
+/**
+ * The card a board pick is being made for, or null.
+ */
+export function progressPickCard() {
+    return viewState.progressPick.card;
+}
+
+/**
+ * The name of the card whose target is being picked, or ''.
+ */
+export function progressCardName() {
+    return pickedCardEntry()?.name || '';
+}
+
+/**
+ * The catalogue entry for the card being picked for, or null.
+ */
+function pickedCardEntry() {
+    const card = progressPickCard();
+    return card ? getBoard()?.cities_knights?.progress_cards?.[card] || null : null;
+}
+
+/**
+ * Arm the board for one card's target, or disarm it if it is already armed.
+ *
+ * @param {string} cardId - Card id, which is what `play_progress_card` takes
+ * @param {object} card - Its catalogue entry
+ */
+function toggleProgressPick(cardId, card) {
+    const mode = PROGRESS_MODES[card.needs_target];
+    if (!mode) {
+        return;
+    }
+    const alreadyArmed = progressPickCard() === cardId && viewState.selectedBuilding === mode;
+    // Set before toggling: `syncCkModeButtons` drops the pick whenever the
+    // armed mode is not a picking one, which is what disarming has to do.
+    viewState.progressPick = alreadyArmed ? { card: null, picked: [] }
+        : { card: cardId, picked: [] };
+    if (alreadyArmed) {
+        toggleCkMode(mode);
+        return;
+    }
+    if (viewState.selectedBuilding !== mode) {
+        toggleCkMode(mode);
+    } else {
+        renderCitiesKnights();
+    }
+}
+
+// How many targets a card takes, for the few that take more than one, and the
+// fewest they will settle for.
+const MULTI_PICK = {};
+
+function picksFor(cardId) {
+    return MULTI_PICK[cardId] || { max: 1, min: 1 };
+}
+
+/**
+ * Whether this tap would finish the pick and send the card.
+ * A card that takes more than one target records the earlier ones the way a
+ * knight move records the knight it picked up - nothing is sent, so there is
+ * nothing to confirm either.
+ *
+ * @param {string} key - Board key the tap snapped to
+ * @returns {boolean}
+ */
+export function progressPickCompletes(key) {
+    const cardId = progressPickCard();
+    if (!cardId) {
+        return false;
+    }
+    const picked = viewState.progressPick.picked;
+    return !picked.includes(key) && picked.length + 1 >= picksFor(cardId).max;
+}
+
+/**
+ * Record one pick, and send the card once the last one is in.
+ *
+ * @param {string} key - Board key the tap snapped to
+ */
+export function handleProgressTargetTap(key) {
+    if (!progressPickCard()) {
+        return;
+    }
+    const picked = viewState.progressPick.picked;
+    const already = picked.indexOf(key);
+    if (already >= 0) {
+        // Tapping a pick again takes it back: the only way out of a
+        // half-finished multi-target card that does not throw the card away.
+        picked.splice(already, 1);
+        renderCitiesKnights();
+        return;
+    }
+    picked.push(key);
+    if (picked.length >= picksFor(progressPickCard()).max) {
+        sendProgressPick();
+    } else {
+        renderCitiesKnights();
+    }
+}
+
+/**
+ * Play the card with the targets picked so far.
+ */
+function sendProgressPick() {
+    const cardId = progressPickCard();
+    const card = pickedCardEntry();
+    const picked = viewState.progressPick.picked;
+    if (!cardId || !card || picked.length === 0) {
+        return;
+    }
+    const mode = PROGRESS_MODES[card.needs_target];
+    emitGame('play_progress_card', {
+        name: viewState.identity.name,
+        card: cardId,
+        target: LIST_TARGETS.includes(card.needs_target) ? picked.slice() : picked[0]
+    });
+    // Settled once the card has left the hand. A refusal never broadcasts a
+    // board, so the mode stays armed and the player can aim again - and the
+    // card is still theirs, because the server only spends one it accepted.
+    expectPlacement(mode, () => !(getBoard()?.cities_knights?.progress_hand || []).includes(cardId));
+    viewState.progressPick.picked = [];
+    renderCitiesKnights();
+}
+
+// What each card asks the player to tap. Worded per card rather than per
+// target shape: "tap a hex" is true of both a Merchant and a Bishop and tells
+// the player nothing about which hex either one wants.
+const PICK_HINTS = {
+    merchant: 'Tap a land hex touching one of your own buildings.',
+    bishop: 'Tap the hex to move the robber to.'
+};
+
+/**
+ * What the player is expected to tap for the card being played, if any.
+ */
+function progressPickHint() {
+    const cardId = progressPickCard();
+    if (!cardId) {
+        return '';
+    }
+    return PICK_HINTS[cardId] || 'Tap the target on the board.';
+}
+
+/**
+ * Which pick the player is on, for a card that takes more than one.
+ *
+ * @returns {string}
+ */
+function progressPickProgress() {
+    const cardId = progressPickCard();
+    const picks = picksFor(cardId);
+    const chosen = viewState.progressPick.picked.length;
+    return picks.max > 1 ? `pick ${chosen + 1} of ${picks.max}` : 'pick a target';
+}
 
 /**
  * The player's own progress cards, with what each one does and whether it can
@@ -863,7 +1052,13 @@ function renderProgressHand(player) {
 
     if (progressCardsChipValue) {
         const held = ck.progress_hand_counts?.[player.name] ?? hand.length;
-        progressCardsChipValue.textContent = `🎴 ${held} held`;
+        // The chip is the one part of this fold that is on screen while the
+        // player is aiming at the board - the popover has to be out of the way
+        // for that - so it is where a pick in progress is reported.
+        const pick = pickedCardEntry();
+        progressCardsChipValue.textContent = pick
+            ? `🎴 ${pick.name} — ${progressPickProgress()}`
+            : `🎴 ${held} held`;
     }
 
     const fragment = document.createDocumentFragment();
@@ -943,22 +1138,29 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
         actions.appendChild(select);
     }
 
+    // A card picked on the board is played by the tap, not by this button: it
+    // arms the board and says so, and pressing it again puts the card back.
+    const boardMode = PROGRESS_MODES[card.needs_target];
+    const aiming = boardMode && progressPickCard() === cardId;
+
     const play = document.createElement('button');
     play.type = 'button';
     play.className = 'progress-play';
     play.dataset.progressCard = cardId;
-    play.textContent = 'Play';
+    play.dataset.progressAction = boardMode ? 'pick' : 'play';
+    play.textContent = boardMode ? (aiming ? 'Cancel' : 'Pick on board') : 'Play';
     play.disabled = Boolean(reason);
     play.title = reason;
     actions.appendChild(play);
 
     row.appendChild(actions);
 
-    if (reason) {
-        const note = document.createElement('div');
-        note.className = 'ck-note';
-        note.textContent = reason;
-        row.appendChild(note);
+    const note = reason || (aiming ? progressPickHint() : '');
+    if (note) {
+        const line = document.createElement('div');
+        line.className = 'ck-note';
+        line.textContent = note;
+        row.appendChild(line);
     }
 
     return row;
@@ -1001,6 +1203,9 @@ function ckModeHint() {
             ? 'Now tap the intersection to move it to.'
             : 'Tap the knight you want to move.';
     }
+    if (isProgressMode(viewState.selectedBuilding)) {
+        return progressPickHint();
+    }
     return '';
 }
 
@@ -1030,8 +1235,17 @@ progressHandDiv?.addEventListener('click', (event) => {
     if (!button || button.disabled) {
         return;
     }
+    const cardId = button.dataset.progressCard;
+    const card = getBoard()?.cities_knights?.progress_cards?.[cardId];
+    if (!card) {
+        return;
+    }
+    if (button.dataset.progressAction === 'pick') {
+        toggleProgressPick(cardId, card);
+        return;
+    }
     const select = button.parentElement.querySelector('.progress-target');
-    const payload = { name: viewState.identity.name, card: button.dataset.progressCard };
+    const payload = { name: viewState.identity.name, card: cardId };
     if (select) {
         payload.target = select.value;
     }

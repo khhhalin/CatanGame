@@ -99,8 +99,10 @@ const GHOST_RING_RADIUS = 14;
 // Which part of the board each placement aims at. Listed rather than tested
 // one kind at a time: the ghost, the ring and the anchor all have to agree on
 // the answer, and three separate `=== 'road'` checks is how they stop agreeing.
+// `progress_hex` is a progress card being aimed - a Merchant or a Bishop -
+// which lands on a hex like the robber does.
 const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move'];
-const HEX_GHOST_KINDS = ['robber', 'pirate'];
+const HEX_GHOST_KINDS = ['robber', 'pirate', 'progress_hex'];
 
 // Cache of the last computed layout, keyed by board data identity.
 // This is a memo of a pure computation, not state that drawing writes to.

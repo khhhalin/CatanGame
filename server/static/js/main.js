@@ -64,6 +64,10 @@ window.__catanDebug = {
         mode: viewState.selectedBuilding,
         knightMoveFrom: viewState.knightMoveFrom,
         shipMoveFrom: viewState.shipMoveFrom,
-        pending: viewState.placement.pending
+        pending: viewState.placement.pending,
+        // Which progress card the board is armed for, and what has been picked
+        // for it so far. Same reason: a card that takes two number tokens has a
+        // half-finished state nothing on the board names.
+        progressPick: viewState.progressPick
     })
 };

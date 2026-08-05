@@ -28,7 +28,12 @@ from browser_harness import (
     Player,
     browser_session,
     build_road,
+    click_edge,
+    click_hex,
+    click_vertex,
+    first_clickable,
     legal_road_edges,
+    next_frame,
     start_server,
     stop_server,
 )
@@ -161,6 +166,51 @@ def wait_for_card_spent(player, card_id):
     )
 
 
+def arm_pick(player, card_id):
+    """Press "Pick on board", then get the popover out of the way.
+
+    The popover is fixed and can lie over the board, so a target underneath it
+    cannot be clicked at all.
+    """
+    press_play(player, card_id)
+    close_progress_fold(player)
+    assert selection(player)["progressPick"]["card"] == card_id, (
+        f"pressing Pick on board did not arm the board for {card_id}"
+    )
+
+
+def selection(player):
+    return player.page.evaluate("() => window.__catanDebug.getSelection()")
+
+
+def aim_at(player, kind, candidates):
+    """Click the first candidate a click would really land on.
+
+    Computed *after* arming: arming adds `placement-mode`, which changes the
+    canvas box and therefore the camera, so a point taken before the button was
+    pressed lands on the neighbour.
+    """
+    key = first_clickable(player, kind, list(candidates))
+    assert key, f"none of {list(candidates)} can be aimed at"
+    if kind == "hex":
+        click_hex(player, key)
+    elif kind == "edge":
+        click_edge(player, key)
+    else:
+        click_vertex(player, key)
+    return key
+
+
+def confirm_pick(player, expected_noun):
+    """Press ✓, having checked it says which card it is about to play."""
+    player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+    announced = player.page.inner_text("#placement-announce")
+    assert expected_noun in announced, (
+        f"the confirmation said {announced!r}, not {expected_noun!r}"
+    )
+    player.page.click("#placement-confirm-yes")
+
+
 # --- Fixtures --------------------------------------------------------------
 
 
@@ -183,6 +233,33 @@ def a_road_building_card(game):
 @pytest.fixture
 def road_building(browser, tmp_path):
     with table(browser, tmp_path, a_road_building_card) as live:
+        yield live
+
+
+def a_merchant_card(game):
+    """A settlement to stand the merchant beside, and the card to do it with."""
+    actor = game.current_player_name()
+    home = _inland_vertices(game)[0]
+    game.vertices[home].building = {"type": "settlement", "player": actor}
+    game.get_player(actor).settlements.append(home)
+    _hand(game, actor)
+    _give_card(game, actor, "merchant")
+    # Where the card may go, and one hex it may not: the merchant has to touch
+    # a building of the player's own.
+    mine = list(game.vertices[home].neighbors["hexes"])
+    return {
+        "home": home,
+        "hexes": mine,
+        "far": [
+            key for key, hex_obj in sorted(game.hexes.items())
+            if hex_obj.type != "ocean" and key not in mine
+        ],
+    }
+
+
+@pytest.fixture
+def merchant(browser, tmp_path):
+    with table(browser, tmp_path, a_merchant_card) as live:
         yield live
 
 
@@ -228,6 +305,67 @@ class TestRoadBuilding:
             "the free roads were paid for out of the hand"
         )
         assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- The Merchant ----------------------------------------------------------
+#
+# Six of the 54 cards and the most common in the deck. Everything downstream of
+# the pick already worked — the piece renders, the 2:1 rate applies, the point
+# counts — and until now the only way to reach any of it was to edit a save.
+
+
+class TestMerchant:
+    def test_the_merchant_is_placed_by_picking_a_hex(self, merchant):
+        """Arm, tap a hex beside the player's own settlement, ✓.
+
+        The point and the 2:1 rate follow the piece, so both are asserted here:
+        a merchant that lands somewhere and grants nothing is the same bug in a
+        different place.
+        """
+        player, marks, _ = merchant
+
+        arm_pick(player, "merchant")
+        chosen = aim_at(player, "hex", marks["hexes"])
+        confirm_pick(player, "Merchant")
+        wait_for_card_spent(player, "merchant")
+
+        board = player.board()
+        assert board["merchant_hex"] == chosen
+        assert board["merchant_holder"] == player.name
+        # A victory point for as long as it is held, which is the half of the
+        # card a player counts on.
+        assert (player.me() or {}).get("victory_points", 0) >= 1
+        next_frame(player.page)
+        shot(player, "merchant-placed")
+
+        assert selection(player)["mode"] is None, (
+            "the board stayed armed after the merchant landed"
+        )
+        assert player.noisy_errors() == [], player.noisy_errors()
+
+    def test_a_hex_away_from_your_buildings_is_shown_as_blocked(self, merchant):
+        """The ghost has to say no before the round trip, not after it.
+
+        `_progress_merchant` refuses a hex that touches none of the player's own
+        buildings, and a ✓ that looks the same either way is a lie the player
+        cannot argue with.
+        """
+        player, marks, _ = merchant
+
+        arm_pick(player, "merchant")
+        aim_at(player, "hex", marks["far"])
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+        assert "not allowed here" in player.page.inner_text("#placement-announce")
+
+    def test_cancelling_leaves_the_card_in_hand(self, merchant):
+        """Pressing Cancel is not a play: nothing was ever sent for it."""
+        player, _marks, _tabs = merchant
+
+        arm_pick(player, "merchant")
+        press_play(player, "merchant")       # the same button, now Cancel
+        assert selection(player)["progressPick"]["card"] is None
+        assert selection(player)["mode"] is None
+        assert hand_of(player) == ["merchant"], "cancelling ate the card"
 
 
 # --- Nothing may be permanently unplayable ---------------------------------

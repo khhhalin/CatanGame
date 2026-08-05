@@ -45,6 +45,12 @@ export const viewState = {
     // The same for a ship move: the side the ship was picked up from.
     shipMoveFrom: null,
 
+    // The progress card whose target is being picked on the board, and the
+    // targets picked for it so far. Nothing is sent until the last one is in,
+    // so a card here is still in the player's hand and cancelling costs them
+    // nothing.
+    progressPick: { card: null, picked: [] },
+
     // What the pointer is over, and what a click has offered up for a ✓.
     // Both are `{kind, key, blocked}` or null. `sample` is the raw pointer
     // position, written by pointermove and consumed by the render loop - doing
