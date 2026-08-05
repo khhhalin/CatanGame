@@ -123,6 +123,14 @@
     --res-ore: #4d5b6b;
     --on-resource: #ffffff;
 
+    /* Ink for a glyph drawn inside a filled resource/commodity tile (the
+       `.tile` pattern). White on the saturated fills; the two pale terrains -
+       wheat and sheep - need a dark ink or the glyph washes out below AA. Both
+       are the same across themes because the terrain fills are similarly toned
+       in both, so a tile glyph never changes colour on a theme flip. */
+    --on-tile: #ffffff;
+    --on-tile-pale: #1c2a14;
+
 
     /* Terrain fills for the board canvas. Deliberately NOT --res-*: those
        carry text and are darkened for AA, which makes a large hex fill look
@@ -201,6 +209,8 @@
         --res-wheat: #e0b04a;
         --res-ore: #93a7bd;
         --on-resource: #10171f;
+        --on-tile: #ffffff;
+        --on-tile-pale: #1c2a14;
 
 
         --terrain-wood: #3d8455;
@@ -263,6 +273,8 @@
     --res-wheat: #e0b04a;
     --res-ore: #93a7bd;
     --on-resource: #10171f;
+    --on-tile: #ffffff;
+    --on-tile-pale: #1c2a14;
 
 
     --terrain-wood: #3d8455;

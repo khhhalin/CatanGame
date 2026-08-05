@@ -3068,3 +3068,271 @@ button:disabled {
         max-width: none;
     }
 }
+
+/* ============================================================ icon set
+ *
+ * The inline-SVG icon set that replaces the emoji labels. One organising rule,
+ * mirrored in icons.js: a FILLED COLOURED TILE is something a player holds (a
+ * resource, a commodity); a MONOCHROME LINE ICON is a fact about a player (a
+ * piece, a road, an award). Colours are the game's own terrain/commodity
+ * tokens, so a wheat tile is the same gold as the wheat hex on the board.
+ *
+ * Glyphs come from the sprite in index.html via <use>; icons.js returns the
+ * markup. No literal colour here - the pale-tile ink is a token (see
+ * tokens.css, --on-tile / --on-tile-pale), so the WCAG sweep stays green.
+ */
+
+.icon {
+    width: 1.15em;
+    height: 1.15em;
+    display: inline-block;
+    vertical-align: -0.15em;
+    flex: none;
+}
+
+/* A held resource/commodity: rounded square in the terrain colour, glyph in
+   --on-tile. --tile is the fill; each .t-* variant points it at a token. */
+.tile {
+    --tile: var(--surface-3);
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: var(--radius-sm);
+    background: var(--tile);
+    /* inline-grid, not grid: the tile drops into a button or a label inline
+       (the trade/discard pickers) as readily as it sits in a flex resource
+       row, without becoming a block that stacks the text beneath it. */
+    display: inline-grid;
+    place-items: center;
+    vertical-align: middle;
+    color: var(--on-tile);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.tile .icon {
+    width: 20px;
+    height: 20px;
+    vertical-align: 0;
+}
+
+.t-wood { --tile: var(--terrain-wood); }
+.t-brick { --tile: var(--terrain-brick); }
+.t-sheep { --tile: var(--terrain-sheep); }
+.t-wheat { --tile: var(--terrain-wheat); }
+.t-ore { --tile: var(--terrain-ore); }
+.t-cloth { --tile: var(--com-cloth); }
+.t-coin { --tile: var(--com-coin); }
+.t-paper { --tile: var(--com-paper); }
+
+/* Wheat and sheep fills are pale; a white glyph on them fails AA, so darken
+   the ink for those two. Kept as a token, never a literal. */
+.t-wheat,
+.t-sheep {
+    color: var(--on-tile-pale);
+}
+
+/* --- resource row: a tile and its count, side by side (hand / bank). */
+.res-row {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.res-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.res-cell .count {
+    font-size: var(--text-lg);
+    font-weight: 650;
+    min-width: 1ch;
+}
+
+/* A resource you have none of: greyed, not gone - the gap itself is the tell. */
+.res-cell.spent .count {
+    color: var(--text-faint);
+    font-weight: 500;
+}
+
+/* --- bank cell: tile, a thin stock meter, the raw count under it. */
+.bank-row {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.bank-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    width: 44px;
+}
+
+.bank-cell .meter {
+    width: 100%;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.bank-cell .meter i {
+    display: block;
+    height: 100%;
+    background: var(--tile, var(--accent));
+    border-radius: inherit;
+}
+
+.bank-cell .pct {
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+}
+
+/* --- player card: colour swatch, name, points, then a row of piece chips. */
+.pcard {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+}
+
+.pcard + .pcard {
+    margin-top: var(--space-2);
+}
+
+.pcard.me {
+    border-color: var(--accent);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.pcard-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex: none;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2);
+}
+
+.pname {
+    font-weight: 600;
+    font-size: var(--text-sm);
+}
+
+.pturn {
+    font-size: var(--text-2xs);
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.pvp {
+    margin-left: auto;
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.pvp b {
+    font-size: var(--text-lg);
+    font-weight: 700;
+}
+
+.pvp small {
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Piece counters. The icon is decorative here - the count is the value and the
+   panel names it - so panels give each chip a title/aria-label of its own. */
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin-top: var(--space-2);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.chip .icon {
+    color: var(--text-faint);
+    width: 1em;
+    height: 1em;
+}
+
+.chip b {
+    font-weight: 650;
+    color: var(--text);
+}
+
+.chip.zero {
+    color: var(--text-faint);
+}
+
+.chip.zero b {
+    color: var(--text-faint);
+    font-weight: 500;
+}
+
+/* --- award pills: line icon, title, holder. Status-token colours, so a held
+   title carries the same warn/good/accent hue as the rest of the game. A
+   title nobody holds stays neutral rather than dropping off the list. */
+.awards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.award {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-sm);
+}
+
+.award .icon {
+    width: 1.05em;
+    height: 1.05em;
+}
+
+.award b {
+    font-weight: 650;
+}
+
+.award .who {
+    color: var(--text-muted);
+}
+
+.award.road {
+    background: var(--warn-soft);
+    color: var(--warn);
+}
+
+.award.army {
+    background: var(--good-soft);
+    color: var(--good);
+}
+
+.award.lead {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
