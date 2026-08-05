@@ -356,6 +356,65 @@ def smith(browser, tmp_path):
         yield live
 
 
+def a_bishop_card(game):
+    """The Bishop, and somewhere to send the robber that is not where it is."""
+    actor = game.current_player_name()
+    _hand(game, actor)
+    _give_card(game, actor, "bishop")
+    return {
+        "land": [
+            key for key, hex_obj in sorted(game.hexes.items())
+            if hex_obj.type != "ocean" and key != game.robber_hex
+        ],
+        "ocean": [
+            key for key, hex_obj in sorted(game.hexes.items())
+            if hex_obj.type == "ocean"
+        ],
+    }
+
+
+@pytest.fixture
+def bishop(browser, tmp_path):
+    with table(browser, tmp_path, a_bishop_card) as live:
+        yield live
+
+
+def an_engineer_card(game):
+    """A city with no wall, and the card that walls one for free."""
+    actor = game.current_player_name()
+    home = _inland_vertices(game)[0]
+    game.vertices[home].building = {"type": "city", "player": actor}
+    game.get_player(actor).cities.append(home)
+    _hand(game, actor)
+    _give_card(game, actor, "engineer")
+    return {"home": home}
+
+
+@pytest.fixture
+def engineer(browser, tmp_path):
+    with table(browser, tmp_path, an_engineer_card) as live:
+        yield live
+
+
+def an_intrigue_card(game):
+    """An opponent's knight standing next to one of the player's own roads."""
+    actor = game.current_player_name()
+    victim = next(name for name in TABLE if name != actor)
+    home = _inland_vertices(game)[0]
+    _roads_around(game, actor, home)
+    _hand(game, actor)
+    _give_card(game, actor, "intrigue")
+    spot = list(game.vertices[home].neighbors["vertices"])[0]
+    game.ck.knights_of(victim).append(ck_module.Knight(spot))
+    return {"knight": spot, "victim": victim}
+
+
+@pytest.fixture
+def intrigue(browser, tmp_path):
+    with table(browser, tmp_path, an_intrigue_card) as live:
+        yield live
+
+
 def a_merchant_fleet_card(game):
     """The card that asks its own player which card type trades at 2:1."""
     actor = game.current_player_name()
@@ -747,6 +806,80 @@ class TestInventor:
         assert selection(player)["progressPick"]["card"] is None
         assert selection(player)["mode"] is None
         assert hand_of(player) == ["inventor"], "cancelling ate the card"
+
+
+class TestBishop:
+    def test_the_bishop_moves_the_robber_to_the_hex_that_was_tapped(self, bishop):
+        """The other card that takes a hex, and it wants a different one from
+        the Merchant: any land hex, whether the player is anywhere near it."""
+        player, marks, _ = bishop
+
+        arm_pick(player, "bishop")
+        chosen = aim_at(player, "hex", marks["land"])
+        confirm_pick(player, "Bishop")
+        wait_for_card_spent(player, "bishop")
+
+        player.page.wait_for_function(
+            "hex => window.__catanDebug.getBoard().robber_hex === hex",
+            arg=chosen, timeout=8000,
+        )
+        # And unlike a 7, it leaves nothing for the player to answer.
+        assert player.board()["must_move_robber"] is False
+        next_frame(player.page)
+        shot(player, "bishop-robber-moved")
+
+    def test_the_sea_is_shown_as_blocked(self, bishop):
+        """"The robber goes on a land hex" — said before the round trip."""
+        player, marks, _ = bishop
+        if not marks["ocean"]:
+            pytest.skip("this board has no reachable ocean hex")
+
+        arm_pick(player, "bishop")
+        aim_at(player, "hex", marks["ocean"])
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+        assert "not allowed here" in player.page.inner_text("#placement-announce")
+
+
+class TestEngineer:
+    def test_the_engineer_walls_the_city_that_was_tapped(self, engineer):
+        """One wall, free, on a city the player owns — an empty hand proves it
+        was the card and not two brick that paid."""
+        player, marks, _ = engineer
+
+        arm_pick(player, "engineer")
+        aim_at(player, "vertex", [marks["home"]])
+        confirm_pick(player, "Engineer")
+        wait_for_card_spent(player, "engineer")
+
+        player.page.wait_for_function(
+            "([owner, vertex]) => (window.__catanDebug.getBoard().cities_knights"
+            "  .city_wall_vertices[owner] || []).includes(vertex)",
+            arg=[player.name, marks["home"]], timeout=8000,
+        )
+        assert dict((player.me() or {}).get("resources") or {}) == EMPTY_HAND
+        next_frame(player.page)
+        shot(player, "engineer-wall")
+
+
+class TestIntrigue:
+    def test_the_intrigue_displaces_the_knight_that_was_tapped(self, intrigue):
+        """A knight pick aimed at somebody else's piece, which is the only card
+        that does that — the Smith's picks are the player's own."""
+        player, marks, tabs = intrigue
+
+        arm_pick(player, "intrigue")
+        aim_at(player, "vertex", [marks["knight"]])
+        confirm_pick(player, "Intrigue")
+        wait_for_card_spent(player, "intrigue")
+
+        player.page.wait_for_function(
+            "([owner, vertex]) => !(window.__catanDebug.getBoard().cities_knights"
+            "  .knights[owner] || []).some(knight => knight.vertex === vertex)",
+            arg=[marks["victim"], marks["knight"]], timeout=8000,
+        )
+        assert tabs[marks["victim"]].noisy_errors() == []
+        next_frame(player.page)
+        shot(player, "intrigue-knight-displaced")
 
 
 class TestMerchantFleet:
