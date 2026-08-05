@@ -42,6 +42,10 @@ class Player:
         self.ships = []
         self.victory_points = 0
         self.knights_played = 0  # Track Knight cards played for Largest Army
+        # Explorers & Pirates only: a second currency, held apart from resources
+        # because it buys different things and — unlike a commodity — does not
+        # count toward the discard limit on a 7 (expansions.md 842, 960).
+        self.gold = 0
 
     def set_color(self, color: str):
         """Set or update the player's color."""
@@ -107,6 +111,7 @@ class Player:
             'cities': self.cities,
             'roads': self.roads,
             'ships': self.ships,
+            'gold': self.gold,
             'victory_points': self.get_victory_points(longest_road_holder, largest_army_holder),
             'knights_played': self.knights_played,
         }

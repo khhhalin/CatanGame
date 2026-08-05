@@ -40,6 +40,9 @@ class TurnClock:
         # Seafarers allows one ship to be moved per turn, and the allowance
         # does not accumulate.
         self.ship_moved_this_turn = False
+        # The gold-supply conversions are each capped per turn (game/gold.py),
+        # so the counts start fresh with the turn.
+        self.gold_conversions = {}
 
     def advance_turn(self, player_name: str) -> dict:
         """End the current turn at a player's request."""

@@ -233,10 +233,16 @@ class TestEpStateContainer:
 
 class TestReservedModifierSlots:
     """The catalogue commit reserves the two E&P production-modifier orders so
-    the feature agents do not race for a number; `register` refuses a clash."""
+    the feature agents do not race for a number; `register` refuses a clash. A
+    slot stays free until the wave that reads its rule lands and claims it."""
 
-    def test_the_reserved_orders_are_still_free_on_the_production_hook(self):
+    def test_harbor_settlement_yield_stays_free_until_its_wave(self):
         taken = {m.order for m in modifiers_module.registered(modifiers_module.PRODUCTION)}
         assert modifiers_module._EP_RESERVED_PRODUCTION_ORDERS["harbor_settlement_yield"] \
             not in taken
-        assert modifiers_module._EP_RESERVED_PRODUCTION_ORDERS["gold_field"] not in taken
+
+    def test_gold_field_claims_its_reserved_order(self):
+        """The gold wave has landed, so `gold_field` now sits at its slot."""
+        by_id = {m.rule_id: m for m in modifiers_module.registered(modifiers_module.PRODUCTION)}
+        assert by_id["gold_field"].order == \
+            modifiers_module._EP_RESERVED_PRODUCTION_ORDERS["gold_field"]

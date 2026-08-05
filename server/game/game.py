@@ -11,6 +11,7 @@ from game.bank import Bank
 from game.board import BoardBuilder
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
+from game.gold import GoldRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -23,7 +24,7 @@ from game.turn_clock import TurnClock
 logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
-           CitiesKnightsRules, PendingChoiceRules, TurnClock):
+           CitiesKnightsRules, GoldRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -219,6 +220,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             self.ep = ep_module.EP()
             for player in self.players:
                 self.ep.register(player.name)
+
+        # How many times each player has converted at the gold supply this turn
+        # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions
+        # are capped per turn — see game/gold.py.
+        self.gold_conversions = {}
+        # What the last production roll paid in gold (player -> amount), the way
+        # `production_modifiers` records which rules changed a roll. Read once by
+        # the roll payload, cleared at the top of every distribution.
+        self.gold_gained = {}
         # What is left of the shuffled dice deck, when the table plays with
         # one. Empty means the next roll deals a fresh 36.
         self.dice_deck = []
@@ -999,6 +1009,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # One roll's worth: cleared here so the set never carries a rule over
         # from the previous turn.
         self.production_modifiers = set()
+        self.gold_gained = {}
 
         if dice_total == 7:
             return {}
@@ -1046,6 +1057,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                     gained_resources[player_name][commodity] = (
                         gained_resources[player_name].get(commodity, 0) + 1
                     )
+
+                # A gold field pays gold, not a resource card: the modifier put
+                # the amount on the produced value and the bank was never asked.
+                field_gold = produced.get('gold', 0)
+                if field_gold:
+                    self.gain_gold(player_name, field_gold)
+                    self.gold_gained[player_name] = (
+                        self.gold_gained.get(player_name, 0) + field_gold
+                    )
+
+        # A non-7 roll that paid a player no resource cards hands them 1 gold
+        # (854); folded in after the walk so it sees the whole roll's payout.
+        for player_name, amount in self.pay_empty_roll_gold(gained_resources).items():
+            self.gold_gained[player_name] = self.gold_gained.get(player_name, 0) + amount
 
         if gained_resources:
             logger.debug(f"Resources distributed (rolled {dice_total}):")
@@ -1246,6 +1271,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'modifiers': sorted(self.production_modifiers),
             # Who the roll paid and in what. Empty means it paid nobody.
             'gained': gained,
+            # Gold the roll paid — the empty-roll bonus and any gold field —
+            # kept apart from `gained` because gold is a currency, not a card.
+            'gold': dict(sorted(self.gold_gained.items())),
         }
 
     def next_dice(self) -> tuple:
