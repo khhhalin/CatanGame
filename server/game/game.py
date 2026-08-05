@@ -4,6 +4,7 @@ import os
 import random
 
 from game import cities_knights as ck_module
+from game import ep as ep_module
 from game import modifiers as modifiers_module
 from game import rules as rules_module
 from game.bank import Bank
@@ -209,6 +210,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             )
             for player in self.players:
                 self.ck.register(player.name)
+
+        # The Explorers & Pirates equivalent: pirate hexes, mission tracks, the
+        # pool of undiscovered tiles and the token supplies, built only when a
+        # rule needs it. Like `self.ck`, its presence is not a rule.
+        self.ep = None
+        if rules_module.needs_ep_state(self.rules):
+            self.ep = ep_module.EP()
+            for player in self.players:
+                self.ep.register(player.name)
         # What is left of the shuffled dice deck, when the table plays with
         # one. Empty means the next roll deals a fresh 36.
         self.dice_deck = []

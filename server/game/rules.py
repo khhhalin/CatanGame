@@ -643,6 +643,122 @@ RULES += [
 ]
 
 
+# --- Explorers & Pirates, one mechanic at a time ------------------------
+# The expansion decomposed the same way Cities & Knights and Seafarers are.
+# Every switch is off by default so the base game is unchanged, and the few
+# that cannot stand alone are recorded in `DEPENDENCIES` below. These rules are
+# declared ahead of the engine code that reads them — the feature waves land
+# after this catalogue — so the picker and the presets have real ids to point
+# at while the mechanics are built.
+RULES += [
+    _bool("movement_phase", "Movement phase", False,
+          "Catan: Explorers & Pirates rulebook, 'Turn Structure'; expansions.md 851-862",
+          "A turn runs production, then trade and build, then movement, in that "
+          "fixed order. You may not trade or build once movement has begun — the "
+          "one exception is founding a settlement with a settler ship.",
+          group=EXPANSION),
+    _bool("gold", "Gold", False,
+          "Catan: Explorers & Pirates rulebook, 'Gold'; expansions.md 854, 960-967",
+          "Gold is a second currency beside resources: you take 1 gold when a "
+          "non-7 production roll pays you nothing, three identical resources buy "
+          "1 gold, and twice a turn 2 gold buys any 1 resource. Gold trades with "
+          "opponents like a resource card.",
+          group=EXPANSION),
+    _bool("no_dev_cards", "No development cards", False,
+          "Catan: Explorers & Pirates rulebook, 'Fundamental Differences'; "
+          "expansions.md 839",
+          "No development cards exist — the deck cannot be bought from at all. "
+          "Explorers & Pirates has no knight, progress or victory point "
+          "development cards.",
+          group=EXPANSION),
+    _bool("no_city_upgrades", "No city upgrades", False,
+          "Catan: Explorers & Pirates rulebook, 'Fundamental Differences'; "
+          "expansions.md 838",
+          "Settlements are never upgraded to cities and the city pieces are "
+          "unused. A game scored on settlements, harbor settlements and missions "
+          "instead.",
+          group=EXPANSION),
+    _bool("transport_ships", "Transport ships", False,
+          "Catan: Explorers & Pirates rulebook, 'Ships and Movement'; "
+          "expansions.md 864-882",
+          "Ships are transports carrying pieces in a hold (1 large or 2 small) "
+          "with movement points along sea routes; they never form routes. Built "
+          "for 1 lumber and 1 wool on a sea route beside one of your harbor "
+          "settlements.",
+          group=EXPANSION),
+    _bool("harbor_settlements", "Harbor settlements", False,
+          "Catan: Explorers & Pirates rulebook, 'Harbor Settlements'; "
+          "expansions.md 894-902",
+          "Upgrade a coastal settlement (2 grain and 2 ore) into a harbor "
+          "settlement worth 2 victory points with a cargo basin — the only site "
+          "where ships, settlers and crews may be built. It yields 1, not 2, on "
+          "production.",
+          group=EXPANSION),
+    _bool("ships_explore", "Ships explore", False,
+          "Catan: Explorers & Pirates rulebook, 'Discovery'; expansions.md 883-893",
+          "Moving a ship so one end points at an undiscovered hex reveals it, "
+          "and that discovery ends the ship's movement for the turn.",
+          group=EXPANSION),
+    _bool("cargo_settlers", "Settlers", False,
+          "Catan: Explorers & Pirates rulebook, 'Settlers'; expansions.md 903-918",
+          "Settlers (a settlement's cost) are built into a basin or hold and "
+          "carried by ship. A settler ship pointing at a free coastal corner "
+          "founds a settlement there for free.",
+          group=EXPANSION),
+    _bool("crews", "Crews", False,
+          "Catan: Explorers & Pirates rulebook, 'Crews'; expansions.md 919-928",
+          "Crews (1 ore and 1 wool) ride ships and are landed on mission "
+          "destinations only.",
+          group=EXPANSION),
+    _bool("transshipping", "Transshipping", False,
+          "Catan: Explorers & Pirates rulebook, 'Transshipping'; expansions.md 929-932",
+          "A loaded ship pointing at a loaded harbor settlement may swap the "
+          "pieces between its hold and the basin.",
+          group=EXPANSION),
+    _bool("pirate_ship_instead_of_robber", "Pirate ship instead of the robber", False,
+          "Catan: Explorers & Pirates rulebook, 'The Pirate Ship'; "
+          "expansions.md 841, 843, 934-949",
+          "The roller of a 7 places their own pirate ship on an allowed sea hex, "
+          "steals 1 card from an opponent with a ship there, and thereafter "
+          "charges every mover 1 gold tribute per ship crossing that hex. No "
+          "robber, and no land is blocked.",
+          group=EXPANSION),
+    _bool("chase_pirate", "Chase the pirate", False,
+          "Catan: Explorers & Pirates rulebook, 'Chasing the Pirate'; "
+          "expansions.md 951-958",
+          "A battle-ready ship — unmoved and next to the pirate's hex — may roll "
+          "one die; a 6 chases the pirate away and lets the chaser reposition it "
+          "and steal.",
+          group=EXPANSION),
+    _bool("missions", "Missions", False,
+          "Catan: Explorers & Pirates rulebook, 'Missions in General'; "
+          "expansions.md 969-978",
+          "Mission tracks with a per-player marker each; a marker ahead of every "
+          "other on a track holds that mission's 1-point lead card. The container "
+          "for the three missions below.",
+          group=EXPANSION),
+    _bool("mission_pirate_lairs", "Mission: Pirate Lairs", False,
+          "Catan: Explorers & Pirates rulebook, 'Pirate Lairs'; expansions.md 980-998",
+          "Discover gold-field and pirate-lair hexes, land crews to capture "
+          "lairs and advance the Pirate Lairs track. A captured lair's number "
+          "pays 2 gold per adjacent building.",
+          group=EXPANSION),
+    _bool("mission_fish", "Mission: Fish for Catan", False,
+          "Catan: Explorers & Pirates rulebook, 'Fish for Catan'; "
+          "expansions.md 1000-1019",
+          "Catch fish hauls at discovered shoal hexes and deliver them to the "
+          "Council of Catan docks to advance the Fish track.",
+          group=EXPANSION),
+    _bool("mission_spices", "Mission: Spices for Catan", False,
+          "Catan: Explorers & Pirates rulebook, 'Spices for Catan'; "
+          "expansions.md 1021-1040",
+          "Trade crews for spice sacks at village hexes — each village grants a "
+          "permanent advantage — and deliver the sacks to the Council to advance "
+          "the Spices track.",
+          group=EXPANSION),
+]
+
+
 # --- Expansion numbers --------------------------------------------------
 RULES += [
     _int("barbarian_track_length", "Barbarian track spaces", 7, 3, 15,
@@ -667,6 +783,31 @@ RULES += [
          "Seafarers rulebook, 'Heading for New Shores'; expansions.md 121",
          "How many special victory points the first settlement on an island "
          "you did not start on is worth.",
+         group=EXPANSION),
+    # The Explorers & Pirates piece supplies (849): 4 harbor settlements, 2
+    # settlers, 9 crews. Ships reuse the existing `max_ships`, which every E&P
+    # preset sets to 3 rather than adding a second ships count.
+    _int("max_harbor_settlements", "Harbor settlements per player", 4, 0, 20,
+         "Catan: Explorers & Pirates rulebook; expansions.md 849",
+         "How many harbor settlements each player may have standing at once.",
+         group=EXPANSION),
+    _int("max_settlers", "Settlers per player", 2, 0, 10,
+         "Catan: Explorers & Pirates rulebook; expansions.md 849",
+         "How many settlers each player may have at once.",
+         group=EXPANSION),
+    _int("max_crews", "Crews per player", 9, 0, 20,
+         "Catan: Explorers & Pirates rulebook; expansions.md 849",
+         "How many crews each player may have at once.",
+         group=EXPANSION),
+    _int("ship_movement_points", "Ship movement points", 4, 1, 12,
+         "Catan: Explorers & Pirates rulebook, 'Ships and Movement'; expansions.md 874",
+         "How many movement points a ship has each turn, before any wool or "
+         "Swift Voyage bonus.",
+         group=EXPANSION),
+    _int("starting_gold", "Starting gold", 0, 0, 10,
+         "Catan: Explorers & Pirates rulebook; expansions.md 1045, 1053",
+         "How much gold each player starts the game with. Every published "
+         "Explorers & Pirates scenario starts each player with 2.",
          group=EXPANSION),
 ]
 
@@ -698,6 +839,21 @@ DEPENDENCIES = {
     "pirate": ("ships",),
     "longest_trade_route": ("ships",),
     "island_victory_points": ("ships",),
+    # Explorers & Pirates. Transport ships are built and moved from harbor
+    # settlements, so nothing in the transport system means anything without
+    # them; the pirate charges its tribute in gold; missions need their tracks
+    # container and the pieces each mission is delivered with.
+    "transport_ships": ("harbor_settlements",),
+    "movement_phase": ("transport_ships",),
+    "ships_explore": ("transport_ships",),
+    "cargo_settlers": ("transport_ships", "harbor_settlements"),
+    "crews": ("transport_ships", "harbor_settlements"),
+    "transshipping": ("transport_ships", "harbor_settlements"),
+    "pirate_ship_instead_of_robber": ("gold",),
+    "chase_pirate": ("pirate_ship_instead_of_robber", "transport_ships"),
+    "mission_pirate_lairs": ("missions", "crews"),
+    "mission_fish": ("missions", "transport_ships"),
+    "mission_spices": ("missions", "crews"),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -715,16 +871,30 @@ EXCLUSIONS = [
             "Longest Road — a table plays one or the other, not both."
         ),
     },
-    # Reserved for Explorers & Pirates (rules not yet in the catalogue):
-    # {
-    #     "id": "sea_ship_model",
-    #     "rules": ("transport_ships", "ships", "ship_movement",
-    #               "longest_trade_route"),
-    #     "kind": "hard",
-    #     "reason": "Seafarers ships form routes; E&P transport ships carry "
-    #               "cargo and form none. They are one physical piece read two "
-    #               "opposite ways on the same board — pick one sea system.",
-    # },
+    # Seafarers ships form routes and count for the trade route; Explorers &
+    # Pirates transport ships carry cargo and form none. They are one physical
+    # piece (`edge.ship`) read two opposite ways on the same board, so a table
+    # picks one sea system, not both (the owner accepted this refusal as Risk 1
+    # of the E&P plan rather than build a unified ship model).
+    #
+    # Only `ships` is named against `transport_ships`, not the whole Seafarers
+    # stack: `ship_movement` and `longest_trade_route` both DEPEND on `ships`
+    # (above), so they can never be on without it. Listing all four would make
+    # this a clique — Seafarers itself has ships, moving them and the trade
+    # route all on at once — which the "at most one member" rule would refuse.
+    # Excluding `transport_ships` from `ships` alone refuses every reachable
+    # both-on state and leaves the Seafarers stack coherent.
+    {
+        "id": "sea_ship_model",
+        "rules": ("transport_ships", "ships"),
+        "kind": "hard",
+        "reason": (
+            "Seafarers ships (with moving them and the Longest Trade Route) "
+            "form routes; Explorers & Pirates transport ships carry cargo and "
+            "form none. They are one physical piece read two opposite ways on "
+            "the same board — pick one sea system."
+        ),
+    },
 ]
 
 EXCLUSIONS_BY_RULE = {
@@ -746,6 +916,21 @@ EXPANSION_STATE_RULES = (
     "progress_cards",
 )
 
+# The Explorers & Pirates rules that need the expansion's own state object —
+# the per-player pirate hexes, the mission tracks with their markers and lead
+# cards, the hidden-tile pool and reveal order, and the token supplies. Gold,
+# harbor settlements and cargo live on the players and the board, so, like
+# commodities, they need no container.
+EP_STATE_RULES = (
+    "ships_explore",
+    "pirate_ship_instead_of_robber",
+    "chase_pirate",
+    "missions",
+    "mission_pirate_lairs",
+    "mission_fish",
+    "mission_spices",
+)
+
 # The rule set the single `cities_and_knights` toggle used to stand for. Kept
 # as the preset below and as the translation for saves and clients that still
 # speak the old flag — the old engine forced 13 points and dropped Largest
@@ -764,6 +949,60 @@ CITIES_AND_KNIGHTS_RULES = {
 }
 
 LEGACY_RULE_ID = "cities_and_knights"
+
+
+# The five Explorers & Pirates scenarios, built up the way the rulebook teaches
+# them: each is the one before it plus a mechanic or two. Every scenario drops
+# the Longest Road and Largest Army cards (840), trades with the bank at 3:1
+# (856), gives each player three ships (849) and 2 starting gold (1045), and
+# suggests the scenario's own victory target — which the lobby can still change.
+EP_LAND_HO_RULES = {
+    "harbor_settlements": True,
+    "transport_ships": True,
+    "ships_explore": True,
+    "cargo_settlers": True,
+    "movement_phase": True,
+    "gold": True,
+    "no_dev_cards": True,
+    "no_city_upgrades": True,
+    "longest_road_card": False,
+    "largest_army_card": False,
+    "bank_trade_rate": 3,
+    "max_ships": 3,
+    "starting_gold": 2,
+    "victory_target": 8,
+}
+
+EP_PIRATE_LAIRS_RULES = {
+    **EP_LAND_HO_RULES,
+    "crews": True,
+    "transshipping": True,
+    "pirate_ship_instead_of_robber": True,
+    "chase_pirate": True,
+    "missions": True,
+    "mission_pirate_lairs": True,
+    "victory_target": 12,
+}
+
+EP_FISH_RULES = {
+    **EP_PIRATE_LAIRS_RULES,
+    "mission_fish": True,
+    "victory_target": 15,
+}
+
+# 1071: the Pirate Lairs hexes and mission are removed for Spices.
+EP_SPICES_RULES = {
+    **EP_FISH_RULES,
+    "mission_pirate_lairs": False,
+    "mission_spices": True,
+    "victory_target": 15,
+}
+
+EXPLORERS_AND_PIRATES_RULES = {
+    **EP_SPICES_RULES,
+    "mission_pirate_lairs": True,
+    "victory_target": 17,
+}
 
 
 PRESETS = [
@@ -838,6 +1077,66 @@ PRESETS = [
             "harbormaster": True,
             "victory_target": 11,
         },
+    },
+    {
+        "id": "ep_land_ho",
+        "name": "Explorers & Pirates: Land Ho!",
+        "source": "Catan: Explorers & Pirates rulebook, Scenario: Land Ho!; "
+                  "expansions.md 1042-1049",
+        "summary": (
+            "The introductory scenario: harbor settlements, transport ships, "
+            "settlers and discovery, with gold and the movement phase, and no "
+            "cities or development cards. Played to 8 points, without missions, "
+            "crews or the pirate."
+        ),
+        "rules": dict(EP_LAND_HO_RULES),
+    },
+    {
+        "id": "ep_pirate_lairs",
+        "name": "Explorers & Pirates: Pirate Lairs",
+        "source": "Catan: Explorers & Pirates rulebook, Scenario: Pirate Lairs; "
+                  "expansions.md 1051-1060",
+        "summary": (
+            "Land Ho! plus crews, transshipping, the player-owned pirate ship "
+            "that replaces the robber, chasing it, and the Pirate Lairs mission. "
+            "Played to 12 points."
+        ),
+        "rules": dict(EP_PIRATE_LAIRS_RULES),
+    },
+    {
+        "id": "ep_fish",
+        "name": "Explorers & Pirates: Fish for Catan",
+        "source": "Catan: Explorers & Pirates rulebook, Scenario: Fish for Catan; "
+                  "expansions.md 1062-1068",
+        "summary": (
+            "Pirate Lairs plus the Fish for Catan mission — catch fish hauls and "
+            "deliver them to the Council of Catan. Played to 15 points."
+        ),
+        "rules": dict(EP_FISH_RULES),
+    },
+    {
+        "id": "ep_spices",
+        "name": "Explorers & Pirates: Spices for Catan",
+        "source": "Catan: Explorers & Pirates rulebook, Scenario: Spices for "
+                  "Catan; expansions.md 1070-1075",
+        "summary": (
+            "Fish for Catan with the Pirate Lairs mission removed and the Spices "
+            "for Catan mission in its place. Played to 15 points."
+        ),
+        "rules": dict(EP_SPICES_RULES),
+    },
+    {
+        "id": "explorers_and_pirates",
+        "name": "Explorers & Pirates",
+        "source": "Catan: Explorers & Pirates rulebook, Scenario: Explorers & "
+                  "Pirates; expansions.md 1077-1084",
+        "summary": (
+            "The full game: all three missions — Pirate Lairs, Fish for Catan "
+            "and Spices for Catan — at once, using every rule the earlier "
+            "scenarios introduce. Played to 17 points. Every switch it ticks "
+            "stays an individual rule you can untick."
+        ),
+        "rules": dict(EXPLORERS_AND_PIRATES_RULES),
     },
 ]
 
@@ -1004,6 +1303,11 @@ def exclusion_problems(chosen: dict) -> list:
 def needs_expansion_state(chosen: dict) -> bool:
     """Whether this rule set requires the Cities & Knights state object."""
     return any(chosen.get(rule_id) for rule_id in EXPANSION_STATE_RULES)
+
+
+def needs_ep_state(chosen: dict) -> bool:
+    """Whether this rule set requires the Explorers & Pirates state object."""
+    return any(chosen.get(rule_id) for rule_id in EP_STATE_RULES)
 
 
 def catalogue() -> list:

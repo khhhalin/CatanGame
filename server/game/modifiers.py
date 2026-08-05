@@ -213,6 +213,15 @@ register(Modifier('commodities', PRODUCTION, 20,
 register(Modifier('epidemic', PRODUCTION, 30, _rule_is_on('epidemic'), _epidemic))
 register(Modifier('robber', PRODUCTION, 40, _always, _robber_takes_it_all))
 
+# Reserved for Explorers & Pirates so its feature agents do not race for a
+# number: `harbor_settlement_yield` takes order 15 (a harbor settlement yields
+# 1, not 2, so it must run after the city amount at 10 and before commodities at
+# 20) and `gold_field` takes order 25 (a liberated gold field pays 2 gold per
+# adjacent building, 998). Neither modifier is registered yet — the code that
+# reads `harbor_settlements` and `mission_pirate_lairs` lands in a later wave —
+# but the slots are called out here because `register` refuses a clash.
+_EP_RESERVED_PRODUCTION_ORDERS = {'harbor_settlement_yield': 15, 'gold_field': 25}
+
 
 # --- Dice ---------------------------------------------------------------
 # The value is the sequence of (first, second) combinations the dice may show.
