@@ -498,6 +498,65 @@ RULES += [
           "the red die. They replace development cards outright: with this on "
           "the development deck cannot be bought from.",
           group=EXPANSION),
+    {
+        "id": "card_system",
+        "group": EXPANSION,
+        "type": CHOICE,
+        # "Progress" rather than "development", so a table that ticks progress
+        # cards and changes nothing else plays the published rule. It says
+        # nothing at all in a base game: with the progress decks switched off
+        # there is only one deck to draw from whatever this is set to.
+        "default": "progress",
+        "options": [
+            {
+                "id": "progress",
+                "name": "Progress cards replace them",
+                "summary": (
+                    "The Cities & Knights rule: where progress cards are in "
+                    "play they are the table's only card deck, and the "
+                    "development deck cannot be bought from. A table not "
+                    "playing progress cards buys development cards as usual."
+                ),
+            },
+            {
+                "id": "development",
+                "name": "Development cards only",
+                "summary": (
+                    "The base game deck, bought with grain, wool and ore. A "
+                    "table that switched the progress decks on and then chose "
+                    "this is dealt no progress cards — the city gates open "
+                    "onto nothing."
+                ),
+            },
+            {
+                "id": "both",
+                "name": "Both decks (house rule)",
+                "summary": (
+                    "The two systems side by side: the development deck stays "
+                    "buyable and the city gates still deal progress cards. No "
+                    "rulebook plays it this way — the decks, the hands and the "
+                    "victory points simply add up, and a card that names "
+                    "\"development cards\" and one that names \"progress "
+                    "cards\" each mean their own."
+                ),
+            },
+        ],
+        "name": "Card system",
+        "source": (
+            "expansions.md 303 (\"Development cards are not used in Cities & "
+            "Knights and are completely replaced by progress cards\") and 427 "
+            "(\"Progress cards completely replace development cards and can "
+            "never be bought with resources\"); base game rulebook, "
+            "'Development Cards'. Both decks at once is a house rule and no "
+            "rulebook's."
+        ),
+        "summary": (
+            "Which deck of cards this table plays with. The published answer "
+            "is that progress cards replace development cards outright, which "
+            "is what a table playing Cities & Knights gets by default; the "
+            "third option is a house rule that runs both at once."
+        ),
+    },
     _bool("setup_second_city", "Start with a city", False,
           "Cities & Knights rulebook, 'Setup'; expansions.md 301–302",
           "The second starting building is a city rather than a settlement, "
@@ -727,6 +786,39 @@ PRESETS = [
 ]
 
 PRESETS_BY_ID = {preset["id"]: preset for preset in PRESETS}
+
+
+def card_system(chosen: dict) -> str:
+    """Which card system this table plays.
+
+    A rule set saved before this rule existed, or one carrying a value nobody
+    recognises, falls back to the default — the published rule, which is what
+    those games were already being played under.
+    """
+    rule = RULES_BY_ID["card_system"]
+    value = chosen.get(rule["id"])
+    if value in {option["id"] for option in rule["options"]}:
+        return value
+    return rule["default"]
+
+
+def dev_deck_in_play(chosen: dict) -> bool:
+    """Whether this table may buy and play development cards.
+
+    Only the progress decks can close the development deck, and only when the
+    table chose the published reading: two card systems at once is the house
+    rule `card_system` calls "both".
+    """
+    if not chosen.get("progress_cards"):
+        return True
+    return card_system(chosen) != "progress"
+
+
+def progress_deck_in_play(chosen: dict) -> bool:
+    """Whether the city gates deal progress cards at this table."""
+    if not chosen.get("progress_cards"):
+        return False
+    return card_system(chosen) != "development"
 
 
 def dev_card_deck(chosen: dict) -> dict:

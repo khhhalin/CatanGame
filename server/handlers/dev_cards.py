@@ -28,11 +28,13 @@ logger = logging.getLogger(__name__)
 def _dev_cards_disabled(game) -> bool:
     """Whether this game uses development cards at all.
 
-    Progress cards replace them outright: they are drawn on a city gate rather
-    than bought (expansions.md 303, 427). Leaving the deck buyable let a table
-    with progress cards play two card systems at once.
+    Which system a table plays is the `card_system` rule's to say: progress
+    cards replace development cards by default (expansions.md 303, 427), and
+    only the house rule that runs both leaves the deck buyable alongside them.
+    The engine refuses either way; this is here to answer the client before a
+    turn's worth of other checks decide it was the wrong turn anyway.
     """
-    if not game.rules['progress_cards']:
+    if game.dev_deck_in_play():
         return False
     reject('DEV_CARDS_NOT_IN_PLAY', 'This table uses progress cards, not development cards')
     return True

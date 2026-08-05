@@ -366,11 +366,12 @@ class CitiesKnightsRules:
                     self.ck.defender_cards[winners[0]] = (
                         self.ck.defender_cards.get(winners[0], 0) + 1
                     )
-                elif self.rules['progress_cards']:
+                elif rules_module.progress_deck_in_play(self.rules):
                     # Tied defenders each draw a progress card "of their choice"
                     # from any deck, so each of them is asked which deck. A
-                    # table playing barbarians without progress cards has no
-                    # deck to draw from and the tie simply awards nothing.
+                    # table whose card system has no progress deck — barbarians
+                    # without the decks, or development cards chosen over them —
+                    # has nothing to draw and the tie simply awards nothing.
                     for winner in winners:
                         self.open_choice(
                             'progress_deck', winner, list(progress_cards.DECKS),
@@ -490,6 +491,9 @@ class CitiesKnightsRules:
         player's own improvement level against the red production die, which is
         why the die value is threaded through from the roll.
         """
+        if not rules_module.progress_deck_in_play(self.rules):
+            return {}
+
         draws = {}
         for player in self.players:
             level = self.ck.level(player.name, deck_name)

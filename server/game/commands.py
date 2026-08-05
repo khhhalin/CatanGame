@@ -168,7 +168,7 @@ def _cmd_deck(game, rules, actor, args) -> dict:
     """
     lines = []
 
-    if rules['progress_cards']:
+    if not rules_module.dev_deck_in_play(rules):
         lines.append(
             'Development cards: none — progress cards replace them, so the '
             'development deck cannot be bought from.'
@@ -176,7 +176,7 @@ def _cmd_deck(game, rules, actor, args) -> dict:
     else:
         lines.append(f'Development cards: {game.bank.total_dev_cards_remaining()} left.')
 
-    if not rules['progress_cards']:
+    if not rules_module.progress_deck_in_play(rules):
         lines.append('Progress cards: this table does not play them.')
     else:
         # A deck is shuffled on its first draw, so one nobody has drawn from is

@@ -7,16 +7,26 @@ is owed it on the Game, which is why these methods stay mixed into it.
 
 import logging
 
+from game import rules as rules_module
 from game.results import refused
 
 logger = logging.getLogger(__name__)
+
+NOT_IN_PLAY = 'This table uses progress cards, not development cards'
 
 
 class DevCardRules:
     """The development card deck's rules, from purchase to effect."""
 
+    def dev_deck_in_play(self) -> bool:
+        """Whether this table's card system includes the development deck."""
+        return rules_module.dev_deck_in_play(self.rules)
+
     def buy_dev_card(self, player_name: str) -> dict:
         """Buy a development card from the bank. Returns result dict."""
+        if not self.dev_deck_in_play():
+            return refused('DEV_CARDS_NOT_IN_PLAY', NOT_IN_PLAY)
+
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot buy development cards during setup')
 
@@ -154,6 +164,9 @@ class DevCardRules:
         each card leaves the table owing a different follow-up, and the caller
         has to know which one without re-deciding it.
         """
+        if not self.dev_deck_in_play():
+            return refused('DEV_CARDS_NOT_IN_PLAY', NOT_IN_PLAY)
+
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot play development cards during setup')
 
