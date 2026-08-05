@@ -1,4 +1,5 @@
-import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
+import { COMMODITY_TYPES } from './constants.js';
+import { icon, resourceTile, statusIcon } from './icons.js';
 import { barbarianChipValue, barbarianDefense, barbarianLastAttack, barbarianPanel, barbarianStatus, barbarianTrack, buildKnightBtn, buildWallBtn, devCardsPanel, gameBoard, gameScreen, improvementTracks, improvementsChipValue, improvementsPanel, knightHint, knightList, knightsChipValue, knightsPanel, moveKnightBtn, placeRoadBtn, placeSettlementBtn, progressCardsChipValue, progressCardsPanel, progressHandDiv, upgradeCityBtn } from './dom.js';
 import { findMyPlayer } from './player-view.js';
 import { syncSeaModeButtons } from './seafarers.js';
@@ -151,7 +152,7 @@ export function describeLastAttack() {
     if (!lastAttack) {
         return '';
     }
-    const score = `⚔️${lastAttack.defence} vs 🏛️${lastAttack.attack}`;
+    const score = `${lastAttack.defence} defence vs ${lastAttack.attack} attack`;
     if (lastAttack.won) {
         const defenders = lastAttack.defenders || [];
         if (defenders.length === 0) {
@@ -233,14 +234,18 @@ export function isCkMode(mode) {
 }
 
 /**
- * Render a cost as "1🐑 1🪨".
+ * Render a cost as "1 sheep 1 ore".
+ *
+ * Words, not tiles: this string feeds a knight overlay's `.title` and its button
+ * text (see KNIGHT_ACTION_LABELS), and an SVG tile cannot live in a title
+ * attribute. It reads the same way `shortfallReason` does - "Need 2 wheat".
  *
  * @param {object} cost - {resource: amount}
  * @returns {string}
  */
 function formatCost(cost) {
     return Object.entries(cost)
-        .map(([resource, amount]) => `${amount}${RESOURCE_ICONS[resource] || resource}`)
+        .map(([resource, amount]) => `${amount} ${resource}`)
         .join(' ');
 }
 
@@ -530,10 +535,10 @@ function renderBarbarianTrack() {
     // Worth 1 victory point each and invisible everywhere else in the UI
     const defenderCards = ck.defender_cards?.[viewState.identity.name] || 0;
     if (defenderCards > 0) {
-        notes.push(`🛡️ ${defenderCards} Defender of Catan`);
+        notes.push(`${icon('i-shield')} ${defenderCards} Defender of Catan`);
     }
     barbarianDefense.className = strength < cities ? 'ck-note danger' : 'ck-note';
-    barbarianDefense.textContent = notes.join(' · ');
+    barbarianDefense.innerHTML = notes.join(' · ');
 
     if (barbarianLastAttack) {
         const summary = describeLastAttack();
@@ -548,7 +553,9 @@ function renderBarbarianTrack() {
     // knights-versus-cities comparison is the only thing anyone can do about
     // it, so both are on the chip and neither needs the panel opened.
     if (barbarianChipValue) {
-        barbarianChipValue.textContent = `🚢 ${position}/${length} · ⚔️${strength} vs 🏛️${cities}`;
+        barbarianChipValue.innerHTML =
+            `${statusIcon('ship')} ${position}/${length} · `
+            + `${statusIcon('knight')} ${strength} vs ${statusIcon('city')} ${cities}`;
         barbarianChipValue.className = strength < cities
             ? 'fold-value danger'
             : `fold-value ${urgency}`;
@@ -584,7 +591,6 @@ function renderImprovements(player) {
 
         const names = Array.isArray(spec.levels) ? spec.levels : [];
         const commodity = spec.commodity;
-        const icon = COMMODITY_ICONS[commodity] || '';
         const level = levels[track] || 0;
         const held = commodities[commodity] || 0;
         const nextCost = level + 1;
@@ -597,7 +603,7 @@ function renderImprovements(player) {
 
         const label = document.createElement('span');
         label.className = `improvement-name track-${track}`;
-        label.textContent = `${icon} ${TRACK_LABELS[track] || track}`;
+        label.innerHTML = `${resourceTile(commodity)} ${TRACK_LABELS[track] || track}`;
 
         const levelBadge = document.createElement('span');
         levelBadge.className = 'improvement-level';
@@ -617,7 +623,7 @@ function renderImprovements(player) {
         if (level >= ABILITY_LEVEL && names[ABILITY_LEVEL - 1]) {
             const ability = document.createElement('div');
             ability.className = 'ck-badge ability';
-            ability.textContent = `✔ ${names[ABILITY_LEVEL - 1]} in use`;
+            ability.textContent = `${names[ABILITY_LEVEL - 1]} in use`;
             row.appendChild(ability);
         }
 
@@ -626,9 +632,12 @@ function renderImprovements(player) {
             const metropolis = document.createElement('div');
             const mine = holder === player.name;
             metropolis.className = mine ? 'ck-badge metropolis' : 'ck-note';
-            metropolis.textContent = mine
-                ? `🏛️ ${TRACK_LABELS[track] || track} metropolis is yours`
-                : `🏛️ metropolis held by ${holder}`;
+            // No metropolis glyph in the set; the city icon is the closest.
+            // `holder` is a player name, so it is appended as a text node.
+            metropolis.innerHTML = statusIcon('city');
+            metropolis.append(mine
+                ? ` ${TRACK_LABELS[track] || track} metropolis is yours`
+                : ` metropolis held by ${holder}`);
             row.appendChild(metropolis);
         }
 
@@ -649,9 +658,9 @@ function renderImprovements(player) {
         buy.dataset.track = track;
         buy.disabled = Boolean(reason);
         buy.title = reason;
-        buy.textContent = level >= MAX_IMPROVEMENT_LEVEL
+        buy.innerHTML = level >= MAX_IMPROVEMENT_LEVEL
             ? 'Complete'
-            : `Buy ${names[level] || `level ${nextCost}`} · ${nextCost}${icon}`;
+            : `Buy ${names[level] || `level ${nextCost}`} · ${nextCost}${resourceTile(commodity)}`;
         row.appendChild(buy);
 
         if (reason) {
@@ -755,7 +764,7 @@ function renderKnights(player) {
 
         const name = document.createElement('span');
         name.className = `knight-rank rank-${knight.rank}`;
-        name.textContent = `⚔️ ${KNIGHT_RANK_NAMES[knight.rank] || `Rank ${knight.rank}`}`;
+        name.innerHTML = `${statusIcon('knight')} ${KNIGHT_RANK_NAMES[knight.rank] || `Rank ${knight.rank}`}`;
 
         const state = document.createElement('span');
         state.className = knight.active ? 'knight-state active' : 'knight-state idle';
@@ -789,8 +798,9 @@ function renderKnights(player) {
     // this turn, and how many walls are up.
     if (knightsChipValue) {
         const ready = knights.filter(knight => knight.active && knight.can_act).length;
-        knightsChipValue.textContent =
-            `⚔️ ${knights.length} · ${ready} ready · 🧱 ${walls}/${MAX_CITY_WALLS}`;
+        knightsChipValue.innerHTML =
+            `${statusIcon('knight')} ${knights.length} · ${ready} ready · `
+            + `${statusIcon('city_wall')} ${walls}/${MAX_CITY_WALLS}`;
     }
 }
 
@@ -878,8 +888,6 @@ function missingTargetFlowReason(card) {
 export function progressCardHasNoFlow(card) {
     return Boolean(missingTargetFlowReason(card));
 }
-
-const DECK_ICONS = { science: '🟢', trade: '🟡', politics: '🔵' };
 
 // ------------------------------------------------- picking a card's target
 //
@@ -1106,9 +1114,9 @@ function renderProgressHand(player) {
         // player is aiming at the board - the popover has to be out of the way
         // for that - so it is where a pick in progress is reported.
         const pick = pickedCardEntry();
-        progressCardsChipValue.textContent = pick
-            ? `🎴 ${pick.name} — ${progressPickProgress()}`
-            : `🎴 ${held} held`;
+        progressCardsChipValue.innerHTML = pick
+            ? `${statusIcon('progress')} ${pick.name} — ${progressPickProgress()}`
+            : `${statusIcon('progress')} ${held} held`;
     }
 
     const fragment = document.createDocumentFragment();
@@ -1147,7 +1155,10 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
 
     const title = document.createElement('div');
     title.className = 'progress-card-title';
-    title.textContent = `${DECK_ICONS[card.deck] || ''} ${card.name}`;
+    // The set has no per-deck (trade/politics/science) glyph, so all three use
+    // the generic progress/dev icon; the deck's colour coding is not shown here.
+    title.innerHTML = statusIcon('progress');
+    title.append(' ' + card.name);
     row.appendChild(title);
 
     const summary = document.createElement('div');

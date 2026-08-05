@@ -6,6 +6,7 @@
 // event. panels.js imports this module at the top for that side effect.
 
 import { devCardsChipValue, devDeckRemaining, myDevCardsDiv } from './dom.js';
+import { icon, statusIcon } from './icons.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
@@ -28,12 +29,15 @@ export function renderDevCards() {
         return;
     }
 
+    // knight -> sword, two_roads -> road, victory_point -> crown all have a
+    // matching line icon; Invention and Monopoly have no dedicated glyph in the
+    // set, so they fall back to the generic dev-card icon and lean on the label.
     const cardIcons = {
-        knight: '⚔️ Knight',
-        two_roads: '🛤️ Two Roads',
-        invention: '💡 Invention',
-        monopoly: '💰 Monopoly',
-        victory_point: '🏆 Victory'
+        knight: `${statusIcon('knight')} Knight`,
+        two_roads: `${statusIcon('road')} Two Roads`,
+        invention: `${icon('dev')} Invention`,
+        monopoly: `${icon('dev')} Monopoly`,
+        victory_point: `${statusIcon('crown')} Victory`
     };
     
     const cardNames = {
@@ -89,7 +93,7 @@ function renderDevCardsChip(held) {
         return;
     }
     const remaining = getBoard()?.dev_cards_remaining ?? 0;
-    devCardsChipValue.textContent = `📜 ${held} held · ${remaining} in deck`;
+    devCardsChipValue.innerHTML = `${statusIcon('dev')} ${held} held · ${remaining} in deck`;
 }
 
 /**
