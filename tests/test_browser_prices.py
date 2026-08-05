@@ -76,9 +76,11 @@ def button_title(player, selector):
 class TestThePriceOnTheButtonIsTheServersPrice:
     def test_the_card_button_names_the_rulebook_price(self, paying_table):
         """Grain, wool and ore — as the payload priced them, not as the client
-        once remembered them."""
+        once remembered them. The cost is a button title, and a tooltip is plain
+        text that cannot carry the tile icons, so the resources are named in
+        words."""
         title = button_title(paying_table, "#buy-dev-card-btn")
-        assert title == "Costs 1🌾 1🐑 1🪨", title
+        assert title == "Costs 1 wheat 1 sheep 1 ore", title
 
     def test_a_player_who_can_pay_is_offered_the_card(self, paying_table):
         assert paying_table.page.is_enabled("#buy-dev-card-btn")

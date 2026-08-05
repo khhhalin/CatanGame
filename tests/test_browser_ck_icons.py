@@ -122,8 +122,9 @@ def a_full_ck_board(game):
 
     Every icon the C&K panels can draw is on screen at once: the knight rank
     swords, the wall and knight chips, the commodity tiles on the tracks, the
-    city glyph on the metropolis, the shield on the Defender note, the ship /
-    knight / city on the barbarian chip and the dev glyph on the progress fold.
+    metropolis glyph on the metropolis, the shield on the Defender note, the
+    ship / knight / city on the barbarian chip and the dev glyph on the progress
+    fold.
     """
     actor = game.current_player_name()
     home = _inland_vertices(game)[0]

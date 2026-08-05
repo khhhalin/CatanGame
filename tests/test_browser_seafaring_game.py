@@ -582,7 +582,10 @@ class TestAShipCompletesTheTradeRoute:
         alice = a_mixed_route[0]["Alice"]
         open_seafarers_fold(alice)
         chip = alice.page.inner_text("#seafarers-chip-value")
-        assert "🚢" in chip, f"the chip says nothing about the fleet: {chip!r}"
+        assert "/" in chip, f"the chip says nothing about the fleet: {chip!r}"
+        assert alice.page.query_selector(
+            "#seafarers-chip-value use[href='#i-ship']"
+        ) is not None, f"the fleet's ship glyph is missing: {chip!r}"
         assert alice.page.is_visible("#island-points")
         alice.page.keyboard.press("Escape")
 

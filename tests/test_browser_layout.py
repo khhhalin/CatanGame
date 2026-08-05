@@ -507,9 +507,14 @@ class TestCitiesAndKnightsFits:
 
     def test_the_barbarian_chip_states_the_clock_without_being_opened(self, ck_table):
         """The tester's example of a counter that only moved on end turn. The
-        ship's position is the expansion's clock; it belongs on the chip."""
+        ship's position is the expansion's clock; it belongs on the chip - the
+        ship glyph marks it, the position fraction states it."""
         value = ck_table[0].page.inner_text("#barbarian-chip-value")
-        assert "🚢" in value and "/" in value, f"the barbarian chip says {value!r}"
+        assert "/" in value, f"the barbarian chip states no position: {value!r}"
+        ship = ck_table[0].page.query_selector(
+            "#barbarian-chip-value use[href='#i-ship']"
+        )
+        assert ship is not None, f"the ship clock glyph is missing: {value!r}"
 
     def test_the_awards_name_their_holder_and_the_number(self, ck_table):
         """Longest Road and the Harbormaster were both in the board payload and

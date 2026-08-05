@@ -584,11 +584,19 @@ class TestTheSailedBoard:
         player = sailed_table[0]
         assert player.page.is_visible("#seafarers-panel"), "the fold is hidden"
         chip = player.page.inner_text("#seafarers-chip-value")
-        assert "🚢" in chip, f"the chip says nothing about the fleet: {chip!r}"
+        assert "/" in chip, f"the chip says nothing about the fleet: {chip!r}"
+        assert player.page.query_selector(
+            "#seafarers-chip-value use[href='#i-ship']"
+        ) is not None, f"the fleet's ship glyph is missing: {chip!r}"
 
         open_seafarers_fold(player)
         player.page.wait_for_selector("#build-ship-btn", timeout=5000)
-        assert "🌲" in player.page.inner_text("#build-ship-btn"), "no cost on the button"
+        # A ship costs wood and sheep, stated on the button as cost tiles.
+        assert player.page.query_selector(
+            "#build-ship-btn use[href='#i-wood']"
+        ) is not None and player.page.query_selector(
+            "#build-ship-btn use[href='#i-sheep']"
+        ) is not None, "no cost on the button"
         # Special points are inside victory_points already; the fold is the only
         # place the breakdown is stated.
         assert player.page.is_visible("#island-points")

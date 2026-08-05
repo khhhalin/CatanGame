@@ -255,7 +255,11 @@ class TestTheChooserIsAsked:
         bob = tabs["Bob"]
         bob.page.wait_for_selector("#choice-panel:not(.hidden)", timeout=8000)
 
-        for label in option_labels(bob):
+        for raw in option_labels(bob):
+            # The button leads with the city glyph, so its text node opens with
+            # the space that separates icon from words; the player sees the
+            # icon, not the space.
+            label = raw.strip()
             assert label.startswith("City on "), label
             assert "," in label, f"{label} names no terrain"
 
@@ -279,8 +283,11 @@ class TestTheChooserIsAsked:
         bob = tabs["Bob"]
         bob.page.wait_for_selector("#choice-panel:not(.hidden)", timeout=8000)
 
+        # The option is a self-naming tile with no text beside it, so its label
+        # is the tile's accessible name - the commodity capitalised, as the panel
+        # titles a card it holds.
         labels = option_labels(bob)
-        assert [label.split()[-1] for label in labels] == ["cloth", "coin"]
+        assert [label.split()[-1] for label in labels] == ["Cloth", "Coin"]
 
         context = bob.page.inner_text("#choice-context")
         assert "Alice" in context and "wheat" in context, context
