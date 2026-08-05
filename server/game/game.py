@@ -776,6 +776,25 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             points -= player.dev_cards['victory_point']['count']
         return points
 
+    def priced_builds(self) -> dict:
+        """Every flat price in the game, as this table's rules charge it.
+
+        The client used to keep its own copy of `data/costs.json` to grey a
+        build button out, which is a second table of prices free to disagree
+        with the engine's — and a cost modifier would have moved one of them
+        and not the other, so a rule that made building cheaper would have been
+        charged but never shown.
+
+        Flat prices only: a city improvement is priced per level, which is a
+        question with an argument rather than a line in a table, so a client
+        that needs one asks the rule that governs it instead of rebuilding the
+        table here. Every price goes through `get_cost`, so what the payload
+        carries is what the player would actually pay.
+        """
+        return {
+            build_type: self.get_cost(build_type) for build_type in self.building_costs
+        }
+
     def get_board_data(self, viewer: str = None) -> dict:
         """
         Serialize board data for sending to client.
@@ -845,6 +864,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'players': players,
             'bank': self.bank.get_all(),
             'rules': self.rules,
+            # What each build costs at this table, modifiers included. The
+            # client greys its buttons out from this and never from a table of
+            # its own.
+            'costs': self.priced_builds(),
             'cities_knights': self.ck.to_dict(viewer) if self.ck else None,
             'harbormaster_holder': self.harbormaster_holder,
             'harbor_points': self.harbor_points,

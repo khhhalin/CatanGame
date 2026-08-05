@@ -15,7 +15,7 @@ import { renderGameSidebar, renderTurnIndicator } from './scoreboard.js';
 import { isSeaMode, syncSeaModeButtons } from './seafarers.js';
 import { offerVictimChoice, openDiscardModal, renderVictimList, resetAutoVictim } from './seven.js';
 import { emitGame } from './socket.js';
-import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
+import { getBoard, getBuildCost, getCurrentPlayer, getDiscardAmount, getGamePhase, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
 
 // Names that used to be defined here and now live in their own modules. They
 // are re-exported so this module's public surface is unchanged: net.js imports
@@ -27,16 +27,6 @@ export { findMyPlayer };
 export { renderBank, renderDialogHands, renderResourcePanel };
 export { renderGameSidebar, renderTurnIndicator };
 export { offerVictimChoice, openDiscardModal, renderVictimList };
-
-// Mirrors server/data/costs.json. Duplicated here only to grey a button out and
-// say why before the round trip - the server checks all of it again and the
-// board is drawn from its answer, never from this.
-const BUILD_COSTS = {
-    settlement: { wood: 1, brick: 1, wheat: 1, sheep: 1 },
-    road: { wood: 1, brick: 1 },
-    city: { wheat: 2, ore: 3 },
-    dev_card: { wheat: 1, sheep: 1, ore: 1 }
-};
 
 /**
  * Handle Next Turn button click
@@ -337,7 +327,7 @@ export function updateGameUI(boardData) {
  * languages for the same fact, and the clickable half wasted a round trip to
  * be told something the client already knew.
  *
- * @param {string} kind - Key into BUILD_COSTS
+ * @param {string} kind - A build type, as the server's price list names it
  * @returns {string} - Empty when the action is available
  */
 function buildBlockReason(kind) {
@@ -360,7 +350,9 @@ function buildBlockReason(kind) {
     if (getDiscardAmount() > 0) {
         return 'You must discard first';
     }
-    return shortfallReason(findMyPlayer()?.resources, BUILD_COSTS[kind]);
+    // An unpriced build is not a shortfall: the server prices what this table
+    // can build, and it refuses anything else on its own terms.
+    return shortfallReason(findMyPlayer()?.resources, getBuildCost(kind) || {});
 }
 
 /**
@@ -373,7 +365,7 @@ function buildBlockReason(kind) {
  * offered the button and then refused by the server - the one pattern this
  * client has already agreed not to use.
  *
- * @param {string} kind - Key into BUILD_COSTS
+ * @param {string} kind - A build type, as the server's price list names it
  * @returns {string} - Empty when the table does play it
  */
 function missingFromThisTableReason(kind) {
@@ -417,7 +409,9 @@ function updateAffordability() {
         placeRoadBtn.title = 'Free road - then tap an edge on the board';
     }
     gate(upgradeCityBtn, 'city', 'Then tap one of your own settlements');
-    gate(buyDevCardBtn, 'dev_card', `Costs ${formatBuildCost(BUILD_COSTS.dev_card)}`);
+    const devCardCost = getBuildCost('dev_card');
+    gate(buyDevCardBtn, 'dev_card',
+        devCardCost ? `Costs ${formatBuildCost(devCardCost)}` : 'Buy a development card');
 }
 
 /**

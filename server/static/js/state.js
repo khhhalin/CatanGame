@@ -93,6 +93,22 @@ export function getBoard() {
 }
 
 /**
+ * What one build costs at this table, or null when the server has not priced it.
+ *
+ * The prices are the server's, sent with the board and already through every
+ * cost modifier the table's rules switched on. The client had its own copy of
+ * `server/data/costs.json` until it was deleted: a house rule that changed a
+ * price moved the engine's number and not the client's, so the button greyed
+ * itself out against a price nobody was charging.
+ *
+ * @param {string} kind - A build type, as `data/costs.json` names it
+ * @returns {object|null} - {resource: amount}
+ */
+export function getBuildCost(kind) {
+    return viewState.server.board?.costs?.[kind] || null;
+}
+
+/**
  * Whether there is a game to interact with.
  * A board payload exists for exactly as long as one does - the lobby snapshot
  * and `game_ended` both clear it - and a declared winner ends interaction too.
