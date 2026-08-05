@@ -3430,6 +3430,213 @@ button:disabled {
     }
 }
 
+/* --- trade zone: the offer-builder in the bottom tray, above the hand.
+
+   A quiet parchment shelf (--surface-quiet, the token the foundation left for
+   it) so it reads as part of the table rather than a boxed panel. The give side
+   is filled by tapping hand cards, the want side by an inline picker; the
+   mini-cards mirror the hand's physical cards at shelf size, drawing the same
+   terrain fill through the shared `.t-*` variables. */
+.trade-zone {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-quiet);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+}
+
+/* Quiet until a card is chosen: the zone collapses out of the tray entirely, so
+   an idle game reserves no height for it - the crowded 1920x1080 four-player
+   layout has none to spare - and a lifted hand card still overflows up into the
+   space it leaves. Tapping a hand card fills the give side and expands it. The
+   whole slot goes, gap and all, rather than a zero-height flex item that would
+   still cost the tray's row gap. */
+.tray-trade:has(.trade-zone.is-quiet) {
+    display: none;
+}
+
+.trade-slotwrap {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.trade-side-label {
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+
+.trade-slots {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    min-height: 60px;
+    padding: var(--space-2);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+}
+
+.trade-slot-hint {
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+}
+
+.trade-swap {
+    flex: none;
+    font-size: var(--text-lg);
+    color: var(--text-faint);
+}
+
+/* A mini physical card: the terrain fill through --tile (.t-*), the glyph and a
+   corner count. It is a button - a tap removes that card type from its side. */
+.trade-mini {
+    position: relative;
+    flex: none;
+    width: 38px;
+    height: 50px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: var(--tile, var(--surface-3));
+    color: var(--on-tile);
+    border: 1px solid rgb(0 0 0 / 0.08);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-2);
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease);
+}
+
+.trade-mini:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: var(--tile, var(--surface-3));
+}
+
+.trade-mini-glyph {
+    width: 20px;
+    height: 20px;
+    vertical-align: 0;
+}
+
+.trade-mini-count {
+    position: absolute;
+    bottom: 1px;
+    right: 3px;
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--on-tile);
+    text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+}
+
+/* Pale terrains take the dark ink, as the tiles and hand cards do. */
+.trade-mini.t-wheat,
+.trade-mini.t-sheep,
+.trade-pick.t-wheat,
+.trade-pick.t-sheep {
+    color: var(--on-tile-pale);
+}
+
+.trade-mini.t-wheat .trade-mini-count,
+.trade-mini.t-sheep .trade-mini-count {
+    color: var(--on-tile-pale);
+    text-shadow: none;
+}
+
+/* The + that opens the want picker. */
+.trade-add {
+    flex: none;
+    width: 38px;
+    height: 50px;
+    padding: 0;
+    font-size: var(--text-xl);
+    line-height: 1;
+    color: var(--text-faint);
+    background: transparent;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.trade-add:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: transparent;
+}
+
+/* The want picker: a small popover of card types above the want row. */
+.trade-picker {
+    position: absolute;
+    z-index: var(--z-dropdown);
+    left: 0;
+    bottom: calc(100% + var(--space-1));
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+}
+
+.trade-pick {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: var(--tile, var(--surface-3));
+    color: var(--on-tile);
+    border: 1px solid rgb(0 0 0 / 0.08);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.trade-pick:hover:not(:disabled) {
+    background: var(--tile, var(--surface-3));
+    transform: translateY(-1px);
+}
+
+.trade-pick .trade-mini-glyph {
+    width: 18px;
+    height: 18px;
+}
+
+.trade-propose {
+    flex: none;
+    white-space: nowrap;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+}
+
+/* On a phone the row wraps rather than pushing the page wide; the Propose
+   button drops to a full-width bar under the two sides. */
+@media (max-width: 480px) {
+    .trade-zone {
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+
+    .trade-slotwrap {
+        flex-basis: 40%;
+    }
+
+    .trade-propose {
+        flex: 1 1 100%;
+    }
+}
+
 /* --- bank cell: tile, a thin stock meter, the raw count under it. */
 .bank-row {
     display: flex;

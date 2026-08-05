@@ -43,6 +43,9 @@ export const diceDisplay = document.getElementById('dice-display');
 export const diceSetEl = document.getElementById('dice-set');
 export const resourceDisplay = document.getElementById('resource-display');
 export const bankDisplay = document.getElementById('bank-display');
+// The empty slot the foundation left in the bottom tray, above the hand, for
+// the trade zone (trade.js builds the offer-builder into it).
+export const trayTrade = document.querySelector('.tray-trade');
 const tradePanel = document.getElementById('trade-panel');
 export const proposeTradeBtn = document.getElementById('propose-trade-btn');
 export const tradeOffersDiv = document.getElementById('trade-offers');
