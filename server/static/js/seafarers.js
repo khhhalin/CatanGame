@@ -22,7 +22,7 @@
 import { RESOURCE_ICONS } from './constants.js';
 import { buildShipBtn, gameBoard, islandPoints, moveShipBtn, placeRoadBtn, placeSettlementBtn, robberText, seafarersChipValue, seafarersPanel, shipHint, upgradeCityBtn } from './dom.js';
 import { displayError } from './notices.js';
-import { findMyPlayer } from './panels.js';
+import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
 

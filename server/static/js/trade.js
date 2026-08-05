@@ -5,7 +5,8 @@ import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js
 import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
 import { displayError } from './notices.js';
-import { findMyPlayer, renderDialogHands } from './panels.js';
+import { renderDialogHands } from './panels.js';
+import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
 import { getBoard, isMyTurn, viewState } from './state.js';
 

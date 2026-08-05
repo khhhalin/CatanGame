@@ -6,10 +6,16 @@ import { ckEnabled, isCkMode, shortfallReason, syncCkModeButtons } from './citie
 import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
 import { activeRulesChipValue, awardSummary, bankChipValue, bankDisplay, buyDevCardBtn, colorPicker, devCardsChipValue, devDeckRemaining, discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, endGameBtn, gameBoard, gameConsole, gamePlayersList, myDevCardsDiv, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, robberIndicator, rollDiceBtn, submitDiscardBtn, tradeHandNote, turnIndicator, upgradeCityBtn, victimList, victimModal } from './dom.js';
 import { displayError } from './notices.js';
+import { findMyPlayer } from './player-view.js';
 import { repositionPopover } from './popovers.js';
 import { isSeaMode, seaRule, syncSeaModeButtons } from './seafarers.js';
 import { emitGame } from './socket.js';
 import { getBoard, getCurrentPlayer, getDiscardAmount, getGamePhase, getRobberVictims, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
+
+// `findMyPlayer` lives in player-view.js now. Re-exported so that this module's
+// public surface is unchanged - a caller that has always asked panels.js for it
+// still gets it. New callers should import it from player-view.js.
+export { findMyPlayer };
 
 // Everything a 7 counts, which is what a discard may name. The five resources
 // and - on a table that plays them - the three commodities: the engine takes
@@ -617,18 +623,6 @@ function getContrastColor(hexColor) {
     const onBlack = contrastRatio(rgb, [0, 0, 0]);
     const onWhite = contrastRatio(rgb, [255, 255, 255]);
     return onBlack >= onWhite ? '#000000' : '#ffffff';
-}
-
-/**
- * Find this socket's own player entry in the board data.
- * Only that entry carries populated `resources` and `dev_cards`; every other
- * player is sent as counts only.
- *
- * @returns {object|null} - Own player entry, or null (e.g. for observers)
- */
-export function findMyPlayer() {
-    const players = getBoard()?.players || [];
-    return players.find(p => p.is_you) || players.find(p => p.name === viewState.identity.name) || null;
 }
 
 /**
