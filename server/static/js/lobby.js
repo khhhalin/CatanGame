@@ -255,6 +255,25 @@ function ruleGroupId(rule) {
 }
 
 /**
+ * The exclusion group a rule belongs to, or null.
+ * Exclusion groups cut across the section groups above (a base-game variant and
+ * an expansion rule can be rivals), so they decorate rows in place rather than
+ * re-sectioning the picker.
+ */
+function exclusionGroupFor(ruleId) {
+    return (viewState.server.rules.exclusions || []).find(
+        group => group.rules.includes(ruleId)) || null;
+}
+
+/**
+ * The display name of a rule from the catalogue, or its id as a fallback.
+ */
+function ruleName(ruleId) {
+    const rule = viewState.server.rules.catalogue.find(entry => entry.id === ruleId);
+    return rule ? rule.name : ruleId;
+}
+
+/**
  * Build the controls for one rule of the server's catalogue.
  * Nothing about the rule set is hardcoded here - a rule added server-side
  * shows up as soon as it is in the catalogue.
@@ -300,6 +319,20 @@ function buildRuleRow(rule) {
     const head = document.createElement('div');
     head.className = 'rule-head';
     head.appendChild(label);
+
+    // An excluding rule carries a badge and a note so a player reads why one of
+    // the pair will untick before ever ticking it, and so an auto-uncheck has a
+    // place on the row to say why it happened.
+    const exclusion = exclusionGroupFor(rule.id);
+    if (exclusion) {
+        const badge = document.createElement('span');
+        badge.className = 'rule-exclusion-badge';
+        badge.textContent = 'exclusive';
+        badge.title = exclusion.reason;
+        label.appendChild(document.createTextNode(' '));
+        label.appendChild(badge);
+        input.setAttribute('aria-describedby', `rule-exclusion-${rule.id}`);
+    }
     head.appendChild(input);
 
     const source = document.createElement('div');
@@ -313,6 +346,15 @@ function buildRuleRow(rule) {
     row.appendChild(head);
     row.appendChild(source);
     row.appendChild(summary);
+
+    if (exclusion) {
+        const note = document.createElement('div');
+        note.className = 'rule-exclusion';
+        note.id = `rule-exclusion-${rule.id}`;
+        note.dataset.reason = exclusion.reason;
+        note.textContent = exclusion.reason;
+        row.appendChild(note);
+    }
     return row;
 }
 
@@ -496,6 +538,48 @@ function sendRules() {
     emitGame('set_rules', { rules: chosen });
 }
 
+/**
+ * Untick every other member of the group the just-ticked rule belongs to.
+ * Removal, not addition: it takes nothing the table cannot re-tick, and it
+ * removes the box that was about to be silently ignored anyway. The reason is
+ * surfaced on the row that unchecked and in the notice channel — never silent.
+ *
+ * @param {string} tickedId - The rule the player just switched on
+ */
+function autoUncheckRivals(tickedId) {
+    const group = exclusionGroupFor(tickedId);
+    if (!group) {
+        return;
+    }
+    const tickedName = ruleName(tickedId);
+    group.rules.forEach(rivalId => {
+        if (rivalId === tickedId) {
+            return;
+        }
+        const rival = rulesList.querySelector(`[data-rule-id="${rivalId}"]`);
+        if (!rival || rival.type !== 'checkbox' || !rival.checked) {
+            return;
+        }
+        rival.checked = false;
+        const message = `Unchecked because ${tickedName} replaces it`;
+        const note = rulesList.querySelector(`#rule-exclusion-${rivalId}`);
+        if (note) {
+            note.textContent = message;
+            note.classList.add('rule-exclusion-fired');
+            // Restore the standing reason once the player has read why.
+            setTimeout(() => {
+                note.classList.remove('rule-exclusion-fired');
+                note.textContent = note.dataset.reason;
+            }, EXCLUSION_NOTICE_MS);
+        }
+        showNotice(`${ruleName(rivalId)}: ${message}`, 'info');
+    });
+}
+
+// How long the row's "unchecked because…" note stays before it settles back to
+// the standing reason. Long enough to read, short enough not to linger.
+const EXCLUSION_NOTICE_MS = 6000;
+
 // Every call sends the *whole* selection, so coalescing rapid changes loses
 // nothing — the last one carries the others. Without this, ticking a row of
 // rules fires one full emit each: the server rate-limits the burst, the player
@@ -518,8 +602,16 @@ if (rulesList) {
     // catalogue changes. `change` rather than `input` so a number is sent
     // once, not once per keystroke.
     rulesList.addEventListener('change', (event) => {
-        if (!event.target.closest('[data-rule-id]')) {
+        const input = event.target.closest('[data-rule-id]');
+        if (!input) {
             return;
+        }
+        // Ticking one member of an exclusion group unchecks its rivals live, so
+        // the whole selection sent below is already coherent and the server does
+        // not have to refuse it. The uncheck is never silent: the row that just
+        // lost its tick says why, and the notice channel repeats it.
+        if (input.type === 'checkbox' && input.checked) {
+            autoUncheckRivals(input.dataset.ruleId);
         }
         queueRuleSend();
     });

@@ -598,6 +598,38 @@ button:disabled {
     color: var(--text-faint);
 }
 
+/* A rule that shares a slot with another: at most one of the pair may be on.
+   The badge warns before ticking; the note under the row carries the reason
+   and is where an auto-uncheck says why it happened. */
+.rule-exclusion-badge {
+    font-size: 0.6rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    background-color: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 0 0.3rem;
+    vertical-align: middle;
+    cursor: help;
+}
+
+.rule-exclusion {
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-top: 0.3rem;
+}
+
+/* The note flips to "unchecked because…" when a rival is auto-unticked, and
+   the fill draws the eye to it so the removal is seen, not silent. */
+.rule-exclusion-fired {
+    font-weight: bold;
+    background-color: var(--accent-soft);
+    border-radius: 3px;
+    padding: 0.2rem 0.4rem;
+}
+
 /* ------------------------------------------------------------ game screen */
 
 /* Two regions - the rail of standing information and the board. Only the

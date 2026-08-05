@@ -25,7 +25,9 @@ export const viewState = {
         // the same thing.
         // `presets` are named sets of individual rules, not modes: picking one
         // ticks its rules and nothing records that it was used.
-        rules: { catalogue: [], presets: [], selected: {}, locked: false }
+        // `exclusions` are groups where at most one member may be on; the picker
+        // decorates those rows and auto-unchecks a rival when its partner ticks.
+        rules: { catalogue: [], presets: [], exclusions: [], selected: {}, locked: false }
     },
 
     // What this tab asked to join as. The name is what the player typed; the
