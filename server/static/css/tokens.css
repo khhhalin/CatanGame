@@ -173,6 +173,11 @@
     --player-5: #654c0f;
     --player-6: #12545c;
     --on-player: #ffffff;
+
+    /* Physical dice are light objects with dark pips — a fixed ivory face and
+       near-black pips in both themes, never following the surface palette. */
+    --die-face: #f6f1e7;
+    --die-pip: #2c2318;
 }
 
 /* ------------------------------------------------------------- dark theme */
@@ -247,6 +252,9 @@
         --player-5: #e0c15c;
         --player-6: #5fd0d8;
         --on-player: #10171f;
+
+        --die-face: #f6f1e7;
+        --die-pip: #2c2318;
     }
 }
 
@@ -315,6 +323,9 @@
     --player-5: #e0c15c;
     --player-6: #5fd0d8;
     --on-player: #10171f;
+
+    --die-face: #f6f1e7;
+    --die-pip: #2c2318;
 }
 
 /* ------------------------------------------------------------ base + reset */

@@ -1087,18 +1087,21 @@ button:disabled {
     white-space: nowrap;
 }
 
+/* Physical pip dice: an ivory rounded face with dark dots, both fixed light in
+   every theme because real dice are light objects. The soft drop shadow lifts
+   them off the console; the 30px face keeps the console's one-row budget. */
 .dice-display .die {
-    background-color: var(--surface-1);
-    color: var(--text);
-    border: 1px solid var(--border-strong);
     width: 30px;
     height: 30px;
-    border-radius: var(--radius-sm);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: var(--text-md);
-    font-variant-numeric: tabular-nums;
+    filter: drop-shadow(0 2px 3px rgb(30 20 10 / 0.32));
+}
+
+.dice-display .die rect {
+    fill: var(--die-face);
+}
+
+.dice-display .die .pip {
+    fill: var(--die-pip);
 }
 
 #color-picker {

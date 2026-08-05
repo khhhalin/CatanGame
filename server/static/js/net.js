@@ -253,9 +253,33 @@ socket.on('player_color_changed', (data) => {
     }
 });
 
+// Pip positions for each face on a 30x30 die, on a 9/15/21 three-by-three grid.
+// A real die shows dots, not a printed number, so a rolled face is drawn as its
+// pips rather than written out.
+const DIE_PIPS = {
+    1: [[15, 15]],
+    2: [[9, 9], [21, 21]],
+    3: [[9, 9], [15, 15], [21, 21]],
+    4: [[9, 9], [21, 9], [9, 21], [21, 21]],
+    5: [[9, 9], [21, 9], [15, 15], [9, 21], [21, 21]],
+    6: [[9, 9], [21, 9], [9, 15], [21, 15], [9, 21], [21, 21]],
+};
+
+// One physical die as an SVG: ivory rounded face, dark pips laid out for the
+// value. `data-value` and the label carry the number for tests and readers a
+// glance at the dots cannot serve.
+function dieSvg(value) {
+    const pips = (DIE_PIPS[value] || [])
+        .map(([cx, cy]) => `<circle class="pip" cx="${cx}" cy="${cy}" r="2.4" />`)
+        .join('');
+    return `<svg class="die" data-value="${value}" viewBox="0 0 30 30" width="30" height="30" `
+        + `role="img" aria-label="${value}">`
+        + `<rect x="1.5" y="1.5" width="27" height="27" rx="7" />${pips}</svg>`;
+}
+
 socket.on('dice_rolled', (data) => {
     console.log(`Player ${data.player} rolled ${data.dice1} + ${data.dice2} = ${data.total}`);
-    diceDisplay.innerHTML = `<span class="die">${data.dice1}</span><span class="die">${data.dice2}</span>`;
+    diceDisplay.innerHTML = dieSvg(data.dice1) + dieSvg(data.dice2);
     rollDiceBtn.disabled = true;
     rollDiceBtn.textContent = `Rolled: ${data.total}`;
     
