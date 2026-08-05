@@ -439,6 +439,60 @@ class TestTerrainFollowsTheTheme:
         assert light != dark, f"terrain ignored the theme: {light} in both"
 
 
+# Count the distinct colours in a patch of a land hex's interior. A flat fill
+# is one colour across a clean interior; the tiled motif paints a darker shade
+# of the terrain over the base, so a patterned hex is many. The window is sized
+# and placed in *board* space so it clears the token and holds a motif mark at
+# any scale.
+COUNT_HEX_INTERIOR_COLOURS = """
+key => {
+    const canvas = document.getElementById('board-canvas');
+    const board = window.__catanDebug.getBoard();
+    window.BoardRenderer.render(board, 'board-canvas', null, null);
+
+    const layout = window.BoardRenderer.computeLayout(board);
+    const point = layout.hexPositions[key];
+    const rect = canvas.getBoundingClientRect();
+    const ratio = canvas.width / rect.width;
+    // 22 board units below the centre clears the 12px token; the ±8-board-unit
+    // window around it is all terrain fill and spans about one motif tile.
+    const a = window.BoardRenderer.boardToClient(
+        canvas, point.x + layout.offsetX, point.y + layout.offsetY + 22
+    );
+    const b = window.BoardRenderer.boardToClient(
+        canvas, point.x + layout.offsetX + 8, point.y + layout.offsetY + 22
+    );
+    const cx = Math.round((a.x - rect.left) * ratio);
+    const cy = Math.round((a.y - rect.top) * ratio);
+    const half = Math.max(6, Math.round(Math.abs(b.x - a.x) * ratio));
+    const data = canvas.getContext('2d')
+        .getImageData(cx - half, cy - half, half * 2, half * 2).data;
+    const seen = new Set();
+    for (let i = 0; i < data.length; i += 4) {
+        seen.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    }
+    return seen.size;
+}
+"""
+
+
+class TestTerrainPatternsPaint:
+    """The land is filled with a tiled per-terrain motif, not a flat colour.
+
+    A hex that fell back to a solid fill - the failure if createPattern returned
+    null or the motif was never drawn - is one colour across its interior. The
+    motif paints a darker shade of the same colour over the base, so a real
+    pattern is many colours in the same patch, and a blank canvas is none.
+    """
+
+    def test_a_land_hex_is_more_than_one_flat_colour(self, default_board):
+        board = default_board.board()
+        land = next(key for key, hex_data in sorted(board["hexes"].items())
+                    if hex_data["type"] not in ("ocean", "desert"))
+        colours = default_board.page.evaluate(COUNT_HEX_INTERIOR_COLOURS, land)
+        assert colours > 4, f"land hex looks flat: {colours} colours in the patch"
+
+
 class TestNothingBrokeOnTheWay:
     def test_no_console_errors(self, default_board, knights_board, large_board):
         for player in (default_board, knights_board, large_board):

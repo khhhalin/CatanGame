@@ -161,7 +161,10 @@ function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlig
         ctx.shadowBlur = 20;
     }
 
-    ctx.fillStyle = color;
+    // The land fill is a tiled per-terrain pattern; the ocean, which has no
+    // pattern, falls back to the flat colour it was already given.
+    const pattern = terrain ? getTerrainPattern(ctx, terrain) : null;
+    ctx.fillStyle = pattern || color;
     ctx.fill();
     ctx.strokeStyle = isHighlighted ? '#f1c40f' : BOARD_CONFIG.colors.border;
     ctx.lineWidth = isHighlighted ? 4 : 2;
@@ -170,10 +173,6 @@ function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlig
     // Reset shadow
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
-
-    if (terrain) {
-        drawTerrainTexture(ctx, centerX, centerY, radius, terrain);
-    }
 
     if (isLand && number !== null && number !== undefined) {
         drawNumberToken(ctx, centerX, centerY, number, isHighlighted);
@@ -204,192 +203,228 @@ function hexPath(ctx, centerX, centerY, radius) {
 }
 
 /* -------------------------------------------------------------------------
- * Terrain texture
+ * Terrain patterns
  *
- * A wash of small geometric marks plus one resource symbol per tile. Two
- * rules decide everything here:
+ * Each land hex is filled with a tiled, low-contrast motif in its own terrain
+ * colour rather than a flat wash or an image sprite: small pines for the
+ * forest, offset brick courses for the hills, dots for the pasture, vertical
+ * strokes for the field, a chevron zigzag for the mountains and a sparse
+ * stipple for the desert. The motif is a slightly off shade of the same fill,
+ * so it reads as texture and never competes with the number token on top.
  *
- *   - The number token stays the most legible thing on a hex. Every mark is
- *     drawn at a low alpha, and the symbol sits at the top of the tile where
- *     the token's disc is not, so nothing is ever drawn behind a digit.
- *   - It has to be cheap. The board is redrawn on every pan and zoom frame,
- *     so each tile is a handful of straight paths in unit coordinates scaled
- *     by the radius - no gradients, no patterns, no offscreen canvases, and
- *     deliberately nothing that animates, which is also why reduced-motion
- *     needs no special case here.
+ * Built once per theme as a CanvasPattern off a small offscreen tile, then
+ * handed straight to the hex fill. Two things follow from that:
+ *   - The tile carries the terrain colour the stylesheet currently defines, so
+ *     the cache is keyed by the same signature readPalette() uses and rebuilds
+ *     when the theme flips.
+ *   - The tile is drawn supersampled and scaled back down through the pattern
+ *     transform, so the motif stays crisp when the board is zoomed in.
  * ---------------------------------------------------------------------- */
 
-// Alpha-blended over the terrain fill, so one pair of inks reads on a pale
-// desert and on a dark forest without either theme needing its own values.
-const TEXTURE_INK = 'rgba(20, 26, 34, 0.15)';
-const TEXTURE_HIGHLIGHT = 'rgba(255, 255, 255, 0.18)';
-const SYMBOL_INK = 'rgba(20, 26, 34, 0.38)';
+// Motif tile, in board units, and how far above one-to-one it is rendered.
+// 15 is a shade under half a hex radius: a few tiles fit across a hex without
+// the motif turning into noise behind the token.
+const PATTERN_TILE = 15;
+const PATTERN_SUPERSAMPLE = 3;
 
-// Where the resource symbol sits, as a fraction of the hex radius. Above the
-// number token's disc and clear of the robber, which sits bottom-left.
-const SYMBOL_Y = -0.54;
-const SYMBOL_SIZE = 0.26;
+// How far the motif shade sits from the terrain fill. Darker in the light
+// theme, lighter in the dark one: a strictly darker mark on an already dark
+// hex reads as nothing, and the point of the motif is that it is seen.
+const PATTERN_LIGHT_SHIFT = -0.22;
+const PATTERN_DARK_SHIFT = 0.18;
+
+// Rebuilt whenever the theme signature readPalette() tracks changes.
+let terrainPatterns = null;
+let terrainPatternSignature = null;
 
 /**
- * Draw the texture and resource symbol for one tile, clipped to its hex.
+ * Parse a #rgb or #rrggbb colour into its channels.
  *
- * @param {CanvasRenderingContext2D} ctx - Canvas context
- * @param {number} cx - Hex centre x
- * @param {number} cy - Hex centre y
- * @param {number} radius - Hex radius
- * @param {string} terrain - Hex type
+ * @param {string} hex - Colour string
+ * @returns {object|null} - {r, g, b}, or null if it is not a hex colour
  */
-function drawTerrainTexture(ctx, cx, cy, radius, terrain) {
-    const paint = TERRAIN_TEXTURES[terrain];
-    if (!paint) {
-        return;
+function parseHexColor(hex) {
+    if (typeof hex !== 'string' || hex[0] !== '#') {
+        return null;
     }
-
-    ctx.save();
-    // Clipped rather than hand-fitted: marks can then be laid out on a simple
-    // grid without every one of them needing to know the hex outline.
-    hexPath(ctx, cx, cy, radius);
-    ctx.clip();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    paint(ctx, cx, cy, radius);
-
-    if (terrain !== 'ocean') {
-        ctx.fillStyle = SYMBOL_INK;
-        ctx.strokeStyle = SYMBOL_INK;
-        drawResourceGlyph(ctx, cx, cy + radius * SYMBOL_Y, radius * SYMBOL_SIZE, terrain);
+    let body = hex.slice(1);
+    if (body.length === 3) {
+        body = body[0] + body[0] + body[1] + body[1] + body[2] + body[2];
     }
-    ctx.restore();
+    if (!/^[0-9a-fA-F]{6}$/.test(body)) {
+        return null;
+    }
+    const value = parseInt(body, 16);
+    return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
 }
 
 /**
- * Stroke a polyline given as unit offsets from a hex centre.
+ * A shade of the same colour, mixed toward black (shift < 0) or white (> 0).
  *
- * @param {CanvasRenderingContext2D} ctx - Canvas context
- * @param {number} cx - Hex centre x
- * @param {number} cy - Hex centre y
- * @param {number} radius - Hex radius
- * @param {Array<Array<number>>} points - [[ux, uy], ...] in radius units
+ * @param {string} base - Terrain colour
+ * @param {number} shift - How far to move, -1..1
+ * @returns {string|null} - An rgb() string, or null if base could not be read
  */
-function strokeUnitPath(ctx, cx, cy, radius, points) {
+function shadeColor(base, shift) {
+    const rgb = parseHexColor(base);
+    if (!rgb) {
+        return null;
+    }
+    const target = shift < 0 ? 0 : 255;
+    const amount = Math.abs(shift);
+    const mix = channel => Math.round(channel + (target - channel) * amount);
+    return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`;
+}
+
+/**
+ * Stroke a segment given in the 12-unit tile space, scaled by `u`.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Tile context
+ * @param {number} u - Units-to-pixels scale for the tile
+ */
+function patternLine(ctx, u, x1, y1, x2, y2) {
     ctx.beginPath();
-    points.forEach(([ux, uy], index) => {
-        const x = cx + ux * radius;
-        const y = cy + uy * radius;
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
-    });
+    ctx.moveTo(x1 * u, y1 * u);
+    ctx.lineTo(x2 * u, y2 * u);
     ctx.stroke();
 }
 
-// Conifer positions and heights for the forest, in radius units. Laid out
-// around the token rather than over it.
-const FOREST_TREES = [[-0.58, 0.30, 0.34], [0.58, 0.34, 0.30], [0.0, 0.62, 0.30],
-                      [-0.62, -0.22, 0.26], [0.62, -0.18, 0.26]];
-const BRICK_COURSES = [[0.30, 0.0], [0.52, 0.5], [0.74, 0.0]];
-const MOUNTAIN_RIDGES = [[-0.52, 0.42, 0.42], [0.50, 0.50, 0.36], [0.02, 0.72, 0.30]];
-const FURROWS = [0.26, 0.46, 0.66];
-const TUFTS = [[-0.50, 0.30], [0.48, 0.28], [-0.10, 0.60], [0.60, 0.62], [-0.62, 0.66]];
-const DUNES = [[-0.30, 0.34], [0.36, 0.52], [-0.20, 0.72], [-0.58, 0.12], [0.56, 0.16]];
-const WAVES = [-0.30, 0.10, 0.50];
+function patternDot(ctx, u, x, y, r) {
+    ctx.beginPath();
+    ctx.arc(x * u, y * u, r * u, 0, Math.PI * 2);
+    ctx.fill();
+}
 
-const TERRAIN_TEXTURES = {
-    wood(ctx, cx, cy, radius) {
-        ctx.strokeStyle = TEXTURE_INK;
-        ctx.fillStyle = TEXTURE_INK;
-        ctx.lineWidth = Math.max(1, radius * 0.03);
-        FOREST_TREES.forEach(([ux, uy, height]) => {
-            drawConifer(ctx, cx + ux * radius, cy + uy * radius, radius * height);
-        });
+function patternPolyline(ctx, u, points, close) {
+    ctx.beginPath();
+    points.forEach(([x, y], index) => {
+        if (index === 0) {
+            ctx.moveTo(x * u, y * u);
+        } else {
+            ctx.lineTo(x * u, y * u);
+        }
+    });
+    if (close) {
+        ctx.closePath();
+    }
+    ctx.stroke();
+}
+
+// One motif per land terrain, drawn in a 12-unit tile scaled by `u`. The ocean
+// has none and keeps its flat fill. These are the "new textures": minimalist,
+// repeatable, and the same vocabulary as the resource glyphs on the harbours.
+const TERRAIN_MOTIFS = {
+    wood(ctx, u, ink) {
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = u;
+        patternPolyline(ctx, u, [[6, 2], [9, 8], [3, 8]], true);
+        patternPolyline(ctx, u, [[6, 6], [10, 12], [2, 12]], true);
     },
 
-    brick(ctx, cx, cy, radius) {
-        // Courses of a wall: every other row shifted half a brick.
-        ctx.fillStyle = TEXTURE_INK;
-        const brickWidth = radius * 0.34;
-        const brickHeight = radius * 0.13;
-        BRICK_COURSES.forEach(([uy, shift]) => {
-            for (let column = -2; column <= 2; column += 1) {
-                const x = cx + (column + shift) * brickWidth * 1.15;
-                ctx.fillRect(x - brickWidth / 2, cy + uy * radius, brickWidth, brickHeight);
-            }
-        });
+    brick(ctx, u, ink) {
+        // Courses of a wall, every other row's joints shifted half a brick.
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = u * 0.9;
+        patternLine(ctx, u, 0, 4, 12, 4);
+        patternLine(ctx, u, 0, 10, 12, 10);
+        patternLine(ctx, u, 6, 0, 6, 4);
+        patternLine(ctx, u, 3, 4, 3, 10);
+        patternLine(ctx, u, 9, 4, 9, 10);
+        patternLine(ctx, u, 6, 10, 6, 12);
     },
 
-    ore(ctx, cx, cy, radius) {
-        ctx.strokeStyle = TEXTURE_INK;
-        ctx.lineWidth = Math.max(1, radius * 0.045);
-        MOUNTAIN_RIDGES.forEach(([ux, uy, width]) => {
-            strokeUnitPath(ctx, cx, cy, radius, [
-                [ux - width, uy], [ux, uy - width * 0.8], [ux + width, uy]
-            ]);
-        });
+    sheep(ctx, u, ink) {
+        ctx.fillStyle = ink;
+        patternDot(ctx, u, 4, 4, 1.4);
+        patternDot(ctx, u, 9, 9, 1.4);
     },
 
-    wheat(ctx, cx, cy, radius) {
-        // Furrows. Straight lines, because a field read as anything else at
-        // this size turned into noise behind the token.
-        ctx.strokeStyle = TEXTURE_INK;
-        ctx.lineWidth = Math.max(1, radius * 0.05);
-        FURROWS.forEach(uy => {
-            strokeUnitPath(ctx, cx, cy, radius, [[-0.85, uy], [0.85, uy]]);
-        });
-        ctx.strokeStyle = TEXTURE_HIGHLIGHT;
-        FURROWS.forEach(uy => {
-            strokeUnitPath(ctx, cx, cy, radius, [[-0.85, uy + 0.07], [0.85, uy + 0.07]]);
-        });
+    wheat(ctx, u, ink) {
+        // Vertical strokes: a field of standing stalks.
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = u * 0.9;
+        patternLine(ctx, u, 3, 12, 3, 2);
+        patternLine(ctx, u, 6, 12, 6, 0);
+        patternLine(ctx, u, 9, 12, 9, 2);
     },
 
-    sheep(ctx, cx, cy, radius) {
-        ctx.fillStyle = TEXTURE_HIGHLIGHT;
-        TUFTS.forEach(([ux, uy]) => {
-            ctx.beginPath();
-            ctx.arc(cx + ux * radius, cy + uy * radius, radius * 0.085, Math.PI, 0);
-            ctx.fill();
-        });
-        ctx.strokeStyle = TEXTURE_INK;
-        ctx.lineWidth = Math.max(1, radius * 0.035);
-        TUFTS.forEach(([ux, uy]) => {
-            strokeUnitPath(ctx, cx, cy, radius,
-                [[ux - 0.10, uy + 0.02], [ux + 0.10, uy + 0.02]]);
-        });
+    ore(ctx, u, ink) {
+        // Chevrons: the folded ridgeline of a mountain.
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = u * 0.9;
+        patternPolyline(ctx, u, [[0, 8], [3, 4], [6, 8], [9, 4], [12, 8]], false);
     },
 
-    desert(ctx, cx, cy, radius) {
-        // Sand: short dashes with a stipple between them. Arcs were tried and
-        // read as a mouth under the sun symbol.
-        ctx.strokeStyle = TEXTURE_INK;
-        ctx.lineWidth = Math.max(1, radius * 0.05);
-        DUNES.forEach(([ux, uy]) => {
-            strokeUnitPath(ctx, cx, cy, radius, [[ux - 0.22, uy], [ux + 0.22, uy]]);
-        });
-        ctx.fillStyle = TEXTURE_INK;
-        DUNES.forEach(([ux, uy]) => {
-            ctx.beginPath();
-            ctx.arc(cx + (ux + 0.34) * radius, cy + (uy - 0.12) * radius, radius * 0.03, 0, Math.PI * 2);
-            ctx.arc(cx + (ux - 0.34) * radius, cy + (uy + 0.12) * radius, radius * 0.03, 0, Math.PI * 2);
-            ctx.fill();
-        });
-    },
-
-    ocean(ctx, cx, cy, radius) {
-        // Barely there on purpose: the sea is a frame, not a subject.
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.09)';
-        ctx.lineWidth = Math.max(1, radius * 0.045);
-        WAVES.forEach(uy => {
-            ctx.beginPath();
-            ctx.moveTo(cx - radius * 0.5, cy + uy * radius);
-            ctx.quadraticCurveTo(cx - radius * 0.25, cy + (uy - 0.12) * radius,
-                                 cx, cy + uy * radius);
-            ctx.quadraticCurveTo(cx + radius * 0.25, cy + (uy + 0.12) * radius,
-                                 cx + radius * 0.5, cy + uy * radius);
-            ctx.stroke();
-        });
+    desert(ctx, u, ink) {
+        ctx.fillStyle = ink;
+        patternDot(ctx, u, 6, 6, 1);
     }
 };
+
+/**
+ * Build one CanvasPattern per land terrain for the current theme.
+ *
+ * @param {CanvasRenderingContext2D} ctx - The board context the patterns fill
+ * @param {object} colors - Terrain colours from readPalette()
+ * @returns {object} - Terrain name to CanvasPattern
+ */
+function buildTerrainPatterns(ctx, colors) {
+    const size = PATTERN_TILE * PATTERN_SUPERSAMPLE;
+    const unit = size / 12;
+    const root = document.documentElement;
+    const dark = root.getAttribute('data-theme') === 'dark'
+        || (!root.getAttribute('data-theme') && window.matchMedia
+            && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const shift = dark ? PATTERN_DARK_SHIFT : PATTERN_LIGHT_SHIFT;
+    // Only reached if a terrain colour is not a hex string; a translucent ink
+    // then reads on either theme, the way the old texture wash did.
+    const fallbackInk = dark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(20, 26, 34, 0.20)';
+
+    const patterns = {};
+    for (const terrain in TERRAIN_MOTIFS) {
+        const base = colors[terrain];
+        if (!base) {
+            continue;
+        }
+        const ink = shadeColor(base, shift) || fallbackInk;
+
+        const tile = document.createElement('canvas');
+        tile.width = size;
+        tile.height = size;
+        const tileCtx = tile.getContext('2d');
+        tileCtx.fillStyle = base;
+        tileCtx.fillRect(0, 0, size, size);
+        tileCtx.lineCap = 'round';
+        tileCtx.lineJoin = 'round';
+        TERRAIN_MOTIFS[terrain](tileCtx, unit, ink);
+
+        const pattern = ctx.createPattern(tile, 'repeat');
+        // The tile is supersampled, so scale the pattern back to board units;
+        // without this the motif tiles PATTERN_SUPERSAMPLE times too large.
+        if (pattern && typeof pattern.setTransform === 'function') {
+            const scale = 1 / PATTERN_SUPERSAMPLE;
+            pattern.setTransform(new DOMMatrix([scale, 0, 0, scale, 0, 0]));
+        }
+        patterns[terrain] = pattern;
+    }
+    return patterns;
+}
+
+/**
+ * The pattern to fill one terrain's hexes with, rebuilt when the theme changes.
+ *
+ * @param {CanvasRenderingContext2D} ctx - The board context
+ * @param {string} terrain - Hex type
+ * @returns {CanvasPattern|null} - The terrain's pattern, or null for the ocean
+ */
+function getTerrainPattern(ctx, terrain) {
+    const colors = readPalette();
+    if (!terrainPatterns || terrainPatternSignature !== paletteSignature) {
+        terrainPatterns = buildTerrainPatterns(ctx, colors);
+        terrainPatternSignature = paletteSignature;
+    }
+    return terrainPatterns[terrain] || null;
+}
 
 /**
  * A single conifer: a stacked triangle over a trunk.
@@ -416,9 +451,9 @@ function drawConifer(ctx, x, y, height) {
 /**
  * Draw the geometric symbol for one resource, centred on (x, y).
  *
- * Shared by the tile texture and the harbour badges on purpose: a harbour is
- * then labelled in the same vocabulary as the terrain it trades, which is one
- * shape to learn instead of two. Uses the current fill and stroke styles.
+ * Labels the harbour badges: a harbour is then marked in the same vocabulary
+ * as the terrain patterns it trades against, one shape to learn instead of
+ * two. Uses the current fill and stroke styles.
  *
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {number} x - Centre x
