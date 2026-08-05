@@ -48,8 +48,8 @@ const PLACEMENT_NOUNS = {
 // Which part of the board each kind snaps to. The renderer keeps the same two
 // lists for drawing; both are short and both would be wrong in the same way if
 // a kind were added to one and not the other.
-const EDGE_KINDS = ['road', 'ship', 'ship_move'];
-const HEX_KINDS = ['robber', 'pirate', 'progress_hex'];
+const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road'];
+const HEX_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // What the announcement last said, so aiming at the same spot twice does not
 // repeat itself into the live region.
@@ -281,6 +281,18 @@ function shipCanLie(board, edgeKey, me, ignoring) {
     });
 }
 
+// The number tokens the Inventor may not move, and the rank a knight cannot be
+// promoted past. Both are the engine's rules, copied here only to grey a ghost.
+const PROTECTED_TOKENS = [2, 6, 8, 12];
+const MIGHTY_RANK = 3;
+
+/**
+ * Every city on the board that already carries a wall.
+ */
+function walledVertices(board) {
+    return Object.values(board.cities_knights?.city_wall_vertices || {}).flat();
+}
+
 /**
  * Whether a hex has one of this player's buildings on it.
  */
@@ -310,12 +322,38 @@ function progressTargetIsBlocked(board, key, me) {
         return false;
     }
 
+    const vertex = board.vertices[key];
+    const standing = knightsByVertex()[key];
+
     switch (viewState.progressPick.card) {
         case 'merchant':
             return board.hexes[key]?.type === 'ocean'
                 || !touchesOwnBuilding(board, key, me);
         case 'bishop':
             return board.hexes[key]?.type === 'ocean';
+        case 'inventor':
+            // The board's best and worst numbers stay where they are.
+            return !board.hexes[key]?.number
+                || PROTECTED_TOKENS.includes(board.hexes[key].number);
+        case 'medicine':
+            return vertex?.building?.player !== me
+                || vertex?.building?.type !== 'settlement';
+        case 'engineer':
+            return vertex?.building?.player !== me
+                || vertex?.building?.type !== 'city'
+                || walledVertices(board).includes(key);
+        case 'smith':
+            // Mighty knights also need the Fortress, which is the engine's to
+            // check: a ghost that says no where the server would agree is a
+            // refusal the player cannot argue with.
+            return standing?.owner !== me || standing?.knight.rank >= MIGHTY_RANK;
+        case 'intrigue':
+            return !standing || standing.owner === me
+                || !touchesOwnRoad(board, key, me);
+        case 'diplomat':
+            // Whether the road has a free end is the engine's answer and worth
+            // a round trip; that there is a road at all is not.
+            return !board.edges[key]?.road;
         default:
             return false;
     }
@@ -450,18 +488,19 @@ export function clearHover() {
  */
 export function currentPreview() {
     const target = viewState.placement.pending || viewState.placement.hover;
-    if (!target && !viewState.shipMoveFrom) {
+    // A ship picked up, or the first of a progress card's two targets: both are
+    // held rather than sent, and the only place a player can see which one they
+    // chose is where it is on the board.
+    const held = viewState.shipMoveFrom || viewState.progressPick.picked[0] || null;
+    if (!target && !held) {
         return null;
     }
-    if (!target) {
-        // A ship picked up but not yet aimed: nothing to preview, but the
-        // player still has to be able to see which one is in their hand.
-        const held = getBoard()?.players?.find(p => p.name === viewState.identity.name);
-        return { kind: 'ship_move', key: null, blocked: false,
-                 color: held?.color || null, from: viewState.shipMoveFrom };
-    }
     const mine = getBoard()?.players?.find(player => player.name === viewState.identity.name);
-    return { ...target, color: mine?.color || null, from: viewState.shipMoveFrom || null };
+    if (!target) {
+        return { kind: viewState.selectedBuilding, key: null, blocked: false,
+                 color: mine?.color || null, from: held };
+    }
+    return { ...target, color: mine?.color || null, from: held };
 }
 
 /**
@@ -556,7 +595,9 @@ export function handlePlacementTap(clientX, clientY) {
     // And so is every pick of a progress card's target but the last: an
     // Inventor's first number token is recorded and nothing is sent, so there
     // is nothing to confirm. Tapping a pick again takes it back the same way.
-    if (isProgressMode(kind) && !progressPickCompletes(key)) {
+    // A target the client can see is illegal is pinned instead, because
+    // recording it silently is the one way a player could not tell.
+    if (isProgressMode(kind) && !progressPickCompletes(key) && !isBlocked(kind, key)) {
         handleProgressTargetTap(key);
         markDirty();
         return true;

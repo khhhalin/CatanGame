@@ -99,10 +99,10 @@ const GHOST_RING_RADIUS = 14;
 // Which part of the board each placement aims at. Listed rather than tested
 // one kind at a time: the ghost, the ring and the anchor all have to agree on
 // the answer, and three separate `=== 'road'` checks is how they stop agreeing.
-// `progress_hex` is a progress card being aimed - a Merchant or a Bishop -
-// which lands on a hex like the robber does.
-const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move'];
-const HEX_GHOST_KINDS = ['robber', 'pirate', 'progress_hex'];
+// The `progress_` kinds are a progress card being aimed: a Merchant or a Bishop
+// lands on a hex, an Inventor on two number tokens, a Diplomat on a road.
+const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move', 'progress_road'];
+const HEX_GHOST_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // Cache of the last computed layout, keyed by board data identity.
 // This is a memo of a pure computation, not state that drawing writes to.
@@ -1492,14 +1492,23 @@ function drawGhost(ctx, layout, preview) {
     // The origin half of a two-step ship move. Marked on the board rather than
     // in a list, because unlike a knight a ship has no panel row to highlight -
     // the only place a player can see which one they picked up is where it is.
-    if (preview.from && edgePositions[preview.from]) {
-        const origin = edgePositions[preview.from];
+    // A progress card's first target - an Inventor's first number token, a
+    // Smith's first knight - is held the same way and marked the same way, so
+    // the origin is looked up wherever on the board it belongs.
+    const origin = preview.from
+        ? edgePositions[preview.from] || hexPositions[preview.from]
+            || vertexPositions[preview.from]
+        : null;
+    if (origin) {
         ctx.save();
         ctx.setLineDash([4, 3]);
         ctx.lineWidth = 2;
         ctx.strokeStyle = preview.color || GHOST_ALLOWED_COLOR;
         ctx.beginPath();
-        ctx.arc(origin.centerX, origin.centerY, GHOST_RING_RADIUS, 0, Math.PI * 2);
+        ctx.arc(
+            origin.centerX ?? origin.x, origin.centerY ?? origin.y,
+            GHOST_RING_RADIUS, 0, Math.PI * 2
+        );
         ctx.stroke();
         ctx.restore();
     }
@@ -1545,9 +1554,11 @@ function drawGhost(ctx, layout, preview) {
             ctx.setLineDash([]);
             if (preview.kind === 'road') {
                 drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
-            } else {
+            } else if (preview.kind !== 'progress_road') {
                 drawShip(ctx, pos, color);
             }
+            // A Diplomat takes a road *away*, so the ring above is all it gets:
+            // drawing a road over the one being removed would say the opposite.
             ctx.setLineDash([5, 4]);
             markIfBlocked(ctx, preview, pos.centerX, pos.centerY);
         }

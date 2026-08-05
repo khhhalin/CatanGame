@@ -825,7 +825,11 @@ const TARGET_CHOICES = {
 // What a card that is picked on the board arms. Keyed by `needs_target`,
 // because that is what the server validates the answer against.
 const PROGRESS_MODES = {
-    hex: 'progress_hex'
+    hex: 'progress_hex',
+    vertex: 'progress_vertex',
+    road: 'progress_road',
+    knight: 'progress_knight',
+    two_number_tokens: 'progress_tokens'
 };
 
 // The two shapes the server takes: a single key, or a list of them.
@@ -888,6 +892,24 @@ const DECK_ICONS = { science: '🟢', trade: '🟡', politics: '🔵' };
 // resources.
 
 /**
+ * The mode this card's target is picked in, or null if it is not picked on the
+ * board at all.
+ *
+ * Road Building names a road and is handed none: its two roads go down through
+ * the free-road flow afterwards, so it is played by pressing Play like any card
+ * that needs nothing.
+ *
+ * @param {object} card - Catalogue entry from the board payload
+ * @returns {string|null}
+ */
+function boardModeFor(card) {
+    if (card.target_chosen_later === true) {
+        return null;
+    }
+    return PROGRESS_MODES[card.needs_target] || null;
+}
+
+/**
  * Whether a mode is one of the target-picking ones.
  */
 export function isProgressMode(mode) {
@@ -923,7 +945,7 @@ function pickedCardEntry() {
  * @param {object} card - Its catalogue entry
  */
 function toggleProgressPick(cardId, card) {
-    const mode = PROGRESS_MODES[card.needs_target];
+    const mode = boardModeFor(card);
     if (!mode) {
         return;
     }
@@ -943,9 +965,14 @@ function toggleProgressPick(cardId, card) {
     }
 }
 
-// How many targets a card takes, for the few that take more than one, and the
-// fewest they will settle for.
-const MULTI_PICK = {};
+// How many targets a card takes, for the two that take more than one, and the
+// fewest they will settle for. The Inventor swaps a pair of tokens or nothing;
+// the Smith promotes "up to two" knights, so one is a legal play and the second
+// pick is offered rather than demanded.
+const MULTI_PICK = {
+    inventor: { max: 2, min: 2 },
+    smith: { max: 2, min: 1 }
+};
 
 function picksFor(cardId) {
     return MULTI_PICK[cardId] || { max: 1, min: 1 };
@@ -1005,7 +1032,7 @@ function sendProgressPick() {
     if (!cardId || !card || picked.length === 0) {
         return;
     }
-    const mode = PROGRESS_MODES[card.needs_target];
+    const mode = boardModeFor(card);
     emitGame('play_progress_card', {
         name: viewState.identity.name,
         card: cardId,
@@ -1024,7 +1051,13 @@ function sendProgressPick() {
 // the player nothing about which hex either one wants.
 const PICK_HINTS = {
     merchant: 'Tap a land hex touching one of your own buildings.',
-    bishop: 'Tap the hex to move the robber to.'
+    bishop: 'Tap the hex to move the robber to.',
+    medicine: 'Tap one of your own settlements to upgrade.',
+    engineer: 'Tap one of your own cities to wall.',
+    diplomat: 'Tap a road with a free end - your own, or anybody\'s.',
+    intrigue: 'Tap an opponent\'s knight standing next to one of your roads.',
+    smith: 'Tap one of your own knights, then a second one or Promote.',
+    inventor: 'Tap two number tokens to swap. 2, 6, 8 and 12 cannot be moved.'
 };
 
 /**
@@ -1153,7 +1186,7 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
 
     // A card picked on the board is played by the tap, not by this button: it
     // arms the board and says so, and pressing it again puts the card back.
-    const boardMode = PROGRESS_MODES[card.needs_target];
+    const boardMode = boardModeFor(card);
     const aiming = boardMode && progressPickCard() === cardId;
 
     const play = document.createElement('button');
@@ -1165,6 +1198,21 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
     play.disabled = Boolean(reason);
     play.title = reason;
     actions.appendChild(play);
+
+    // A Smith may promote one knight or two, so once it has enough to be worth
+    // playing the player is offered the choice of stopping there. Without it a
+    // player with one promotable knight could only cancel.
+    const picked = aiming ? viewState.progressPick.picked.length : 0;
+    const picks = picksFor(cardId);
+    if (aiming && picked >= picks.min && picked < picks.max) {
+        const send = document.createElement('button');
+        send.type = 'button';
+        send.className = 'progress-play';
+        send.dataset.progressCard = cardId;
+        send.dataset.progressAction = 'send';
+        send.textContent = `Play with ${picked}`;
+        actions.appendChild(send);
+    }
 
     row.appendChild(actions);
 
@@ -1278,6 +1326,10 @@ progressHandDiv?.addEventListener('click', (event) => {
     }
     if (button.dataset.progressAction === 'pick') {
         toggleProgressPick(cardId, card);
+        return;
+    }
+    if (button.dataset.progressAction === 'send') {
+        sendProgressPick();
         return;
     }
     const selects = button.parentElement.querySelectorAll('.progress-target');

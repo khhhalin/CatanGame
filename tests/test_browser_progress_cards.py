@@ -38,6 +38,7 @@ from browser_harness import (
     start_server,
     stop_server,
 )
+from game import cities_knights as ck_module
 from game import persistence, progress_cards
 from game import rules as rules_module
 from game.game import Game
@@ -296,6 +297,81 @@ def alchemist(browser, tmp_path):
         yield live
 
 
+def a_medicine_card(game):
+    """A settlement to upgrade and the discounted price of a city."""
+    actor = game.current_player_name()
+    home = _inland_vertices(game)[0]
+    game.vertices[home].building = {"type": "settlement", "player": actor}
+    game.get_player(actor).settlements.append(home)
+    _hand(game, actor, ore=2, wheat=1)
+    _give_card(game, actor, "medicine")
+    return {"home": home}
+
+
+@pytest.fixture
+def medicine(browser, tmp_path):
+    with table(browser, tmp_path, a_medicine_card) as live:
+        yield live
+
+
+def an_inventor_card(game):
+    """The card, and the two number tokens it is allowed to swap."""
+    actor = game.current_player_name()
+    _hand(game, actor)
+    _give_card(game, actor, "inventor")
+    movable = [
+        key for key, hex_obj in sorted(game.hexes.items())
+        if hex_obj.number is not None and hex_obj.number not in (2, 6, 8, 12)
+    ]
+    assert len(movable) >= 2, "the board has too few movable number tokens"
+    protected = [
+        key for key, hex_obj in sorted(game.hexes.items())
+        if hex_obj.number in (2, 6, 8, 12)
+    ]
+    return {"movable": movable, "protected": protected}
+
+
+@pytest.fixture
+def inventor(browser, tmp_path):
+    with table(browser, tmp_path, an_inventor_card) as live:
+        yield live
+
+
+def a_smith_and_two_knights(game):
+    """Two of the player's own basic knights, both promotable, and the Smith."""
+    actor = game.current_player_name()
+    home = _inland_vertices(game)[0]
+    _roads_around(game, actor, home)
+    _hand(game, actor)
+    _give_card(game, actor, "smith")
+    spots = list(game.vertices[home].neighbors["vertices"])[:2]
+    for spot in spots:
+        game.ck.knights_of(actor).append(ck_module.Knight(spot))
+    return {"knights": spots}
+
+
+@pytest.fixture
+def smith(browser, tmp_path):
+    with table(browser, tmp_path, a_smith_and_two_knights) as live:
+        yield live
+
+
+def a_diplomat_card(game):
+    """Roads with a free end apiece, which is what a Diplomat may remove."""
+    actor = game.current_player_name()
+    home = _inland_vertices(game)[0]
+    _roads_around(game, actor, home)
+    _hand(game, actor)
+    _give_card(game, actor, "diplomat")
+    return {"roads": list(game.vertices[home].neighbors["edges"])}
+
+
+@pytest.fixture
+def diplomat(browser, tmp_path):
+    with table(browser, tmp_path, a_diplomat_card) as live:
+        yield live
+
+
 # --- Road Building ---------------------------------------------------------
 #
 # The cheapest of the 13 blocked cards: the server already takes no target for
@@ -488,6 +564,175 @@ class TestAlchemist:
         )
         assert faces == ["2", "3"], f"the dice came up {faces}, not the pair chosen"
         assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- Targets on the board: an intersection, a road, a knight, two tokens ----
+
+
+class TestMedicine:
+    def test_medicine_upgrades_the_settlement_that_was_tapped(self, medicine):
+        """A vertex pick, and the discounted city it pays for."""
+        player, marks, _ = medicine
+
+        arm_pick(player, "medicine")
+        aim_at(player, "vertex", [marks["home"]])
+        confirm_pick(player, "Medicine")
+        wait_for_card_spent(player, "medicine")
+
+        player.page.wait_for_function(
+            "vertex => (window.__catanDebug.getBoard().vertices[vertex].building"
+            "  || {}).type === 'city'",
+            arg=marks["home"], timeout=8000,
+        )
+        assert dict((player.me() or {}).get("resources") or {}) == EMPTY_HAND, (
+            "the discounted price was not taken"
+        )
+        next_frame(player.page)
+        shot(player, "medicine-city")
+
+
+class TestDiplomat:
+    def test_the_diplomat_removes_the_road_that_was_tapped(self, diplomat):
+        """An edge pick — and the free road the card gives back for it."""
+        player, marks, _ = diplomat
+
+        arm_pick(player, "diplomat")
+        removed = aim_at(player, "edge", marks["roads"])
+        confirm_pick(player, "Diplomat")
+        wait_for_card_spent(player, "diplomat")
+
+        player.page.wait_for_function(
+            "edge => !window.__catanDebug.getBoard().edges[edge].road",
+            arg=removed, timeout=8000,
+        )
+        # It was the player's own road, so they may rebuild it elsewhere free.
+        assert player.board()["free_roads_remaining"] == 1
+        next_frame(player.page)
+        shot(player, "diplomat-road-removed")
+
+
+class TestSmith:
+    def test_the_smith_promotes_both_knights_that_were_tapped(self, smith):
+        """Two picks, and only the second one sends anything.
+
+        The first tap records the knight the way a knight move records the one
+        it picked up: nothing has been sent, so there is nothing to confirm.
+        """
+        player, marks, _ = smith
+
+        arm_pick(player, "smith")
+        first = aim_at(player, "vertex", [marks["knights"][0]])
+        next_frame(player.page)
+        assert player.page.is_hidden("#placement-confirm"), (
+            "the first knight raised a ✓ for a card that had sent nothing"
+        )
+        assert selection(player)["progressPick"]["picked"] == [first]
+
+        aim_at(player, "vertex", [marks["knights"][1]])
+        confirm_pick(player, "Smith")
+        wait_for_card_spent(player, "smith")
+
+        player.page.wait_for_function(
+            "owner => (window.__catanDebug.getBoard().cities_knights.knights[owner]"
+            "  || []).every(knight => knight.rank === 2)",
+            arg=player.name, timeout=8000,
+        )
+        assert selection(player)["mode"] is None
+        assert player.noisy_errors() == [], player.noisy_errors()
+
+    def test_one_knight_is_a_legal_smith(self, smith):
+        """"Up to two": a player who wants to promote one may say so.
+
+        Without this the only way out of a half-finished Smith is to cancel it,
+        which is a worse deal than the card offers.
+        """
+        player, marks, _ = smith
+
+        arm_pick(player, "smith")
+        chosen = aim_at(player, "vertex", [marks["knights"][0]])
+        open_progress_fold(player)
+        player.page.click("[data-progress-action='send']")
+        wait_for_card_spent(player, "smith")
+
+        player.page.wait_for_function(
+            "([owner, vertex]) => (window.__catanDebug.getBoard()"
+            "  .cities_knights.knights[owner] || [])"
+            "  .some(knight => knight.vertex === vertex && knight.rank === 2)",
+            arg=[player.name, chosen], timeout=8000,
+        )
+        promoted = player.page.evaluate(
+            "owner => (window.__catanDebug.getBoard().cities_knights.knights[owner]"
+            "  || []).filter(knight => knight.rank === 2).length",
+            player.name,
+        )
+        assert promoted == 1, "playing with one knight promoted the other as well"
+
+
+class TestInventor:
+    def test_two_tokens_are_picked_in_turn_and_then_swapped(self, inventor):
+        """The odd card out: it takes two picks, and the player has to be able
+        to tell which one they are on and to get out of a half-finished one."""
+        player, marks, _ = inventor
+
+        arm_pick(player, "inventor")
+        assert "pick 1 of 2" in player.page.inner_text("#progress-cards-chip")
+
+        first = aim_at(player, "hex", marks["movable"])
+        next_frame(player.page)
+        assert player.page.is_hidden("#placement-confirm"), (
+            "the first token raised a ✓ for a swap that had sent nothing"
+        )
+        assert "pick 2 of 2" in player.page.inner_text("#progress-cards-chip")
+        shot(player, "inventor-first-token")
+
+        before = player.board()["hexes"]
+        second = aim_at(
+            player, "hex", [key for key in marks["movable"] if key != first]
+        )
+        confirm_pick(player, "Inventor")
+        wait_for_card_spent(player, "inventor")
+
+        player.page.wait_for_function(
+            "([one, other, was]) => {"
+            "  const hexes = window.__catanDebug.getBoard().hexes;"
+            "  return hexes[one].number === was; }",
+            arg=[first, second, before[second]["number"]], timeout=8000,
+        )
+        after = player.board()["hexes"]
+        assert after[first]["number"] == before[second]["number"]
+        assert after[second]["number"] == before[first]["number"]
+        next_frame(player.page)
+        shot(player, "inventor-tokens-swapped")
+
+    def test_a_protected_token_is_shown_as_blocked(self, inventor):
+        """2, 6, 8 and 12 do not move, and the ghost says so before the trip."""
+        player, marks, _ = inventor
+        if not marks["protected"]:
+            pytest.skip("this board has no protected tokens to aim at")
+
+        arm_pick(player, "inventor")
+        aim_at(player, "hex", marks["protected"])
+        player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
+        assert "not allowed here" in player.page.inner_text("#placement-announce")
+
+    def test_a_half_finished_swap_can_be_taken_back(self, inventor):
+        """Tapping the first token again unpicks it, and Cancel drops the lot —
+        neither of which may cost the player the card."""
+        player, marks, _ = inventor
+
+        arm_pick(player, "inventor")
+        first = aim_at(player, "hex", marks["movable"])
+        next_frame(player.page)
+        aim_at(player, "hex", [first])
+        next_frame(player.page)
+        assert selection(player)["progressPick"]["picked"] == []
+
+        aim_at(player, "hex", marks["movable"])
+        open_progress_fold(player)
+        press_play(player, "inventor")   # the same button, now Cancel
+        assert selection(player)["progressPick"]["card"] is None
+        assert selection(player)["mode"] is None
+        assert hand_of(player) == ["inventor"], "cancelling ate the card"
 
 
 # --- Nothing may be permanently unplayable ---------------------------------
