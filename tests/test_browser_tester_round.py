@@ -68,6 +68,12 @@ EVERY_EXPANSION = {
         # is wanted here.
         if value is not False
     },
+    # The two Longest-line awards feed one slot and exclude each other, so a
+    # coherent "every expansion" set keeps the Trade Route (which the seafaring
+    # preset ticks) and drops the base Longest Road card it replaces — the merge
+    # filter above skips that off-value, so state it here or the start is
+    # refused as incoherent.
+    "longest_road_card": False,
 }
 
 SET_RULES = """

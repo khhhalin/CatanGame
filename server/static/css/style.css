@@ -600,13 +600,16 @@ button:disabled {
 
 /* A rule that shares a slot with another: at most one of the pair may be on.
    The badge warns before ticking; the note under the row carries the reason
-   and is where an auto-uncheck says why it happened. */
+   and is where an auto-uncheck says why it happened. The exclusion identity is
+   carried by the accent border and soft fill; the text stays on the high-
+   contrast --text so the pair reads at WCAG AA in both themes (accent text on
+   the soft fill sits a hair under 4.5:1 and fails the contrast sweep). */
 .rule-exclusion-badge {
     font-size: 0.6rem;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--accent);
+    color: var(--text);
     background-color: var(--accent-soft);
     border: 1px solid var(--accent);
     border-radius: 3px;
@@ -617,7 +620,9 @@ button:disabled {
 
 .rule-exclusion {
     font-size: 0.75rem;
-    color: var(--accent);
+    color: var(--text);
+    border-left: 2px solid var(--accent);
+    padding-left: 0.4rem;
     margin-top: 0.3rem;
 }
 
@@ -626,7 +631,7 @@ button:disabled {
 .rule-exclusion-fired {
     font-weight: bold;
     background-color: var(--accent-soft);
-    border-radius: 3px;
+    border-radius: 0 3px 3px 0;
     padding: 0.2rem 0.4rem;
 }
 
