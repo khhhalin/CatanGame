@@ -160,6 +160,11 @@ class CitiesKnightsRules:
 
         self._pay(player, cost)
         self.ck.knights_of(player_name).append(ck_module.Knight(vertex_key))
+        # A knight interrupts an opponent's longest road through its
+        # intersection, so standing one there can take the card off them —
+        # but only if the award is recomputed now rather than whenever
+        # somebody next builds a road.
+        self.update_longest_road()
         return {'success': True, 'error': ''}
 
     def activate_knight(self, player_name: str, vertex_key: str) -> dict:
@@ -251,6 +256,10 @@ class CitiesKnightsRules:
 
         knight.vertex = to_vertex
         knight.spend_action()
+        # Three intersections can change hands here — the one left behind, the
+        # one arrived at, and wherever a displaced knight ended up — and each
+        # of them may join or break somebody's longest road.
+        self.update_longest_road()
         return {'success': True, 'error': '', 'displaced': displaced}
 
     def _displacement_target(self, owner: str, from_vertex: str):
@@ -760,6 +769,8 @@ class CitiesKnightsRules:
             self.ck.knights_of(owner).remove(knight)
         else:
             knight.vertex = new_home
+        # Moving the knight off this intersection can restore a route it broke.
+        self.update_longest_road()
         return {'success': True, 'displaced': owner}
 
     def _progress_bishop(self, player_name: str, target) -> dict:
@@ -1105,6 +1116,9 @@ class CitiesKnightsRules:
             return {'deserted': None}
 
         self.ck.knights_of(owner).remove(knight)
+        # The deserter is off the board, so whatever route it was blocking is
+        # whole again.
+        self.update_longest_road()
         taker = choice['context']['to']
 
         # A knight of the same rank, "if they have a matching knight token
@@ -1124,6 +1138,8 @@ class CitiesKnightsRules:
         if self.ck.knight_at(option)[1] is not None:
             return {'placed': None}
         self.ck.knights_of(choice['player']).append(ck_module.Knight(option, rank))
+        # The replacement stands somewhere new, and can break a route there.
+        self.update_longest_road()
         return {'placed': option, 'rank': rank}
 
     def _knight_placements(self, player_name: str) -> list:
