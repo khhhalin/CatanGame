@@ -19,7 +19,6 @@ from game.validation import (
 )
 from state import (
     COLOR_PALETTE,
-    MAX_PLAYERS,
     SAVE_FILE,
     emit_rules,
     emit_user_list,
@@ -31,6 +30,7 @@ from state import (
     reject,
     remove_user_by_name,
     save_game,
+    seat_limit,
     send_state_snapshot,
     update_users,
     viewer_for,
@@ -98,6 +98,11 @@ def handle_join(data):
         else:
             role = "observer"
 
+    # Read once, outside the users.json update: the cap is the table's rule
+    # (or this server's default), and it must not change between the refusal
+    # and the message that explains it.
+    seats = seat_limit()
+
     def add_or_replace(users):
         chosen_color = color
 
@@ -128,14 +133,14 @@ def handle_join(data):
                 1 for u in users
                 if u.get('role') == 'player' and u.get('name') in present
             )
-            if player_count >= MAX_PLAYERS:
+            if player_count >= seats:
                 return None, 'full'
 
         users.append({'name': name, 'role': role, 'color': chosen_color})
         return users, 'ok'
 
     if update_users(add_or_replace) == 'full':
-        reject('GAME_FULL', f'Cannot join as player. Max {MAX_PLAYERS} players allowed.')
+        reject('GAME_FULL', f'Cannot join as player. Max {seats} players allowed.')
         return
 
     # Bind the socket's private view only now that the join has been accepted.

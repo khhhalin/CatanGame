@@ -2,7 +2,7 @@
 
 import { setHighlight } from './board.js';
 import { renderCitiesKnights } from './cities-knights.js';
-import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerLimit, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
 import { requestLogCatchUp } from './event-log.js';
 import { displayError, showNotice } from './notices.js';
 import { emitGame, socket } from './socket.js';
@@ -197,6 +197,7 @@ export function renderUserList() {
     playerList.innerHTML = '';
     observerList.innerHTML = '';
     playerCount.textContent = roster.players.length;
+    playerLimit.textContent = roster.maxPlayers;
 
     const appendName = (list, name) => {
         const li = document.createElement('li');

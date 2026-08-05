@@ -284,6 +284,15 @@ RULES += [
          "Base game rulebook (3); expansions.md 804 (Catan for Two)",
          "How many players must be in the lobby before a game can start. "
          "Set it to 1 to try the board on your own."),
+    # 0 is not "no limit": it means "whatever this server is configured with",
+    # exactly as the clocks below do. A table that never opened the setting
+    # keeps the deployment's own cap.
+    _int("max_players", "Seats at the table", 0, 0, 6,
+         "Base game rulebook (4 players); Catan 5-6 Player Extension rulebook "
+         "(6, on the larger board)",
+         "How many people may take a seat. The 5-6 player game needs a board "
+         "with room for them - the large map or a custom one. 0 keeps this "
+         "server's own default."),
     _int("max_settlements", "Settlements per player", 5, 1, 20,
          "Base game rulebook (5 pieces in the box)",
          "How many settlements each player may have standing at once."),

@@ -16,6 +16,7 @@ export const joinBtn = document.getElementById('join-btn');
 export const playerList = document.getElementById('players');
 export const observerList = document.getElementById('observers');
 export const playerCount = document.getElementById('player-count');
+export const playerLimit = document.getElementById('player-limit');
 const rolePlayer = document.getElementById('role-player');
 const roleObserver = document.getElementById('role-observer');
 export const joinColorPicker = document.getElementById('join-color-picker');

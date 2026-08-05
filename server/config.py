@@ -16,6 +16,8 @@ class Config:
 
     # Game knobs. Here rather than as literals in handlers so a test can run
     # with a one-second turn timer and production can run with a real one.
+    # The fallback seat count, used when the table leaves the `max_players`
+    # rule at 0 — the same arrangement as the clocks below.
     MAX_PLAYERS = 4
     MIN_PLAYERS = 2
     VICTORY_POINTS_TO_WIN = 10

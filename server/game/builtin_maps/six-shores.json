@@ -1,0 +1,168 @@
+{
+  "author": "CatanPro",
+  "frame": {
+    "radius": 5
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 5,
+      "ore": 1,
+      "sheep": 2,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "six-shores",
+  "map_version": 1,
+  "name": "Six Shores (5-6 players)",
+  "notes": "Ours, not a rulebook's: no published Seafarers scenario for five or six players is reproduced here. The tiles and the tokens are the 5-6 Player Extension's two boxes exactly - 30 terrain hexes and 28 number tokens - with the base game's 19 hexes and 18 tokens on the mainland and the extension's 11 hexes and 10 tokens dealt to three outlying islands. 11 harbours, which is what the extension's frame holds. Needs Ships: three of the four landmasses are across water.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "0,6,-6",
+        "3,3,-6",
+        "6,0,-6",
+        "-3,6,-3",
+        "0,3,-3",
+        "3,0,-3",
+        "6,-3,-3",
+        "-6,6,0",
+        "-3,3,0",
+        "0,0,0",
+        "3,-3,0",
+        "6,-6,0",
+        "-6,3,3",
+        "-3,0,3",
+        "0,-3,3",
+        "3,-6,3",
+        "-6,0,6",
+        "-3,-3,6",
+        "0,-6,6"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          2,
+          3,
+          3,
+          4,
+          4,
+          5,
+          5,
+          6,
+          6,
+          8,
+          8,
+          9,
+          9,
+          10,
+          10,
+          11,
+          11,
+          12
+        ],
+        "terrain": {
+          "brick": 3,
+          "desert": 1,
+          "ore": 3,
+          "sheep": 4,
+          "wheat": 4,
+          "wood": 4
+        }
+      }
+    },
+    {
+      "color": "#c9a227",
+      "hexes": [
+        "0,12,-12",
+        "3,9,-12",
+        "6,6,-12",
+        "9,3,-12"
+      ],
+      "id": "north-reach",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          3,
+          6,
+          9,
+          12
+        ],
+        "terrain": {
+          "ore": 1,
+          "sheep": 1,
+          "wheat": 1,
+          "wood": 1
+        }
+      }
+    },
+    {
+      "color": "#c97f27",
+      "hexes": [
+        "12,-6,-6",
+        "12,-9,-3",
+        "12,-12,0",
+        "9,-12,3"
+      ],
+      "id": "east-reach",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          2,
+          4,
+          8,
+          10
+        ],
+        "terrain": {
+          "brick": 1,
+          "ore": 1,
+          "sheep": 1,
+          "wheat": 1
+        }
+      }
+    },
+    {
+      "color": "#a2678f",
+      "hexes": [
+        "0,-12,12",
+        "-3,-9,12",
+        "-6,-6,12"
+      ],
+      "id": "south-reach",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          5,
+          11
+        ],
+        "terrain": {
+          "brick": 1,
+          "desert": 1,
+          "wood": 1
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 61
+        }
+      }
+    }
+  ],
+  "robber_start": "auto"
+}

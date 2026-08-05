@@ -42,8 +42,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         edges (dict): Map of edge key -> Edge object.
     """
 
-    # Predefined colors for up to 4 players
-    PLAYER_COLORS = ['#e74c3c', '#3498db', '#f39c12', '#9b59b6']
+    # A colour per seat, for a player who never picked one. Six of them, in
+    # seating order: the last two are the 5-6 Player Extension's own green and
+    # brown, because a fifth player used to fall through to white and a sixth
+    # sat in the same white beside them. Ink on these comes from the WCAG
+    # `getContrastColor` in static/js/contrast.js, and every one of them clears
+    # AA against the better of black and white.
+    PLAYER_COLORS = ['#e74c3c', '#3498db', '#f39c12', '#9b59b6',
+                     '#27ae60', '#8e5a2b']
 
     # Direction vectors for generating neighbors (from hex.md)
     # Used to find adjacent hexes from any given hex
@@ -113,7 +119,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         # Setup phase variables
         self.game_phase = "setup"  # "setup" or "playing"
-        self.setup_turn = 0  # 0-7 for 8 setup turns
+        self.setup_turn = 0  # two placements per seat, out and back
         self.setup_action = "settlement"  # "settlement" or "road"
         self.last_setup_settlement = None  # vertex key of last placed settlement
         # player_name -> settlement vertex keys, in placement order (the
@@ -355,14 +361,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
     def _get_setup_player_index(self) -> int:
         """Get player index based on setup turn order.
 
-        Setup order: 0,1,2,3,3,2,1,0 (A->B->C->D->D->C->B->A)
+        Out along the seating order and back down it: with four players
+        0,1,2,3,3,2,1,0, and with six 0..5,5..0. Derived from the seat count,
+        never from a table's worth of literals.
         """
         num_players = len(self.players)
         if self.setup_turn < num_players:
-            # First round: forward (0,1,2,3)
+            # First round: forward, in seating order
             return self.setup_turn
         else:
-            # Second round: reverse (3,2,1,0)
+            # Second round: back down it
             return (2 * num_players - 1) - self.setup_turn
 
     def setup_building_type(self) -> str:

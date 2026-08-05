@@ -144,6 +144,24 @@ COLOR_PALETTE = [
 ]
 
 
+def seat_limit() -> int:
+    """How many players this table seats.
+
+    The cap is a rule like the clocks are: 0 means "whatever this server is
+    configured with", so a table that never opened the setting gets the
+    deployment's own number and an old save loads without inventing one. It
+    was a bare config constant, which made it the one seating number the
+    lobby could not agree on — `min_players` has always been a rule.
+
+    A running game answers from its own frozen rules: the rules a game started
+    under are the rules it is played under, and a seat opened mid-game by a
+    lobby edit would seat a seventh player into a six-player board.
+    """
+    game = session().game
+    rules = game.rules if game is not None else session().lobby_rules
+    return rules['max_players'] or MAX_PLAYERS
+
+
 def get_random_color():
     """Get a random color from the palette."""
     return random.choice(COLOR_PALETTE)
@@ -456,5 +474,5 @@ def emit_user_list():
         'players': players,
         'observers': observers,
         'min_players': session().lobby_rules['min_players'],
-        'max_players': MAX_PLAYERS,
+        'max_players': seat_limit(),
     })

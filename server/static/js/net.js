@@ -62,7 +62,7 @@ socket.on('changelog', (data) => {
 });
 
 socket.on('user_list', (data) => {
-    setRoster(data.players, data.observers, data.min_players);
+    setRoster(data.players, data.observers, data.min_players, data.max_players);
     renderUserList();
     updateStartButton();
 });

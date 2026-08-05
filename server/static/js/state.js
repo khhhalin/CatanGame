@@ -18,7 +18,7 @@ export const viewState = {
         // The board payload. Null is what "no game is running" means.
         board: null,
         // Who the server seats, and how many it takes to start.
-        roster: { players: [], observers: [], minPlayers: 2 },
+        roster: { players: [], observers: [], minPlayers: 2, maxPlayers: 4 },
         // The lobby rule set, exactly as the server last broadcast it. The
         // client never writes to `selected` itself - a change is emitted and
         // re-read from the `rules_changed` reply, so every table member sees
@@ -199,13 +199,19 @@ export function getRole() {
  * @param {Array} players - Player names, or user objects carrying `name`
  * @param {Array} observers - The same, for observers
  * @param {number} [minPlayers] - Minimum needed to start, when the payload says
+ * @param {number} [maxPlayers] - Seats at this table, when the payload says
  */
-export function setRoster(players, observers, minPlayers) {
+export function setRoster(players, observers, minPlayers, maxPlayers) {
     const nameOf = (entry) => (typeof entry === 'string' ? entry : entry?.name);
     viewState.server.roster.players = (players || []).map(nameOf);
     viewState.server.roster.observers = (observers || []).map(nameOf);
     if (typeof minPlayers === 'number') {
         viewState.server.roster.minPlayers = minPlayers;
+    }
+    // The cap is a rule the table can raise for a 5-6 player board, so the
+    // lobby heading reads it from here rather than from a "/4" in the markup.
+    if (typeof maxPlayers === 'number') {
+        viewState.server.roster.maxPlayers = maxPlayers;
     }
 }
 
