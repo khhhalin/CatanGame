@@ -141,5 +141,12 @@ once admitted as a near miss on an engine file mid-edit.
   is the discipline anyway. If you must compare against a parent commit, use
   `git archive <sha> | tar -x -C "$(mktemp -d)"` and work in that copy.
 - Stage by explicit path, always. Never `git add -A`, `git add .` or `commit -a`.
+- **Commit by explicit path too: `git commit -- <your paths>`.** Staging carefully is
+  not enough. A bare `git commit` commits the *whole index*, including files another
+  agent staged seconds ago and has not committed yet. This happened: `e3d3828` was
+  meant to be a Longest Road fix and swept an entire unrelated trade-clock change in
+  with it, so that work now sits under a commit message describing something else.
+  Nothing was lost, but the history lies, and the fix — a rebase — is exactly what
+  the rule above forbids while others are working.
 - On `index.lock`, wait and retry — that is another agent committing, not
   corruption.
