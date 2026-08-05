@@ -643,6 +643,20 @@ class TestLobbyRules:
         assert [preset['id'] for preset in payload['presets']] == \
             [preset['id'] for preset in rules_module.PRESETS]
 
+    def test_the_exclusion_groups_ride_the_same_broadcast(self, socket_app):
+        """The picker decorates and auto-unchecks excluding rows, so it needs
+        the groups; they travel on rules_changed with no new event."""
+        client = socketio.test_client(socket_app)
+        client.emit('join', {'name': 'A', 'role': 'player'})
+
+        payload = events(client, 'rules_changed')[-1]
+
+        groups = {group['id']: group for group in payload['exclusions']}
+        assert 'longest_line_award' in groups
+        assert set(groups['longest_line_award']['rules']) == \
+            {'longest_road_card', 'longest_trade_route'}
+        assert groups['longest_line_award']['reason']
+
     def test_an_unknown_preset_is_refused(self, socket_app):
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})

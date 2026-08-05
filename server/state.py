@@ -414,12 +414,15 @@ def emit_rules(to_sender_only=False):
     from the server's registry — adding a rule server-side makes it appear in
     every client with no front-end change. The presets ride along for the same
     reason: each one is a named set of individual rules the lobby can offer as
-    a one-click shortcut.
+    a one-click shortcut. The mutual-exclusion groups ride along too, so the
+    picker can decorate excluding rows and auto-uncheck a rival when its partner
+    is ticked.
     """
     live = session()
     payload = {
         'catalogue': rules_module.catalogue(),
         'presets': rules_module.presets(),
+        'exclusions': rules_module.exclusions(),
         'selected': live.lobby_rules,
         'locked': live.game is not None and live.game.game_state == "started",
     }
