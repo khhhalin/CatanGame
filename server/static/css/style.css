@@ -2016,7 +2016,7 @@ button:disabled {
 .resource-selector {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
 }
 
 .resource-selector label {
@@ -2035,6 +2035,55 @@ button:disabled {
     text-align: center;
 }
 
+/* Every picker in a give/want block is one cell of one grid, resource and
+   commodity alike. The tester's "ore is too close to cloth (different distance
+   than other resources)" was the seam between the two blocks: commodities are
+   a second `.resource-selector` (trade.js hides it when the table does not
+   play them), so ore and cloth sat flush at 0px while the pickers inside each
+   block were 8px apart. `display: contents` drops both wrappers out of the box
+   tree, which leaves one `gap` governing all eight pickers and no seam to be
+   uneven. `.hidden` is `!important`, so hiding the commodity block still
+   works.
+
+   Two columns is also what pays for the taller fields below: eight pickers a
+   side became four rows rather than eight, and the dialog got shorter while
+   its controls got bigger. */
+.trade-modal-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.trade-modal-section h3 {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.trade-modal-section .resource-selector {
+    display: contents;
+}
+
+/* "in trade tab its hard to click the small arrows": Chromium draws a number
+   field's spinner inside the field, sizes it off the field's height and only
+   paints it on hover, so a 24px field offered about 12px of arrow that a
+   player had to find first. The field is the touch target - it is now as tall
+   as a button, and the arrows are pinned visible and widened to match. A
+   stepper wider than the field itself would need script, so this is as large
+   as the field alone can make it. */
+.trade-modal-section input {
+    width: 100%;
+    max-width: 4.5rem;
+    min-height: 2.5rem;
+    font-size: var(--text-md);
+}
+
+.trade-modal-section input::-webkit-inner-spin-button {
+    opacity: 1;
+    width: 1.25rem;
+    height: 100%;
+}
+
 /* Commodities are a second kind of card, not three more resources: without a
    rule between the two rows the dialog reads as one list of eight resources. */
 #discard-commodities {
@@ -2051,6 +2100,31 @@ button:disabled {
     padding: 0.8rem;
 }
 
+/* "trade tab is too big in terms of height": at 390x780 this dialog wanted
+   948px in a 702px box, so Propose was under a scrollbar inside a dialog. The
+   grid above took the pickers from sixteen rows to eight; the rest is the
+   chrome around them, tightened here rather than in `.modal-content` so the
+   other dialogs keep the padding they were designed with. */
+#trade-modal .modal-content {
+    padding: var(--space-4);
+    /* `dvh` for the same reason the shell uses it: on a phone the browser's own
+       chrome must not be what pushes Propose under a scrollbar. */
+    max-height: calc(100dvh - var(--space-5));
+}
+
+#trade-modal h2 {
+    margin-bottom: var(--space-2);
+}
+
+#trade-modal .dialog-hand {
+    margin-bottom: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+}
+
+#trade-modal #submit-trade-btn {
+    margin-top: var(--space-2);
+}
+
 /* The bank rate a player actually holds, and what their numbers will do with
    it. Both are text: a colour saying "this trade wastes a card" would say
    nothing at all to a player who cannot see the difference. */
@@ -2059,7 +2133,7 @@ button:disabled {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-1) var(--space-2);
-    margin-bottom: var(--space-3);
+    margin-bottom: var(--space-2);
     font-size: var(--text-xs);
     color: var(--text-muted);
 }
@@ -2069,7 +2143,7 @@ button:disabled {
 }
 
 .trade-rate-chip {
-    padding: 0.1rem var(--space-2);
+    padding: 0.1rem var(--space-1);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
     background: var(--surface-2);
@@ -2086,8 +2160,8 @@ button:disabled {
 }
 
 .trade-verdict {
-    margin-top: var(--space-3);
-    padding: var(--space-2) var(--space-3);
+    margin-top: var(--space-2);
+    padding: var(--space-2);
     border-left: 3px solid var(--border-strong);
     border-radius: var(--radius-sm);
     background: var(--surface-2);
