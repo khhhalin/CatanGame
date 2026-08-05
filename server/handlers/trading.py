@@ -10,6 +10,7 @@ from game.validation import (
 )
 from state import (
     bump_and_broadcast,
+    log_event,
     rate_limited,
     reject,
     require_actor,
@@ -18,6 +19,16 @@ from state import (
 from handlers.phases import blocked_by_phase
 
 logger = logging.getLogger(__name__)
+
+
+def _cards_phrase(cards: dict) -> str:
+    """"2 wheat and 1 ore" - what a player would say out loud."""
+    parts = [f"{count} {card}" for card, count in sorted(cards.items()) if count]
+    if not parts:
+        return 'nothing'
+    if len(parts) == 1:
+        return parts[0]
+    return ', '.join(parts[:-1]) + ' and ' + parts[-1]
 
 
 @socketio.on('propose_trade')
@@ -67,6 +78,15 @@ def handle_propose_trade(data):
         rate = result['rate_used']
         logger.info(
             "bank trade player=%s offered=%s wanted=%s rate=%s", name, offered, wanted, rate
+        )
+        # The shared log, not only the server's: cards left a hand, and until
+        # now the history said nothing happened. The player-to-player branch
+        # has always been visible; this one was not.
+        log_event(
+            'trade',
+            f"{name} traded {_cards_phrase(offered)} to the bank "
+            f"for {_cards_phrase(wanted)} at {rate}:1",
+            player=name,
         )
         socketio.emit(
             'bank_trade_completed', {'offered': offered, 'wanted': wanted, 'rate_used': rate}

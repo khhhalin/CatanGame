@@ -55,13 +55,12 @@ class RobberRules:
                 'The robber must be moved to a different hex than the one it is on',
             )
 
-        # Friendly Robber, when enabled, protects anyone still on 2 victory points.
-        if not self.robber_is_allowed(hex_key):
-            return refused(
-                'FRIENDLY_ROBBER',
-                'Friendly Robber: that hex touches a settlement of a player on '
-                '2 victory points. Pick another hex.',
-            )
+        # Two different rules can refuse a hex, and telling a player the wrong
+        # one is worse than saying nothing: they go looking for a rule that is
+        # not even in play.
+        refusal = self.robber_refusal(hex_key)
+        if refusal is not None:
+            return refused(*refusal)
 
         self.robber_hex = hex_key
         self.must_move_robber = False
@@ -235,6 +234,32 @@ class RobberRules:
         if number is None:
             return 0
         return 6 - abs(7 - number)
+
+    def robber_refusal(self, hex_key: str):
+        """Why this hex is closed to the robber, or None if it is open.
+
+        `robber_is_allowed` answers yes-or-no, which is all the automatic
+        resolver needs. A player needs the reason, and there are two of them.
+        """
+        if hex_key not in self.hexes:
+            return 'INVALID_TARGET', 'That is not a hex on this board'
+
+        if (not self.rules['robber_may_return_to_desert']
+                and self.hexes[hex_key].type == 'desert'):
+            return (
+                'ROBBER_NOT_ON_DESERT',
+                'This table keeps the robber off the desert. Pick a hex that '
+                'produces something.',
+            )
+
+        if not self.robber_is_allowed(hex_key):
+            return (
+                'FRIENDLY_ROBBER',
+                'Friendly Robber: that hex touches a settlement of a player on '
+                '2 victory points. Pick another hex.',
+            )
+
+        return None
 
     def robber_is_allowed(self, hex_key: str) -> bool:
         """Whether the robber may be moved onto this hex.
