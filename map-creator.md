@@ -46,7 +46,7 @@ It does **not** give you the published Seafarers scenarios verbatim:
 | The Four Islands | nothing in the engine — but per-player *home island* setup restrictions ("starting settlements on the main island only") are not expressible |
 | Heading for New Shores | as above, plus the robber's start varying by player count |
 | The Fog Island | lazy tile reveal on exploration, a hidden server-side stack |
-| Any 5–6 player scenario | `MAX_PLAYERS = 4` in `server/config.py` |
+| ~~Any 5–6 player scenario~~ | Lifted: `max_players` is a rule now, and `builtin_maps/six-shores.json` is a four-landmass board for six |
 | Gold field scenarios | a `gold` terrain, a production hook, and a client for `pending_choice` — which has no UI at all (`OPEN-THREADS.md` §1) |
 
 So: the geometry and the resource mix are in scope and cheap; **scenario setup
@@ -874,7 +874,7 @@ more than one island, reachable by ship, scoring island points.**
 - **Per-map victory target.** A suggestion the editor and lobby display; the
   `victory_target` rule still decides.
 - **Any map-level modifier**, per §6.
-- **5–6 player frames.** `MAX_PLAYERS = 4`.
+- ~~**5–6 player frames.**~~ `max_players` became a catalogue rule (0 = the server's default), `PLAYER_COLORS` carries six, and `six-shores.json` proves the format can express a board for them.
 - **Import/export, undo history, thumbnails.**
 - **Concurrent editing.** One game per process, one table, last write wins. The
   players are in the same room and can talk.
@@ -962,7 +962,7 @@ may delete (anyone, with confirmation, refused while in use), fixed pools
    stay under 8 KB in v1 and let `"remaining"` do the work; revisit when fixed
    pools land in v2, which is when it will actually break.
 
-3. **Frame radius cap of 6 (127 hexes) and `MAX_PLAYERS = 4`.** A Seafarers 5–6
+3. **Frame radius cap of 6 (127 hexes).** (`MAX_PLAYERS = 4` is no longer part of this: it is a rule, and a six-player board ships.) A Seafarers 5–6
    player scenario needs both raised. Is that ever in scope, or is this a
    four-player table forever? It changes nothing in v1 either way, but it
    changes whether the editor should warn about board sizes no table here can
