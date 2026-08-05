@@ -20,7 +20,7 @@
 // as it was offered, because the recorded list is the server's allowlist and a
 // value this client invented would be refused by it - correctly.
 
-import { COMMODITY_ICONS, RESOURCE_ICONS } from './constants.js';
+import { resourceTile, statusIcon } from './icons.js';
 import { choiceContext, choiceIndicator, choiceOptions, choicePanel, choicePrompt, choiceWaitingText } from './dom.js';
 import { emitGame } from './socket.js';
 import { getBoard, viewState } from './state.js';
@@ -34,17 +34,32 @@ const VERTEX_KINDS = ['barbarian_city', 'deserter', 'deserter_placement'];
 // own `prompt`: the wording lives in `game/pending_choice.py` so a refusal, a
 // log line and this panel cannot drift apart.
 const CHOICE_TITLES = {
-    // Plain emoji, no ZWJ sequences: a pirate flag is a three-codepoint join
-    // and falls back to a tofu box on a system without it.
-    barbarian_city: '🏛️ The barbarians are sacking a city',
-    progress_deck: '🎴 Draw a progress card',
-    commercial_harbor: '⚓ Commercial Harbor',
-    merchant_fleet: '⛵ Merchant Fleet',
-    master_merchant: '💰 Master Merchant',
-    spy: '🕵️ Spy',
-    wedding: '💍 Wedding',
-    deserter: '🏃 Deserter',
-    deserter_placement: '⚔️ Your new knight',
+    barbarian_city: 'The barbarians are sacking a city',
+    progress_deck: 'Draw a progress card',
+    commercial_harbor: 'Commercial Harbor',
+    merchant_fleet: 'Merchant Fleet',
+    master_merchant: 'Master Merchant',
+    spy: 'Spy',
+    wedding: 'Wedding',
+    deserter: 'Deserter',
+    deserter_placement: 'Your new knight',
+};
+
+// The line icon that leads each heading, keyed by what the choice is about, not
+// by a glyph. Decorative: the title text beside it carries the meaning, so the
+// icon is aria-hidden. `spy` reuses the dev/progress glyph (it steals a progress
+// card) and `wedding` the hand glyph (it hands cards across the table) - the set
+// has no glyph of its own for either.
+const CHOICE_ICONS = {
+    barbarian_city: 'city',
+    progress_deck: 'progress',
+    commercial_harbor: 'harbormaster',
+    merchant_fleet: 'ship',
+    master_merchant: 'merchant',
+    spy: 'progress',
+    wedding: 'hand',
+    deserter: 'knight',
+    deserter_placement: 'knight',
 };
 
 // What a vertex option is, so "City on wheat 6, ore 9" reads as the thing being
@@ -55,7 +70,19 @@ const VERTEX_NOUNS = {
     deserter_placement: 'Stand',
 };
 
-const DECK_LABELS = { science: '🟢 Science', trade: '🟡 Trade', politics: '🔵 Politics' };
+// The piece a vertex option stands for, so its button leads with that piece's
+// line icon. A deserting knight's new stand is still a knight.
+const VERTEX_ICONS = {
+    barbarian_city: 'city',
+    deserter: 'knight',
+    deserter_placement: 'knight',
+};
+
+// The kinds whose options are a held card - a resource or a commodity. Their
+// buttons are a filled coloured tile that names itself, with no text beside it.
+const CARD_KINDS = ['commercial_harbor', 'merchant_fleet', 'master_merchant', 'wedding'];
+
+const DECK_LABELS = { science: 'Science', trade: 'Trade', politics: 'Politics' };
 
 const KNIGHT_RANK_NAMES = { 1: 'Basic', 2: 'Strong', 3: 'Mighty' };
 
@@ -167,18 +194,41 @@ function describeVertex(kind, key) {
 }
 
 /**
- * A card type - a resource or a commodity - with its icon.
+ * A card type - a resource or a commodity - named in prose.
  *
  * @param {string} cardType - e.g. 'wheat' or 'cloth'
  * @returns {string}
  */
 function describeCard(cardType) {
-    const icon = RESOURCE_ICONS[cardType] || COMMODITY_ICONS[cardType] || '';
-    return icon ? `${icon} ${cardType}` : cardType;
+    return cardType;
 }
 
 /**
- * What one option should say on its button.
+ * The icon that leads one option's button. A held card is a filled coloured
+ * tile that names itself (so it carries a label and stands without text); every
+ * other option pairs a decorative line icon with the text below.
+ *
+ * @param {object} choice - Pending choice from the payload
+ * @param {string} option - One of its options
+ * @returns {string} - Icon markup, or '' when the kind has none
+ */
+function optionIcon(choice, option) {
+    if (CARD_KINDS.includes(choice.kind)) {
+        const label = option.charAt(0).toUpperCase() + option.slice(1);
+        return resourceTile(option, { label });
+    }
+    if (VERTEX_KINDS.includes(choice.kind)) {
+        return statusIcon(VERTEX_ICONS[choice.kind]);
+    }
+    if (choice.kind === 'progress_deck' || choice.kind === 'spy') {
+        return statusIcon('progress');
+    }
+    return '';
+}
+
+/**
+ * What one option should say on its button, beside its icon. Empty for the card
+ * kinds, whose labelled tile is the whole option.
  *
  * @param {object} choice - Pending choice from the payload
  * @param {string} option - One of its options
@@ -198,7 +248,7 @@ function optionLabel(choice, option) {
         const card = getBoard()?.cities_knights?.progress_cards?.[option];
         return card?.name || option;
     }
-    return describeCard(option);
+    return '';
 }
 
 /**
@@ -258,10 +308,27 @@ function describeContext(choice) {
  */
 function waitingSentence(choice) {
     const prompt = String(choice.prompt || 'decide').replace(/\byour\b/g, 'their');
-    return `⏳ Waiting for ${choice.player} to ${prompt}`;
+    return `Waiting for ${choice.player} to ${prompt}`;
 }
 
 // ---------------------------------------------------------------- rendering
+
+/**
+ * Put an icon and its text into an element: the icon markup first (this
+ * module's own, safe to parse), then the text as a node (server data, never
+ * markup). Either half may be empty - a labelled tile stands with no text, a
+ * plain option with no icon.
+ *
+ * @param {HTMLElement} element - Target, its contents replaced
+ * @param {string} iconMarkup - Icon HTML from icons.js, or ''
+ * @param {string} text - Label text, or ''
+ */
+function fillIconLabel(element, iconMarkup, text) {
+    element.innerHTML = iconMarkup || '';
+    if (text) {
+        element.appendChild(document.createTextNode(iconMarkup ? ` ${text}` : text));
+    }
+}
 
 /**
  * Show, hide and fill the choice panel and the waiting indicator.
@@ -304,7 +371,8 @@ function renderMyChoice(choice) {
     }
     renderedSignature = signature;
 
-    choicePrompt.textContent = CHOICE_TITLES[choice.kind] || 'Your decision';
+    const titleIcon = CHOICE_ICONS[choice.kind] ? statusIcon(CHOICE_ICONS[choice.kind]) : '';
+    fillIconLabel(choicePrompt, titleIcon, CHOICE_TITLES[choice.kind] || 'Your decision');
 
     const prompt = String(choice.prompt || '');
     const sentence = prompt ? prompt.charAt(0).toUpperCase() + prompt.slice(1) + '.' : '';
@@ -325,9 +393,10 @@ function renderMyChoice(choice) {
         button.type = 'button';
         button.className = 'choice-option';
         button.dataset.choiceOption = option;
-        // Built rather than interpolated: an option is server data, and a card
-        // name or a player's own text must never be parsed as markup here.
-        button.textContent = optionLabel(choice, option);
+        // The icon markup is this module's own, but the text is server data - a
+        // card name or a player's own words - so it goes in as a text node,
+        // never parsed as markup.
+        fillIconLabel(button, optionIcon(choice, option), optionLabel(choice, option));
         fragment.appendChild(button);
     });
 
