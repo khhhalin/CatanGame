@@ -224,13 +224,14 @@ def marching_knight(browser, tmp_path):
 
 # --- Reading what is on screen ---------------------------------------------
 
-# The chip row inside a dialog, as counts. Read out of the rendered DOM rather
+# The tile row inside a dialog, as counts. Read out of the rendered DOM rather
 # than out of the payload: the payload being right is exactly the state this bug
-# was reported in.
+# was reported in. The count lives in its own `.count` span beside the coloured
+# tile, so reading it is the number a player sees, free of the tile's label.
 READ_CHIPS = """
 selector => Array.from(
-    document.querySelectorAll(selector + ' .resource-display .resource')
-).map(chip => chip.textContent.trim())
+    document.querySelectorAll(selector + ' .resource-display .res-cell .count')
+).map(cell => cell.textContent.trim())
 """
 
 # Whether an element is really readable where it is: on screen, laid out, not
@@ -261,12 +262,11 @@ id => getComputedStyle(document.getElementById(id)).backdropFilter
 
 
 def expected_chips(commodities=True):
-    counts = [f"{icon}{FULL_RESOURCES[card]}" for card, icon in
-              (("wood", "🌲"), ("brick", "🧱"), ("sheep", "🐑"),
-               ("wheat", "🌾"), ("ore", "🪨"))]
+    counts = [str(FULL_RESOURCES[card])
+              for card in ("wood", "brick", "sheep", "wheat", "ore")]
     if commodities:
-        counts += [f"{icon}{FULL_COMMODITIES[card]}" for card, icon in
-                   (("cloth", "🧵"), ("coin", "🪙"), ("paper", "📜"))]
+        counts += [str(FULL_COMMODITIES[card])
+                   for card in ("cloth", "coin", "paper")]
     return counts
 
 

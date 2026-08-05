@@ -1,9 +1,10 @@
 // Player-to-player trade, and the two development cards that need a choice
 // made in a dialog before the server can resolve them.
 
-import { COMMODITY_ICONS, COMMODITY_TYPES, RESOURCE_ICONS } from './constants.js';
+import { COMMODITY_TYPES } from './constants.js';
 import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
+import { resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { renderDialogHands } from './panels.js';
 import { findMyPlayer } from './player-view.js';
@@ -29,7 +30,12 @@ const TRADE_RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 // on one that does not.
 const TRADE_CARDS = [...TRADE_RESOURCES, ...COMMODITY_TYPES];
 
-const CARD_ICONS = { ...RESOURCE_ICONS, ...COMMODITY_ICONS };
+// The accessible name for a card's tile, whose colour is otherwise the only
+// thing identifying it beside a bare count or rate.
+const CARD_NAMES = {
+    wood: 'Wood', brick: 'Brick', sheep: 'Sheep', wheat: 'Wheat', ore: 'Ore',
+    cloth: 'Cloth', coin: 'Coin', paper: 'Paper',
+};
 
 /**
  * Whether the running game deals cloth, coin and paper at all.
@@ -131,7 +137,9 @@ function bestTradeRate(offered) {
 }
 
 /**
- * Format a resource bundle as "2🌲 1🧱 ", skipping empty entries.
+ * Format a resource bundle as a count and its coloured tile per card, skipping
+ * empty entries. Returns HTML - the cards are known ids and integer counts, so
+ * a caller sets it with innerHTML; anything server-named goes via textContent.
  *
  * @param {object} resources - {resource: amount}
  * @returns {string}
@@ -139,16 +147,18 @@ function bestTradeRate(offered) {
 function formatTradeBundle(resources) {
     return Object.entries(resources || {})
         .filter(([, count]) => count > 0)
-        .map(([card, count]) => `${count}${CARD_ICONS[card] || card}`)
-        .join(' ');
+        .map(([card, count]) =>
+            `${count} ${resourceTile(card, { label: CARD_NAMES[card] || card })}`)
+        .join('  ');
 }
 
 /**
  * The shell of one offer card: header with an optional proposer name, the
  * countdown, and the resources. The caller appends its own action row.
  *
- * Everything server-supplied lands via textContent - a player named
- * `<img src=x onerror=…>` has to read as literal text here.
+ * The proposer's name lands via textContent - a player named
+ * `<img src=x onerror=…>` has to read as literal text. The bundles are card
+ * ids and integer counts the server cleaned, so their tiles are set as HTML.
  *
  * @param {object} offer - One entry from `trades.active` or `trades.my_offers`
  * @param {string} giveText - What this viewer gives
@@ -184,7 +194,7 @@ function buildTradeOfferCard(offer, giveText, wantText, proposerName, proposerCo
 
     const give = document.createElement('span');
     give.className = 'give';
-    give.textContent = giveText;
+    give.innerHTML = giveText;
     resources.appendChild(give);
 
     const arrow = document.createElement('span');
@@ -193,7 +203,7 @@ function buildTradeOfferCard(offer, giveText, wantText, proposerName, proposerCo
 
     const want = document.createElement('span');
     want.className = 'want';
-    want.textContent = wantText;
+    want.innerHTML = wantText;
     resources.appendChild(want);
 
     card.appendChild(resources);
@@ -631,7 +641,11 @@ function renderBankRates() {
         // A harbour is only worth having if the player can see they hold one,
         // so the ones better than the table's flat rate are marked as such.
         chip.classList.toggle('is-harbour', rate < baseRate);
-        chip.textContent = `${CARD_ICONS[card]} ${rate}:1`;
+        // The name rather than a tile here: this strip is a dense horizontal
+        // row of eight chips, and a 30px tile in each tips the dialog past a
+        // phone's height (test_browser_trade_panel). A compact tile variant is
+        // the missing piece - reported alongside this change.
+        chip.textContent = `${CARD_NAMES[card] || card} ${rate}:1`;
         fragment.appendChild(chip);
     }
 
@@ -678,7 +692,8 @@ function renderTradeVerdict() {
         return;
     }
     if (verdict.kind === 'offer') {
-        tradeVerdict.textContent =
+        // Tiles, so innerHTML - the bundles are cleaned card ids and counts.
+        tradeVerdict.innerHTML =
             `Goes to the table: ${formatTradeBundle(verdict.offered)} `
             + `→ ${formatTradeBundle(verdict.wanted)}.`;
         return;

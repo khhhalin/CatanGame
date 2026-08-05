@@ -102,6 +102,8 @@ def _close_trade_modal(player):
 
 
 def _rate_chips(player):
+    # Each chip is now the resource name and the rate, not an emoji and the rate
+    # (the dense strip has to stay short enough to keep Propose on a phone).
     return dict(player.page.eval_on_selector_all(
         ".trade-rate-chip",
         "els => els.map(e => [e.dataset.resource, e.textContent.trim()])",
@@ -144,7 +146,7 @@ class TestTheRateOnScreenIsTheRateHeld:
 
         _open_trade_modal(alice)
         chips = _rate_chips(alice)
-        assert chips["wood"] == "🌲 3:1", chips
+        assert chips["wood"] == "Wood 3:1", chips
         assert alice.page.eval_on_selector_all(
             ".trade-rate-chip.is-harbour", "els => els.length"
         ) == 5, "a 3:1 harbour improves every resource, so every chip is marked"
@@ -221,7 +223,9 @@ class TestAPlayerWithNoHarbour:
 
         _open_trade_modal(bob)
         chips = _rate_chips(bob)
-        assert set(chips.values()) == {"🌲 4:1", "🧱 4:1", "🐑 4:1", "🌾 4:1", "🪨 4:1"}, chips
+        assert set(chips.values()) == {
+            "Wood 4:1", "Brick 4:1", "Sheep 4:1", "Wheat 4:1", "Ore 4:1"
+        }, chips
         assert bob.page.eval_on_selector_all(
             ".trade-rate-chip.is-harbour", "els => els.length"
         ) == 0
