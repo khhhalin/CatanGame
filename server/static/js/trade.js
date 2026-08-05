@@ -641,11 +641,14 @@ function renderBankRates() {
         // A harbour is only worth having if the player can see they hold one,
         // so the ones better than the table's flat rate are marked as such.
         chip.classList.toggle('is-harbour', rate < baseRate);
-        // The name rather than a tile here: this strip is a dense horizontal
-        // row of eight chips, and a 30px tile in each tips the dialog past a
-        // phone's height (test_browser_trade_panel). A compact tile variant is
-        // the missing piece - reported alongside this change.
-        chip.textContent = `${CARD_NAMES[card] || card} ${rate}:1`;
+        // A compact tile names the card by its colour and glyph; the rate is
+        // the text beside it. The small variant keeps this dense eight-chip row
+        // inside the phone-height budget (test_browser_trade_panel) that a full
+        // 30px tile would blow. The tile carries the accessible name, so the
+        // rate reads on its own for a screen reader.
+        chip.innerHTML =
+            `${resourceTile(card, { label: CARD_NAMES[card] || card, tileCls: 'tile-sm' })}`
+            + ` ${rate}:1`;
         fragment.appendChild(chip);
     }
 
