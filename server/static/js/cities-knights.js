@@ -807,10 +807,19 @@ function renderKnights(player) {
 // inline; the rest are picked off the board, by arming one of the modes below
 // and tapping - the same flow a knight or a city wall goes through.
 
+// The targets that are a choice from a short list, offered inline on the card.
+// Read at render time rather than listed once, because the players at the table
+// are not a constant - and a card aimed at "another player" is three of the 54.
 const TARGET_CHOICES = {
-    resource: ['wood', 'brick', 'sheep', 'wheat', 'ore'],
-    commodity: COMMODITY_TYPES,
-    improvement: TRACK_ORDER
+    resource: () => ['wood', 'brick', 'sheep', 'wheat', 'ore'],
+    commodity: () => COMMODITY_TYPES,
+    improvement: () => TRACK_ORDER,
+    // Everyone but the player holding the card. Whether the card may actually
+    // be aimed at one of them - a Master Merchant only robs a player who is
+    // ahead - is the engine's to decide, and it says so if not.
+    player: () => (getBoard()?.players || [])
+        .map(entry => entry.name)
+        .filter(name => name !== viewState.identity.name)
 };
 
 // What a card that is picked on the board arms. Keyed by `needs_target`,
@@ -1122,10 +1131,9 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
     const actions = document.createElement('div');
     actions.className = 'progress-card-actions';
 
-    const choices = TARGET_CHOICES[card.needs_target];
-    let select = null;
+    const choices = TARGET_CHOICES[card.needs_target]?.() || null;
     if (choices) {
-        select = document.createElement('select');
+        const select = document.createElement('select');
         select.className = 'progress-target';
         select.setAttribute('aria-label', `Target for ${card.name}`);
         choices.forEach(choice => {

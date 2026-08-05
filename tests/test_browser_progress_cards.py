@@ -263,6 +263,22 @@ def merchant(browser, tmp_path):
         yield live
 
 
+def a_spy_and_a_hand_to_spy_on(game):
+    """The Spy, and an opponent holding one card for it to take."""
+    actor = game.current_player_name()
+    victim = next(name for name in TABLE if name != actor)
+    _hand(game, actor)
+    _give_card(game, actor, "spy")
+    _give_card(game, victim, "irrigation")
+    return {"victim": victim, "taken": "irrigation"}
+
+
+@pytest.fixture
+def spy(browser, tmp_path):
+    with table(browser, tmp_path, a_spy_and_a_hand_to_spy_on) as live:
+        yield live
+
+
 # --- Road Building ---------------------------------------------------------
 #
 # The cheapest of the 13 blocked cards: the server already takes no target for
@@ -366,6 +382,54 @@ class TestMerchant:
         assert selection(player)["progressPick"]["card"] is None
         assert selection(player)["mode"] is None
         assert hand_of(player) == ["merchant"], "cancelling ate the card"
+
+
+# --- Cards aimed at another player -----------------------------------------
+#
+# Spy, Master Merchant and Deserter: seven cards between them, each needing a
+# name and nothing else. Their follow-up questions were already built and
+# rendering; only the way to name the player was missing.
+
+
+class TestSpy:
+    def test_the_spy_takes_a_card_out_of_the_named_player(self, spy):
+        """Name the opponent inline, play, then answer the question it opens.
+
+        The pending choice at the end is the proof the card really resolved:
+        the options are the victim's actual hand, which only the server knows.
+        """
+        player, marks, tabs = spy
+        victim = tabs[marks["victim"]]
+
+        open_progress_fold(player)
+        offered = player.page.eval_on_selector_all(
+            ".progress-card select.progress-target option",
+            "options => options.map(option => option.value)",
+        )
+        assert offered == [marks["victim"]], (
+            f"the Spy offered {offered}, not just the other player at the table"
+        )
+
+        press_play(player, "spy")
+        wait_for_card_spent(player, "spy")
+
+        player.page.wait_for_selector("#choice-panel:not(.hidden)", timeout=8000)
+        assert "Spy" in player.page.inner_text("#choice-prompt")
+        assert marks["victim"] in player.page.inner_text("#choice-context")
+        shot(player, "spy-choice")
+        player.page.click("#choice-options .choice-option")
+
+        player.page.wait_for_function(
+            "card => window.__catanDebug.getBoard()"
+            "  .cities_knights.progress_hand.includes(card)",
+            arg=marks["taken"], timeout=8000,
+        )
+        victim.page.wait_for_function(
+            "card => !window.__catanDebug.getBoard()"
+            "  .cities_knights.progress_hand.includes(card)",
+            arg=marks["taken"], timeout=8000,
+        )
+        assert player.noisy_errors() == [], player.noisy_errors()
 
 
 # --- Nothing may be permanently unplayable ---------------------------------
