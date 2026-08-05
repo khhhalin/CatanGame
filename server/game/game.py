@@ -1056,17 +1056,38 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return True
         return False
 
-    def get_cost(self, building_type: str) -> dict:
+    def _base_cost(self, building_type: str, context: dict) -> dict:
+        """The listed price of one build, before any modifier.
+
+        Everything with a flat price is a line in `data/costs.json`. A city
+        improvement is the one thing whose price depends on more than the build
+        type — it is the level being bought, in the track's own commodity — so
+        it is worked out from the track table instead.
+        """
+        if building_type.startswith(ck_module.IMPROVEMENT_PREFIX):
+            level = context.get('level')
+            if level is None:
+                raise ValueError(f'{building_type} is priced per level; pass level=')
+            priced = ck_module.improvement_price(building_type, level)
+            if priced is not None:
+                return priced
+        return dict(self.building_costs.get(building_type, {}))
+
+    def get_cost(self, building_type: str, **context) -> dict:
         """What this costs to build, once every active modifier has had its say.
 
         The one place a price is decided, so a rule that makes something
-        cheaper has somewhere to attach. See `game/modifiers.py`.
+        cheaper has somewhere to attach. See `game/modifiers.py`. `context` is
+        whatever else the price turns on — a city improvement's level is the
+        only one so far — and the hook is handed it too, so a rule can charge
+        one level differently from another.
         """
         return modifiers_module.apply(
             modifiers_module.COST,
             self.rules,
-            dict(self.building_costs.get(building_type, {})),
+            self._base_cost(building_type, context),
             building_type=building_type,
+            **context,
         )
 
     def can_afford(self, player_name: str, building_type: str) -> bool:

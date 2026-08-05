@@ -12,6 +12,19 @@ from game import rules as rules_module
 from game.validation import CARD_TYPES, COMMODITY_TYPES, RESOURCE_TYPES
 
 
+def _cost_phrase(cost: dict) -> str:
+    """'1 sheep and 1 ore', spelled out of the price being charged.
+
+    Refusals used to quote the price printed on the box. Now that a modifier
+    can change one, a sentence written by hand would tell a player to fetch
+    resources that would still not be enough.
+    """
+    parts = [f'{amount} {card}' for card, amount in cost.items()]
+    if len(parts) < 2:
+        return ''.join(parts)
+    return ', '.join(parts[:-1]) + ' and ' + parts[-1]
+
+
 class CitiesKnightsRules:
     """Improvements, knights, city walls, the barbarians, and progress cards.
 
@@ -77,20 +90,20 @@ class CitiesKnightsRules:
         if not player.cities:
             return {'success': False, 'error': 'You need a city to build improvements'}
 
-        cost = self.ck.next_improvement_cost(player_name, track)
-        if cost is None:
+        level = self.ck.next_level(player_name, track)
+        if level is None:
             return {'success': False, 'error': 'That track is already at level 5'}
 
-        commodity, amount = cost
-        amount = max(0, amount - discount)
-        if player.commodities.get(commodity, 0) < amount:
+        cost = self.get_cost(ck_module.improvement_build_type(track), level=level)
+        if discount:
+            cost = {card: max(0, amount - discount) for card, amount in cost.items()}
+        if not self._can_pay(player, cost):
             return {
                 'success': False,
-                'error': f'Need {amount} {commodity} to reach level '
-                f'{self.ck.level(player_name, track) + 1}',
+                'error': f'Need {_cost_phrase(cost)} to reach level {level}',
             }
 
-        player.commodities[commodity] -= amount
+        self._pay(player, cost)
         self.ck.improvements[player_name][track] += 1
         new_level = self.ck.improvements[player_name][track]
 
@@ -141,10 +154,11 @@ class CitiesKnightsRules:
         if not self.ck.can_build_knight(player_name, ck_module.BASIC):
             return {'success': False, 'error': 'You have no basic knight pieces left'}
 
-        if not self._can_pay(player, ck_module.KNIGHT_BUILD_COST):
-            return {'success': False, 'error': 'A knight costs 1 sheep and 1 ore'}
+        cost = self.get_cost('build_knight')
+        if not self._can_pay(player, cost):
+            return {'success': False, 'error': f'A knight costs {_cost_phrase(cost)}'}
 
-        self._pay(player, ck_module.KNIGHT_BUILD_COST)
+        self._pay(player, cost)
         self.ck.knights_of(player_name).append(ck_module.Knight(vertex_key))
         return {'success': True, 'error': ''}
 
@@ -160,10 +174,11 @@ class CitiesKnightsRules:
             return {'success': False, 'error': 'You have no knight there'}
         if knight.active:
             return {'success': False, 'error': 'That knight is already active'}
-        if not self._can_pay(player, ck_module.KNIGHT_ACTIVATE_COST):
-            return {'success': False, 'error': 'Activating a knight costs 1 wheat'}
+        cost = self.get_cost('activate_knight')
+        if not self._can_pay(player, cost):
+            return {'success': False, 'error': f'Activating a knight costs {_cost_phrase(cost)}'}
 
-        self._pay(player, ck_module.KNIGHT_ACTIVATE_COST)
+        self._pay(player, cost)
         knight.active = True
         # A knight may be built and activated on the same turn, but never acts
         # on the turn it was activated.
@@ -184,10 +199,11 @@ class CitiesKnightsRules:
         allowed, reason = self.ck.can_promote(player_name, knight)
         if not allowed:
             return {'success': False, 'error': reason}
-        if not self._can_pay(player, ck_module.KNIGHT_PROMOTE_COST):
-            return {'success': False, 'error': 'Promoting a knight costs 1 sheep and 1 ore'}
+        cost = self.get_cost('promote_knight')
+        if not self._can_pay(player, cost):
+            return {'success': False, 'error': f'Promoting a knight costs {_cost_phrase(cost)}'}
 
-        self._pay(player, ck_module.KNIGHT_PROMOTE_COST)
+        self._pay(player, cost)
         knight.rank += 1
         return {'success': True, 'error': ''}
 
@@ -253,13 +269,25 @@ class CitiesKnightsRules:
                 return candidate
         return None
 
+    def _hand_for(self, player, card_type: str) -> dict:
+        """The pile a card of this type is paid out of."""
+        return player.commodities if card_type in COMMODITY_TYPES else player.resources
+
     def _can_pay(self, player, cost: dict) -> bool:
-        return all(player.resources.get(res, 0) >= amount for res, amount in cost.items())
+        return all(
+            self._hand_for(player, card).get(card, 0) >= amount
+            for card, amount in cost.items()
+        )
 
     def _pay(self, player, cost: dict):
-        for res, amount in cost.items():
-            player.resources[res] = player.resources.get(res, 0) - amount
-            self.bank.return_resources(res, amount)
+        for card, amount in cost.items():
+            hand = self._hand_for(player, card)
+            hand[card] = hand.get(card, 0) - amount
+            # Only resources go back: the bank counts the five resources and
+            # nothing else, so a commodity spent on an improvement is simply
+            # gone — which is what it always was.
+            if card not in COMMODITY_TYPES:
+                self.bank.return_resources(card, amount)
 
     def _wall_refusal(self, player_name: str, vertex_key: str) -> dict | None:
         """Why this city may not be walled, or None. Shared with the Engineer.
@@ -290,10 +318,11 @@ class CitiesKnightsRules:
             return refusal
 
         player = self.get_player(player_name)
-        if not self._can_pay(player, ck_module.CITY_WALL_COST):
-            return {'success': False, 'error': 'A city wall costs 2 brick'}
+        cost = self.get_cost('city_wall')
+        if not self._can_pay(player, cost):
+            return {'success': False, 'error': f'A city wall costs {_cost_phrase(cost)}'}
 
-        self._pay(player, ck_module.CITY_WALL_COST)
+        self._pay(player, cost)
         self.ck.build_wall(player_name, vertex_key)
         return {'success': True, 'error': '', 'vertex': vertex_key}
 
@@ -673,7 +702,7 @@ class CitiesKnightsRules:
 
     def _progress_medicine(self, player_name: str, target) -> dict:
         """Upgrade a settlement for 2 ore and 1 grain instead of the usual cost."""
-        cost = {'ore': 2, 'wheat': 1}
+        cost = self.get_cost('medicine_city')
         player = self.get_player(player_name)
         vertex = self.vertices.get(target)
         if player is None or vertex is None or target not in player.settlements:
@@ -681,7 +710,7 @@ class CitiesKnightsRules:
         if not self.has_piece_available(player_name, 'city'):
             return {'success': False, 'error': f'You have used all {self.MAX_CITIES} cities'}
         if not self._can_pay(player, cost):
-            return {'success': False, 'error': 'Medicine still costs 2 ore and 1 wheat'}
+            return {'success': False, 'error': f'Medicine still costs {_cost_phrase(cost)}'}
 
         self._pay(player, cost)
         vertex.building = {'type': 'city', 'player': player_name}

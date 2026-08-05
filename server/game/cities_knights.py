@@ -73,7 +73,6 @@ EVENT_FACES = [
     TRADE,
 ]
 
-CITY_WALL_COST = {"brick": 2}
 CITY_WALL_HAND_BONUS = 2
 MAX_CITY_WALLS = 3
 
@@ -82,14 +81,37 @@ MAX_CITY_WALLS = 3
 # revealed on sight and never occupy a slot.
 PROGRESS_HAND_LIMIT = 4
 
-KNIGHT_BUILD_COST = {"sheep": 1, "ore": 1}
-KNIGHT_ACTIVATE_COST = {"wheat": 1}
-KNIGHT_PROMOTE_COST = {"sheep": 1, "ore": 1}
+# Every flat price this expansion charges is a line in `data/costs.json` under
+# these build types, so `Game.get_cost` decides a knight the same way it
+# decides a road and one cost modifier reaches both. An improvement track is
+# the exception below: its price is not flat.
+IMPROVEMENT_PREFIX = "improvement_"
 
 
 def improvement_cost(level: int) -> int:
     """Commodities needed to reach `level`. Level 1 costs 1, level 5 costs 5."""
     return level
+
+
+def improvement_build_type(track: str) -> str:
+    """The `get_cost` build type that prices one improvement track."""
+    return f"{IMPROVEMENT_PREFIX}{track}"
+
+
+def improvement_price(build_type: str, level: int) -> dict | None:
+    """What reaching `level` on this track costs, or None for other builds.
+
+    Worked out rather than listed in `costs.json`: the price is the level, in
+    whatever commodity the track above declares, and copying that out as
+    fifteen literals is exactly the kind of second copy that drifts from the
+    table it was meant to match.
+    """
+    if not build_type.startswith(IMPROVEMENT_PREFIX):
+        return None
+    spec = IMPROVEMENT_TRACKS.get(build_type[len(IMPROVEMENT_PREFIX):])
+    if spec is None:
+        return None
+    return {spec["commodity"]: improvement_cost(level)}
 
 
 class Knight:
@@ -206,12 +228,15 @@ class CitiesKnights:
     def level(self, player_name: str, track: str) -> int:
         return self.improvements.get(player_name, {}).get(track, 0)
 
-    def next_improvement_cost(self, player_name: str, track: str):
-        """(commodity, amount) to buy the next level, or None at the top."""
+    def next_level(self, player_name: str, track: str) -> int | None:
+        """The level this player would buy next, or None at the top.
+
+        What it costs is `Game.get_cost`'s to say, like every other price.
+        """
         current = self.level(player_name, track)
         if current >= MAX_IMPROVEMENT_LEVEL:
             return None
-        return IMPROVEMENT_TRACKS[track]["commodity"], improvement_cost(current + 1)
+        return current + 1
 
     def has_ability(self, player_name: str, track: str) -> bool:
         """Whether the level-3 building of this track is up."""
