@@ -10,6 +10,93 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    <!-- Icon sprite. Defined once here; every panel references a glyph with
+         <use href="#i-..."> rather than shipping its own SVG or an emoji. The
+         ids are a stable contract - icons.js maps resource/commodity/status
+         concepts onto them, and the whole client renders from that map. See
+         icons.js for the API. Signed-off design: ui-direction mockup. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <!-- resource glyphs: white, drawn on a coloured tile -->
+        <symbol id="i-wood" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2 6.5 10h3L5 17h5v5h4v-5h5l-4.5-7h3z"/>
+        </symbol>
+        <symbol id="i-brick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="6" width="18" height="5" rx="1"/><rect x="3" y="13" width="18" height="5" rx="1"/>
+          <path d="M9 6v5M15 6v5M6.5 13v5M12 13v5M17.5 13v5"/>
+        </symbol>
+        <symbol id="i-sheep" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.5 9.5a3 3 0 0 0-1.3-4.2 3 3 0 0 0-4.2-1 3 3 0 0 0-4.2 1A3 3 0 0 0 6.5 9.5a3.2 3.2 0 0 0 1.6 5.4A3 3 0 0 0 12 17a3 3 0 0 0 3.9-2.1 3.2 3.2 0 0 0 1.6-5.4z"/>
+          <circle cx="12" cy="11" r="1.4" fill="var(--tile)"/>
+        </symbol>
+        <symbol id="i-wheat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M12 21V8"/>
+          <path d="M12 8c0-2 1.4-3.4 3.2-3.4C15.2 6.6 13.8 8 12 8zM12 8c0-2-1.4-3.4-3.2-3.4C8.8 6.6 10.2 8 12 8z"/>
+          <path d="M12 13c0-1.8 1.3-3 3-3 0 1.8-1.3 3-3 3zM12 13c0-1.8-1.3-3-3-3 0 1.8 1.3 3 3 3z"/>
+          <path d="M12 18c0-1.8 1.3-3 3-3 0 1.8-1.3 3-3 3zM12 18c0-1.8-1.3-3-3-3 0 1.8 1.3 3 3 3z"/>
+        </symbol>
+        <symbol id="i-ore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <path d="M12 3 3 9l3 11h12l3-11z"/><path d="M12 3v6M3 9h18M8 20l1-11M16 20l-1-11"/>
+        </symbol>
+        <!-- commodity glyphs -->
+        <symbol id="i-cloth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <rect x="8" y="4" width="8" height="16" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h8"/><path d="M6 5v14M18 5v14"/>
+        </symbol>
+        <symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/>
+        </symbol>
+        <symbol id="i-paper" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 15.5h6M9 8.5h2"/>
+        </symbol>
+
+        <!-- line icons: facts about a player -->
+        <symbol id="i-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M3 8l3.5 3L12 5l5.5 6L21 8l-1.5 10h-15z"/><path d="M4.5 18h15"/>
+        </symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M12 3 5 6v6c0 4.2 3 7.3 7 9 4-1.7 7-4.8 7-9V6z"/>
+        </symbol>
+        <symbol id="i-sword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 4l-9 9M14.5 4H20v5.5"/><path d="M4 15l5 5M3 20l3-3M8.5 12.5 11 15"/>
+        </symbol>
+        <symbol id="i-anchor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="5" r="2"/><path d="M12 7v13"/><path d="M8 11h8"/><path d="M5 14a7 7 0 0 0 14 0"/>
+        </symbol>
+        <symbol id="i-shop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <path d="M4 9l1-5h14l1 5"/><path d="M4 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0"/>
+          <path d="M5 10.5V20h14v-9.5"/><path d="M10 20v-5h4v5"/>
+        </symbol>
+        <symbol id="i-house" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/>
+        </symbol>
+        <symbol id="i-city" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <path d="M4 20V9l5-3v3l5-3v5h6v9z"/><path d="M17 11v9"/>
+        </symbol>
+        <symbol id="i-road" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+          <path d="M7 20 17 4"/>
+        </symbol>
+        <symbol id="i-route" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 19c3 0 3-4 6-4s3-6 8-6"/><circle cx="5" cy="19" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="9" r="1.4" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="i-ship" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 14h16l-2 5H6z"/><path d="M12 14V4l6 5z"/><path d="M12 14V7"/>
+        </symbol>
+        <symbol id="i-wall" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <path d="M4 8V5h3v3h3V5h4v3h3V5h3v3"/><rect x="4" y="8" width="16" height="11" rx="1"/><path d="M9 8v11M15 8v11M4 13.5h16"/>
+        </symbol>
+        <symbol id="i-island" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 19h18"/><path d="M7 19a5 5 0 0 1 10 0"/><path d="M12 14V8"/><path d="M12 8c2-1 4 0 4 0-1 1.5-3 1.5-4 0zM12 9c-2-1.2-4 0-4 0 1 1.6 3 1.4 4 0z"/>
+        </symbol>
+        <symbol id="i-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <rect x="8" y="6" width="9" height="13" rx="1.5" transform="rotate(-9 12 12)"/>
+          <rect x="10" y="5" width="9" height="13" rx="1.5" transform="rotate(6 14 11)"/>
+        </symbol>
+        <symbol id="i-dev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <rect x="6" y="4" width="12" height="16" rx="1.6"/><path d="M12 8l1.2 2.4 2.6.3-1.9 1.8.5 2.6L12 14.7l-2.4 1.4.5-2.6-1.9-1.8 2.6-.3z" fill="currentColor" stroke="none"/>
+        </symbol>
+      </defs>
+    </svg>
+
     <!-- Single non-blocking surface for errors and notices -->
     <div id="notice-region" class="notice-region" role="status" aria-live="polite"></div>
 
@@ -585,35 +672,35 @@
                      trade.js puts a - and a + button either side of each field
                      and the room for them has to come from somewhere. -->
                 <div class="resource-selector">
-                    <label><span class="picker-name">🌲<span class="picker-word"> Wood</span></span><input type="number" inputmode="numeric" id="give-wood" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🧱<span class="picker-word"> Brick</span></span><input type="number" inputmode="numeric" id="give-brick" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🐑<span class="picker-word"> Sheep</span></span><input type="number" inputmode="numeric" id="give-sheep" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🌾<span class="picker-word"> Wheat</span></span><input type="number" inputmode="numeric" id="give-wheat" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🪨<span class="picker-word"> Ore</span></span><input type="number" inputmode="numeric" id="give-ore" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-wood"><svg class="icon" aria-hidden="true"><use href="#i-wood"></use></svg></span><span class="picker-word"> Wood</span></span><input type="number" inputmode="numeric" id="give-wood" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-brick"><svg class="icon" aria-hidden="true"><use href="#i-brick"></use></svg></span><span class="picker-word"> Brick</span></span><input type="number" inputmode="numeric" id="give-brick" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-sheep"><svg class="icon" aria-hidden="true"><use href="#i-sheep"></use></svg></span><span class="picker-word"> Sheep</span></span><input type="number" inputmode="numeric" id="give-sheep" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-wheat"><svg class="icon" aria-hidden="true"><use href="#i-wheat"></use></svg></span><span class="picker-word"> Wheat</span></span><input type="number" inputmode="numeric" id="give-wheat" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-ore"><svg class="icon" aria-hidden="true"><use href="#i-ore"></use></svg></span><span class="picker-word"> Ore</span></span><input type="number" inputmode="numeric" id="give-ore" min="0" max="10" value="0"></label>
                 </div>
                 <!-- "Commodities may be traded with other players in all the
                      same ways that resources may be traded" (expansions.md
                      329). Shown only when the table plays them; trade.js reads
                      that off the running game's rules. -->
                 <div id="trade-give-commodities" class="resource-selector hidden">
-                    <label><span class="picker-name">🧵<span class="picker-word"> Cloth</span></span><input type="number" inputmode="numeric" id="give-cloth" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🪙<span class="picker-word"> Coin</span></span><input type="number" inputmode="numeric" id="give-coin" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">📜<span class="picker-word"> Paper</span></span><input type="number" inputmode="numeric" id="give-paper" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-cloth"><svg class="icon" aria-hidden="true"><use href="#i-cloth"></use></svg></span><span class="picker-word"> Cloth</span></span><input type="number" inputmode="numeric" id="give-cloth" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-coin"><svg class="icon" aria-hidden="true"><use href="#i-coin"></use></svg></span><span class="picker-word"> Coin</span></span><input type="number" inputmode="numeric" id="give-coin" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-paper"><svg class="icon" aria-hidden="true"><use href="#i-paper"></use></svg></span><span class="picker-word"> Paper</span></span><input type="number" inputmode="numeric" id="give-paper" min="0" max="10" value="0"></label>
                 </div>
             </div>
             <div class="trade-modal-section">
                 <h3>You Want:</h3>
                 <div class="resource-selector">
-                    <label><span class="picker-name">🌲<span class="picker-word"> Wood</span></span><input type="number" inputmode="numeric" id="want-wood" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🧱<span class="picker-word"> Brick</span></span><input type="number" inputmode="numeric" id="want-brick" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🐑<span class="picker-word"> Sheep</span></span><input type="number" inputmode="numeric" id="want-sheep" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🌾<span class="picker-word"> Wheat</span></span><input type="number" inputmode="numeric" id="want-wheat" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🪨<span class="picker-word"> Ore</span></span><input type="number" inputmode="numeric" id="want-ore" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-wood"><svg class="icon" aria-hidden="true"><use href="#i-wood"></use></svg></span><span class="picker-word"> Wood</span></span><input type="number" inputmode="numeric" id="want-wood" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-brick"><svg class="icon" aria-hidden="true"><use href="#i-brick"></use></svg></span><span class="picker-word"> Brick</span></span><input type="number" inputmode="numeric" id="want-brick" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-sheep"><svg class="icon" aria-hidden="true"><use href="#i-sheep"></use></svg></span><span class="picker-word"> Sheep</span></span><input type="number" inputmode="numeric" id="want-sheep" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-wheat"><svg class="icon" aria-hidden="true"><use href="#i-wheat"></use></svg></span><span class="picker-word"> Wheat</span></span><input type="number" inputmode="numeric" id="want-wheat" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-ore"><svg class="icon" aria-hidden="true"><use href="#i-ore"></use></svg></span><span class="picker-word"> Ore</span></span><input type="number" inputmode="numeric" id="want-ore" min="0" max="10" value="0"></label>
                 </div>
                 <div id="trade-want-commodities" class="resource-selector hidden">
-                    <label><span class="picker-name">🧵<span class="picker-word"> Cloth</span></span><input type="number" inputmode="numeric" id="want-cloth" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">🪙<span class="picker-word"> Coin</span></span><input type="number" inputmode="numeric" id="want-coin" min="0" max="10" value="0"></label>
-                    <label><span class="picker-name">📜<span class="picker-word"> Paper</span></span><input type="number" inputmode="numeric" id="want-paper" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-cloth"><svg class="icon" aria-hidden="true"><use href="#i-cloth"></use></svg></span><span class="picker-word"> Cloth</span></span><input type="number" inputmode="numeric" id="want-cloth" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-coin"><svg class="icon" aria-hidden="true"><use href="#i-coin"></use></svg></span><span class="picker-word"> Coin</span></span><input type="number" inputmode="numeric" id="want-coin" min="0" max="10" value="0"></label>
+                    <label><span class="picker-name"><span class="tile t-paper"><svg class="icon" aria-hidden="true"><use href="#i-paper"></use></svg></span><span class="picker-word"> Paper</span></span><input type="number" inputmode="numeric" id="want-paper" min="0" max="10" value="0"></label>
                 </div>
             </div>
             <p id="trade-verdict" class="trade-verdict" role="status" aria-live="polite"></p>
@@ -643,11 +730,11 @@
                 <div class="resource-display"></div>
             </div>
             <div class="resource-selector">
-                <label>🌲 Wood: <input type="number" id="discard-wood" min="0" max="10" value="0"></label>
-                <label>🧱 Brick: <input type="number" id="discard-brick" min="0" max="10" value="0"></label>
-                <label>🐑 Sheep: <input type="number" id="discard-sheep" min="0" max="10" value="0"></label>
-                <label>🌾 Wheat: <input type="number" id="discard-wheat" min="0" max="10" value="0"></label>
-                <label>🪨 Ore: <input type="number" id="discard-ore" min="0" max="10" value="0"></label>
+                <label><span class="tile t-wood"><svg class="icon" aria-hidden="true"><use href="#i-wood"></use></svg></span> Wood: <input type="number" id="discard-wood" min="0" max="10" value="0"></label>
+                <label><span class="tile t-brick"><svg class="icon" aria-hidden="true"><use href="#i-brick"></use></svg></span> Brick: <input type="number" id="discard-brick" min="0" max="10" value="0"></label>
+                <label><span class="tile t-sheep"><svg class="icon" aria-hidden="true"><use href="#i-sheep"></use></svg></span> Sheep: <input type="number" id="discard-sheep" min="0" max="10" value="0"></label>
+                <label><span class="tile t-wheat"><svg class="icon" aria-hidden="true"><use href="#i-wheat"></use></svg></span> Wheat: <input type="number" id="discard-wheat" min="0" max="10" value="0"></label>
+                <label><span class="tile t-ore"><svg class="icon" aria-hidden="true"><use href="#i-ore"></use></svg></span> Ore: <input type="number" id="discard-ore" min="0" max="10" value="0"></label>
             </div>
             <!-- The hand limit a 7 enforces counts commodities as well, and the
                  engine accepts them in a discard - so a player over the limit on
@@ -655,9 +742,9 @@
                  only when the table plays commodities: panels.js reads that off
                  the running game's rules, never from a mode. -->
             <div id="discard-commodities" class="resource-selector hidden">
-                <label>🧵 Cloth: <input type="number" id="discard-cloth" min="0" max="10" value="0"></label>
-                <label>🪙 Coin: <input type="number" id="discard-coin" min="0" max="10" value="0"></label>
-                <label>📜 Paper: <input type="number" id="discard-paper" min="0" max="10" value="0"></label>
+                <label><span class="tile t-cloth"><svg class="icon" aria-hidden="true"><use href="#i-cloth"></use></svg></span> Cloth: <input type="number" id="discard-cloth" min="0" max="10" value="0"></label>
+                <label><span class="tile t-coin"><svg class="icon" aria-hidden="true"><use href="#i-coin"></use></svg></span> Coin: <input type="number" id="discard-coin" min="0" max="10" value="0"></label>
+                <label><span class="tile t-paper"><svg class="icon" aria-hidden="true"><use href="#i-paper"></use></svg></span> Paper: <input type="number" id="discard-paper" min="0" max="10" value="0"></label>
             </div>
             <button id="submit-discard-btn">Discard</button>
         </div>
@@ -679,11 +766,11 @@
             <h2>Choose 2 Resources</h2>
             <p class="invention-info">Select 2 resources to receive:</p>
             <div class="resource-selector">
-                <label>🌲 Wood: <input type="number" id="invention-wood" min="0" max="2" value="0"></label>
-                <label>🧱 Brick: <input type="number" id="invention-brick" min="0" max="2" value="0"></label>
-                <label>🐑 Sheep: <input type="number" id="invention-sheep" min="0" max="2" value="0"></label>
-                <label>🌾 Wheat: <input type="number" id="invention-wheat" min="0" max="2" value="0"></label>
-                <label>🪨 Ore: <input type="number" id="invention-ore" min="0" max="2" value="0"></label>
+                <label><span class="tile t-wood"><svg class="icon" aria-hidden="true"><use href="#i-wood"></use></svg></span> Wood: <input type="number" id="invention-wood" min="0" max="2" value="0"></label>
+                <label><span class="tile t-brick"><svg class="icon" aria-hidden="true"><use href="#i-brick"></use></svg></span> Brick: <input type="number" id="invention-brick" min="0" max="2" value="0"></label>
+                <label><span class="tile t-sheep"><svg class="icon" aria-hidden="true"><use href="#i-sheep"></use></svg></span> Sheep: <input type="number" id="invention-sheep" min="0" max="2" value="0"></label>
+                <label><span class="tile t-wheat"><svg class="icon" aria-hidden="true"><use href="#i-wheat"></use></svg></span> Wheat: <input type="number" id="invention-wheat" min="0" max="2" value="0"></label>
+                <label><span class="tile t-ore"><svg class="icon" aria-hidden="true"><use href="#i-ore"></use></svg></span> Ore: <input type="number" id="invention-ore" min="0" max="2" value="0"></label>
             </div>
             <button id="confirm-invention-btn">Get Resources</button>
         </div>
@@ -696,11 +783,11 @@
             <h2>Choose Resource to Steal</h2>
             <p class="monopoly-info">Select one resource type to steal from all players:</p>
             <div class="resource-buttons">
-                <button class="monopoly-res-btn" data-resource="wood">🌲 Wood</button>
-                <button class="monopoly-res-btn" data-resource="brick">🧱 Brick</button>
-                <button class="monopoly-res-btn" data-resource="sheep">🐑 Sheep</button>
-                <button class="monopoly-res-btn" data-resource="wheat">🌾 Wheat</button>
-                <button class="monopoly-res-btn" data-resource="ore">🪨 Ore</button>
+                <button class="monopoly-res-btn" data-resource="wood"><span class="tile t-wood"><svg class="icon" aria-hidden="true"><use href="#i-wood"></use></svg></span> Wood</button>
+                <button class="monopoly-res-btn" data-resource="brick"><span class="tile t-brick"><svg class="icon" aria-hidden="true"><use href="#i-brick"></use></svg></span> Brick</button>
+                <button class="monopoly-res-btn" data-resource="sheep"><span class="tile t-sheep"><svg class="icon" aria-hidden="true"><use href="#i-sheep"></use></svg></span> Sheep</button>
+                <button class="monopoly-res-btn" data-resource="wheat"><span class="tile t-wheat"><svg class="icon" aria-hidden="true"><use href="#i-wheat"></use></svg></span> Wheat</button>
+                <button class="monopoly-res-btn" data-resource="ore"><span class="tile t-ore"><svg class="icon" aria-hidden="true"><use href="#i-ore"></use></svg></span> Ore</button>
             </div>
         </div>
     </div>
