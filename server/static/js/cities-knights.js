@@ -171,6 +171,18 @@ export function describeLastAttack() {
 const TRACK_ORDER = ['trade', 'politics', 'science'];
 const TRACK_LABELS = { trade: 'Trade', politics: 'Politics', science: 'Science' };
 
+/**
+ * The STATUS_ICON concept for a progress card's deck, so the card's glyph is
+ * lettered by the deck it came from. Unknown or missing decks fall back to the
+ * generic progress glyph rather than an empty box.
+ *
+ * @param {string} deck - 'trade' | 'politics' | 'science'
+ * @returns {string}
+ */
+function deckIconConcept(deck) {
+    return TRACK_ORDER.includes(deck) ? `progress_${deck}` : 'progress';
+}
+
 const KNIGHT_RANK_NAMES = { 1: 'Basic', 2: 'Strong', 3: 'Mighty' };
 const KNIGHT_BUILD_COST = { sheep: 1, ore: 1 };
 const KNIGHT_ACTIVATE_COST = { wheat: 1 };
@@ -632,9 +644,8 @@ function renderImprovements(player) {
             const metropolis = document.createElement('div');
             const mine = holder === player.name;
             metropolis.className = mine ? 'ck-badge metropolis' : 'ck-note';
-            // No metropolis glyph in the set; the city icon is the closest.
             // `holder` is a player name, so it is appended as a text node.
-            metropolis.innerHTML = statusIcon('city');
+            metropolis.innerHTML = statusIcon('metropolis');
             metropolis.append(mine
                 ? ` ${TRACK_LABELS[track] || track} metropolis is yours`
                 : ` metropolis held by ${holder}`);
@@ -1155,9 +1166,10 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
 
     const title = document.createElement('div');
     title.className = 'progress-card-title';
-    // The set has no per-deck (trade/politics/science) glyph, so all three use
-    // the generic progress/dev icon; the deck's colour coding is not shown here.
-    title.innerHTML = statusIcon('progress');
+    // The deck the card came from, lettered on the card glyph - the fact its
+    // colour coding used to carry. Falls back to the generic glyph if the
+    // payload ever omits the deck.
+    title.innerHTML = statusIcon(deckIconConcept(card.deck));
     title.append(' ' + card.name);
     row.appendChild(title);
 

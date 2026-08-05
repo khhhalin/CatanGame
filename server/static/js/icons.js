@@ -92,6 +92,12 @@ export const STATUS_ICON = {
     resource: 'i-hand',         // alias: the scoreboard's resource_count chip
     dev: 'i-dev',
     progress: 'i-dev',          // progress cards are a dev-card variant
+    // The three progress decks, lettered so which deck a card came from - the
+    // fact its colour used to carry - is not lost when a specific card is shown.
+    progress_trade: 'i-dev-trade',
+    progress_politics: 'i-dev-politics',
+    progress_science: 'i-dev-science',
+    metropolis: 'i-metropolis',  // a distinct piece, not a plain city
     // A commodity hand-count has no glyph of its own in the set - coin is the
     // set's stand-in for "a commodity". A panel showing a specific commodity
     // should prefer resourceTile('cloth'|'coin'|'paper') instead.
@@ -109,6 +115,7 @@ export const SPRITE_IDS = [
     'i-crown', 'i-shield', 'i-sword', 'i-anchor', 'i-shop',
     'i-house', 'i-city', 'i-road', 'i-route', 'i-ship',
     'i-wall', 'i-island', 'i-hand', 'i-dev',
+    'i-dev-trade', 'i-dev-politics', 'i-dev-science', 'i-metropolis',
 ].filter((id, index, all) => all.indexOf(id) === index);
 
 function escapeAttr(text) {
@@ -149,13 +156,16 @@ export function icon(key, opts = {}) {
  * The filled coloured tile for a held resource or commodity. See the header.
  *
  * @param {string} key - 'wood'..'ore' or 'cloth'|'coin'|'paper'.
- * @param {{label?: string, cls?: string}} [opts]
+ * @param {{label?: string, cls?: string, tileCls?: string}} [opts]
+ *        `tileCls` adds a class to the tile span - e.g. 'tile-sm' for the
+ *        compact variant a dense strip needs.
  * @returns {string}
  */
 export function resourceTile(key, opts = {}) {
     const tile = TILE_CLASS[key] || '';
+    const extra = opts.tileCls ? ` ${opts.tileCls}` : '';
     const id = RESOURCE_ICON[key] || COMMODITY_ICON[key] || key;
-    return `<span class="tile ${tile}">${icon(id, opts)}</span>`;
+    return `<span class="tile ${tile}${extra}">${icon(id, opts)}</span>`;
 }
 
 /**

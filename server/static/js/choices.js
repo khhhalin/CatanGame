@@ -220,7 +220,11 @@ function optionIcon(choice, option) {
     if (VERTEX_KINDS.includes(choice.kind)) {
         return statusIcon(VERTEX_ICONS[choice.kind]);
     }
-    if (choice.kind === 'progress_deck' || choice.kind === 'spy') {
+    if (choice.kind === 'progress_deck') {
+        // The option is the deck itself, so the glyph names which deck.
+        return statusIcon(DECK_LABELS[option] ? `progress_${option}` : 'progress');
+    }
+    if (choice.kind === 'spy') {
         return statusIcon('progress');
     }
     return '';
