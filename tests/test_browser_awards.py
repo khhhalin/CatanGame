@@ -111,7 +111,7 @@ def table(browser, data_dir, rules, build):
         player.page.fill("#username", TABLE[0])
         player.page.click("#join-btn")
         player.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
-        player.page.wait_for_selector("#award-summary .award-row", timeout=10000)
+        player.page.wait_for_selector("#award-summary .award", timeout=10000)
         yield player, marks
     finally:
         stop_server(proc)

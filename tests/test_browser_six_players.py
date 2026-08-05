@@ -117,10 +117,16 @@ class TestTheGameIsPlayableBySix:
         assert painted > 10000, painted
 
     def test_the_scoreboard_shows_six_rows_in_six_colours(self, six_player_table):
-        """A fifth player used to be white, and so was the sixth."""
+        """A fifth player used to be white, and so was the sixth.
+
+        The colour rides on the swatch beside each name now, not the whole row
+        fill - the redesign gives every card the same surface and marks identity
+        with the swatch, the same colour as that player's pieces on the board.
+        """
         rows = six_player_table[0].page.eval_on_selector_all(
-            "#game-players li",
-            "els => els.map(e => [e.textContent, getComputedStyle(e).backgroundColor])",
+            "#game-players .pcard",
+            "els => els.map(e => [e.querySelector('.pname').textContent,"
+            "                     getComputedStyle(e.querySelector('.swatch')).backgroundColor])",
         )
         assert len(rows) == 6
         assert len({colour for _, colour in rows}) == 6

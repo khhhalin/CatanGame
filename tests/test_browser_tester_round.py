@@ -388,16 +388,14 @@ _OFF_SCREEN = """
 }
 """
 
-# One row per player, as a reader sees it: the name, the score, and every chip
+# One card per player, as a reader sees it: the name, the score, and every chip
 # with the label it carries for a screen reader.
 _SCOREBOARD = """
 () => Array.from(document.querySelectorAll('#game-players li')).map(row => ({
-    name: row.querySelector('.score-name').textContent,
-    points: row.querySelector('.score-points').textContent,
-    badges: Array.from(row.querySelectorAll('.score-badge'))
-        .map(b => b.getAttribute('aria-label')),
-    chips: Array.from(row.querySelectorAll('.score-chip')).map(chip => ({
-        text: chip.textContent,
+    name: row.querySelector('.pname').textContent,
+    points: row.querySelector('.pvp').textContent,
+    chips: Array.from(row.querySelectorAll('.chip')).map(chip => ({
+        text: chip.querySelector('b').textContent,
         label: chip.getAttribute('aria-label'),
     })),
 }))
@@ -518,9 +516,14 @@ class TestTheWholeTableIsReadableAtAGlance:
             assert entry["commodities"] is None, entry["name"]
             assert entry["dev_cards"] is None, entry["name"]
 
-    def test_who_holds_each_award_is_on_the_row_that_holds_it(self, crowded_table):
-        """A badge beside the name, so "who has Longest Road" is answered
-        without reading the award panel underneath."""
+    def test_who_holds_each_award_is_named_in_the_titles_panel(self, crowded_table):
+        """The titles panel names the holder of each award, so "who has Longest
+        Road" is answered off the scoreboard rather than by watching the board.
+
+        The signed-off redesign moved the holder out of a badge beside the name
+        and into the coloured pills under the roster; this pins that the pill
+        carrying each title names the player who holds it and no one else.
+        """
         player = crowded_table[0]
         # Arranged on the client's own copy: the awards are won over a whole
         # game, and this is a question about what the scoreboard draws for a
@@ -535,12 +538,22 @@ class TestTheWholeTableIsReadableAtAGlance:
             }""",
             "Carol",
         )
-        rows = {row["name"].split(" ")[0]: row for row in player.page.evaluate(_SCOREBOARD)}
-        held = " ".join(rows["Carol"]["badges"])
-        assert "Longest" in held or "Trade Route" in held, held
-        assert "Largest Army" in held, held
+        pills = player.page.evaluate(
+            """() => Array.from(document.querySelectorAll('#award-summary .award')).map(p => ({
+                title: p.querySelector('b').textContent,
+                who: p.querySelector('.who').textContent,
+            }))"""
+        )
+        by_title = {pill["title"]: pill["who"] for pill in pills}
+        road = next(who for title, who in by_title.items()
+                    if "Longest" in title or "Trade Route" in title)
+        assert "Carol" in road, road
+        assert "Carol" in by_title["Largest Army"], by_title["Largest Army"]
         for name in ("Alice", "Bob", "Dave"):
-            assert rows[name]["badges"] == [], f"{name} wears an award they do not hold"
+            assert name not in road, f"{name} is named on a title Carol holds: {road}"
+            assert name not in by_title["Largest Army"], (
+                f"{name} is named on Largest Army, which Carol holds"
+            )
 
     def test_nothing_scrolls_and_nothing_is_clipped(self, crowded_table):
         """The standing requirement: 1920x1080, four players, every expansion."""
