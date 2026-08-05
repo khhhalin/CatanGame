@@ -34,6 +34,7 @@ from browser_harness import (
     first_clickable,
     legal_road_edges,
     next_frame,
+    roll_dice,
     start_server,
     stop_server,
 )
@@ -91,11 +92,12 @@ def _give_card(game, player_name, card_id):
     game.ck.hand_of(player_name).append(card_id)
 
 
-def build_game(build):
+def build_game(build, rolled=True):
     """A started Cities & Knights game, mid-turn, with `build` applied.
 
-    The dice are already up: every card but the Alchemist is refused before the
-    roll, and the client greys them out for the same reason.
+    The dice are up by default: every card but the Alchemist is refused before
+    the roll, and the client greys them out for the same reason. The Alchemist
+    is the one card played before them, so it asks for `rolled=False`.
     """
     game = Game(
         list(TABLE), [], rng=random.Random(7),
@@ -104,14 +106,15 @@ def build_game(build):
     game.game_state = "started"
     game.game_phase = "playing"
     game.start_turn()
-    game.set_dice_rolled()
+    if rolled:
+        game.set_dice_rolled()
     return game, build(game)
 
 
 @contextmanager
-def table(browser, data_dir, build):
+def table(browser, data_dir, build, rolled=True):
     """A running server restored from `build`, with both players connected."""
-    game, marks = build_game(build)
+    game, marks = build_game(build, rolled=rolled)
     persistence.save(game, os.path.join(str(data_dir), "game.json"))
 
     proc, url = start_server(data_dir)
@@ -279,6 +282,20 @@ def spy(browser, tmp_path):
         yield live
 
 
+def an_alchemist_card(game):
+    """The one card played before the dice, held with the dice still down."""
+    actor = game.current_player_name()
+    _hand(game, actor)
+    _give_card(game, actor, "alchemist")
+    return {}
+
+
+@pytest.fixture
+def alchemist(browser, tmp_path):
+    with table(browser, tmp_path, an_alchemist_card, rolled=False) as live:
+        yield live
+
+
 # --- Road Building ---------------------------------------------------------
 #
 # The cheapest of the 13 blocked cards: the server already takes no target for
@@ -429,6 +446,47 @@ class TestSpy:
             "  .cities_knights.progress_hand.includes(card)",
             arg=marks["taken"], timeout=8000,
         )
+        assert player.noisy_errors() == [], player.noisy_errors()
+
+
+# --- The Alchemist ---------------------------------------------------------
+#
+# The only card played before the roll, so it is the one a player reaches for
+# every turn they hold it — and the only one whose "no flow yet" note a player
+# saw before every single roll.
+
+
+class TestAlchemist:
+    def test_the_alchemist_decides_both_dice(self, alchemist):
+        """Choose 2 and 3 inline, play, then roll and get 2 and 3.
+
+        The roll is the assertion: the card writes `pending_dice`, and nothing
+        else on screen would tell a player whether it took.
+        """
+        player, _marks, _tabs = alchemist
+
+        open_progress_fold(player)
+        selects = player.page.query_selector_all(
+            ".progress-card select.progress-target"
+        )
+        assert len(selects) == 2, "the Alchemist names two dice, not one"
+        selects[0].select_option("2")
+        selects[1].select_option("3")
+        shot(player, "alchemist-dice-picked")
+
+        press_play(player, "alchemist")
+        wait_for_card_spent(player, "alchemist")
+        close_progress_fold(player)
+
+        roll_dice(player)
+        player.page.wait_for_function(
+            "() => document.getElementById('dice-display').innerText.trim() !== ''",
+            timeout=8000,
+        )
+        faces = player.page.eval_on_selector_all(
+            "#dice-display .die", "dice => dice.map(die => die.textContent)"
+        )
+        assert faces == ["2", "3"], f"the dice came up {faces}, not the pair chosen"
         assert player.noisy_errors() == [], player.noisy_errors()
 
 

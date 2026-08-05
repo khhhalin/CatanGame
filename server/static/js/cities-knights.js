@@ -831,6 +831,13 @@ const PROGRESS_MODES = {
 // The two shapes the server takes: a single key, or a list of them.
 const LIST_TARGETS = ['knight', 'two_number_tokens'];
 
+// The Alchemist is the only card that takes two answers at once - both
+// production dice, named before they are rolled. The second of the pair is the
+// red die, which is the one that decides who draws a progress card, so it is
+// labelled rather than left as "the other one".
+const DIE_FACES = [1, 2, 3, 4, 5, 6];
+const DICE_LABELS = ['production die', 'red die, which draws the progress cards'];
+
 /**
  * Why this card cannot be offered for play at all, or ''.
  *
@@ -847,7 +854,8 @@ function missingTargetFlowReason(card) {
     if (card.target_chosen_later === true || card.needs_target === null) {
         return '';
     }
-    const offered = Boolean(TARGET_CHOICES[card.needs_target])
+    const offered = card.needs_target === 'dice'
+        || Boolean(TARGET_CHOICES[card.needs_target])
         || Boolean(PROGRESS_MODES[card.needs_target]);
     return offered ? '' : 'Needs a target this client cannot ask for yet';
 }
@@ -1133,17 +1141,14 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
 
     const choices = TARGET_CHOICES[card.needs_target]?.() || null;
     if (choices) {
-        const select = document.createElement('select');
-        select.className = 'progress-target';
-        select.setAttribute('aria-label', `Target for ${card.name}`);
-        choices.forEach(choice => {
-            const option = document.createElement('option');
-            option.value = choice;
-            option.textContent = choice;
-            select.appendChild(option);
-        });
-        select.disabled = Boolean(reason);
-        actions.appendChild(select);
+        actions.appendChild(
+            buildTargetSelect(`Target for ${card.name}`, choices, reason)
+        );
+    }
+    if (card.needs_target === 'dice') {
+        DICE_LABELS.forEach(label => actions.appendChild(
+            buildTargetSelect(`${card.name}: ${label}`, DIE_FACES, reason)
+        ));
     }
 
     // A card picked on the board is played by the tap, not by this button: it
@@ -1172,6 +1177,29 @@ function buildProgressCardRow(cardId, card, turnBlock, rolled) {
     }
 
     return row;
+}
+
+/**
+ * One inline target picker.
+ *
+ * @param {string} label - Accessible name, since the row has no visible one
+ * @param {Array} values - The options, offered exactly as they are sent back
+ * @param {string} reason - Why the card cannot be played at all, or ''
+ * @returns {HTMLSelectElement}
+ */
+function buildTargetSelect(label, values, reason) {
+    const select = document.createElement('select');
+    select.className = 'progress-target';
+    select.setAttribute('aria-label', label);
+    select.title = label;
+    values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+    });
+    select.disabled = Boolean(reason);
+    return select;
 }
 
 /**
@@ -1252,10 +1280,13 @@ progressHandDiv?.addEventListener('click', (event) => {
         toggleProgressPick(cardId, card);
         return;
     }
-    const select = button.parentElement.querySelector('.progress-target');
+    const selects = button.parentElement.querySelectorAll('.progress-target');
     const payload = { name: viewState.identity.name, card: cardId };
-    if (select) {
-        payload.target = select.value;
+    if (card.needs_target === 'dice') {
+        // Both faces, as numbers: the server takes a pair and refuses strings.
+        payload.target = [...selects].map(select => Number(select.value));
+    } else if (selects.length === 1) {
+        payload.target = selects[0].value;
     }
     emitGame('play_progress_card', payload);
 });
