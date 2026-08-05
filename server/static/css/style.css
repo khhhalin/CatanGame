@@ -133,7 +133,10 @@ body {
     flex-direction: column;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3) 0;
+    /* No top padding: the shell's row gap already sets the hand off from the
+       console, and at four players plus every expansion the board needs every
+       row the tray does not take. */
+    padding: 0 var(--space-3);
     border-top: 1px solid var(--hairline);
     min-width: 0;
 }
@@ -3289,6 +3292,142 @@ button:disabled {
 .res-cell.spent .count {
     color: var(--text-faint);
     font-weight: 500;
+}
+
+/* --- the hand as a fan of physical cards (the bottom tray).
+   The card face carries the terrain fill itself, so the corner count sits
+   directly on the colour it is contrast-checked against - the same layer the
+   WCAG sweep walks - rather than on a nested tile. The label strip paints its
+   own surface over the bottom. Rotation arrives per card as `--rot`; hover and
+   the trade component's `.is-up` lift the card, composing over that angle. */
+.hand-fan {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    min-width: 0;
+    max-width: 100%;
+    /* A lifted card overflows upward into the (empty) trade slot above rather
+       than reserving resting headroom the crowded 4-player layout cannot spare. */
+    overflow: visible;
+}
+
+.hand-card {
+    position: relative;
+    flex: none;
+    width: 62px;
+    height: 44px;
+    /* The overlap that makes a fan: each card tucks under the next. */
+    margin: 0 -12px;
+    display: flex;
+    flex-direction: column;
+    background: var(--tile, var(--surface-3));
+    color: var(--on-tile);
+    border: 1px solid rgb(0 0 0 / 0.06);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+    cursor: pointer;
+    transform-origin: bottom center;
+    transform: rotate(var(--rot, 0deg));
+    transition: transform 0.12s ease;
+}
+
+/* A lifted card sits above its neighbours so the raised one is not tucked
+   behind the next in the fan. */
+.hand-card:hover,
+.hand-card.is-up {
+    z-index: 1;
+}
+
+.hand-card:hover {
+    transform: translateY(-14px);
+}
+
+/* The trade component raises a chosen card and rings it. Kept here so both
+   lifted states share one transform origin and never fight. */
+.hand-card.is-up {
+    transform: translateY(-18px);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.hand-card-count {
+    position: absolute;
+    top: var(--space-1);
+    left: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--on-tile);
+    text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+}
+
+.hand-card-face {
+    flex: 1;
+    display: grid;
+    place-items: center;
+}
+
+.hand-card-glyph {
+    width: 22px;
+    height: 22px;
+    vertical-align: 0;
+}
+
+.hand-card-label {
+    background: var(--surface-1);
+    color: var(--text);
+    font-size: var(--text-2xs);
+    font-weight: 650;
+    text-align: center;
+    padding: var(--space-1) 0;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    letter-spacing: 0.02em;
+}
+
+/* Wheat and sheep faces are pale; their count and glyph take the dark ink the
+   tiles use, or they wash out below AA. */
+.hand-card.t-wheat,
+.hand-card.t-sheep {
+    color: var(--on-tile-pale);
+}
+
+.hand-card.t-wheat .hand-card-count,
+.hand-card.t-sheep .hand-card-count {
+    color: var(--on-tile-pale);
+    text-shadow: none;
+}
+
+/* A card you hold none of: greyed to a quiet surface, not dropped - the dimmed
+   card in the fan is the tell. The count drops to the faint ink, which clears
+   AA on this surface. */
+.hand-card.spent {
+    background: var(--surface-3);
+    box-shadow: var(--shadow-1);
+}
+
+.hand-card.spent .hand-card-count,
+.hand-card.spent .hand-card-glyph {
+    color: var(--text-faint);
+    text-shadow: none;
+}
+
+/* A narrow phone: shrink and tighten the fan so it never pushes the page wide,
+   and let it scroll within the tray if the full commodity hand still overruns. */
+@media (max-width: 480px) {
+    .hand-fan {
+        overflow-x: auto;
+    }
+
+    .hand-card {
+        width: 52px;
+        height: 40px;
+        margin: 0 -14px;
+    }
+
+    .hand-card-glyph {
+        width: 20px;
+        height: 20px;
+    }
 }
 
 /* --- bank cell: tile, a thin stock meter, the raw count under it. */

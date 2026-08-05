@@ -1,19 +1,35 @@
-// The player's own hand and the bank, as filled coloured tiles.
+// The player's own hand and the bank.
 //
-// The hand is built once and painted in three places - the rail panel and the
-// two dialogs that cover it - so a chip cannot say one thing in the panel and
-// another in the dialog asking about it. That is why renderResourcePanel calls
-// renderDialogHands and why the two stay in one file.
+// The hand shows in three places from one payload, so no two can disagree about
+// what is held: the physical fan of cards in the bottom tray (renderResourcePanel)
+// and the compact tile restatement inside the discard and trade dialogs that
+// cover it (renderDialogHands). Both read the same player entry and iterate the
+// same order, so a count in the fan and the same count in a dialog are the same
+// number. They differ only in form - a fanned card on the table versus a small
+// tile in a modal - which is why there are two renderers and not one.
+//
+// CLICK-TO-TRADE HOOK (for the trade component): every fan card carries
+// `data-card="<resource|commodity id>"` and toggles the `.is-up` class to show
+// it lifted into an offer. Bind to `#resource-display .hand-card`, read
+// `dataset.card`, and add/remove `is-up`; nothing here consumes the click.
 
 import { ckEnabled } from './cities-knights.js';
 import { COMMODITY_TYPES } from './constants.js';
 import { bankChipValue, bankDisplay, discardHandNote, resourceDisplay, tradeHandNote } from './dom.js';
-import { resourceTile } from './icons.js';
+import { icon, resourceTile } from './icons.js';
 import { findMyPlayer } from './player-view.js';
 import { getBoard } from './state.js';
 
 // Board order for the five base resources, shared by the hand and the bank.
 const RESOURCE_ORDER = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+
+// The tile colour class each holdable draws its terrain fill from - the same
+// `.t-*` variants the icon set and pickers use, so a card and a picker tile for
+// the same resource are the same colour.
+const TILE_VARIANT = {
+    wood: 't-wood', brick: 't-brick', sheep: 't-sheep', wheat: 't-wheat', ore: 't-ore',
+    cloth: 't-cloth', coin: 't-coin', paper: 't-paper',
+};
 
 // The accessible name for a tile: its terrain colour is the only thing saying
 // which card the count beside it belongs to, so the tile carries the label.
@@ -23,8 +39,67 @@ const CARD_NAMES = {
 };
 
 /**
- * One held card: its coloured tile and a large count. A count of zero is greyed
- * (`.spent`) rather than dropped, so the gap itself reads as "none of this".
+ * One physical hand card: a terrain-coloured face with the resource glyph, a
+ * count in the top corner and a label strip along the bottom. A count of zero
+ * greys the whole card (`.spent`) rather than dropping it, so the gap in the
+ * fan itself reads as "none of this".
+ *
+ * The card face carries the terrain fill (not a nested tile) so the corner
+ * count sits directly on the colour it is checked for contrast against - the
+ * same relationship the WCAG sweep walks, so what passes is what is painted.
+ *
+ * @param {string} card - Resource or commodity id
+ * @param {number} count - How many are held
+ * @param {number} rotation - Fan angle in degrees for this card's place in the hand
+ * @returns {string}
+ */
+function handCard(card, count, rotation) {
+    const spent = count === 0 ? ' spent' : '';
+    const variant = TILE_VARIANT[card] || '';
+    const name = CARD_NAMES[card] || card;
+    return `<div class="hand-card ${variant}${spent}" data-card="${card}"`
+        + ` style="--rot: ${rotation}deg">`
+        + `<span class="hand-card-count num">${count}</span>`
+        + `<span class="hand-card-face">${icon(card, { cls: 'hand-card-glyph' })}</span>`
+        + `<span class="hand-card-label">${name}</span>`
+        + '</div>';
+}
+
+/**
+ * The player's hand as a fan of physical cards: the five resources, and the
+ * three commodities where the table deals them. Cards are rotated symmetrically
+ * about the centre so the row reads as a held fan.
+ *
+ * @param {object} player - Own player entry from the board payload
+ * @param {boolean} commodities - Whether to show cloth, coin and paper
+ * @returns {string} - HTML for the fan
+ */
+function handFan(player, commodities) {
+    const resources = player.resources || {};
+    const cards = RESOURCE_ORDER.map((type) => [type, resources[type] || 0]);
+
+    // Commodities join the fan: they are spent, traded and discarded like
+    // resources, and a separate row implied they were not.
+    if (commodities) {
+        const held = player.commodities || {};
+        for (const type of COMMODITY_TYPES) {
+            cards.push([type, held[type] || 0]);
+        }
+    }
+
+    // Spread narrows as the fan grows, so eight cards do not swing as wide as
+    // five. The angles are symmetric about the middle card.
+    const step = Math.min(4, 30 / cards.length);
+    const centre = (cards.length - 1) / 2;
+    const html = cards
+        .map(([type, count], index) => handCard(type, count, (index - centre) * step))
+        .join('');
+    return `<div class="hand-fan">${html}</div>`;
+}
+
+/**
+ * One held card as a compact tile: its coloured tile and a count. Used inside
+ * the dialogs that restate the hand.
  *
  * @param {string} card - Resource or commodity id
  * @param {number} count - How many are held
@@ -38,12 +113,8 @@ function resourceCell(card, count) {
 }
 
 /**
- * One player's own cards as tiles: the five resources, and the three
- * commodities where they are dealt.
- *
- * Built once and painted in three places - the rail's hand panel and the two
- * dialogs that cover it - so a chip cannot say one thing in the panel and
- * another in the dialog asking for it.
+ * The hand as a compact tile row for the discard and trade dialogs, which have
+ * no room for the fan and only need the counts legible while asking about them.
  *
  * @param {object} player - Own player entry from the board payload
  * @param {boolean} commodities - Whether to show cloth, coin and paper
@@ -56,8 +127,6 @@ function handChips(player, commodities) {
         html += resourceCell(type, resources[type] || 0);
     }
 
-    // Commodities sit in the same row as the resources: they are spent, traded
-    // and discarded like them, and a separate box implied they were not.
     if (commodities) {
         const held = player.commodities || {};
         for (const type of COMMODITY_TYPES) {
@@ -68,7 +137,7 @@ function handChips(player, commodities) {
 }
 
 /**
- * Render resource panel - shows current user's resources
+ * Render resource panel - the player's fan of physical cards in the bottom tray.
  */
 export function renderResourcePanel() {
     if (!getBoard() || !getBoard().players) {
@@ -80,7 +149,7 @@ export function renderResourcePanel() {
         return;
     }
 
-    resourceDisplay.innerHTML = handChips(player, ckEnabled());
+    resourceDisplay.innerHTML = handFan(player, ckEnabled());
     renderDialogHands();
 }
 
