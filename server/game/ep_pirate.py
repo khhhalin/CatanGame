@@ -19,10 +19,16 @@ an expansion name. Per-player pirate hexes live on `self.ep`; the rule depends o
 """
 
 from game.results import refused
+from game.transport import _is_transport_ship
 
 # What a ship pays each time it crosses a hex holding an opponent's pirate
 # (expansions.md 949).
 TRIBUTE_GOLD = 1
+
+# The die face a battle-ready ship needs to chase the pirate away (952). A spice
+# village's Pirate Bonus advantage widens the winning faces (see `ep.py`).
+CHASE_FACE = 6
+PIRATE_BONUS_FACES = frozenset({4, 5, 6})
 
 
 class EpPirateRules:
@@ -107,6 +113,93 @@ class EpPirateRules:
         victim.gold -= 1
         thief.gold += 1
         return 'gold'
+
+    # --- Chasing the pirate away (951-958) ---------------------------------
+
+    def _adjacent_opponent_pirate(self, player_name: str, edge_key: str):
+        """An opponent whose pirate sits on a hex touching this edge, or None.
+
+        A transport ship is battle-ready against a pirate on any hex it borders,
+        so the sides of the ship's edge are the hexes to look at. Own pirates
+        never count — you cannot chase yourself.
+        """
+        edge = self.edges.get(edge_key)
+        if edge is None:
+            return None
+        for hex_key in edge.neighbors['hexes']:
+            for owner in self.ep.pirate_at(hex_key):
+                if owner != player_name:
+                    return owner
+        return None
+
+    def _chase_wins_on(self, player_name: str) -> frozenset:
+        """The die faces that chase the pirate for this player (952).
+
+        A plain ship needs a 6; the Pirate Bonus village advantage lowers the
+        bar to 4-5-6, read off the E&P state because the advantage is state, not
+        a catalogue rule — the same way `ship_movement_points_for` reads Swift
+        Voyage.
+        """
+        if self.ep is not None and self.ep.has_advantage(player_name, 'pirate_bonus'):
+            return PIRATE_BONUS_FACES
+        return frozenset({CHASE_FACE})
+
+    def chase_pirate(self, player_name: str, edge_key: str) -> dict:
+        """Roll a battle-ready ship to chase an opponent's pirate away (951-958).
+
+        Battle-ready means the player's own transport ship, unmoved this turn
+        (tracked in `transport_ships_moved`, the same guard `move_transport_ship`
+        keeps) and lying beside a hex an opponent's pirate sits on. It rolls one
+        die on the injected RNG; a winning face chases that pirate off the board
+        and hands the chaser the fresh-placement path — `must_move_robber` is set
+        so `place_pirate_ship` next repositions the pirate and steals, exactly as
+        a 7 would. Any other roll does nothing. Either way the ship has spent its
+        action for the turn (951), recorded like a move.
+        """
+        if not self.rules['chase_pirate']:
+            return refused('RULE_NOT_IN_PLAY', 'This table is not playing the pirate chase')
+        if self.game_phase == "setup":
+            return refused('WRONG_PHASE', 'Cannot chase the pirate during setup')
+        if self.must_move_robber:
+            return refused('MUST_MOVE_ROBBER', 'You must place the pirate ship first')
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
+
+        current_name = self.current_player_name()
+        if current_name != player_name:
+            return refused('NOT_YOUR_TURN', f'Only {current_name} can chase the pirate')
+
+        edge = self.edges.get(edge_key)
+        if edge is None or edge.ship is None:
+            return refused('INVALID_TARGET', 'There is no ship there')
+        if not _is_transport_ship(edge.ship):
+            return refused('NOT_A_TRANSPORT', 'That ship is not a transport ship')
+        if edge.ship.get('player') != player_name:
+            return refused('NOT_YOUR_PIECE', 'You can only chase with your own ships')
+        if edge.ship['id'] in self.transport_ships_moved:
+            return refused('NOT_BATTLE_READY', 'A ship that has moved this turn cannot chase')
+
+        if self.ep is None:
+            return refused('WRONG_PHASE', 'This table has no pirate state')
+
+        target = self._adjacent_opponent_pirate(player_name, edge_key)
+        if target is None:
+            return refused('NO_PIRATE_ADJACENT', 'No opponent pirate sits beside this ship')
+
+        # The ship spends its action whether or not the die favours it (951), so
+        # it is marked before the roll is read.
+        self.transport_ships_moved.add(edge.ship['id'])
+
+        face = self.rng.randint(1, 6)
+        if face not in self._chase_wins_on(player_name):
+            return {'success': True, 'error': '', 'chased': False, 'roll': face}
+
+        # Chased away: the opponent's pirate leaves the board and the chaser now
+        # repositions and steals through the same placement path a 7 runs.
+        self.ep.place_pirate(target, None)
+        self.must_move_robber = True
+        return {'success': True, 'error': '', 'chased': True, 'roll': face}
 
     def charge_pirate_tribute(self, mover_name: str, edge_key: str) -> None:
         """A ship arriving beside an opponent's pirate pays 1 gold tribute (949).
