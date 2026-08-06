@@ -271,45 +271,18 @@
                             <div id="choice-options" class="choice-options"></div>
                         </div>
                     </div>
-                    <!-- Raised where a click landed, over the board and never
-                         in flow above it: anything that took a row of its own
-                         would resize the drawing buffer and move the camera
-                         under the very click it is asking about. placement.js
-                         positions it; the ✓ and ✗ are real buttons so they can
-                         be tabbed to and named for a screen reader. -->
-                    <div id="placement-confirm" class="placement-confirm hidden"
-                         role="group" aria-label="Confirm placement">
-                        <button type="button" id="placement-confirm-yes"
-                                class="placement-confirm-btn confirm-yes"
-                                aria-label="Confirm placement"
-                                title="Confirm placement (Enter)">
-                            <span aria-hidden="true">✓</span>
-                        </button>
-                        <button type="button" id="placement-confirm-no"
-                                class="placement-confirm-btn confirm-no"
-                                aria-label="Cancel placement"
-                                title="Cancel placement (Escape)">
-                            <span aria-hidden="true">✗</span>
-                        </button>
-                    </div>
-                    <!-- Tapping a knight you own raises its own actions where
-                         it stands, instead of leaving them in the Knights fold
-                         with no connection to the piece. Positioned by
-                         knight-overlay.js in the same way and for the same
-                         reason as the ✓/✗ above: absolutely, inside the board
-                         box, so it can never resize the canvas or move the
-                         camera. The buttons are static so their listeners are
-                         registered once; only the labels and the disabled
-                         state are rewritten. -->
-                    <div id="knight-actions" class="knight-actions hidden"
-                         role="group" aria-label="Knight actions">
-                        <button type="button" id="knight-action-activate"
-                                class="knight-action" data-knight-overlay="activate"></button>
-                        <button type="button" id="knight-action-promote"
-                                class="knight-action" data-knight-overlay="promote"></button>
-                        <button type="button" id="knight-action-move"
-                                class="knight-action" data-knight-overlay="move"></button>
-                    </div>
+                    <!-- The ✓/✗ placement confirm and the knight-action popover
+                         used to live here, but the floating overlays (hand,
+                         trays, dice) sit in #board-overlays — a fixed layer at
+                         z-index:sticky that paints over everything in
+                         #game-screen. A popover anchored to a bottom/corner hex
+                         was therefore covered by the hand and could not be
+                         clicked (see the seafaring pirate regression). Both now
+                         live in #board-overlays so they share that layer's
+                         stacking context and can sit above the floats; overlays
+                         sizes that layer to the board rect, so placement.js and
+                         knight-overlay.js position them with the same board-
+                         relative maths as before. -->
                     <!-- The canvas is keyboard-zoomable (+ - 0, arrows); these
                          are the visible affordance for the same thing. -->
                     <div class="board-controls">
@@ -739,6 +712,45 @@
                     <div id="resource-display" class="resource-display"></div>
                 </div>
             </section>
+        </div>
+
+        <!-- Board popovers live at the end of the overlay layer so they paint
+             over the floats above (hand, trays, dice) and stay clickable at
+             bottom/corner hexes. placement.js and knight-overlay.js position
+             them board-relative; overlays sizes this layer to the board rect, so
+             the maths is unchanged from when they sat inside #game-board. -->
+        <!-- Raised where a click landed, over the board and never in flow above
+             it: anything that took a row of its own would resize the drawing
+             buffer and move the camera under the very click it is asking about.
+             The ✓ and ✗ are real buttons so they can be tabbed to and named for
+             a screen reader. -->
+        <div id="placement-confirm" class="placement-confirm hidden"
+             role="group" aria-label="Confirm placement">
+            <button type="button" id="placement-confirm-yes"
+                    class="placement-confirm-btn confirm-yes"
+                    aria-label="Confirm placement"
+                    title="Confirm placement (Enter)">
+                <span aria-hidden="true">✓</span>
+            </button>
+            <button type="button" id="placement-confirm-no"
+                    class="placement-confirm-btn confirm-no"
+                    aria-label="Cancel placement"
+                    title="Cancel placement (Escape)">
+                <span aria-hidden="true">✗</span>
+            </button>
+        </div>
+        <!-- Tapping a knight you own raises its own actions where it stands,
+             instead of leaving them in the Knights fold with no connection to
+             the piece. The buttons are static so their listeners are registered
+             once; only the labels and the disabled state are rewritten. -->
+        <div id="knight-actions" class="knight-actions hidden"
+             role="group" aria-label="Knight actions">
+            <button type="button" id="knight-action-activate"
+                    class="knight-action" data-knight-overlay="activate"></button>
+            <button type="button" id="knight-action-promote"
+                    class="knight-action" data-knight-overlay="promote"></button>
+            <button type="button" id="knight-action-move"
+                    class="knight-action" data-knight-overlay="move"></button>
         </div>
     </div>
 

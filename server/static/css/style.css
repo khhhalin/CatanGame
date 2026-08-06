@@ -1029,7 +1029,12 @@ button:disabled {
    left/top in pixels; everything else is here. */
 .placement-confirm {
     position: absolute;
-    z-index: var(--z-board-overlay);
+    /* Lives in #board-overlays with the floats, but one layer up: at
+       --z-sticky it paints over the hand/tray/dice (all --z-board-overlay), so
+       a confirm anchored to a bottom/corner hex stays clickable. The overlay
+       layer is pointer-transparent, so the popover re-enables pointers. */
+    z-index: var(--z-sticky);
+    pointer-events: auto;
     transform: translateX(-50%);
     display: flex;
     gap: var(--space-1);
@@ -1069,7 +1074,9 @@ button:disabled {
    left/top in pixels; everything else is here. */
 .knight-actions {
     position: absolute;
-    z-index: var(--z-board-overlay);
+    /* Same reasoning as .placement-confirm: above the floats, pointers on. */
+    z-index: var(--z-sticky);
+    pointer-events: auto;
     transform: translateX(-50%);
     display: flex;
     gap: var(--space-1);
