@@ -26,6 +26,14 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v2.0.0 — 2026-08-05 18:30
+
+- **New** A calmer, warmer, more minimalist look. The panels stepped back to quiet surfaces and the board takes the room — the game reads at a glance now.
+- **New** Your resources are a hand of physical cards along the bottom of the screen; tap one to lift it into a trade.
+- **New** Trading is a shelf right above your hand — tap your own cards into "You give", pick what you want, and Propose, with no separate dialog.
+- **New** The board wears clean minimalist patterns instead of the old textures — a woven motif per land, quiet beneath the numbers and pieces.
+- **New** The dice are physical dice with pips.
+
 ## v1.0.0 — 2026-08-05 12:00
 
 - **New** The whole interface swapped its emoji for one matching set of drawn icons — resources are small coloured tiles in the board's own colours, everything else a clean line icon. The player list reads as a card per player now, not a run of abbreviations.
