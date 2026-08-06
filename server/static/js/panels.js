@@ -6,7 +6,7 @@ import { isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.j
 import { getContrastColor } from './contrast.js';
 import { renderDevCards } from './dev-cards.js';
 import { resourceTile } from './icons.js';
-import { activeRulesChipValue, buildCosts, buyDevCardBtn, colorPicker, costsChipValue, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, upgradeCityBtn } from './dom.js';
+import { activeRulesChipValue, buildCosts, buyDevCardBtn, colorPicker, costsChipValue, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, turnControls, upgradeCityBtn } from './dom.js';
 import { renderBank, renderDialogHands, renderResourcePanel } from './hand.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
@@ -525,6 +525,11 @@ export function updateConsoleVisibility() {
     }
 
 
+    // The turn controls left the console for the dice footer (v2.1 phase 2), so
+    // an observer's console-hide no longer reaches them: hide the pair here too.
+    if (turnControls) {
+        turnControls.style.display = getRole() === 'observer' ? 'none' : '';
+    }
     if (getRole() === 'observer') {
         gameConsole.classList.add('hidden');
     } else if (isMyTurn()) {

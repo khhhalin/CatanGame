@@ -671,43 +671,62 @@
             <ul id="game-players" class="user-list"></ul>
         </section>
 
-        <!-- Floating build/trade tray, bottom-left. A temporary phase-1 home for
-             the build controls and the trade zone so a player can still build
-             and trade; the unified tray is phase 2. The build buttons keep their
-             ids and clean single-word labels (costs live in the Details fold). -->
+        <!-- The unified build+trade tray, bottom-left (v2.1 phase 2). One
+             surface: tap hand cards to gather materials, and the tray works out
+             what they make - a build to arm, a bank trade to run, or an offer to
+             the table. The three build buttons keep their ids and arm the same
+             placement flow the old console buttons did; only the trigger and its
+             home moved. trade.js fills `.tray-trade` with the materials shelf,
+             the want picker, the bank-trade action and the propose button, and
+             lights the build whose cost the materials meet. -->
         <div class="action-tray" id="action-tray">
             <!-- The console keeps its id so the changelog pill positions above
                  it and panels.js hides it for an observer. -->
-            <div class="game-console" id="game-console">
-                <div class="console-group build-group">
-                    <input type="color" id="color-picker" title="Choose your color">
-                    <button id="place-settlement-btn">Settlement</button>
-                    <button id="place-road-btn">Road</button>
-                    <button id="upgrade-city-btn">City</button>
+            <div class="game-console tray" id="game-console">
+                <div class="tray-head">
+                    <span class="tray-title">Build &amp; Trade</span>
+                    <!-- trade.js writes the live read-out here: the idle hint,
+                         or which build the gathered materials make. -->
+                    <span class="tray-note" id="tray-note">Tap your cards to build or trade</span>
                 </div>
-                <div class="console-group turn-group">
+                <div class="console-group build-group tray-builds">
+                    <button id="place-settlement-btn" data-build="settlement">Build Settlement</button>
+                    <button id="place-road-btn" data-build="road">Build Road</button>
+                    <button id="upgrade-city-btn" data-build="city">Build City</button>
+                </div>
+                <!-- The materials shelf, want picker, bank-trade action and
+                     propose button trade.js builds into this slot. It collapses
+                     while no card is gathered. -->
+                <div class="tray-trade"></div>
+                <!-- The turn controls sit as small buttons at the foot of the
+                     tray (v2.1 phase 2). The dice footer in the right panel has
+                     no spare row at a short viewport, so advancing and ending the
+                     turn live here, by the actions, floating at no cost to the
+                     shell's height. panels.js drives their state and the console
+                     hide keeps them off an observer's screen. -->
+                <div class="turn-controls" id="turn-controls">
                     <button id="next-turn-btn">Next Turn</button>
                     <button id="end-game-btn">End Game</button>
                 </div>
-                <!-- Personal, this browser only: it changes nothing anyone else
-                     can see, so it is not a house rule and never reaches the
-                     server. -->
-                <div class="console-group option-group">
-                    <label class="yolo-toggle" for="yolo-mode-toggle"
-                           title="YOLO mode: place on click, with no ✓/✗ confirmation. Personal setting, this browser only.">
-                        <input type="checkbox" id="yolo-mode-toggle">
-                        <span>YOLO</span>
-                    </label>
-                    <label class="yolo-toggle" for="mute-toggle"
-                           title="Mute the placement cues and the turn sound. Personal setting, this browser only.">
-                        <input type="checkbox" id="mute-toggle">
-                        <span>Mute</span>
-                    </label>
-                </div>
             </div>
-            <!-- The click-to-trade zone trade.js builds into this slot. It
-                 collapses while empty. -->
-            <div class="tray-trade"></div>
+        </div>
+
+        <!-- Personal settings, top-right corner (v2.1 phase 2): colour and the
+             two this-browser-only toggles. A floating corner cluster - none of
+             it reaches the server, and floating keeps it off the shell height a
+             short viewport cannot spare. Hidden with the overlays in the lobby. -->
+        <div class="settings-float" id="settings-float">
+            <input type="color" id="color-picker" title="Choose your color">
+            <label class="yolo-toggle" for="yolo-mode-toggle"
+                   title="YOLO mode: place on click, with no ✓/✗ confirmation. Personal setting, this browser only.">
+                <input type="checkbox" id="yolo-mode-toggle">
+                <span>YOLO</span>
+            </label>
+            <label class="yolo-toggle" for="mute-toggle"
+                   title="Mute the placement cues and the turn sound. Personal setting, this browser only.">
+                <input type="checkbox" id="mute-toggle">
+                <span>Mute</span>
+            </label>
         </div>
 
         <!-- Floating hand, bottom-centre: big physical cards jutting up from the

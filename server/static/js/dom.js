@@ -31,9 +31,15 @@ export const gamePlayersList = document.getElementById('game-players');
 export const awardSummary = document.getElementById('award-summary');
 export const turnIndicator = document.getElementById('turn-indicator');
 export const gameConsole = document.getElementById('game-console');
+// The tray's live read-out: the idle hint, or which build the gathered
+// materials make. trade.js writes it as the materials shelf changes.
+export const trayNote = document.getElementById('tray-note');
 export const gameBoard = document.getElementById('game-board');
 export const nextTurnBtn = document.getElementById('next-turn-btn');
 export const endGameBtn = document.getElementById('end-game-btn');
+// The wrapper the turn controls (Next Turn, End Game) now share in the dice
+// footer. panels.js hides the pair for an observer through it.
+export const turnControls = document.getElementById('turn-controls');
 export const colorPicker = document.getElementById('color-picker');
 export const placeSettlementBtn = document.getElementById('place-settlement-btn');
 export const placeRoadBtn = document.getElementById('place-road-btn');

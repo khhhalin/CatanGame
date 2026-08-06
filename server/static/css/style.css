@@ -334,6 +334,46 @@ body {
     display: none;
 }
 
+/* Personal settings, floating top-right over the board (v2.1 phase 2): colour
+   and the two this-browser-only toggles. A quiet corner cluster, pinned to the
+   board box by overlays.js like the scoreboard and the tray, so it costs the
+   shell no height - the short-viewport shell has none to give a new bar. */
+.settings-float {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    top: var(--space-3);
+    right: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    pointer-events: auto;
+}
+
+.container:has(#game-screen.hidden) .settings-float {
+    display: none;
+}
+
+/* The floating settings colour swatch is small and round to sit in the pill. */
+.settings-float #color-picker {
+    width: 26px;
+    height: 24px;
+}
+
+/* On a phone the toggle words drop so the cluster stays a small corner chip;
+   the checkbox and its title carry the meaning. */
+@media (max-width: 480px) {
+    .settings-float .yolo-toggle span {
+        display: none;
+    }
+}
+
 h1 {
     color: var(--accent);
     font-size: var(--text-xl);
@@ -1354,6 +1394,56 @@ button:disabled {
        own colour and could be anything. One ring in one token is invisible
        against half the palette in one theme or the other. */
     box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 5px var(--text);
+}
+
+/* The materials on the shelf make this build: a green ring says which button
+   the gathered cards afford, the same rings-not-borders way arming does, so
+   lighting a build never changes a box and moves the camera. */
+#place-settlement-btn.ready,
+#place-road-btn.ready,
+#upgrade-city-btn.ready {
+    box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 5px var(--good);
+}
+
+/* The tray's head: its name and the live read-out of what the materials make. */
+.tray-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tray-title {
+    font-size: var(--text-xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.tray-note {
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+}
+
+/* The build buttons wrap as a group; the tray keeps them together under the
+   note and above the trade shelf. */
+.tray-builds {
+    flex-wrap: wrap;
+}
+
+/* The turn controls, a small row at the foot of the tray. A hairline sets them
+   off from the build and trade actions above without boxing them. */
+.turn-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--hairline);
+}
+
+.turn-controls #next-turn-btn {
+    flex: 1 1 auto;
+    width: auto;
 }
 
 #roll-dice-btn {
@@ -3830,15 +3920,33 @@ button:disabled {
    is filled by tapping hand cards, the want side by an inline picker; the
    mini-cards mirror the hand's physical cards at shelf size, drawing the same
    terrain fill through the shared `.t-*` variables. */
+/* In the unified tray the zone is a narrow column: the materials shelf, the
+   want row, then the trade actions stacked full-width, matching the mockup. It
+   used to be a horizontal give/want/propose row when the tray was wider; the
+   tray is a slim vertical panel now, so a row overflowed and clipped Propose. */
 .trade-zone {
     display: flex;
-    align-items: center;
-    gap: var(--space-4);
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
     width: 100%;
     padding: var(--space-2) var(--space-3);
     background: var(--surface-quiet);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);
+}
+
+/* The ⇄ between the give and want sides reads across a row; stacked, the two
+   labelled sides are plain enough without it. */
+.trade-zone .trade-swap {
+    display: none;
+}
+
+/* The actions fill the column width, one under the other. */
+.trade-zone .trade-bank,
+.trade-zone .trade-propose {
+    align-self: stretch;
+    width: 100%;
 }
 
 /* Quiet until a card is chosen: the zone collapses out of the tray entirely, so
@@ -4013,22 +4121,23 @@ button:disabled {
     font-weight: 600;
 }
 
-/* On a phone the row wraps rather than pushing the page wide; the Propose
-   button drops to a full-width bar under the two sides. */
-@media (max-width: 480px) {
-    .trade-zone {
-        flex-wrap: wrap;
-        gap: var(--space-2);
-    }
-
-    .trade-slotwrap {
-        flex-basis: 40%;
-    }
-
-    .trade-propose {
-        flex: 1 1 100%;
-    }
+/* The one-press bank action, shown only when the materials are a bank trade at
+   this player's rate. The default accent/on-accent treatment carries AA on both
+   themes, so it borrows it rather than minting a new colour pair. */
+.trade-bank {
+    flex: none;
+    white-space: nowrap;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-pill);
+    font-weight: 600;
 }
+
+.trade-bank[hidden] {
+    display: none;
+}
+
+/* The zone is a full-width column at every size now (see .trade-zone), so the
+   sides and the Propose bar already stack; no phone-specific override needed. */
 
 /* --- bank cell: tile, a thin stock meter, the raw count under it. */
 .bank-row {

@@ -343,11 +343,13 @@ class TestCitiesAndKnightsFits:
         assert tiles > 0, "the Costs panel states no prices in resource tiles"
 
         # And the thing the owner complained about is gone: the buttons carry
-        # their name and nothing else.
+        # their build action and nothing else - no cost icons crammed on. In the
+        # v2.1 unified tray the arm buttons read "Build <X>"; the price stays in
+        # the Costs panel checked above.
         for selector, label in (
-            ("#place-settlement-btn", "Settlement"),
-            ("#place-road-btn", "Road"),
-            ("#upgrade-city-btn", "City"),
+            ("#place-settlement-btn", "Build Settlement"),
+            ("#place-road-btn", "Build Road"),
+            ("#upgrade-city-btn", "Build City"),
         ):
             text = player.page.inner_text(selector).strip()
             assert text == label, f"{selector} still carries more than its name: {text!r}"
