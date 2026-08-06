@@ -43,6 +43,7 @@ export const diceDisplay = document.getElementById('dice-display');
 export const diceSetEl = document.getElementById('dice-set');
 export const resourceDisplay = document.getElementById('resource-display');
 export const bankDisplay = document.getElementById('bank-display');
+export const buildCosts = document.getElementById('build-costs');
 // The empty slot the foundation left in the bottom tray, above the hand, for
 // the trade zone (trade.js builds the offer-builder into it).
 export const trayTrade = document.querySelector('.tray-trade');
@@ -134,6 +135,7 @@ export const improvementsChipValue = document.getElementById('improvements-chip-
 export const knightsChipValue = document.getElementById('knights-chip-value');
 export const devCardsChipValue = document.getElementById('dev-cards-chip-value');
 export const bankChipValue = document.getElementById('bank-chip-value');
+export const costsChipValue = document.getElementById('costs-chip-value');
 export const progressCardsPanel = document.getElementById('progress-cards-panel');
 export const progressCardsChipValue = document.getElementById('progress-cards-chip-value');
 export const progressHandDiv = document.getElementById('progress-hand');

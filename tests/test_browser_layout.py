@@ -321,15 +321,34 @@ class TestCitiesAndKnightsFits:
             assert any(name in row for row in rows), f"{name} is missing from the scoreboard"
         assert all("pts" in row for row in rows), f"a row has no score: {rows}"
 
-    def test_the_build_buttons_state_their_costs(self, ck_table):
+    def test_the_costs_panel_states_each_build_price(self, ck_table):
+        """The prices moved off the buttons - where the cost icons crammed onto
+        the label were unreadable - into their own quiet rail panel. Each build
+        the table plays states its cost there in resource tiles, and the buttons
+        are left as clean labels."""
         player = ck_table[0]
-        costs = player.page.eval_on_selector_all(
-            "#place-settlement-btn .build-cost, #place-road-btn .build-cost,"
-            " #upgrade-city-btn .build-cost",
+        names = player.page.eval_on_selector_all(
+            "#build-costs .cost-row .cost-name",
             "els => els.map(e => e.textContent.trim())",
         )
-        assert len(costs) == 3, f"a build button has no cost on it: {costs}"
-        assert all(costs), f"a build button's cost is blank: {costs}"
+        for label in ("Settlement", "Road", "City"):
+            assert label in names, f"the Costs panel has no {label} row: {names}"
+
+        # The price is stated in resource tiles, not text or emoji glyphs.
+        tiles = player.page.eval_on_selector_all(
+            "#build-costs .cost-row .cost-tiles .tile", "els => els.length"
+        )
+        assert tiles > 0, "the Costs panel states no prices in resource tiles"
+
+        # And the thing the owner complained about is gone: the buttons carry
+        # their name and nothing else.
+        for selector, label in (
+            ("#place-settlement-btn", "Settlement"),
+            ("#place-road-btn", "Road"),
+            ("#upgrade-city-btn", "City"),
+        ):
+            text = player.page.inner_text(selector).strip()
+            assert text == label, f"{selector} still carries more than its name: {text!r}"
 
     def test_each_fold_summarises_itself_without_being_opened(self, ck_table):
         """A chip that says nothing is a button, not a summary."""
@@ -410,10 +429,16 @@ class TestCitiesAndKnightsFits:
         rewrapped the console, which resized the board box, which moved the
         camera — under a click the player had already started.
 
+        The cost icons that used to sit on the button (and could change width
+        with the hand) are gone - they live in the Costs panel now - so a button
+        cannot reflow on an afford-state change at all. This still holds the
+        remaining size-changers to account: arming paints a ring, and the
+        disabled treatment paints a fill, and neither may change the box.
+
         Driven by setting the classes rather than by pressing the buttons: the
         buttons are correctly disabled when the hand cannot pay, and this is a
         question about the stylesheet, not about affordability. Both states are
-        checked, because the new disabled treatment paints a border too."""
+        checked, because the disabled treatment paints a border too."""
         player = ck_table[0]
         measure = (
             "() => { const console_ = document.getElementById('game-console');"

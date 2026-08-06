@@ -5,7 +5,8 @@
 import { isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
 import { getContrastColor } from './contrast.js';
 import { renderDevCards } from './dev-cards.js';
-import { activeRulesChipValue, buyDevCardBtn, colorPicker, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, upgradeCityBtn } from './dom.js';
+import { resourceTile } from './icons.js';
+import { activeRulesChipValue, buildCosts, buyDevCardBtn, colorPicker, costsChipValue, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, upgradeCityBtn } from './dom.js';
 import { renderBank, renderDialogHands, renderResourcePanel } from './hand.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
@@ -411,6 +412,10 @@ function updateAffordability() {
     const devCardCost = getBuildCost('dev_card');
     gate(buyDevCardBtn, 'dev_card',
         devCardCost ? `Costs ${formatBuildCost(devCardCost)}` : 'Buy a development card');
+
+    // The prices moved off the buttons into their own panel; it reads from the
+    // same board payload, so it is refreshed on the same beat.
+    renderCosts();
 }
 
 /**
@@ -424,6 +429,82 @@ function formatBuildCost(cost) {
     return Object.entries(cost)
         .map(([resource, amount]) => `${amount} ${resource}`)
         .join(' ');
+}
+
+// The builds worth pricing in the rail, in reading order, each with the rule
+// that has to be on for the table to build it at all. `always` rows are the
+// base game's three plus the development card; the rest are switched on one at
+// a time, never as a mode, so a base game's Costs panel is exactly four rows.
+// A key with no price in `board.costs` (a build this table does not charge for)
+// drops out on its own.
+const PRICED_BUILDS = [
+    { key: 'settlement', label: 'Settlement', shown: () => true },
+    { key: 'road', label: 'Road', shown: () => true },
+    { key: 'city', label: 'City', shown: () => true },
+    { key: 'ship', label: 'Ship', shown: () => getBoard()?.rules?.ships === true },
+    { key: 'build_knight', label: 'Knight', shown: () => getBoard()?.rules?.knights === true },
+    { key: 'city_wall', label: 'City Wall', shown: () => getBoard()?.rules?.city_walls === true },
+    // Progress cards replace the development deck outright, so a table playing
+    // them cannot buy a dev card and the row would price a build it refuses.
+    { key: 'dev_card', label: 'Dev Card',
+      shown: () => getBoard()?.rules?.progress_cards !== true },
+];
+
+/**
+ * Fill the Costs reference panel from the table's own price list.
+ *
+ * The prices are the server's (`board.costs`), so a house rule that made a
+ * build cheaper moves this panel with it rather than leaving a second copy to
+ * disagree. This is where the build costs live now that they are off the
+ * buttons: each row states what one build costs in resource tiles, and dims
+ * when the player's hand cannot pay it - the same afford/can't-afford signal
+ * the buttons carry, without the icons that made them unreadable.
+ */
+function renderCosts() {
+    if (!buildCosts) {
+        return;
+    }
+    if (!getBoard()) {
+        buildCosts.innerHTML = '';
+        return;
+    }
+    const held = findMyPlayer()?.resources;
+    const rows = [];
+    let shown = 0;
+    let affordable = 0;
+    for (const build of PRICED_BUILDS) {
+        const cost = getBuildCost(build.key);
+        if (!cost || !build.shown()) {
+            continue;
+        }
+        const tiles = Object.entries(cost)
+            .map(([resource, amount]) =>
+                `${amount}${resourceTile(resource, { label: resource, tileCls: 'tile-sm' })}`)
+            .join('');
+        // Pure hand-vs-cost, not the turn gate: the panel is a reference, so a
+        // row a player could pay for on their turn should not read as blocked
+        // while it is someone else's.
+        const afford = held ? shortfallReason(held, cost) === '' : false;
+        shown += 1;
+        if (afford) {
+            affordable += 1;
+        }
+        rows.push(
+            `<div class="cost-row${afford ? '' : ' cant-afford'}">`
+            + `<span class="cost-name">${build.label}</span>`
+            + `<span class="cost-tiles">${tiles}</span></div>`,
+        );
+    }
+    buildCosts.innerHTML = rows.join('');
+
+    // The one number worth reading without opening the panel: how many of the
+    // table's builds the hand can pay for right now. An observer with no hand
+    // sees the count of builds instead of a false zero.
+    if (costsChipValue) {
+        costsChipValue.textContent = held
+            ? `${affordable}/${shown} affordable`
+            : `${shown} builds`;
+    }
 }
 
 /**

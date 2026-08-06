@@ -227,6 +227,31 @@
                 <section class="panel" id="folds-panel">
                     <h2 class="panel-title">Details</h2>
                     <div class="fold-list">
+                        <!-- The build prices, off the buttons and folded into
+                             the rail so the buttons stay clean labels. The chip
+                             states how many builds the hand can afford right
+                             now; the popover lists each buildable's cost in
+                             resource tiles, filled by panels.js from the
+                             board's own price list (`board.costs`) so a house
+                             rule that changes a cost moves it too. Always
+                             present: every table can build. -->
+                        <div class="fold" id="costs-panel">
+                            <button type="button" class="fold-chip" id="costs-chip"
+                                    aria-expanded="false" aria-controls="costs-popover">
+                                <span class="fold-name">Costs</span>
+                                <span class="fold-value" id="costs-chip-value">—</span>
+                            </button>
+                            <div class="popover hidden" id="costs-popover"
+                                 role="dialog" aria-label="Build costs">
+                                <div class="popover-head">
+                                    <span>Costs</span>
+                                    <button type="button" class="popover-close"
+                                            data-close-popover aria-label="Close">×</button>
+                                </div>
+                                <div id="build-costs" class="popover-body build-costs"></div>
+                            </div>
+                        </div>
+
                         <!-- Cities & Knights. Every fold below is hidden until
                              a board payload says the rule is on, so a base game
                              shows exactly what it always did. Nothing in here
@@ -530,18 +555,15 @@
                          mid-group: a build button landing on its own second
                          row is what made the console two rows tall at 1366,
                          and every row it grows is a row the board loses.
-                         The cost sits in a span of its own so panels.js can
-                         rewrite the count without touching the name - the
-                         labels are fixed width, because a button that resizes
-                         rewraps the console and moves the camera. -->
+                         The buttons are clean labels now: what each build
+                         costs is the Costs panel in the rail, so the button
+                         carries only its afford/can't-afford state and can no
+                         longer change width when the hand changes. -->
                     <div class="console-group build-group">
                         <input type="color" id="color-picker" title="Choose your color">
-                        <button id="place-settlement-btn">Settlement
-                            <span class="build-cost">🌲🧱🌾🐑</span></button>
-                        <button id="place-road-btn">Road
-                            <span class="build-cost">🌲🧱</span></button>
-                        <button id="upgrade-city-btn">City
-                            <span class="build-cost">🌾🌾🪨🪨🪨</span></button>
+                        <button id="place-settlement-btn">Settlement</button>
+                        <button id="place-road-btn">Road</button>
+                        <button id="upgrade-city-btn">City</button>
                     </div>
                     <div class="console-group turn-group">
                         <button id="next-turn-btn">Next Turn</button>

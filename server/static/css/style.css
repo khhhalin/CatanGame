@@ -1046,9 +1046,11 @@ button:disabled {
     flex-wrap: wrap;
 }
 
+/* Soft chips, not solid signal boxes: a warm tint with the status colour as
+   ink, so the clocks sit quietly in the row until they turn amber or red. */
 .timer {
-    background-color: var(--good);
-    color: var(--on-status);
+    background-color: var(--good-soft);
+    color: var(--good);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     font-weight: bold;
@@ -1057,11 +1059,13 @@ button:disabled {
 }
 
 .timer.warning {
-    background-color: var(--warn);
+    background-color: var(--warn-soft);
+    color: var(--warn);
 }
 
 .timer.danger {
-    background-color: var(--bad);
+    background-color: var(--bad-soft);
+    color: var(--bad);
 }
 
 .dice-container {
@@ -1131,25 +1135,18 @@ button:disabled {
     color: var(--good);
 }
 
-/* The build buttons carry their cost. Two rows, name over cost, so adding the
-   cost widened nothing: a console button that changes width rewraps the
-   console, which resizes the board box and moves the camera. */
+/* Clean single-line labels. What each build costs is the Costs panel in the
+   rail now, so the button carries only its name and its afford state - and,
+   with nothing on it that grows or shrinks with the hand, it can no longer
+   change width and rewrap the console under a click already in flight. The
+   compact padding keeps the console to its one-row budget. */
 #place-settlement-btn,
 #place-road-btn,
 #upgrade-city-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1) var(--space-3);
     font-size: var(--text-sm);
     line-height: var(--leading-tight);
-}
-
-.build-cost {
-    font-size: var(--text-2xs);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
+    white-space: nowrap;
 }
 
 /* Armed. Border *colour* and an outer glow only - both are free of layout.
@@ -1206,16 +1203,19 @@ button:disabled {
     color: var(--warn);
 }
 
-/* Destructive: ends the match for the whole table */
+/* Destructive, but gated behind a confirm, so it reads as a quiet ghost rather
+   than a heavy red box: a soft red fill with red ink until hover deepens it. */
 #end-game-btn {
     padding: var(--space-1) var(--space-2);
     font-size: var(--text-sm);
-    background-color: var(--bad);
-    color: var(--on-status);
+    background-color: var(--bad-soft);
+    color: var(--bad);
+    border-color: var(--hairline);
 }
 
-#end-game-btn:hover {
-    background-color: color-mix(in srgb, var(--bad) 80%, var(--text));
+#end-game-btn:hover:not(:disabled) {
+    background-color: var(--bad);
+    color: var(--on-status);
 }
 
 /* --------------------------------------------------------- folds and popovers */
@@ -1229,10 +1229,14 @@ button:disabled {
    load-bearing part: it is outside every flow on the page, so opening one can
    neither reflow the rail nor resize the board box nor move the camera. */
 
+/* v2 minimalist: the folds are quiet hairline-ruled rows now, like the
+   scoreboard's player cards, not a stack of filled bordered boxes. The eyebrow
+   name and the summary carry the chip; a thin rule between rows is the only
+   frame. Same treatment the PLAYERS panel already wears, carried across the
+   whole rail. */
 .fold-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
     min-width: 0;
 }
 
@@ -1246,24 +1250,27 @@ button:disabled {
     align-items: flex-start;
     gap: 0.1rem;
     width: 100%;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1);
     text-align: left;
-    background-color: var(--surface-2);
+    background-color: transparent;
     color: var(--text);
-    border: 1px solid var(--border);
+    border: none;
+    border-top: 1px solid var(--hairline-soft);
+    border-radius: var(--radius-sm);
     font-size: var(--text-2xs);
     line-height: var(--leading-tight);
 }
 
 .fold-chip:hover {
-    background-color: var(--surface-3);
+    background-color: var(--surface-2);
 }
 
-/* The chip is a disclosure, so it says which way it is pointing. Colour and a
-   ring only - a chip that grew when opened would reflow the rail. */
+/* The chip is a disclosure, so it says which way it is pointing. A warm wash
+   and an accent edge rather than a heavy border - and no size change, because a
+   chip that grew when opened would reflow the rail. */
 .fold-chip[aria-expanded="true"] {
     background-color: var(--accent-soft);
-    border-color: var(--accent);
+    box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .fold-name {
@@ -1284,6 +1291,62 @@ button:disabled {
 
 .fold-value.warning { color: var(--warn); }
 .fold-value.danger { color: var(--bad); }
+
+/* ------------------------------------------------------------ costs panel */
+
+/* The build prices, off the buttons and gathered into their own quiet rail
+   section. Hairline-ruled rows under an eyebrow heading, the same treatment as
+   the scoreboard and the folds: the name on the left, the price in resource
+   tiles on the right, and the whole row dimmed when the hand cannot pay it. */
+.build-costs {
+    display: flex;
+    flex-direction: column;
+}
+
+.cost-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-1) 0;
+    font-size: var(--text-sm);
+    min-width: 0;
+}
+
+.cost-row + .cost-row {
+    border-top: 1px solid var(--hairline-soft);
+}
+
+.cost-name {
+    color: var(--text-muted);
+    font-weight: 600;
+    min-width: 0;
+}
+
+.cost-tiles {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 2px;
+    color: var(--text);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Cannot pay for it right now. Dimmed to faint - which still clears AA in both
+   themes - never by `opacity`, which would fade the label below AA the way the
+   disabled-button rule warns against; the price tiles desaturate, so the row
+   reads as out of reach without hiding what it costs. */
+.cost-row.cant-afford .cost-name,
+.cost-row.cant-afford .cost-tiles {
+    color: var(--text-faint);
+}
+
+.cost-row.cant-afford .cost-tiles .tile {
+    opacity: 0.5;
+}
 
 .popover {
     position: fixed;
