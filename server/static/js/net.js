@@ -108,13 +108,16 @@ socket.on('game_started', (data) => {
     // Update timers
     updateTimers(data.board);
     
+    // Two physical dice are on screen for every seat from the first frame -
+    // resting until the roll that fills them.
+    showRestingDice();
+
     // Enable dice button for the first player
     if (isMyTurn()) {
         rollDiceBtn.disabled = false;
         rollDiceBtn.textContent = 'Roll Dice';
-        diceDisplay.innerHTML = '';
     }
-    
+
     // Render dev cards
     renderDevCards();
 
@@ -165,6 +168,9 @@ socket.on('game_state', (data) => {
 
     if (data.board) {
         setHighlight(null);
+        // The faces of the last roll are not in the snapshot, so a reconnect
+        // returns the dice to rest rather than leaving the slot empty.
+        showRestingDice();
         renderResourcePanel();
         renderBank();
         renderDevCards();
@@ -216,17 +222,18 @@ socket.on('turn_changed', (data) => {
     noteServerClocks(data);
     updateTimers();
 
+    // A new turn has not rolled yet: reset every seat's dice to rest.
+    showRestingDice();
 
     // Play sound if it's now my turn
     if (isMyTurn() && !wasMyTurn) {
         playTurnSound();
     }
-    
+
     // Enable dice button for the current player
     if (isMyTurn()) {
         rollDiceBtn.disabled = false;
         rollDiceBtn.textContent = 'Roll Dice';
-        diceDisplay.innerHTML = '';
     }
 });
 
@@ -277,9 +284,21 @@ function dieSvg(value) {
         + `<rect x="1.5" y="1.5" width="27" height="27" rx="7" />${pips}</svg>`;
 }
 
+// The physical dice never leave the footer: an empty dice slot was read as the
+// dice having vanished. Before a roll they rest on a default pair; a real roll
+// overwrites them, and a new turn returns them to rest. `.resting` marks the
+// pair as pre-roll so a spectator does not read it as the number just rolled.
+const RESTING_FACES = [4, 3];
+
+function showRestingDice() {
+    diceDisplay.innerHTML = RESTING_FACES.map(dieSvg).join('');
+    diceDisplay.classList.add('resting');
+}
+
 socket.on('dice_rolled', (data) => {
     console.log(`Player ${data.player} rolled ${data.dice1} + ${data.dice2} = ${data.total}`);
     diceDisplay.innerHTML = dieSvg(data.dice1) + dieSvg(data.dice2);
+    diceDisplay.classList.remove('resting');
     rollDiceBtn.disabled = true;
     rollDiceBtn.textContent = `Rolled: ${data.total}`;
     

@@ -361,6 +361,16 @@
                         <div id="bank-display" class="bank-display bank-big"></div>
                     </div>
 
+                    <!-- Who holds each title. Moved out of the floating player
+                         cards (v2.1 rev): the Longest Road / Largest Army pills
+                         were bloating the compact scoreboard, so they live here
+                         as a quiet strip. scoreboard.js renders into
+                         #award-summary by id, unchanged. -->
+                    <div class="right-titles" id="right-titles">
+                        <div class="right-eyebrow">Titles</div>
+                        <div id="award-summary" class="award-summary"></div>
+                    </div>
+
                     <!-- The Details folds: the build costs and every expansion
                          subject, each a chip that states its headline numbers
                          and a popover that carries the detail and the actions.
@@ -616,6 +626,27 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- The dice footer, pinned to the bottom of the panel under
+                         the log/chat (v2.1 rev). The Roll button and two physical
+                         pip dice that are always on screen - net.js keeps
+                         #dice-display filled with a resting pair before the first
+                         roll and the rolled faces after. The turn clocks sit
+                         beside them. Hidden in the lobby, where there is no game
+                         to roll for. -->
+                    <div class="dice-footer" id="dice-footer">
+                        <button id="roll-dice-btn">Roll Dice</button>
+                        <div class="dice-cluster">
+                            <div id="dice-display" class="dice-display"></div>
+                            <!-- Which dice these two faces came out of. Empty and
+                                 hidden for the standard pair. -->
+                            <span id="dice-set" class="dice-set hidden"></span>
+                        </div>
+                        <div class="timer-container">
+                            <div id="dice-timer" class="timer">Dice: 15s</div>
+                            <div id="round-timer" class="timer">Round: 120s</div>
+                        </div>
+                    </div>
                 </section>
             </aside>
         </div><!-- /.table -->
@@ -632,29 +663,13 @@
          transparent to pointer events; each float restores them. Hidden until a
          game is running. -->
     <div id="board-overlays" class="board-overlays hidden" aria-hidden="false">
-        <!-- Floating scoreboard, top-left. scoreboard.js still renders into
-             #game-players and #award-summary, unchanged. -->
+        <!-- Floating scoreboard, top-left. Each player is now its own compact
+             card (scoreboard.js renders into #game-players); the titles panel
+             (#award-summary) moved into the right panel so it no longer bloats
+             the float. -->
         <section class="players-float" id="players-panel" aria-label="Players">
             <ul id="game-players" class="user-list"></ul>
-            <div id="award-summary" class="award-summary"></div>
         </section>
-
-        <!-- Floating dice tray, bottom-right. The Roll button and the physical
-             pip dice, always on screen and larger than the old console row.
-             net.js still renders the pips into #dice-display. -->
-        <div class="dice-tray" id="dice-tray">
-            <button id="roll-dice-btn">Roll Dice</button>
-            <div class="dice-cluster">
-                <div id="dice-display" class="dice-display"></div>
-                <!-- Which dice these two faces came out of. Empty and hidden for
-                     the standard pair. -->
-                <span id="dice-set" class="dice-set hidden"></span>
-            </div>
-            <div class="timer-container">
-                <div id="dice-timer" class="timer">Dice: 15s</div>
-                <div id="round-timer" class="timer">Round: 120s</div>
-            </div>
-        </div>
 
         <!-- Floating build/trade tray, bottom-left. A temporary phase-1 home for
              the build controls and the trade zone so a player can still build

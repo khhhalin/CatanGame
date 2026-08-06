@@ -189,12 +189,10 @@ body {
     border-radius: var(--radius);
 }
 
-/* The standing panels that float over the board. A translucent surface with a
-   soft blur so the board reads through it; the opacity is kept high (94%) so
-   the WCAG sweep, which composites the surface over the board backdrop, still
+/* The build tray floats over the board on a translucent surface with a soft
+   blur so the board reads through it; the opacity is kept high (94%) so the
+   WCAG sweep, which composites the surface over the board backdrop, still
    measures text on a surface where the tokens are validated. */
-.players-float,
-.dice-tray,
 .action-tray {
     position: absolute;
     z-index: var(--z-board-overlay);
@@ -205,54 +203,29 @@ body {
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
     min-width: 0;
-}
-
-/* The scoreboard is information only - it never needs to catch a click, and
-   leaving it transparent to pointers keeps the board vertices under it
-   reachable. The dice and build trays carry controls, so they take pointers. */
-.players-float {
-    pointer-events: none;
-}
-
-.dice-tray,
-.action-tray {
     pointer-events: auto;
 }
 
-/* Floating scoreboard, top-left. */
+/* Floating scoreboard, top-left. The float itself carries no surface - each
+   player is its own compact card (see .pcard) with a gap between, so the panel
+   is a stack of cards rather than a boxed list. Information only: transparent
+   to pointers so the board vertices under it stay reachable. */
 .players-float {
+    position: absolute;
+    z-index: var(--z-board-overlay);
     top: var(--space-3);
     left: var(--space-3);
-    width: 15rem;
+    width: 13rem;
     max-width: 40%;
-    padding: var(--space-2) var(--space-3);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-}
-
-/* Floating dice tray, bottom-right. */
-.dice-tray {
-    right: var(--space-3);
-    bottom: var(--space-3);
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
+    pointer-events: none;
 }
 
 .dice-cluster {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-1);
-}
-
-/* The clocks stack in the tray so it stays narrow enough to clear the
-   bottom-centre hand at a laptop width. */
-.dice-tray .timer-container {
-    flex-direction: column;
-    align-items: stretch;
     gap: var(--space-1);
 }
 
@@ -269,13 +242,16 @@ body {
 }
 
 .container:has(#game-screen.hidden) .players-float,
-.container:has(#game-screen.hidden) .dice-tray,
 .container:has(#game-screen.hidden) .action-tray {
     display: none;
 }
 
-/* Hide the awards row until there is a game with awards to show. */
-.players-float #award-summary:empty {
+/* Hide the titles strip until there is a game with awards to show. */
+#award-summary:empty {
+    display: none;
+}
+
+.container:has(#game-screen.hidden) .right-titles {
     display: none;
 }
 
@@ -287,7 +263,7 @@ body {
     position: absolute;
     z-index: var(--z-board-overlay);
     left: 50%;
-    bottom: var(--space-2);
+    bottom: var(--space-4);
     transform: translateX(-50%);
     display: flex;
     justify-content: center;
@@ -1258,27 +1234,62 @@ button:disabled {
 }
 
 /* Physical pip dice: an ivory rounded face with dark dots, both fixed light in
-   every theme because real dice are light objects. v2.1 relocates them into the
-   floating dice tray and shows them larger. */
+   every theme because real dice are light objects. v2.1 shows them larger, in
+   the right-panel dice footer under the log. */
 .dice-display .die {
     width: 44px;
     height: 44px;
     filter: drop-shadow(0 3px 4px rgb(30 20 10 / 0.4));
 }
 
-/* The dice tray's Roll button, larger than the old console row. */
-.dice-tray #roll-dice-btn {
-    font-size: var(--text-lg);
+/* The dice footer, pinned to the bottom of the right panel below the log/chat.
+   Roll on the left, the physical dice centred, the clocks on the right. `flex:
+   none` and `margin-top: auto` push it to the bottom while the log takes the
+   space above. */
+.dice-footer {
+    flex: none;
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) 0 var(--space-1);
+    border-top: 1px solid var(--hairline);
+}
+
+.container:has(#game-screen.hidden) .dice-footer {
+    display: none;
+}
+
+/* The footer's Roll button, larger than the old console row. */
+.dice-footer #roll-dice-btn {
+    flex: none;
+    font-size: var(--text-md);
     font-weight: 650;
-    padding: var(--space-3) var(--space-5);
+    padding: var(--space-3) var(--space-4);
     white-space: nowrap;
 }
 
-/* The tray always reserves room for two dice, so rolling does not resize it. */
-.dice-tray .dice-display {
+/* The footer always reserves room for two dice, so rolling does not resize it. */
+.dice-footer .dice-display {
     min-width: 96px;
     min-height: 44px;
     align-items: center;
+}
+
+.dice-footer .dice-cluster {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* The clocks take their own full-width row under the roll+dice line, so the
+   footer never has to widen the narrow panel to fit them side by side. */
+.dice-footer .timer-container {
+    flex: 1 0 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .dice-display .die rect {
@@ -1598,12 +1609,18 @@ button:disabled {
    nowhere on screen, so a player could lose Longest Road without being told. */
 .award-summary {
     flex: none;
-    margin-top: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--panel-rule);
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+}
+
+/* The titles strip in the right panel: a quiet fixed region under the bank,
+   the same weight as the bank and details around it. */
+.right-titles {
+    flex: none;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
 }
 
 .award-row {
@@ -2053,6 +2070,14 @@ button:disabled {
 
 .chat-panel {
     position: relative;
+}
+
+/* v2.1: the log/chat used to eat the whole right column. Capped so it stays a
+   reading strip rather than the panel, leaving the dice footer pinned to the
+   bottom below it. The log's own list is the one thing that scrolls. */
+.tabbed-panel .tab-panel.chat-panel {
+    flex: 0 1 auto;
+    max-height: min(42vh, 20rem);
 }
 
 .log-entries {
@@ -3679,21 +3704,23 @@ button:disabled {
 .hand-card {
     position: relative;
     flex: none;
-    width: 72px;
-    height: 100px;
+    /* The big physical card from the mockup: 100x146, rounded, a soft double
+       shadow, fanned by a -18px overlap. */
+    width: 100px;
+    height: 146px;
     /* The overlap that makes a fan: each card tucks under the next. */
-    margin: 0 -14px;
+    margin: 0 -18px;
     display: flex;
     flex-direction: column;
     background: var(--tile, var(--surface-3));
     color: var(--on-tile);
-    border: 1px solid rgb(0 0 0 / 0.06);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-2);
+    border: 1px solid rgb(0 0 0 / 0.15);
+    border-radius: 13px;
+    box-shadow: 0 -1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -6px rgb(0 0 0 / 0.6);
     cursor: pointer;
     transform-origin: bottom center;
     transform: rotate(var(--rot, 0deg));
-    transition: transform 0.12s ease;
+    transition: transform 0.13s ease;
 }
 
 /* A lifted card sits above its neighbours so the raised one is not tucked
@@ -3704,48 +3731,49 @@ button:disabled {
 }
 
 .hand-card:hover {
-    transform: translateY(-42px);
+    transform: translateY(-48px);
 }
 
 /* The trade component raises a chosen card and rings it. Kept here so both
    lifted states share one transform origin and never fight. */
 .hand-card.is-up {
-    transform: translateY(-46px);
+    transform: translateY(-48px);
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
 
 .hand-card-count {
     position: absolute;
-    top: var(--space-2);
-    left: var(--space-2);
-    font-size: var(--text-md);
+    top: 7px;
+    left: 9px;
+    font-size: 14px;
     font-weight: 800;
     line-height: 1;
     color: var(--on-tile);
-    text-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
 }
 
 .hand-card-face {
     flex: 1;
     display: grid;
     place-items: center;
+    border-radius: 12px 12px 0 0;
 }
 
 .hand-card-glyph {
-    width: 42px;
-    height: 42px;
+    width: 48px;
+    height: 48px;
     vertical-align: 0;
 }
 
 .hand-card-label {
     background: var(--surface-1);
     color: var(--text);
-    font-size: var(--text-xs);
+    font-size: 11px;
     font-weight: 650;
     text-align: center;
     padding: var(--space-1) 0;
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    border-radius: 0 0 12px 12px;
     letter-spacing: 0.02em;
 }
 
@@ -3784,14 +3812,14 @@ button:disabled {
     }
 
     .hand-card {
-        width: 52px;
-        height: 40px;
-        margin: 0 -14px;
+        width: 74px;
+        height: 108px;
+        margin: 0 -18px;
     }
 
     .hand-card-glyph {
-        width: 20px;
-        height: 20px;
+        width: 34px;
+        height: 34px;
     }
 }
 
@@ -4045,31 +4073,35 @@ button:disabled {
     padding: var(--space-2) var(--space-3);
 }
 
-/* v2: quiet cards separated by a hairline rather than each being a filled box.
-   `#game-players` is a `.user-list` <ul>, so the id is needed to outweigh
-   `.user-list li` (0,1,1) and strip the list row's sunken fill and margin. The
-   card sits on the players panel's own `--surface-1`, where `.pturn`'s accent
-   ink clears WCAG AA (its `--sunken` fill did not). */
+/* v2.1: each floating player is its own compact card - a translucent surface
+   with a soft blur, marked by a hairline, with a gap between. `#game-players` is
+   a `.user-list` <ul>, so the id is needed to outweigh `.user-list li` (0,1,1)
+   and strip the list row's sunken fill and margin. The surface opacity is kept
+   high (94%) so the WCAG sweep, which composites over the board backdrop, still
+   measures text where the tokens are validated. */
+#game-players {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
 #game-players .pcard {
-    background: transparent;
-    margin-bottom: 0;
-    padding: var(--space-2) var(--space-1);
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
 }
 
-.pcard + .pcard {
-    margin-top: 0;
-    border-top: 1px solid var(--hairline-soft);
-}
-
-/* The player's own row, marked by a warm quiet wash and an accent edge rather
-   than a heavy box. */
-.pcard.me {
-    background: linear-gradient(90deg, var(--accent-soft), transparent 72%);
-    box-shadow: inset 2px 0 0 var(--accent);
-    border-radius: var(--radius-sm);
+/* The player's own card, marked by an accent edge rather than a heavy box. */
+#game-players .pcard.me {
+    box-shadow: var(--shadow-2), inset 2px 0 0 var(--accent);
 }
 
 .pcard-head {
@@ -4079,9 +4111,9 @@ button:disabled {
 }
 
 .swatch {
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
+    width: 11px;
+    height: 11px;
+    border-radius: 4px;
     flex: none;
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2);
 }
@@ -4123,25 +4155,27 @@ button:disabled {
 
 /* Piece counters. The icon is decorative here - the count is the value and the
    panel names it - so panels give each chip a title/aria-label of its own. */
+/* One compact row of piece counters under the head, matching the mockup's
+   mini row: small icons, muted, sitting close under the name/score line. */
 .chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    margin-top: var(--space-2);
+    gap: var(--space-1) var(--space-2);
+    margin-top: 0;
 }
 
 .chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: var(--text-sm);
+    gap: 3px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
 }
 
 .chip .icon {
     color: var(--text-faint);
-    width: 1em;
-    height: 1em;
+    width: 11px;
+    height: 11px;
 }
 
 .chip b {

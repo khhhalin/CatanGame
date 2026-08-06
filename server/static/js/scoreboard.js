@@ -57,7 +57,16 @@ function scoreChip(concept, value, label) {
 function scoreChipsFor(board, entry) {
     const ck = board.cities_knights;
     const name = entry.name;
+
+    // The compact card shows one row, matching the mockup's base game:
+    // settlement, city, road, then the resource hand. The development-card count
+    // is off the card - it is a hidden hand a player reads in the Details fold,
+    // not a piece - which keeps a base game's row to one line. Commodities stay
+    // on: a table playing them needs that count on the scoreboard too.
     const chips = [
+        { concept: 'settlement', value: (entry.settlements || []).length, label: 'settlements' },
+        { concept: 'city', value: (entry.cities || []).length, label: 'cities' },
+        { concept: 'road', value: (entry.roads || []).length, label: 'roads' },
         { concept: 'resource', value: entry.resource_count ?? 0, label: 'resource cards in hand' }
     ];
 
@@ -67,26 +76,6 @@ function scoreChipsFor(board, entry) {
             label: 'commodity cards in hand'
         });
     }
-
-    // Progress cards replace the development deck outright, so a card shows
-    // whichever hidden hand this table actually deals.
-    if (board.rules?.progress_cards === true) {
-        chips.push({
-            concept: 'progress', value: ck?.progress_hand_counts?.[name] ?? 0,
-            label: 'progress cards in hand'
-        });
-    } else {
-        chips.push({
-            concept: 'dev', value: entry.dev_card_count ?? 0,
-            label: 'development cards in hand'
-        });
-    }
-
-    chips.push(
-        { concept: 'settlement', value: (entry.settlements || []).length, label: 'settlements' },
-        { concept: 'city', value: (entry.cities || []).length, label: 'cities' },
-        { concept: 'road', value: (entry.roads || []).length, label: 'roads' }
-    );
 
     if (board.rules?.ships === true) {
         chips.push({ concept: 'ship', value: (entry.ships || []).length, label: 'ships' });
