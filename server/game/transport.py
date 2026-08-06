@@ -263,6 +263,10 @@ class TransportShipRules:
                 owner.ships.append(to_edge_key)
 
         self.transport_ships_moved.add(ship['id'])
+        # A ship arriving beside an opponent's pirate pays 1 gold tribute
+        # (expansions.md 949). The call is a no-op without the pirate rule, so a
+        # table playing transport ships alone is unaffected.
+        self.charge_pirate_tribute(player_name, to_edge_key)
         # No route update: a transport ship extends no network (866).
         return {'success': True, 'error': ''}
 

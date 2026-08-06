@@ -11,6 +11,7 @@ from game.bank import Bank
 from game.board import BoardBuilder
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
+from game.ep_pirate import EpPirateRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
 from game.pending_choice import PendingChoiceRules
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
-           PendingChoiceRules, TurnClock):
+           EpPirateRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 

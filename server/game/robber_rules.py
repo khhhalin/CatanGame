@@ -90,6 +90,12 @@ class RobberRules:
             return refused('INVALID_TARGET', 'Invalid victim selection')
 
         stolen = self.steal_resource(victim_name, player_name)
+        # The E&P pirate ship takes 1 gold from an empty-handed victim instead
+        # of a card (expansions.md 943). Guarded on the rule and on gold, so the
+        # base-game robber and the Seafarers pirate are unchanged.
+        if (stolen is None and self.rules['pirate_ship_instead_of_robber']
+                and self.rules['gold']):
+            stolen = self._steal_gold_fallback(victim_name, player_name)
         self.must_choose_victim = False
         self.robber_victims = []
         return {'success': True, 'error': '', 'stolen': stolen}
