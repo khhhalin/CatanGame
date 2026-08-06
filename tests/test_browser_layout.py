@@ -62,9 +62,11 @@ GAME_SEED = 20260803
 
 # The folds, as (chip id, popover id). Every one of these must state its
 # headline numbers on the chip and open its detail on demand.
+# The bank is no longer a fold: the v2.1 right panel carries it as a big,
+# always-on Bank panel, so it is not in these lists (it is asserted visible
+# directly, below).
 BASE_FOLDS = [
     ("dev-cards-chip", "dev-cards-popover"),
-    ("bank-chip", "bank-popover"),
     ("active-rules-chip", "active-rules-popover"),
 ]
 
@@ -73,7 +75,6 @@ CK_FOLDS = [
     ("improvements-chip", "improvements-popover"),
     ("knights-chip", "knights-popover"),
     ("progress-cards-chip", "progress-cards-popover"),
-    ("bank-chip", "bank-popover"),
     ("active-rules-chip", "active-rules-popover"),
 ]
 
@@ -302,8 +303,9 @@ class TestCitiesAndKnightsFits:
         for selector in (
             "#board-canvas",        # the board
             "#resource-display",    # your own hand
-            "#turn-indicator",      # whose turn it is
+            "#turn-indicator",      # whose turn it is (now the top-bar chip)
             "#game-players",        # the full scoreboard
+            "#bank-display",        # the big Bank panel (a permanent panel, not a fold now)
             "#award-summary",       # who holds longest road / largest army
             "#place-settlement-btn", "#place-road-btn", "#upgrade-city-btn",
             "#log-entries",         # the event log
@@ -504,11 +506,19 @@ class TestCitiesAndKnightsFits:
             assert expected in text, f"{player.name} sees {text!r}, expected {expected!r}"
 
     def test_the_console_stays_one_row(self, ck_table):
-        """Every row the console grows is a row the board loses."""
-        height = ck_table[0].page.evaluate(
-            "() => document.getElementById('game-console').getBoundingClientRect().height"
+        """The build controls float over the board now (v2.1), so growing them no
+        longer steals a row from the board - the old one-row budget is void. What
+        must still hold is that the floating build/trade tray stays fully inside
+        the viewport, not hanging off an edge."""
+        box = ck_table[0].page.evaluate(
+            "() => { const c = document.getElementById('game-console').getBoundingClientRect();"
+            "        return [c.left, c.top, c.right, c.bottom,"
+            "                window.innerWidth, window.innerHeight]; }"
         )
-        assert height <= 72, f"the console has wrapped onto a second row: {height}px"
+        left, top, right, bottom, width, height = box
+        assert left >= -1 and top >= -1 and right <= width + 1 and bottom <= height + 1, (
+            f"the floating build tray hangs off the screen: {box}"
+        )
 
     def test_the_board_gets_most_of_the_screen(self, ck_table):
         """The rail was doing all the work while the board had dead margins."""

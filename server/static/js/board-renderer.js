@@ -1291,7 +1291,11 @@ function computeLayout(boardData) {
     // pending choice draws around a boundary intersection. Harbour badges reach
     // further than this, but always *inwards* from an ocean hex whose own
     // bounds are in the box already.
-    const padding = 12;
+    // v2.1: trimmed from 12. The board is the whole greedy region now (no left
+    // rail, no console row below it), so `fitToView` fills the far larger area
+    // by default; a smaller reserve lets the drawn board reach nearer the edges
+    // still. 6 keeps the outermost stroke and the pending-choice ring covered.
+    const padding = 6;
 
     return {
         hexPositions,

@@ -222,9 +222,8 @@ BANK_CELLS = """
 
 
 def open_bank(player):
-    if player.page.get_attribute("#bank-chip", "aria-expanded") != "true":
-        player.page.click("#bank-chip")
-    player.page.wait_for_selector("#bank-popover:not(.hidden)", timeout=5000)
+    # v2.1: the bank is a big, always-on panel in the right column, not a fold -
+    # there is nothing to open, so this just waits for it to have rendered.
     player.page.wait_for_selector("#bank-display .bank-cell", timeout=5000)
 
 
@@ -319,9 +318,6 @@ def test_the_rendered_bank_has_no_emoji(player):
     open_bank(player)
     text = player.page.inner_text("#bank-display")
     assert not EMOJI.search(text), f"an emoji is still in the bank: {text!r}"
-    # The fold's one-line summary too - it used to spell "out" in emoji.
-    chip = player.page.inner_text("#bank-chip-value")
-    assert not EMOJI.search(chip), f"an emoji is still on the bank chip: {chip!r}"
 
 
 def test_the_fan_does_not_push_the_page_wide_at_phone_width(player):

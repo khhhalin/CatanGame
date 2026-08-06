@@ -65,10 +65,10 @@ body {
     width: 100%;
     min-width: 0;
     display: grid;
-    /* Header, the table, and the v2 bottom tray. The tray row is `auto`, so it
-       takes only what the hand needs and collapses to nothing when hidden (in
-       the lobby and on the join screen). */
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    /* v2.1: the header and the table. The hand, the dice tray and the
+       build/trade controls all float over the board now, so there is no
+       separate bottom tray row - the board region is the whole greedy area. */
+    grid-template-rows: auto minmax(0, 1fr);
     text-align: left;
     padding: var(--space-3);
     gap: var(--space-2);
@@ -130,56 +130,172 @@ body {
     box-shadow: none;
 }
 
-/* ----------------------------------------------------------- bottom tray
+/* -------------------------------------------------------- draggable seam
 
-   v2 shell: a full-width region under the table holding the trade zone above
-   the player's hand of cards. The hand's container (`#info-panel`) was moved
-   here from the aside; the trade zone slot is a placeholder a later component
-   fills. The tray only means anything in a running game, so it collapses in the
-   lobby and on the join screen - keyed off `#game-screen` being hidden, which
-   it is in both. */
-.game-tray {
+   v2.1: the seam parts the board (the greedy area) from the right panel.
+   Dragging the handle resizes the panel width (seam.js writes --panel-aside,
+   clamped ~220-520px). Hidden in the lobby, where there is no board. */
+.board-resizer {
+    flex: none;
+    width: 8px;
+    align-self: stretch;
+    cursor: col-resize;
+    position: relative;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    touch-action: none;
+}
+
+.board-resizer::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 40px;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong);
+    opacity: 0.55;
+    transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+
+.board-resizer:hover::before,
+.board-resizer.dragging::before,
+.board-resizer:focus-visible::before {
+    opacity: 1;
+    background: var(--accent);
+}
+
+.container:has(#game-screen.hidden) .board-resizer {
+    display: none;
+}
+
+/* --------------------------------------------------- floating board overlays
+
+   The board region is the greedy area; the standing information floats over it.
+   The wrapper is `position: fixed` and lives OUTSIDE `.container` (like the
+   changelog panel), so none of it is part of `#game-screen` or `.table-aside` -
+   the layout suite's overflow sweep walks those, and a fanned hand overflows
+   its own box by design. overlays.js pins the wrapper to the board box on every
+   resize and seam drag; the floats position themselves within it. The wrapper
+   is transparent to pointer events so board clicks pass through it; each float
+   that carries controls restores them. */
+.board-overlays {
+    position: fixed;
+    z-index: var(--z-sticky);
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: var(--radius);
+}
+
+/* The standing panels that float over the board. A translucent surface with a
+   soft blur so the board reads through it; the opacity is kept high (94%) so
+   the WCAG sweep, which composites the surface over the board backdrop, still
+   measures text on a surface where the tokens are validated. */
+.players-float,
+.dice-tray,
+.action-tray {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    min-width: 0;
+}
+
+/* The scoreboard is information only - it never needs to catch a click, and
+   leaving it transparent to pointers keeps the board vertices under it
+   reachable. The dice and build trays carry controls, so they take pointers. */
+.players-float {
+    pointer-events: none;
+}
+
+.dice-tray,
+.action-tray {
+    pointer-events: auto;
+}
+
+/* Floating scoreboard, top-left. */
+.players-float {
+    top: var(--space-3);
+    left: var(--space-3);
+    width: 15rem;
+    max-width: 40%;
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+/* Floating dice tray, bottom-right. */
+.dice-tray {
+    right: var(--space-3);
+    bottom: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+}
+
+.dice-cluster {
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: var(--space-1);
+}
+
+/* The clocks stack in the tray so it stays narrow enough to clear the
+   bottom-centre hand at a laptop width. */
+.dice-tray .timer-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+}
+
+/* Floating build/trade tray, bottom-left. Sits clear of the changelog pill,
+   which stacks above it. */
+.action-tray {
+    left: var(--space-3);
+    bottom: var(--space-3);
+    max-width: 28rem;
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
     gap: var(--space-2);
-    /* No top padding: the shell's row gap already sets the hand off from the
-       console, and at four players plus every expansion the board needs every
-       row the tray does not take. */
-    padding: 0 var(--space-3);
-    border-top: 1px solid var(--hairline);
-    min-width: 0;
 }
 
-.container:has(#game-screen.hidden) .game-tray {
+.container:has(#game-screen.hidden) .players-float,
+.container:has(#game-screen.hidden) .dice-tray,
+.container:has(#game-screen.hidden) .action-tray {
     display: none;
 }
 
-/* The slot a later component drops the physical trade zone into. Empty for now
-   and out of the accessibility tree until it holds something. */
-.tray-trade {
-    width: 100%;
-    max-width: 48rem;
-}
-
-.tray-trade:empty {
+/* Hide the awards row until there is a game with awards to show. */
+.players-float #award-summary:empty {
     display: none;
 }
 
-/* The hand sits centred so the fixed changelog pill in the bottom-left corner
-   stays clear of it, and so a wide screen does not stretch the cards edge to
-   edge. */
-.tray-hand {
+/* The hand, bottom-centre: big physical cards jutting up from the bottom edge.
+   Keeps the `.game-tray` class so the short-viewport suite finds it. It is not
+   a boxed panel - it is cards on the table - so it carries no surface of its
+   own; the cards bring their own. */
+.game-tray {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    left: 50%;
+    bottom: var(--space-2);
+    transform: translateX(-50%);
     display: flex;
     justify-content: center;
-    width: 100%;
+    max-width: 90%;
     min-width: 0;
+    pointer-events: none;
 }
 
-/* In the tray the hand is not a boxed panel - it is cards on the table. The
-   panel chrome is dropped and the "Your Hand" label sits inline to the left of
-   the tiles (the row is laid out on `#player-resources-panel`, the element the
-   changelog test measures as "the hand"). */
 #info-panel {
     flex: none;
     background: transparent;
@@ -187,18 +303,33 @@ body {
     box-shadow: none;
     padding: 0;
     max-width: 100%;
+    pointer-events: auto;
 }
 
+/* The "Your Hand" label is a screen-reader affordance now - the fan is
+   self-evidently the hand - so it is hidden visually while kept in the tree. */
 #player-resources-panel {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    gap: var(--space-3);
     min-width: 0;
 }
 
-/* A compact bar, not a hero. Every row the header takes is a row the board
-   does not get, and the title is the least useful thing on the page. */
+/* The fan is self-evidently the hand, and each card carries its own label, so
+   the "Your Hand" heading is dropped from the float - a dark-on-dark heading
+   over the board backdrop would only fail the contrast sweep. */
+#player-resources-panel .panel-title {
+    display: none;
+}
+
+/* The trade zone the click-to-trade component builds into the action tray.
+   Empty for an idle game and out of the accessibility tree until it holds
+   something. */
+.tray-trade:empty {
+    display: none;
+}
+
+/* A compact bar, not a hero. The title sits beside the turn chip. */
 .app-header {
     display: flex;
     flex-direction: row;
@@ -211,6 +342,20 @@ body {
 .container:has(#join-screen:not(.hidden)) .app-header {
     flex-direction: column;
     align-items: center;
+}
+
+/* The title beside the turn chip. */
+.app-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+/* The turn chip has no place until a game is running: hidden in the lobby and
+   on the join screen. */
+.container:has(#game-screen.hidden) #turn-indicator {
+    display: none;
 }
 
 h1 {
@@ -724,17 +869,14 @@ button:disabled {
 
 /* Two regions - the rail of standing information and the board. Only the
    board grows. The aside is a sibling of this whole screen. */
+/* v2.1: a single greedy region. The rail is gone - the standing information
+   floats over the board - so the game screen is just the board region, filling
+   the shell row. */
 #game-screen {
-    display: grid;
-    grid-template-columns: var(--panel-rail) minmax(0, 1fr);
-    grid-template-areas: "rail main";
-    gap: var(--gap);
-    /* Fills the shell row rather than naming a height. The old
-       `--table-height: clamp(30rem, 100vh - 10rem, 58rem)` guessed at what
-       was left over; with `min-height: 0` up the chain and `100dvh` on the
-       body, the height falls out of the layout instead. */
+    display: flex;
     flex: 1 1 auto;
     min-height: 0;
+    min-width: 0;
     text-align: left;
 }
 
@@ -780,14 +922,10 @@ button:disabled {
     overflow: visible;
 }
 
-/* The stage: board over console, and the board is the ONLY greedy track. */
+/* The board region fills the whole game screen; every control floats over it. */
 .game-main {
-    grid-area: main;
-    display: grid;
-    grid-template-rows: minmax(var(--shell-min-board), 1fr) auto;
-    gap: var(--gap);
-    /* Without this the rows size to content and the page scrolls instead of
-       the board taking the leftover height. */
+    flex: 1 1 auto;
+    display: flex;
     min-width: 0;
     min-height: 0;
 }
@@ -795,12 +933,14 @@ button:disabled {
 /* The box has a real height and it clips. The canvas below is taken out of
    flow inside it, so nothing in here can impose a size on the layout. */
 .game-board {
+    flex: 1 1 auto;
     background-color: var(--board-backdrop);
     border: 1px solid var(--hairline);
     border-radius: var(--radius);
     position: relative;
     overflow: hidden;
     min-height: 0;
+    min-width: 0;
     overscroll-behavior: contain;
 }
 
@@ -956,17 +1096,15 @@ button:disabled {
     pointer-events: none;
 }
 
-/* v2 minimalist: a quiet surface the chips and buttons sit on, not a bordered
-   box with its own chips boxed inside it. The turn indicator, the timers and the
-   dice are the only chips here now - un-nested from the panel that used to frame
-   them. */
+/* v2.1: the build/trade controls float bottom-left over the board (the phase-1
+   playable home; the unified tray is phase 2). A compact column of groups, not
+   a full-width console row. */
 .game-console {
-    padding: var(--space-2);
     display: flex;
-    justify-content: center;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: var(--space-2);
-    flex-wrap: wrap;
+    min-width: 0;
 }
 
 /* --------------------------------------------------------- console pieces */
@@ -1120,12 +1258,27 @@ button:disabled {
 }
 
 /* Physical pip dice: an ivory rounded face with dark dots, both fixed light in
-   every theme because real dice are light objects. The soft drop shadow lifts
-   them off the console; the 30px face keeps the console's one-row budget. */
+   every theme because real dice are light objects. v2.1 relocates them into the
+   floating dice tray and shows them larger. */
 .dice-display .die {
-    width: 30px;
-    height: 30px;
-    filter: drop-shadow(0 2px 3px rgb(30 20 10 / 0.32));
+    width: 44px;
+    height: 44px;
+    filter: drop-shadow(0 3px 4px rgb(30 20 10 / 0.4));
+}
+
+/* The dice tray's Roll button, larger than the old console row. */
+.dice-tray #roll-dice-btn {
+    font-size: var(--text-lg);
+    font-weight: 650;
+    padding: var(--space-3) var(--space-5);
+    white-space: nowrap;
+}
+
+/* The tray always reserves room for two dice, so rolling does not resize it. */
+.dice-tray .dice-display {
+    min-width: 96px;
+    min-height: 44px;
+    align-items: center;
 }
 
 .dice-display .die rect {
@@ -1677,6 +1830,86 @@ button:disabled {
 
 [hidden] {
     display: none !important;
+}
+
+/* ------------------------------------------------- right panel: bank + details
+
+   v2.1: the right panel carries the log/trade tabs, a big always-on Bank panel
+   and the Details folds above the log. The bank and the details are fixed
+   height (flex: none); only the log scrolls. Both are hidden in the lobby,
+   where there is no running game to draw them from. */
+.right-eyebrow {
+    flex: none;
+    font-size: var(--text-2xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-faint);
+    margin-bottom: var(--space-2);
+}
+
+.right-bank {
+    flex: none;
+    padding: var(--space-2) 0 var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+}
+
+.right-details {
+    flex: none;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+}
+
+.container:has(#game-screen.hidden) .right-bank,
+.container:has(#game-screen.hidden) .right-details {
+    display: none;
+}
+
+/* Big Bank panel: a two-column grid of large tiles, a thin stock meter and a
+   big count. The meter is kept (the stock-depletion signal, and what the hand
+   suite reads) but slimmed so the number leads. */
+.bank-big .bank-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-3);
+}
+
+.bank-big .bank-cell {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    width: auto;
+    min-width: 0;
+}
+
+.bank-big .bank-cell .tile {
+    flex: none;
+    width: 36px;
+    height: 36px;
+}
+
+.bank-big .bank-cell .tile .icon {
+    width: 21px;
+    height: 21px;
+}
+
+.bank-big .bank-cell .meter {
+    order: 3;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 18px;
+    height: 6px;
+}
+
+.bank-big .bank-cell .pct {
+    order: 2;
+    flex: none;
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text);
+    text-align: right;
 }
 
 /* --------------------------------------------------------------- trade */
@@ -3235,35 +3468,19 @@ button:disabled {
    to a compact face, so the console, the (empty) trade slot and the full hand of
    cards always clear the fold instead of being jammed against the bottom edge.
    Gated on height, so the 1080 layout is left exactly as it was. */
-@media (max-height: 940px) {
-    :root {
-        /* Was 18rem. The board gives up more of its floor here; it is still the
-           greedy track, it simply stops hogging rows the tray needs. */
-        --shell-min-board: 11rem;
-    }
-
-    /* A real strip below the tray, so the lowest card clears the edge rather
-       than resting on it - the pixel of slack that reads as "clipped" on a real
-       browser is gone. Being an `auto` row, the taller tray shrinks the board. */
-    .game-tray {
-        padding-bottom: var(--space-2);
-    }
-
-    /* Compact physical cards: the face, glyph and label come down together so
-       the count stays legible and the card still reads as a card, and the fan
-       asks the shell for two rows less. */
+/* Short viewport: the hand floats over the board now, so it can no longer be
+   clipped by the layout - the board is not a greedy track pushing it off the
+   edge. The cards only come down a little so a short board keeps clearance below
+   the fan. */
+@media (max-height: 820px) {
     .hand-card {
-        width: 54px;
-        height: 34px;
+        width: 64px;
+        height: 84px;
     }
 
     .hand-card-glyph {
-        width: 18px;
-        height: 18px;
-    }
-
-    .hand-card-label {
-        padding: 1px 0;
+        width: 36px;
+        height: 36px;
     }
 }
 
@@ -3462,16 +3679,16 @@ button:disabled {
 .hand-card {
     position: relative;
     flex: none;
-    width: 62px;
-    height: 44px;
+    width: 72px;
+    height: 100px;
     /* The overlap that makes a fan: each card tucks under the next. */
-    margin: 0 -12px;
+    margin: 0 -14px;
     display: flex;
     flex-direction: column;
     background: var(--tile, var(--surface-3));
     color: var(--on-tile);
     border: 1px solid rgb(0 0 0 / 0.06);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-2);
     cursor: pointer;
     transform-origin: bottom center;
@@ -3487,26 +3704,26 @@ button:disabled {
 }
 
 .hand-card:hover {
-    transform: translateY(-14px);
+    transform: translateY(-42px);
 }
 
 /* The trade component raises a chosen card and rings it. Kept here so both
    lifted states share one transform origin and never fight. */
 .hand-card.is-up {
-    transform: translateY(-18px);
+    transform: translateY(-46px);
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
 
 .hand-card-count {
     position: absolute;
-    top: var(--space-1);
+    top: var(--space-2);
     left: var(--space-2);
-    font-size: var(--text-xs);
-    font-weight: 700;
+    font-size: var(--text-md);
+    font-weight: 800;
     line-height: 1;
     color: var(--on-tile);
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 .hand-card-face {
@@ -3516,19 +3733,19 @@ button:disabled {
 }
 
 .hand-card-glyph {
-    width: 22px;
-    height: 22px;
+    width: 42px;
+    height: 42px;
     vertical-align: 0;
 }
 
 .hand-card-label {
     background: var(--surface-1);
     color: var(--text);
-    font-size: var(--text-2xs);
+    font-size: var(--text-xs);
     font-weight: 650;
     text-align: center;
     padding: var(--space-1) 0;
-    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
     letter-spacing: 0.02em;
 }
 
