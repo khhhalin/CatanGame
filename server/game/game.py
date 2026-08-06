@@ -9,6 +9,7 @@ from game import modifiers as modifiers_module
 from game import rules as rules_module
 from game.bank import Bank
 from game.board import BoardBuilder
+from game.cargo import CargoRules
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
 from game.ep_pirate import EpPirateRules
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
-           EpPirateRules, ExplorationRules, PendingChoiceRules, TurnClock):
+           CargoRules, EpPirateRules, ExplorationRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -203,6 +204,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.MAX_ROADS = self.rules['max_roads']
         self.MAX_SHIPS = self.rules['max_ships']
         self.MAX_HARBOR_SETTLEMENTS = self.rules['max_harbor_settlements']
+        self.MAX_SETTLERS = self.rules['max_settlers']
+        self.MAX_CREWS = self.rules['max_crews']
 
         # Somewhere to keep improvement tracks, knights, walls, the barbarian
         # ship and the progress decks — built when any rule needs it. Its
@@ -332,6 +335,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return len(player.roads) < self.MAX_ROADS
         if piece == 'ship':
             return len(player.ships) < self.MAX_SHIPS
+        if piece == 'settler':
+            return player.settlers < self.MAX_SETTLERS
+        if piece == 'crew':
+            return player.crews < self.MAX_CREWS
         return False
 
     def check_invariants(self) -> list:

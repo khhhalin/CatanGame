@@ -43,6 +43,14 @@ class Player:
         # apart from `settlements` because they score double and are the sites
         # ships, settlers and crews are built from (expansions.md 894-902).
         self.harbor_settlements = []
+        # Explorers & Pirates only: cargo pieces built and in play — settlers
+        # carried by ship to found settlements, crews landed on mission
+        # destinations. Counts, not locations, because a piece lives in a
+        # harbor basin or a ship hold and moves between them; the piece dicts
+        # there are the placement, these the supply accounting against
+        # `max_settlers` / `max_crews` (expansions.md 903-928).
+        self.settlers = 0
+        self.crews = 0
         self.roads = []
         self.ships = []
         self.victory_points = 0
@@ -118,6 +126,8 @@ class Player:
             'roads': self.roads,
             'ships': self.ships,
             'gold': self.gold,
+            'settlers': self.settlers,
+            'crews': self.crews,
             'victory_points': self.get_victory_points(longest_road_holder, largest_army_holder),
             'knights_played': self.knights_played,
         }
