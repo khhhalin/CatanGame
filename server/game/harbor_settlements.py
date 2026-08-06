@@ -56,6 +56,9 @@ class HarborSettlementRules:
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
 
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot build a harbor settlement during setup phase')

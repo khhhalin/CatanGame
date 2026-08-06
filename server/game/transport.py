@@ -96,6 +96,9 @@ class TransportShipRules:
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot build a transport ship during setup phase')
 
@@ -263,6 +266,11 @@ class TransportShipRules:
                 owner.ships.append(to_edge_key)
 
         self.transport_ships_moved.add(ship['id'])
+        # Movement is the last phase of an E&P turn: once a ship has moved,
+        # nothing more may be built or traded (expansions.md 851-862). A no-op
+        # for a table not playing `movement_phase`, since the guard that reads
+        # this field is gated on the rule.
+        self.turn_phase = 'movement'
         # A ship arriving beside an opponent's pirate pays 1 gold tribute
         # (expansions.md 949). The call is a no-op without the pirate rule, so a
         # table playing transport ships alone is unaffected.

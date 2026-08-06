@@ -88,6 +88,9 @@ class TradeRules:
         """
         if self.must_move_robber:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
 
         if not offered or not wanted:
             return refused('INVALID_PAYLOAD', 'A trade needs resources on both sides')

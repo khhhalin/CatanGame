@@ -240,6 +240,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # transport state and never touch a Seafarers ship. See game/transport.py.
         self.transport_ship_counter = 0
         self.transport_ships_moved = set()
+        # E&P fixes the turn order production -> trade/build -> movement, and
+        # moving a ship is the point of no return: nothing may be built or
+        # traded after it (expansions.md 851-862). The phase only matters when
+        # `movement_phase` is on; `start_turn` resets it every turn. Like the
+        # other per-turn E&P state, it is transient and not persisted.
+        self.turn_phase = 'production'
         # What the last production roll paid in gold (player -> amount), the way
         # `production_modifiers` records which rules changed a roll. Read once by
         # the roll payload, cleared at the top of every distribution.
@@ -542,6 +548,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
@@ -652,6 +661,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if blocked is not None:
             return blocked
 
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
+
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
         if current_name != player_name:
@@ -723,6 +736,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
 
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')

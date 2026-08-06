@@ -57,6 +57,9 @@ class CargoRules:
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', f'Cannot build a {piece_type} during setup phase')
 
