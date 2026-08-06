@@ -215,7 +215,7 @@ def place_setup(players, ships_first=True):
 # --- Canvas measurements --------------------------------------------------
 
 _PIXELS_NEAR = """
-([clientX, clientY, radius, rgb, tolerance]) => {
+([clientX, clientY, radius, rgb, tolerance, whiteFloor]) => {
     const canvas = document.getElementById('board-canvas');
     const rect = canvas.getBoundingClientRect();
     const ratio = canvas.width / rect.width;
@@ -230,9 +230,18 @@ _PIXELS_NEAR = """
     const data = canvas.getContext('2d').getImageData(left, top, width, height).data;
     let matched = 0;
     for (let i = 0; i < data.length; i += 4) {
-        if (Math.abs(data[i] - rgb[0]) <= tolerance
-            && Math.abs(data[i + 1] - rgb[1]) <= tolerance
-            && Math.abs(data[i + 2] - rgb[2]) <= tolerance) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        // A harbour marker is painted in pure white (#ffffff), which lands
+        // inside the halo's tolerance and would make a coastal road read as
+        // haloed. The ship's halo is a 95%-alpha pale blue composited over the
+        // board, so it never reaches pure white — drop those pixels so the
+        // count is the halo alone, not a harbour beside it.
+        if (Math.min(r, g, b) >= whiteFloor) {
+            continue;
+        }
+        if (Math.abs(r - rgb[0]) <= tolerance
+            && Math.abs(g - rgb[1]) <= tolerance
+            && Math.abs(b - rgb[2]) <= tolerance) {
             matched += 1;
         }
     }
@@ -271,9 +280,15 @@ _CANVAS_AND_CAMERA = """
 """
 
 
+# A pixel whose darkest channel is this high is pure-white board furniture (a
+# harbour marker), not the ship's pale-blue halo, which composites well below it.
+HALO_WHITE_FLOOR = 252
+
+
 def halo_pixels(player, point, radius=16):
     return player.page.evaluate(
-        _PIXELS_NEAR, [point["x"], point["y"], radius, SHIP_HALO_RGB, 10]
+        _PIXELS_NEAR,
+        [point["x"], point["y"], radius, SHIP_HALO_RGB, 10, HALO_WHITE_FLOOR],
     )
 
 
@@ -647,9 +662,24 @@ class TestTheSailedBoard:
             key for end in ends for key in vacant_sea_edges_at(board, end)
             if key != origin
         ]
-        target = first_clickable(player, 'edge', destinations)
-        assert target, f"nowhere to move the ship among {destinations}"
-        click_edge(player, target)
+        # A destination is only a legal move if it still touches the player's
+        # network once the moving ship is lifted, and with the v2.1 hand and
+        # tray floating over the board the first *clickable* sea edge is not
+        # always the first *legal* one — laying the ship on an illegal square is
+        # refused by the server and the move never lands. Tap each candidate and
+        # let the client mark it: the first tap that arms an unblocked placement
+        # is a real move, and it leaves that placement pending for the ✓ below.
+        # click_edge pans a candidate clear of a float when it sits behind one.
+        target = None
+        for key in destinations:
+            click_edge(player, key)
+            pending = player.page.evaluate(
+                "() => window.__catanDebug.getSelection().pending || null"
+            )
+            if pending and pending.get("key") == key and not pending.get("blocked"):
+                target = key
+                break
+        assert target, f"no legal move for the ship among {destinations}"
         player.page.wait_for_selector("#placement-confirm:not(.hidden)", timeout=5000)
         player.page.click("#placement-confirm-yes")
 
@@ -732,3 +762,6 @@ class TestTheSailedBoard:
             assert player.noisy_errors() == [], (
                 f"{player.name} logged: {player.noisy_errors()}"
             )
+
+
+
