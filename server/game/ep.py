@@ -51,6 +51,12 @@ class EP:
         # mission -> the player whose marker leads the track and so holds its
         # 1-VP lead card, or None while nobody is ahead of everybody else.
         self.lead_cards = {mission: None for mission in MISSIONS}
+        # mission -> how many steps its track holds. Zero until the mission's
+        # own module (mission_pirate_lairs / mission_fish / mission_spices)
+        # declares it via `register_track`; an undeclared track cannot advance,
+        # so the container is a clean, empty scaffold three parallel agents plug
+        # their own destination logic into.
+        self.track_lengths = {mission: 0 for mission in MISSIONS}
 
         # Tiles placed icon-side-up and not yet discovered. Their identities are
         # secret — a hidden tile is redacted from `to_dict` the way a dev card
@@ -100,6 +106,13 @@ class EP:
         return [name for name, where in self.pirate_hex.items() if where == hex_key]
 
     # --- Missions ----------------------------------------------------------
+
+    def register_track(self, mission: str, length: int):
+        """Declare how long a mission's track is, so a marker can cap at its end."""
+        self.track_lengths[mission] = length
+
+    def track_length(self, mission: str) -> int:
+        return self.track_lengths.get(mission, 0)
 
     def marker(self, player_name: str, mission: str) -> int:
         return self.markers.get(player_name, {}).get(mission, 0)
@@ -206,6 +219,7 @@ class EP:
             "pirate_hex": self.pirate_hex,
             "markers": self.markers,
             "lead_cards": self.lead_cards,
+            "track_lengths": self.track_lengths,
             "hidden_count": self.hidden_count(),
             "reveal_order": list(self.reveal_order),
             "last_discovery": self.last_discovery,

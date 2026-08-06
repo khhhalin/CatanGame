@@ -16,6 +16,7 @@ from game.ep_pirate import EpPirateRules
 from game.exploration import ExplorationRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
+from game.missions import MissionRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -30,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
-           CargoRules, EpPirateRules, ExplorationRules, PendingChoiceRules, TurnClock):
+           CargoRules, EpPirateRules, ExplorationRules, MissionRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -850,6 +852,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.merchant_holder == player_name:
             points += 1
 
+        # Each mission's 1-VP lead card scores for whoever is alone at the front
+        # of that track. Held state, recomputed on every advance, so it is read
+        # off `self.ep` the same way the awards above are.
+        if self.rules['missions']:
+            points += self.mission_victory_points(player_name)
+
         if self.ck is not None:
             if self.rules['metropolis']:
                 # A metropolis makes its city worth 4 instead of 2, so it adds
@@ -982,6 +990,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # its own.
             'costs': self.priced_builds(),
             'cities_knights': self.ck.to_dict(viewer) if self.ck else None,
+            # Pirate hexes, mission tracks/markers/lead cards, token supplies and
+            # the undiscovered-pool count. Mission progress is public; the pool's
+            # tile identities are the one secret, redacted inside `to_dict`.
+            'ep': self.ep.to_dict(viewer) if self.ep else None,
             'harbormaster_holder': self.harbormaster_holder,
             'harbor_points': self.harbor_points,
             # Only the total: the per-type breakdown is the deck order, and
