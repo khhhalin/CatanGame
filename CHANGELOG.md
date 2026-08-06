@@ -26,6 +26,11 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v2.0.2 — 2026-08-05 19:30
+
+- **New** The build buttons are clean labels now, and what each build costs lives in its own Costs panel in the sidebar instead of being crammed onto the buttons.
+- **New** The sidebar panels lost their heavy boxes — Details, Costs, the bank and the rest read as one quiet list, in keeping with the rest of the redesign.
+
 ## v2.0.1 — 2026-08-05 19:00
 
 - **Fixed** Your hand of cards no longer gets cut off the bottom of the screen on a laptop. The board gives up a little room and the cards shrink a touch below a short height, so the whole hand stays on screen.
