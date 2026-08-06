@@ -26,6 +26,10 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v2.0.1 — 2026-08-05 19:00
+
+- **Fixed** Your hand of cards no longer gets cut off the bottom of the screen on a laptop. The board gives up a little room and the cards shrink a touch below a short height, so the whole hand stays on screen.
+
 ## v2.0.0 — 2026-08-05 18:30
 
 - **New** A calmer, warmer, more minimalist look. The panels stepped back to quiet surfaces and the board takes the room — the game reads at a glance now.
