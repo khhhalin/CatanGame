@@ -73,7 +73,7 @@
     /* The rail carries the scoreboard and one line per folded subject, so it
        is sized by the widest of those lines rather than by a panel of tracks. */
     --panel-rail: 15.5rem;
-    --panel-aside: 21rem;
+    --panel-aside: 17rem;
 }
 
 /* ------------------------------------------------------------ light theme */

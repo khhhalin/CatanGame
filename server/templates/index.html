@@ -229,12 +229,13 @@
                     <div class="fold-list">
                         <!-- The build prices, off the buttons and folded into
                              the rail so the buttons stay clean labels. The chip
-                             states how many builds the hand can afford right
-                             now; the popover lists each buildable's cost in
-                             resource tiles, filled by panels.js from the
-                             board's own price list (`board.costs`) so a house
-                             rule that changes a cost moves it too. Always
-                             present: every table can build. -->
+                             states how many buildables the table has; the
+                             popover lists each one's cost in resource tiles,
+                             filled by panels.js from the board's own price list
+                             (`board.costs`) so a house rule that changes a cost
+                             moves it too. A buildable the hand cannot pay for is
+                             dimmed in its row - no "affordable" count, which read
+                             as nonsense. Always present: every table can build. -->
                         <div class="fold" id="costs-panel">
                             <button type="button" class="fold-chip" id="costs-chip"
                                     aria-expanded="false" aria-controls="costs-popover">

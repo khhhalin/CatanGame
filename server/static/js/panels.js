@@ -471,7 +471,6 @@ function renderCosts() {
     const held = findMyPlayer()?.resources;
     const rows = [];
     let shown = 0;
-    let affordable = 0;
     for (const build of PRICED_BUILDS) {
         const cost = getBuildCost(build.key);
         if (!cost || !build.shown()) {
@@ -486,9 +485,6 @@ function renderCosts() {
         // while it is someone else's.
         const afford = held ? shortfallReason(held, cost) === '' : false;
         shown += 1;
-        if (afford) {
-            affordable += 1;
-        }
         rows.push(
             `<div class="cost-row${afford ? '' : ' cant-afford'}">`
             + `<span class="cost-name">${build.label}</span>`
@@ -497,13 +493,12 @@ function renderCosts() {
     }
     buildCosts.innerHTML = rows.join('');
 
-    // The one number worth reading without opening the panel: how many of the
-    // table's builds the hand can pay for right now. An observer with no hand
-    // sees the count of builds instead of a false zero.
+    // No "N/4 affordable" summary: a city is not something a player weighs as
+    // "affordable", and the count read as nonsense. The section just lists what
+    // the table can build, each priced, with the ones the hand cannot pay for
+    // dimmed in the row itself. The chip states how many buildables there are.
     if (costsChipValue) {
-        costsChipValue.textContent = held
-            ? `${affordable}/${shown} affordable`
-            : `${shown} builds`;
+        costsChipValue.textContent = `${shown} builds`;
     }
 }
 

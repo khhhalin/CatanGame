@@ -120,6 +120,16 @@ body {
     min-height: 0;
 }
 
+/* v2 minimalist: the log/trade aside is a quiet column, not a boxed panel -
+   same box-free direction as the rail. The tab bar's own hairline rule is the
+   only frame; no border, surface or shadow around the whole thing. */
+.table-aside > .panel {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 /* ----------------------------------------------------------- bottom tray
 
    v2 shell: a full-width region under the table holding the trade zone above
@@ -742,8 +752,25 @@ button:disabled {
     min-height: 0;
 }
 
+/* v2 minimalist: the rail is ONE quiet flowing column, not a stack of boxes.
+   No border, surface, radius or shadow - the eyebrow heading and whitespace set
+   each section off, with a single hairline between them. Same box-free treatment
+   the scoreboard's player cards and the folds already wear, carried across the
+   whole rail. */
 .game-rail > .panel {
     flex: none;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* The one rule the rail is allowed: a single hairline parting its two sections.
+   Nothing boxed, just a line and the whitespace above it. */
+.game-rail > .panel + .panel {
+    border-top: 1px solid var(--hairline);
+    padding-top: var(--space-3);
 }
 
 /* The full scoreboard is one of the things that must never be hidden or cut
@@ -929,11 +956,12 @@ button:disabled {
     pointer-events: none;
 }
 
+/* v2 minimalist: a quiet surface the chips and buttons sit on, not a bordered
+   box with its own chips boxed inside it. The turn indicator, the timers and the
+   dice are the only chips here now - un-nested from the panel that used to frame
+   them. */
 .game-console {
     padding: var(--space-2);
-    background-color: var(--panel-bg);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -1169,11 +1197,14 @@ button:disabled {
     font-size: var(--text-md);
 }
 
-/* Bounded in both directions and clipped, so "Waiting for Kalina..." and
-   "Next Turn" occupy the same width. A button that resizes on every turn
-   change rewraps the console, and a rewrapped console resizes the board. */
+/* Same height and font as the build group, so the turn controls read as one
+   deliberate tier with them rather than an accidentally larger blue button.
+   Roll Dice stays the taller primary accent above; everything else in the row
+   shares this size. Bounded and clipped, so "Waiting for Kalina..." and "Next
+   Turn" occupy the same width - a button that resizes on every turn change
+   rewraps the console, and a rewrapped console resizes the board. */
 #next-turn-btn {
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-3);
     font-size: var(--text-sm);
     width: 9rem;
     white-space: nowrap;
