@@ -61,6 +61,12 @@ class EP:
         # The hex a player revealed most recently this turn, cleared each turn
         # so the client only flags a fresh discovery.
         self.last_discovery = None
+        # region id -> the number tokens still on that unexplored area's stack,
+        # in draw order. A discovery of a producing tile pops the next one (887);
+        # the icon on a tile's back is which area it belongs to, so each region
+        # holds its own stack. Secret like the tile identities, so it never
+        # leaves this object in `to_dict`.
+        self.number_stacks = {}
 
         # How many of each token the supply still holds...
         self.token_supply = dict(token_supply) if token_supply else dict(DEFAULT_SUPPLY)
@@ -142,6 +148,21 @@ class EP:
 
     def hidden_count(self) -> int:
         return len(self.hidden_tiles)
+
+    def seed_number_stacks(self, stacks: dict):
+        """Fill the per-area number-token stacks, in the order they are drawn."""
+        self.number_stacks = {region: list(numbers) for region, numbers in stacks.items()}
+
+    def draw_number(self, region_id: str):
+        """Take the next token off an area's stack, or None if it is empty.
+
+        A tile that produces nothing (a desert, a sea, a fish-shoal) never asks,
+        so an empty or absent stack simply means "no token" rather than an error.
+        """
+        stack = self.number_stacks.get(region_id)
+        if not stack:
+            return None
+        return stack.pop()
 
     # --- Token supplies ----------------------------------------------------
 

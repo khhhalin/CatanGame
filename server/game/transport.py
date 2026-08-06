@@ -267,6 +267,11 @@ class TransportShipRules:
         # (expansions.md 949). The call is a no-op without the pirate rule, so a
         # table playing transport ships alone is unaffected.
         self.charge_pirate_tribute(player_name, to_edge_key)
+        # An end now pointing at a face-down hex discovers it, which ends the
+        # ship's movement (883-893). A no-op without the exploration rule, so a
+        # table playing transport ships alone is unaffected. The one move per
+        # turn this method already enforces is what forfeits the rest.
+        self.discover_from_ship(player_name, to_edge_key)
         # No route update: a transport ship extends no network (866).
         return {'success': True, 'error': ''}
 

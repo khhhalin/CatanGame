@@ -12,6 +12,7 @@ from game.board import BoardBuilder
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
 from game.ep_pirate import EpPirateRules
+from game.exploration import ExplorationRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
 from game.pending_choice import PendingChoiceRules
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
-           EpPirateRules, PendingChoiceRules, TurnClock):
+           EpPirateRules, ExplorationRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -299,6 +300,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Generate the complete board
         self._generate_board()
 
+        # Explorers & Pirates: fill the undiscovered pool and the per-area
+        # number-token stacks a discovery draws from, now the board's hidden
+        # tiles exist. A no-op without the exploration rule.
+        self._seed_exploration_pool()
+
         # Trade manager. How long an offer stays open is the table's, and the
         # server is the only clock that counts: the countdown a proposer and a
         # responder watch is drawn from this number, and every path that could
@@ -555,6 +561,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # intersection touching none of them is out at sea.
         if not vertex.neighbors['hexes']:
             return refused('INVALID_PLACEMENT', 'A settlement must stand on the coast or inland')
+        # A settlement may not stand at an intersection beside a face-down hex
+        # (891). A no-op unless the table is exploring, since nothing else hides
+        # a hex.
+        if self.rules['ships_explore']:
+            undiscovered = self.undiscovered_build_refusal(vertex.neighbors['hexes'])
+            if undiscovered is not None:
+                return undiscovered
         # The scenario setup restriction, when the table asked for it: you start
         # at home and sail to the far islands, rather than starting on one. Only
         # the *starting* settlements — nothing stops you settling there later,
@@ -654,6 +667,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return refused('OCCUPIED', 'This coastal side already carries a ship')
         if not self.land_hexes_of_edge(edge_key):
             return refused('INVALID_PLACEMENT', 'A road cannot be built out at sea')
+        # A road may not lie on a path beside a face-down hex (891). A no-op
+        # unless the table is exploring, since nothing else hides a hex.
+        if self.rules['ships_explore']:
+            undiscovered = self.undiscovered_build_refusal(edge.neighbors['hexes'])
+            if undiscovered is not None:
+                return undiscovered
 
         used_free_road = False
         if in_setup:
