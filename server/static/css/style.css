@@ -3135,6 +3135,57 @@ button:disabled {
     }
 }
 
+/* Short viewport: a laptop after browser chrome is ~700-800px tall, well under
+   the 1080 the shell was tuned at. The board is the only greedy track, so at a
+   short height it yields harder - a smaller floor - and the physical cards shrink
+   to a compact face, so the console, the (empty) trade slot and the full hand of
+   cards always clear the fold instead of being jammed against the bottom edge.
+   Gated on height, so the 1080 layout is left exactly as it was. */
+@media (max-height: 940px) {
+    :root {
+        /* Was 18rem. The board gives up more of its floor here; it is still the
+           greedy track, it simply stops hogging rows the tray needs. */
+        --shell-min-board: 11rem;
+    }
+
+    /* A real strip below the tray, so the lowest card clears the edge rather
+       than resting on it - the pixel of slack that reads as "clipped" on a real
+       browser is gone. Being an `auto` row, the taller tray shrinks the board. */
+    .game-tray {
+        padding-bottom: var(--space-2);
+    }
+
+    /* Compact physical cards: the face, glyph and label come down together so
+       the count stays legible and the card still reads as a card, and the fan
+       asks the shell for two rows less. */
+    .hand-card {
+        width: 54px;
+        height: 34px;
+    }
+
+    .hand-card-glyph {
+        width: 18px;
+        height: 18px;
+    }
+
+    .hand-card-label {
+        padding: 1px 0;
+    }
+}
+
+/* The rail carries the whole fold stack, and at a short height it is taller than
+   its column - the folds used to spill past the fold and grow the page past the
+   viewport. In the two-column desktop shell it scrolls within its own column
+   instead. Below 1200px the layout is already a single scrolling column (see the
+   max-width rules), so this is the desktop case alone; at 1080 the rail fits and
+   never scrolls, so nothing is added there. */
+@media (min-width: 1201px) and (max-height: 940px) {
+    .game-rail {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+}
+
 /* One column. The page is allowed to scroll here and only here - the board
    keeps a fixed share of the viewport and every panel keeps a bounded height,
    so nothing runs away. No control is dropped; they move. */
