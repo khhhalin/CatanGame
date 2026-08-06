@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v2.1.0 — 2026-08-06 22:38
+
+- **New** The board fills the screen now. Your players, your hand, the dice and the build/trade tray all float over it instead of penning it into a corner, and it zooms in further by default.
+- **New** Your resource cards sit as real cards jutting up from the bottom edge; building and trading share one tray in the bottom-left, and the dice have their own tray in the bottom-right.
+- **New** The last of the boxed, nested panels are gone — the rail reads as one quiet flowing list.
+- **Fixed** Placing the robber, the pirate, a road or a ship against a hex low on the board or in a corner could leave the ✓ confirm tucked behind your hand or a tray, refusing the click; it now always sits on top of the floating panels.
+
 ## v2.0.2 — 2026-08-05 19:30
 
 - **New** The build buttons are clean labels now, and what each build costs lives in its own Costs panel in the sidebar instead of being crammed onto the buttons.
