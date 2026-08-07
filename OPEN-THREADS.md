@@ -3,7 +3,9 @@
 Work that is started, known-broken, or deliberately deferred. The point of this
 file is to resume things rather than start new ones.
 
-Deployed: `adf82bf`. Suites: 1097 fast, 297 browser (~6½ min), ruff clean.
+Deployed: `ff7564d` = **v2.1.0**. Suites: ~1118 fast, ~358 browser (~10 min), ruff
+clean (one known `#start-game-btn` a11y flake under load, passes in isolation).
+New owner: read `HANDOFF.md` first.
 
 ---
 
