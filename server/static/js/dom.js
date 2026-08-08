@@ -194,3 +194,25 @@ export const commandList = document.getElementById('command-list');
 // Turn sound - preload
 export const turnSound = new Audio('/static/audio/turn.wav');
 turnSound.preload = 'auto';
+
+// Map editor
+export const mapsBtn              = document.getElementById('maps-btn');
+export const editorScreen         = document.getElementById('map-editor-screen');
+export const editorCanvas         = document.getElementById('editor-canvas');
+export const editorPaintBtn       = document.getElementById('editor-paint-btn');
+export const editorEraseBtn       = document.getElementById('editor-erase-btn');
+export const editorInspectBtn     = document.getElementById('editor-inspect-btn');
+export const editorRegionSelect   = document.getElementById('editor-region-select');
+export const editorAddRegionBtn   = document.getElementById('editor-add-region-btn');
+export const editorPoolTrigger    = document.getElementById('editor-pool-trigger');
+export const editorPoolPopover    = document.getElementById('editor-pool-popover');
+export const editorPreviewBtn     = document.getElementById('editor-preview-btn');
+export const editorSaveBtn        = document.getElementById('editor-save-btn');
+export const editorSavePopover    = document.getElementById('editor-save-popover');
+export const editorDoneBtn        = document.getElementById('editor-done-btn');
+export const editorStatusEl       = document.getElementById('editor-status');
+export const editorMapNameInput   = document.getElementById('editor-map-name');
+export const editorHarbourCounters = document.getElementById('editor-harbour-counters');
+export const editorSaveConfirmBtn = document.getElementById('editor-save-confirm-btn');
+export const editorSaveCopyBtn    = document.getElementById('editor-save-copy-btn');
+export const editorMapListEl      = document.getElementById('editor-map-list');

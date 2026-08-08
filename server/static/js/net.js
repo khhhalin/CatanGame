@@ -573,6 +573,25 @@ socket.on('connect_error', (error) => {
     updateChatAvailability();
 });
 
+// Map editor events
+socket.on('map_list', (data) => {
+    if (!data?.maps) return;
+    viewState.server.mapList = data.maps;
+    document.dispatchEvent(new CustomEvent('map-list-updated'));
+});
+
+socket.on('map_saved', () => {
+    showNotice('Map saved', 'success');
+});
+
+socket.on('map_deleted', () => {
+    showNotice('Map deleted', 'info');
+});
+
+socket.on('map_preview', (data) => {
+    document.dispatchEvent(new CustomEvent('map-preview-received', { detail: data }));
+});
+
 if (!socketAvailable) {
     // The template's own onerror banner explains this one to the player
     console.error('Socket.IO library is unavailable - the client cannot connect.');

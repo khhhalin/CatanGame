@@ -1703,7 +1703,7 @@ function markIfBlocked(ctx, preview, x, y) {
  * @returns {object} - Object with canvas and position data for click detection
  */
 function renderBoard(boardData, canvasId, highlightNumber = null, preview = null,
-                     choiceKeys = []) {
+                     choiceKeys = [], overlay = null) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
         console.error('Canvas not found:', canvasId);
@@ -1770,8 +1770,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
         const pos = hexPositions[key];
         const isLand = hex.type !== 'ocean';
         const isHighlighted = highlightNumber !== null && hex.number === highlightNumber;
-        
-        drawHex(ctx, pos.x, pos.y, hexRadius - 2, getHexColor(hex.type), hex.number, isLand,
+        const regionId = overlay?.regionOf?.[key];
+        const hexColor = regionId
+            ? (overlay.colors[regionId] ?? getHexColor(hex.type))
+            : getHexColor(hex.type);
+        drawHex(ctx, pos.x, pos.y, hexRadius - 2, hexColor, hex.number, isLand,
                 isHighlighted, hex.type);
     }
     

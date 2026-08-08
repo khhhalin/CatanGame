@@ -11,6 +11,7 @@ import './changelog.js';
 import './seam.js';
 import './overlays.js';
 import './lobby.js';
+import './map-editor.js';
 import './panels.js';
 import './cities-knights.js';
 import './seafarers.js';

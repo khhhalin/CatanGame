@@ -29,6 +29,7 @@ from game.rate_limit import (
     AbuseTracker,
     RateLimiter,
     limit_for,
+    max_bytes_for,
     payload_too_large,
 )
 
@@ -235,7 +236,8 @@ def rate_limited(budget_event=None) -> bool:
     sid = getattr(request, 'sid', '?')
     key = f"{sid}:{budget_event or event}"
 
-    if args and payload_too_large(args[0] if args else None):
+    if args and payload_too_large(args[0] if args else None,
+                                   max_bytes=max_bytes_for(event)):
         logger.warning("oversized payload for %s from sid=%s", event, sid)
         emit('error', {'code': 'PAYLOAD_TOO_LARGE',
                        'message': 'That message was too large.'})

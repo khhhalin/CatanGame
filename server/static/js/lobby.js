@@ -2,7 +2,8 @@
 
 import { setHighlight } from './board.js';
 import { renderCitiesKnights } from './cities-knights.js';
-import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerLimit, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, mapsBtn, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerLimit, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { enterEditor } from './map-editor.js';
 import { requestLogCatchUp } from './event-log.js';
 import { displayError, showNotice } from './notices.js';
 import { emitGame, socket } from './socket.js';
@@ -116,6 +117,11 @@ usernameInput.addEventListener('keypress', (e) => {
  */
 startGameBtn.addEventListener('click', () => {
     emitGame('start_game');
+});
+
+mapsBtn.addEventListener('click', () => {
+    if (viewState.server.rules?.locked) return;
+    enterEditor();
 });
 
 /**
