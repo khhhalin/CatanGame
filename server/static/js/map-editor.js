@@ -425,6 +425,13 @@ function changeRadius() {
     renderEditor();
 }
 
+function regionHasProblem(region) {
+    if (region.hexes === 'remaining') return false;
+    const slots = region.hexes.length;
+    const tiles = Object.values(region.pool.terrain).reduce((s, n) => s + n, 0);
+    return tiles !== slots;
+}
+
 function renderSidebar() {
     editorRegionList.innerHTML = '';
 
@@ -443,6 +450,17 @@ function renderSidebar() {
         name.className = 'editor-region-name';
         name.textContent = region.name;
 
+        item.appendChild(swatch);
+        item.appendChild(name);
+
+        if (regionHasProblem(region)) {
+            const warn = document.createElement('span');
+            warn.className = 'editor-region-warn';
+            warn.textContent = '!';
+            warn.title = 'Tile count does not match hex count — open ⚙ and Auto-fill';
+            item.appendChild(warn);
+        }
+
         const gear = document.createElement('button');
         gear.className = 'editor-region-gear';
         gear.textContent = '⚙';
@@ -453,8 +471,6 @@ function renderSidebar() {
             openRegionPopover(region, gear);
         });
 
-        item.appendChild(swatch);
-        item.appendChild(name);
         item.appendChild(gear);
         item.addEventListener('click', () => selectRegion(region.id));
         editorRegionList.appendChild(item);
@@ -580,6 +596,8 @@ function buildRegionPopover(region) {
                 ? [...cur, t]
                 : cur.filter(r => r !== t);
             mapDoc = { ...mapDoc };
+            buildRegionPopover(region);   // rebuild in-place; popover stays open
+            renderSidebar();
         });
         lbl.appendChild(cb);
         lbl.appendChild(document.createTextNode(t));
@@ -604,7 +622,7 @@ function buildRegionPopover(region) {
         terrainSection.className = 'editor-pool-section';
         const terrainHead = document.createElement('div');
         terrainHead.className = 'editor-pool-section-head';
-        terrainHead.textContent = 'Terrain';
+        terrainHead.textContent = 'Terrain pool';
         terrainSection.appendChild(terrainHead);
         for (const terrain of TERRAIN_TYPES) {
             const row = document.createElement('div');
@@ -648,7 +666,7 @@ function buildRegionPopover(region) {
         tokenSection.className = 'editor-pool-section';
         const tokenHead = document.createElement('div');
         tokenHead.className = 'editor-pool-section-head';
-        tokenHead.textContent = 'Tokens';
+        tokenHead.textContent = 'Token pool';
         tokenSection.appendChild(tokenHead);
         const tokenCounts = {};
         for (const v of region.pool.numbers) tokenCounts[v] = (tokenCounts[v] || 0) + 1;
@@ -769,47 +787,30 @@ function autoFillPool(region) {
         return;
     }
 
-    // Build weights from STANDARD_MIX for only the enabled resources.
-    const weights = {};
-    let totalWeight = 0;
-    for (const t of resources) {
-        const w = STANDARD_MIX[t] ?? 1;
-        weights[t] = w;
-        totalWeight += w;
-    }
-
+    // Distribute equally across enabled resources, then handle the remainder.
+    const base = Math.floor(slots / resources.length);
+    const remainder = slots % resources.length;
     const terrain = {};
-    let placed = 0;
-    for (const t of resources) {
-        if (!weights[t]) continue;
-        const n = Math.round((weights[t] / totalWeight) * slots);
-        if (n > 0) { terrain[t] = n; placed += n; }
-    }
-
-    // Pad/trim to hit exactly `slots` using the first non-sea, non-desert resource.
-    const adj = resources.find(t => t !== 'sea' && t !== 'desert') ?? resources[0];
-    while (placed < slots) { terrain[adj] = (terrain[adj] || 0) + 1; placed++; }
-    while (placed > slots && (terrain[adj] || 0) > 0) {
-        terrain[adj]--;
-        if (!terrain[adj]) delete terrain[adj];
-        placed--;
+    for (let i = 0; i < resources.length; i++) {
+        terrain[resources[i]] = base + (i < remainder ? 1 : 0);
     }
 
     region.pool.terrain = terrain;
 
-    // Tokens for non-desert, non-sea tiles.
-    const landTiles = slots - (terrain.desert || 0) - (terrain.sea || 0);
-    const tokenScale = landTiles / 18;
+    // Tokens for non-desert, non-sea tiles — scale standard distribution.
+    const tokenTiles = slots - (terrain.desert || 0) - (terrain.sea || 0);
+    const tokenScale = tokenTiles / 18;
     const numbers = [];
     for (const [val, count] of Object.entries(STANDARD_TOKENS)) {
         const n = Math.round(count * tokenScale);
         for (let i = 0; i < n; i++) numbers.push(Number(val));
     }
-    while (numbers.length > landTiles) numbers.pop();
-    while (numbers.length < landTiles) numbers.push(5);
+    while (numbers.length > tokenTiles) numbers.pop();
+    while (numbers.length < tokenTiles) numbers.push(5);
     region.pool.numbers = numbers;
 
     mapDoc = { ...mapDoc };
+    renderSidebar();
     renderEditor();
 }
 

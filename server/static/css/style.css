@@ -4474,6 +4474,15 @@ button:disabled {
     min-width: 0;
 }
 
+.editor-region-warn {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    font-weight: bold;
+    color: var(--bad, #e53e3e);
+    line-height: 1;
+    cursor: default;
+}
+
 .editor-region-gear {
     flex-shrink: 0;
     background: none;
