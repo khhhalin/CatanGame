@@ -244,6 +244,7 @@ export function enterEditor() {
     // Server events relayed as DOM custom events by net.js.
     document.addEventListener('map-list-updated', onMapListUpdated, { signal });
     document.addEventListener('map-preview-received', onMapPreviewReceived, { signal });
+    document.addEventListener('map-data-received', onMapDataReceived, { signal });
 
     emitGame('request_maps', null);
     syncToolUI();
@@ -817,9 +818,27 @@ function autoFillPool(region) {
 // ─── preview ──────────────────────────────────────────────────────────────────
 
 function requestPreview() {
+    const problems = mapDoc.regions.filter(r => regionHasProblem(r));
+    if (problems.length > 0) {
+        const names = problems.map(r => r.name).join(', ');
+        if (confirm(`Auto-fill ${names} before previewing?\n\nTile counts don't match hex counts — the preview will fail without this.`)) {
+            for (const r of problems) autoFillPool(r);
+            renderSidebar();
+        }
+    }
     const wire = mapDocToWire();
     if (!wire) return;
     emitGame('preview_map', { map: wire });
+}
+
+function onMapDataReceived(e) {
+    const { map, builtin } = e.detail || {};
+    if (!map) return;
+    if (builtin) {
+        duplicateMap(map);
+    } else {
+        loadMap(map);
+    }
 }
 
 function onMapPreviewReceived(e) {
@@ -898,18 +917,9 @@ function rebuildMapList() {
         const loadBtn = document.createElement('button');
         loadBtn.textContent = 'Load';
         loadBtn.addEventListener('click', () => {
-            // The list entry has id/name but not the full definition; we need
-            // to request the full map. Use read_map via a preview with seed to
-            // get the format — but simpler: the editor can emit request_maps
-            // and we already have the map data if the store returns it.
-            // For v1 builtins the definition IS in the list; for user maps
-            // we duplicate to get a full copy.
-            if (m.builtin) {
-                duplicateMap(m);
-            } else {
-                // Load from a full definition if available, otherwise duplicate.
-                loadOrDuplicate(m);
-            }
+            // map_list entries are summaries only (no regions/frame/pool).
+            // Request the full definition from the server before loading.
+            emitGame('request_map', { id: m.id });
         });
         li.appendChild(loadBtn);
 

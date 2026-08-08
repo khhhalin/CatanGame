@@ -592,6 +592,10 @@ socket.on('map_preview', (data) => {
     document.dispatchEvent(new CustomEvent('map-preview-received', { detail: data }));
 });
 
+socket.on('map_data', (data) => {
+    document.dispatchEvent(new CustomEvent('map-data-received', { detail: data }));
+});
+
 if (!socketAvailable) {
     // The template's own onerror banner explains this one to the player
     console.error('Socket.IO library is unavailable - the client cannot connect.');
