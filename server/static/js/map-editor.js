@@ -20,6 +20,7 @@
 import {
     editorAddRegionBtn,
     editorCanvas,
+    editorClearBtn,
     editorDoneBtn,
     editorHarbourCounters,
     editorInspectBtn,
@@ -156,11 +157,26 @@ const VOID_COLOR = '#555566';  // dark grey-blue — visually distinct from ocea
 function buildOverlay() {
     const regionOf = {};
     const colors = { __void__: VOID_COLOR };
+    let remainingRegion = null;
     for (const region of mapDoc.regions) {
-        if (region.hexes === 'remaining') continue;
+        if (region.hexes === 'remaining') {
+            remainingRegion = region;
+            continue;
+        }
         colors[region.id] = region.color;
         for (const key of region.hexes) {
             regionOf[key] = region.id;
+        }
+    }
+    // Assign all unexcluded, unclaimed hexes to the 'remaining' region so they
+    // get its colour instead of rendering as a visually distinct untinted ocean.
+    if (remainingRegion) {
+        colors[remainingRegion.id] = remainingRegion.color;
+        const excluded = new Set(mapDoc.frame.excluded || []);
+        for (const key of buildFrameHexKeys(mapDoc.frame.radius)) {
+            if (!excluded.has(key) && !regionOf[key]) {
+                regionOf[key] = remainingRegion.id;
+            }
         }
     }
     for (const key of (mapDoc.frame.excluded || [])) {
@@ -228,6 +244,7 @@ export function enterEditor() {
     document.addEventListener('keydown', onKeyDown, { signal });
 
     // Toolbar buttons.
+    editorClearBtn.addEventListener('click', clearMap, { signal });
     editorPaintBtn.addEventListener('click', () => setTool('paint'), { signal });
     editorInspectBtn.addEventListener('click', () => setTool('inspect'), { signal });
     editorRadiusSelect.addEventListener('change', changeRadius, { signal });
@@ -868,6 +885,19 @@ function saveMapAsCopy() {
     mapDoc = { ...mapDoc, id: slugify(name), name };
     editorMapNameInput.value = name;
     saveMap();
+}
+
+function clearMap() {
+    pushUndo();
+    mapDoc = newMapDoc();
+    previewBoard = null;
+    undoStack = [];
+    selectedRegionId = mapDoc.regions[0]?.id ?? null;
+    editorMapNameInput.value = mapDoc.name;
+    renderSidebar();
+    syncRadiusSelect();
+    buildHarbourCounters();
+    renderEditor();
 }
 
 function loadMap(mapData) {

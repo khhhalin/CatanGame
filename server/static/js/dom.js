@@ -205,6 +205,7 @@ export const editorNullItem        = document.getElementById('editor-null-item')
 export const editorRegionList      = document.getElementById('editor-region-list');
 export const editorAddRegionBtn    = document.getElementById('editor-add-region-btn');
 export const editorRegionPopover   = document.getElementById('editor-region-popover');
+export const editorClearBtn        = document.getElementById('editor-clear-btn');
 export const editorPreviewBtn      = document.getElementById('editor-preview-btn');
 export const editorSaveBtn         = document.getElementById('editor-save-btn');
 export const editorSavePopover     = document.getElementById('editor-save-popover');

@@ -487,7 +487,12 @@ export function renderRulesPanel() {
     // The group is part of the signature: a rule that moves section has to
     // rebuild the DOM, exactly like one that changes type.
     const signature = viewState.server.rules.catalogue
-        .map(rule => `${rule.id}:${rule.type}:${ruleGroupId(rule)}`)
+        .map(rule => {
+            const base = `${rule.id}:${rule.type}:${ruleGroupId(rule)}`;
+            return rule.type === 'choice'
+                ? base + ':' + (rule.options || []).map(o => o.id).join(',')
+                : base;
+        })
         .join('|');
     if (signature !== viewState.renderedRulesSignature) {
         const fragment = document.createDocumentFragment();
@@ -504,6 +509,7 @@ export function renderRulesPanel() {
 
     renderRulePresets();
     viewState.server.rules.catalogue.forEach(applyRuleValue);
+    syncBoardMapVisibility();
 
     if (rulesLockedNote) {
         rulesLockedNote.classList.toggle('hidden', !viewState.server.rules.locked);
@@ -542,6 +548,17 @@ function sendRules() {
     });
 
     emitGame('set_rules', { rules: chosen });
+    syncBoardMapVisibility();
+}
+
+function syncBoardMapVisibility() {
+    const layoutInput = rulesList?.querySelector('[data-rule-id="board_layout"]');
+    const mapRow = rulesList?.querySelector('[data-rule-id="board_map"]')?.closest('.rule-row');
+    if (!mapRow) return;
+    const isCustom = layoutInput
+        ? layoutInput.value === 'custom'
+        : (viewState.server.rules.selected.board_layout ?? 'random') === 'custom';
+    mapRow.classList.toggle('hidden', !isCustom);
 }
 
 /**
