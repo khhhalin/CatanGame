@@ -53,6 +53,7 @@ const REGION_PALETTE = [
 ];
 
 const TERRAIN_TYPES = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert', 'sea'];
+const LAND_TERRAINS = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'];
 const RESOURCE_TERRAINS = new Set(['wood', 'brick', 'sheep', 'wheat', 'ore']);
 const TOKEN_VALUES = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
 const HARBOUR_TYPES = ['generic', 'wood', 'brick', 'sheep', 'wheat', 'ore'];
@@ -91,7 +92,7 @@ function newMapDoc() {
                 hexes: [],
                 pool: {
                     mode: 'shuffled',
-                    resources: ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'],
+                    resources: [...LAND_TERRAINS],
                     terrain: {},
                     numbers: [],
                 },
@@ -386,7 +387,7 @@ function addRegion() {
         hexes: [],
         pool: {
             mode: 'shuffled',
-            resources: ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'],
+            resources: [...LAND_TERRAINS],
             terrain: {},
             numbers: [],
         },
@@ -473,9 +474,9 @@ function selectRegion(regionId) {
 
 function inferResources(region) {
     if (Array.isArray(region.pool.resources)) return [...region.pool.resources];
-    const fromTerrain = TERRAIN_TYPES.filter(t => t !== 'sea' && (region.pool.terrain[t] || 0) > 0);
+    const fromTerrain = LAND_TERRAINS.filter(t => (region.pool.terrain[t] || 0) > 0);
     if (fromTerrain.length > 0) return fromTerrain;
-    return region.kind === 'sea' ? [] : ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'];
+    return region.kind === 'sea' ? [] : [...LAND_TERRAINS];
 }
 
 // ─── region settings popover ──────────────────────────────────────────────────
@@ -567,7 +568,7 @@ function buildRegionPopover(region) {
     const resources = inferResources(region);
     const resGrid = document.createElement('div');
     resGrid.className = 'editor-resource-grid';
-    for (const t of TERRAIN_TYPES) {
+    for (const t of LAND_TERRAINS) {
         const lbl = document.createElement('label');
         lbl.className = 'editor-resource-check';
         const cb = document.createElement('input');
@@ -586,128 +587,132 @@ function buildRegionPopover(region) {
     }
     body.appendChild(resGrid);
 
-    // Terrain + Token columns
-    const columns = document.createElement('div');
-    columns.className = 'editor-pool-columns';
-    columns.style.marginTop = 'var(--space-2)';
-
-    // badges declared early so terrain/token handlers can close over them
+    // Terrain + Token columns: only shown when region has at least one resource.
+    // A no-resource region (ocean) needs no tile or token settings.
     const tilesUsed = document.createElement('span');
     tilesUsed.className = 'editor-pool-badge';
     const tokensBadge = document.createElement('span');
     tokensBadge.className = 'editor-pool-badge';
 
-    // Terrain counters
-    const terrainSection = document.createElement('div');
-    terrainSection.className = 'editor-pool-section';
-    const terrainHead = document.createElement('div');
-    terrainHead.className = 'editor-pool-section-head';
-    terrainHead.textContent = 'Terrain';
-    terrainSection.appendChild(terrainHead);
-    for (const terrain of TERRAIN_TYPES) {
-        const row = document.createElement('div');
-        row.className = 'editor-pool-row';
-        const lbl = document.createElement('label');
-        lbl.textContent = terrain;
-        const dec = document.createElement('button');
-        dec.textContent = '−';
-        const count = document.createElement('span');
-        count.className = 'count';
-        count.textContent = String(region.pool.terrain[terrain] || 0);
-        const inc = document.createElement('button');
-        inc.textContent = '+';
-        dec.addEventListener('click', () => {
-            const cur = region.pool.terrain[terrain] || 0;
-            if (cur <= 0) return;
-            if (cur === 1) delete region.pool.terrain[terrain];
-            else region.pool.terrain[terrain] = cur - 1;
-            count.textContent = String(region.pool.terrain[terrain] || 0);
-            mapDoc = { ...mapDoc };
-            refreshPoolBadges(region, tilesUsed, tokensBadge);
-            updateStatusStrip();
-        });
-        inc.addEventListener('click', () => {
-            region.pool.terrain[terrain] = (region.pool.terrain[terrain] || 0) + 1;
-            count.textContent = String(region.pool.terrain[terrain]);
-            mapDoc = { ...mapDoc };
-            refreshPoolBadges(region, tilesUsed, tokensBadge);
-            updateStatusStrip();
-        });
-        row.appendChild(lbl);
-        row.appendChild(dec);
-        row.appendChild(count);
-        row.appendChild(inc);
-        terrainSection.appendChild(row);
-    }
-    columns.appendChild(terrainSection);
+    if (resources.length > 0) {
+        const columns = document.createElement('div');
+        columns.className = 'editor-pool-columns';
+        columns.style.marginTop = 'var(--space-2)';
 
-    // Token counters
-    const tokenSection = document.createElement('div');
-    tokenSection.className = 'editor-pool-section';
-    const tokenHead = document.createElement('div');
-    tokenHead.className = 'editor-pool-section-head';
-    tokenHead.textContent = 'Tokens';
-    tokenSection.appendChild(tokenHead);
-    const tokenCounts = {};
-    for (const v of region.pool.numbers) tokenCounts[v] = (tokenCounts[v] || 0) + 1;
-    for (const val of TOKEN_VALUES) {
-        const row = document.createElement('div');
-        row.className = 'editor-pool-row';
-        const lbl = document.createElement('label');
-        lbl.textContent = String(val);
-        const dec = document.createElement('button');
-        dec.textContent = '−';
-        const cnt = document.createElement('span');
-        cnt.className = 'count';
-        cnt.textContent = String(tokenCounts[val] || 0);
-        const inc = document.createElement('button');
-        inc.textContent = '+';
-        dec.addEventListener('click', () => {
-            const idx = region.pool.numbers.indexOf(val);
-            if (idx === -1) return;
-            region.pool.numbers.splice(idx, 1);
-            tokenCounts[val] = (tokenCounts[val] || 1) - 1;
+        // Terrain counters (all terrain types, including sea for manual override)
+        const terrainSection = document.createElement('div');
+        terrainSection.className = 'editor-pool-section';
+        const terrainHead = document.createElement('div');
+        terrainHead.className = 'editor-pool-section-head';
+        terrainHead.textContent = 'Terrain';
+        terrainSection.appendChild(terrainHead);
+        for (const terrain of TERRAIN_TYPES) {
+            const row = document.createElement('div');
+            row.className = 'editor-pool-row';
+            const lbl = document.createElement('label');
+            lbl.textContent = terrain;
+            const dec = document.createElement('button');
+            dec.textContent = '−';
+            const count = document.createElement('span');
+            count.className = 'count';
+            count.textContent = String(region.pool.terrain[terrain] || 0);
+            const inc = document.createElement('button');
+            inc.textContent = '+';
+            dec.addEventListener('click', () => {
+                const cur = region.pool.terrain[terrain] || 0;
+                if (cur <= 0) return;
+                if (cur === 1) delete region.pool.terrain[terrain];
+                else region.pool.terrain[terrain] = cur - 1;
+                count.textContent = String(region.pool.terrain[terrain] || 0);
+                mapDoc = { ...mapDoc };
+                refreshPoolBadges(region, tilesUsed, tokensBadge);
+                updateStatusStrip();
+            });
+            inc.addEventListener('click', () => {
+                region.pool.terrain[terrain] = (region.pool.terrain[terrain] || 0) + 1;
+                count.textContent = String(region.pool.terrain[terrain]);
+                mapDoc = { ...mapDoc };
+                refreshPoolBadges(region, tilesUsed, tokensBadge);
+                updateStatusStrip();
+            });
+            row.appendChild(lbl);
+            row.appendChild(dec);
+            row.appendChild(count);
+            row.appendChild(inc);
+            terrainSection.appendChild(row);
+        }
+        columns.appendChild(terrainSection);
+
+        // Token counters
+        const tokenSection = document.createElement('div');
+        tokenSection.className = 'editor-pool-section';
+        const tokenHead = document.createElement('div');
+        tokenHead.className = 'editor-pool-section-head';
+        tokenHead.textContent = 'Tokens';
+        tokenSection.appendChild(tokenHead);
+        const tokenCounts = {};
+        for (const v of region.pool.numbers) tokenCounts[v] = (tokenCounts[v] || 0) + 1;
+        for (const val of TOKEN_VALUES) {
+            const row = document.createElement('div');
+            row.className = 'editor-pool-row';
+            const lbl = document.createElement('label');
+            lbl.textContent = String(val);
+            const dec = document.createElement('button');
+            dec.textContent = '−';
+            const cnt = document.createElement('span');
+            cnt.className = 'count';
             cnt.textContent = String(tokenCounts[val] || 0);
-            mapDoc = { ...mapDoc };
-            refreshPoolBadges(region, tilesUsed, tokensBadge);
-            updateStatusStrip();
-        });
-        inc.addEventListener('click', () => {
-            region.pool.numbers.push(val);
-            tokenCounts[val] = (tokenCounts[val] || 0) + 1;
-            cnt.textContent = String(tokenCounts[val]);
-            mapDoc = { ...mapDoc };
-            refreshPoolBadges(region, tilesUsed, tokensBadge);
-            updateStatusStrip();
-        });
-        row.appendChild(lbl);
-        row.appendChild(dec);
-        row.appendChild(cnt);
-        row.appendChild(inc);
-        tokenSection.appendChild(row);
+            const inc = document.createElement('button');
+            inc.textContent = '+';
+            dec.addEventListener('click', () => {
+                const idx = region.pool.numbers.indexOf(val);
+                if (idx === -1) return;
+                region.pool.numbers.splice(idx, 1);
+                tokenCounts[val] = (tokenCounts[val] || 1) - 1;
+                cnt.textContent = String(tokenCounts[val] || 0);
+                mapDoc = { ...mapDoc };
+                refreshPoolBadges(region, tilesUsed, tokensBadge);
+                updateStatusStrip();
+            });
+            inc.addEventListener('click', () => {
+                region.pool.numbers.push(val);
+                tokenCounts[val] = (tokenCounts[val] || 0) + 1;
+                cnt.textContent = String(tokenCounts[val]);
+                mapDoc = { ...mapDoc };
+                refreshPoolBadges(region, tilesUsed, tokensBadge);
+                updateStatusStrip();
+            });
+            row.appendChild(lbl);
+            row.appendChild(dec);
+            row.appendChild(cnt);
+            row.appendChild(inc);
+            tokenSection.appendChild(row);
+        }
+        columns.appendChild(tokenSection);
+        body.appendChild(columns);
     }
-    columns.appendChild(tokenSection);
-    body.appendChild(columns);
     editorRegionPopover.appendChild(body);
 
-    // Footer: badges + auto-fill + delete + close
+    // Footer: badges (only when resources exist) + auto-fill + delete + close
     const footer = document.createElement('div');
     footer.className = 'editor-pool-footer';
 
-    const badges = document.createElement('div');
-    badges.className = 'editor-pool-badges';
-    badges.appendChild(tilesUsed);
-    badges.appendChild(tokensBadge);
-    footer.appendChild(badges);
-    refreshPoolBadges(region, tilesUsed, tokensBadge);
+    if (resources.length > 0) {
+        const badges = document.createElement('div');
+        badges.className = 'editor-pool-badges';
+        badges.appendChild(tilesUsed);
+        badges.appendChild(tokensBadge);
+        footer.appendChild(badges);
+        refreshPoolBadges(region, tilesUsed, tokensBadge);
 
-    const autoFill = document.createElement('button');
-    autoFill.textContent = 'Auto-fill';
-    autoFill.addEventListener('click', () => {
-        autoFillPool(region);
-        buildRegionPopover(region);
-    });
-    footer.appendChild(autoFill);
+        const autoFill = document.createElement('button');
+        autoFill.textContent = 'Auto-fill';
+        autoFill.addEventListener('click', () => {
+            autoFillPool(region);
+            buildRegionPopover(region);
+        });
+        footer.appendChild(autoFill);
+    }
 
     if (!DEFAULT_REGION_IDS.has(region.id)) {
         const delBtn = document.createElement('button');
