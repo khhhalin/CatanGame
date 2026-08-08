@@ -289,7 +289,8 @@ function onPointerUp() {
 
 function applyToolAt(e) {
     const board = previewBoard ?? buildFrameBoardData(mapDoc.frame.radius);
-    const key = window.BoardRenderer.findNearestHex(board, e.clientX, e.clientY);
+    const pos = window.BoardRenderer.clientToBoard(editorCanvas, e.clientX, e.clientY);
+    const key = window.BoardRenderer.findNearestHex(board, pos.x, pos.y);
     if (!key) return;
     if (tool === 'paint' && selectedRegionId) {
         paintHex(key);

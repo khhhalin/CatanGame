@@ -2056,7 +2056,7 @@ function findNearestHex(boardData, clickX, clickY) {
 
     const { hexPositions, offsetX, offsetY } = layout;
     const hexRadius = BOARD_CONFIG.hexRadius;
-    const radius = hexRadius * 0.8;
+    const radius = (hexRadius * 0.8) / camera.scale;
     
     let nearestKey = null;
     let nearestDist = Infinity;
