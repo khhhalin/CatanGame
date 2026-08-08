@@ -30,6 +30,7 @@ import {
     editorPoolPopover,
     editorPoolTrigger,
     editorPreviewBtn,
+    editorRadiusSelect,
     editorRegionSelect,
     editorSaveBtn,
     editorSaveConfirmBtn,
@@ -81,7 +82,7 @@ function newMapDoc() {
     return {
         id: '',
         name: 'New Map',
-        frame: { radius: 4 },
+        frame: { radius: 4, excluded: [] },
         regions: [
             {
                 id: 'mainland',
@@ -135,11 +136,15 @@ function buildFrameHexKeys(radius) {
 
 function buildFrameBoardData(radius) {
     // Minimal boardData the renderer accepts: hexes as ocean, no vertices,
-    // edges, players, or robber. Replaced as a new object on every edit so the
+    // edges, players, or robber. Excluded hexes are omitted so they appear as
+    // blank gaps in the grid. Replaced as a new object on every edit so the
     // renderer's identity-based memo always sees a fresh board.
     const hexes = {};
+    const excluded = new Set(mapDoc.frame.excluded || []);
     for (const key of buildFrameHexKeys(radius)) {
-        hexes[key] = { type: 'ocean', number: null };
+        if (!excluded.has(key)) {
+            hexes[key] = { type: 'ocean', number: null };
+        }
     }
     return { hexes, vertices: {}, edges: {}, players: [], robber_hex: null };
 }
@@ -221,6 +226,7 @@ export function enterEditor() {
     editorPaintBtn.addEventListener('click', () => setTool('paint'), { signal });
     editorEraseBtn.addEventListener('click', () => setTool('erase'), { signal });
     editorInspectBtn.addEventListener('click', () => setTool('inspect'), { signal });
+    editorRadiusSelect.addEventListener('change', changeRadius, { signal });
     editorAddRegionBtn.addEventListener('click', addRegion, { signal });
     editorRegionSelect.addEventListener('change', () => {
         selectedRegionId = editorRegionSelect.value || null;
@@ -241,6 +247,7 @@ export function enterEditor() {
     emitGame('request_maps', null);
     syncToolUI();
     syncRegionSelect();
+    syncRadiusSelect();
     buildHarbourCounters();
     renderEditor();
 }
@@ -306,7 +313,7 @@ function paintHex(hexKey) {
     const region = mapDoc.regions.find(r => r.id === selectedRegionId);
     if (!region || region.hexes === 'remaining') return;
 
-    // Remove from whichever region currently holds it.
+    // Remove from whichever explicit region currently holds it.
     for (const r of mapDoc.regions) {
         if (r.hexes !== 'remaining') {
             r.hexes = r.hexes.filter(k => k !== hexKey);
@@ -314,22 +321,34 @@ function paintHex(hexKey) {
     }
     region.hexes = [...region.hexes, hexKey];
 
+    // Un-exclude if the user is painting a previously erased hex.
+    const newExcluded = (mapDoc.frame.excluded || []).filter(k => k !== hexKey);
+
     // Replace mapDoc object to bust the renderer's layout memo.
-    mapDoc = { ...mapDoc, regions: mapDoc.regions.map(r => ({ ...r })) };
+    mapDoc = {
+        ...mapDoc,
+        frame: { ...mapDoc.frame, excluded: newExcluded },
+        regions: mapDoc.regions.map(r => ({ ...r })),
+    };
     previewBoard = null;
     renderEditor();
 }
 
 function eraseHex(hexKey) {
-    let changed = false;
+    // Remove from any explicit region.
     for (const r of mapDoc.regions) {
-        if (r.hexes !== 'remaining' && r.hexes.includes(hexKey)) {
+        if (r.hexes !== 'remaining') {
             r.hexes = r.hexes.filter(k => k !== hexKey);
-            changed = true;
         }
     }
-    if (!changed) return;
-    mapDoc = { ...mapDoc, regions: mapDoc.regions.map(r => ({ ...r })) };
+    // Mark as excluded (null tile) unless it is already.
+    const excluded = mapDoc.frame.excluded || [];
+    const newExcluded = excluded.includes(hexKey) ? excluded : [...excluded, hexKey];
+    mapDoc = {
+        ...mapDoc,
+        frame: { ...mapDoc.frame, excluded: newExcluded },
+        regions: mapDoc.regions.map(r => ({ ...r })),
+    };
     previewBoard = null;
     renderEditor();
 }
@@ -346,6 +365,7 @@ function undo() {
     mapDoc = JSON.parse(undoStack.pop());
     previewBoard = null;
     syncRegionSelect();
+    syncRadiusSelect();
     renderEditor();
 }
 
@@ -365,6 +385,32 @@ function addRegion() {
     mapDoc = { ...mapDoc, regions: [...mapDoc.regions, region] };
     selectedRegionId = id;
     syncRegionSelect();
+    syncRadiusSelect();
+    renderEditor();
+}
+
+function syncRadiusSelect() {
+    editorRadiusSelect.value = String(mapDoc.frame.radius);
+}
+
+function changeRadius() {
+    const newRadius = parseInt(editorRadiusSelect.value, 10);
+    if (newRadius === mapDoc.frame.radius) return;
+
+    // Prune hexes and excluded entries that fall outside the new frame.
+    const allKeys = new Set(buildFrameHexKeys(newRadius));
+    const newExcluded = (mapDoc.frame.excluded || []).filter(k => allKeys.has(k));
+    const newRegions = mapDoc.regions.map(r => {
+        if (r.hexes === 'remaining') return { ...r };
+        return { ...r, hexes: r.hexes.filter(k => allKeys.has(k)) };
+    });
+
+    mapDoc = {
+        ...mapDoc,
+        frame: { ...mapDoc.frame, radius: newRadius, excluded: newExcluded },
+        regions: newRegions,
+    };
+    previewBoard = null;
     renderEditor();
 }
 
@@ -650,6 +696,7 @@ function loadMap(mapData) {
     selectedRegionId = mapDoc.regions[0]?.id ?? null;
     editorMapNameInput.value = mapDoc.name;
     syncRegionSelect();
+    syncRadiusSelect();
     buildHarbourCounters();
     renderEditor();
     closePopover();
@@ -659,6 +706,7 @@ function onMapListUpdated() {
     mapList = viewState.server.mapList || [];
     rebuildMapList();
     syncRegionSelect();
+    syncRadiusSelect();
 }
 
 function rebuildMapList() {
@@ -736,7 +784,7 @@ function duplicateMap(m) {
     mapDoc = {
         id: '',
         name: `${m.name || m.id} copy`,
-        frame: m.frame || { radius: 4 },
+        frame: { radius: m.frame?.radius || 4, excluded: Array.isArray(m.frame?.excluded) ? [...m.frame.excluded] : [] },
         regions: (m.regions || []).map(r => ({
             ...r,
             color: r.color || REGION_PALETTE[0],
@@ -751,6 +799,7 @@ function duplicateMap(m) {
     selectedRegionId = mapDoc.regions[0]?.id ?? null;
     editorMapNameInput.value = mapDoc.name;
     syncRegionSelect();
+    syncRadiusSelect();
     buildHarbourCounters();
     renderEditor();
     closePopover();
@@ -805,7 +854,9 @@ function mapDocToWire() {
         map_version: 1,
         id: mapDoc.id,
         name: mapDoc.name,
-        frame: { radius: mapDoc.frame.radius },
+        frame: mapDoc.frame.excluded?.length
+            ? { radius: mapDoc.frame.radius, excluded: sortHexKeys([...mapDoc.frame.excluded]) }
+            : { radius: mapDoc.frame.radius },
         regions: mapDoc.regions.map(r => ({
             id: r.id,
             kind: r.kind,
@@ -825,7 +876,7 @@ function serverMapToDoc(m) {
     return {
         id: m.id || '',
         name: m.name || m.id,
-        frame: m.frame || { radius: 4 },
+        frame: { radius: m.frame?.radius || 4, excluded: Array.isArray(m.frame?.excluded) ? [...m.frame.excluded] : [] },
         regions: (m.regions || []).map(r => ({
             id: r.id,
             name: r.name || r.id,

@@ -70,10 +70,10 @@ HEX_NEIGHBOURS = (
 SLUG = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 REGION_ID = re.compile(r'^[a-z0-9][a-z0-9_-]{0,31}$')
 
-# Bounds, applied before anything walks the map twice. Radius 6 is 127 hexes.
-MAX_FRAME_RADIUS = 6
+# Bounds, applied before anything walks the map twice. Radius 8 is 217 hexes.
+MAX_FRAME_RADIUS = 8
 MAX_REGIONS = 64
-MAX_HEXES = 200
+MAX_HEXES = 250
 MAX_HARBOURS = 32
 MAX_NAME = 64
 MAX_NOTES = 512
@@ -260,16 +260,20 @@ class MapDefinition:
     harbours: tuple
     robber_start: str
     suggested_victory_target: int = None
+    excluded_hexes: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
+        frame: dict = {'radius': self.radius}
+        if self.excluded_hexes:
+            frame['excluded'] = list(self.excluded_hexes)
         return {
             'map_version': self.map_version,
             'id': self.id,
             'name': self.name,
             'author': self.author,
             'notes': self.notes,
-            'frame': {'radius': self.radius},
+            'frame': frame,
             'robber_start': self.robber_start,
             'suggested_victory_target': self.suggested_victory_target,
             'regions': [region.to_json() for region in self.regions],
@@ -421,6 +425,18 @@ def parse_map(data: dict) -> MapDefinition:
     radius = require_int(frame.get('radius'), 'frame radius', minimum=1,
                          maximum=MAX_FRAME_RADIUS)
 
+    excluded_raw = frame.get('excluded') or []
+    if not isinstance(excluded_raw, list) or len(excluded_raw) > MAX_HEXES:
+        raise InvalidPayload('INVALID_MAP', 'frame excluded must be a list of hex keys')
+    excluded_hexes: set[str] = set()
+    for key in excluded_raw:
+        if parse_hex_key(key) is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex')
+        if ring_of(key) > radius:
+            raise InvalidPayload('INVALID_MAP', f'excluded hex {key!r} is outside the frame')
+        excluded_hexes.add(key)
+    excluded_tuple = tuple(sort_hex_keys(excluded_hexes))
+
     raw_regions = data.get('regions')
     if not isinstance(raw_regions, list) or not raw_regions or len(raw_regions) > MAX_REGIONS:
         raise InvalidPayload('INVALID_MAP', f'a map has 1 to {MAX_REGIONS} regions')
@@ -443,8 +459,13 @@ def parse_map(data: dict) -> MapDefinition:
     for region, hexes in parsed:
         if hexes == REMAINING:
             hexes = tuple(sort_hex_keys(
-                key for key in frame_hex_keys(radius) if key not in claimed
+                key for key in frame_hex_keys(radius)
+                if key not in claimed and key not in excluded_hexes
             ))
+        else:
+            # Strip excluded hexes from explicit lists so erasing a hex in any
+            # region removes it cleanly regardless of which region held it.
+            hexes = tuple(k for k in hexes if k not in excluded_hexes)
         regions.append(replace(region, hexes=hexes))
 
     robber_start = data.get('robber_start', AUTO)
@@ -466,6 +487,7 @@ def parse_map(data: dict) -> MapDefinition:
         map_version=MAP_VERSION, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
+        excluded_hexes=excluded_tuple,
     )
 
 

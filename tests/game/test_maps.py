@@ -162,7 +162,7 @@ class TestParsingRefusesRubbish:
         ('a name that is too long', make_map(name='x' * 65)),
         ('no frame', make_map(frame=None)),
         ('a frame of nothing', make_map(frame={'radius': 0})),
-        ('a frame bigger than the cap', make_map(frame={'radius': 7})),
+        ('a frame bigger than the cap', make_map(frame={'radius': 9})),
         ('no regions', make_map(regions=[])),
         ('a robber that is not a hex', make_map(robber_start='over there')),
     ])
@@ -384,14 +384,17 @@ class TestTheDraw:
 class TestTheMapFitsInAPayload:
     def test_the_largest_map_the_validator_accepts_fits_in_one_message(self):
         """Otherwise the editor refuses to save exactly the maps people work
-        hardest on. The cap is global (`MAX_PAYLOAD_BYTES`) and is applied
-        before any handler sees the message, so this is the format's problem."""
-        inner = [key for key in maps.frame_hex_keys(6) if maps.ring_of(key) < 6]
-        rim = [key for key in maps.frame_hex_keys(6) if maps.ring_of(key) == 6]
+        hardest on. save_map gets 64 KB via EVENT_PAYLOAD_LIMITS; this test
+        checks both the per-event cap and the absolute byte count so the
+        format cannot drift into a state where the cap alone saves it."""
+        from game.rate_limit import max_bytes_for
+        all_keys = maps.frame_hex_keys(8)
+        inner = [key for key in all_keys if maps.ring_of(key) < 8]
+        rim = [key for key in all_keys if maps.ring_of(key) == 8]
         document = {
             'map_version': 1, 'id': 'the-biggest-map-that-fits',
             'name': 'x' * 64, 'author': 'y' * 64, 'notes': 'z' * 512,
-            'frame': {'radius': 6},
+            'frame': {'radius': 8},
             'regions': [
                 {'id': 'mainland', 'kind': 'main', 'color': '#8bb26a', 'hexes': inner,
                  'pool': {'mode': 'shuffled', 'terrain': {'wood': len(inner)},
@@ -403,5 +406,34 @@ class TestTheMapFitsInAPayload:
         }
         errors, _ = maps.validate_map(maps.parse_map(document))
         assert errors == []
-        assert not payload_too_large({'map': document})
-        assert len(json.dumps(document)) < 8192
+        assert not payload_too_large({'map': document}, max_bytes=max_bytes_for('save_map'))
+        assert len(json.dumps(document)) < max_bytes_for('save_map')
+
+    def test_excluded_hexes_are_absent_from_all_regions(self):
+        """Hexes listed in frame.excluded must not appear in any region's hex
+        list after parsing — the 'remaining' sea expands around them."""
+        document = make_map()
+        mainland = region_named(document, 'mainland')['hexes']
+        # Exclude one mainland hex and one ocean hex.
+        excluded = [mainland[0], maps.frame_hex_keys(3)[-1]]
+        document['frame'] = {'radius': 3, 'excluded': excluded}
+        defn = maps.parse_map(document)
+        assert defn.excluded_hexes == tuple(maps.sort_hex_keys(excluded))
+        all_region_hexes = {h for r in defn.regions for h in r.hexes}
+        for key in excluded:
+            assert key not in all_region_hexes, (
+                f'excluded hex {key!r} appears in a region after parsing'
+            )
+
+    def test_excluded_hex_outside_the_frame_is_refused(self):
+        document = make_map()
+        document['frame'] = {'radius': 3, 'excluded': ['99,-99,0']}
+        with pytest.raises(InvalidPayload):
+            maps.parse_map(document)
+
+    def test_round_trip_preserves_excluded_hexes(self):
+        document = make_map()
+        excluded = [maps.frame_hex_keys(3)[-1]]
+        document['frame'] = {'radius': 3, 'excluded': excluded}
+        defn = maps.parse_map(document)
+        assert maps.parse_map(defn.to_json()) == defn

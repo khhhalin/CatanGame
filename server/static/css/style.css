@@ -4394,17 +4394,25 @@ button:disabled {
     border-color: var(--accent);
 }
 
+.editor-frame-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+
+.editor-frame-controls label,
+.editor-region-controls label {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
 .editor-region-controls {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     flex: 1 1 auto;
-}
-
-.editor-region-controls label {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-    white-space: nowrap;
 }
 
 .editor-region-controls select {
