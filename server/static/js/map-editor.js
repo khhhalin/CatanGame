@@ -617,14 +617,14 @@ function buildRegionPopover(region) {
         columns.className = 'editor-pool-columns';
         columns.style.marginTop = 'var(--space-2)';
 
-        // Terrain counters (all terrain types, including sea for manual override)
+        // Terrain counters — only the checked resources, one per row
         const terrainSection = document.createElement('div');
         terrainSection.className = 'editor-pool-section';
         const terrainHead = document.createElement('div');
         terrainHead.className = 'editor-pool-section-head';
         terrainHead.textContent = 'Terrain pool';
         terrainSection.appendChild(terrainHead);
-        for (const terrain of TERRAIN_TYPES) {
+        for (const terrain of resources) {
             const row = document.createElement('div');
             row.className = 'editor-pool-row';
             const lbl = document.createElement('label');
@@ -973,7 +973,7 @@ function duplicateMap(m) {
     undoStack = [];
     selectedRegionId = mapDoc.regions[0]?.id ?? null;
     editorMapNameInput.value = mapDoc.name;
-    syncRegionSelect();
+    renderSidebar();
     syncRadiusSelect();
     buildHarbourCounters();
     renderEditor();
@@ -1032,17 +1032,29 @@ function mapDocToWire() {
         frame: mapDoc.frame.excluded?.length
             ? { radius: mapDoc.frame.radius, excluded: sortHexKeys([...mapDoc.frame.excluded]) }
             : { radius: mapDoc.frame.radius },
-        regions: mapDoc.regions.map(r => ({
-            id: r.id,
-            kind: r.kind,
-            color: r.color,
-            hexes: r.hexes === 'remaining' ? 'remaining' : sortHexKeys([...r.hexes]),
-            pool: {
-                mode: r.pool.mode,
-                terrain: { ...r.pool.terrain },
-                numbers: [...r.pool.numbers],
-            },
-        })),
+        regions: mapDoc.regions.map(r => {
+            let terrain;
+            if (r.hexes === 'remaining') {
+                // Compute exact remaining count so the server pool-size check passes.
+                const allKeys = buildFrameHexKeys(mapDoc.frame.radius);
+                const excluded = new Set(mapDoc.frame.excluded || []);
+                const explicit = new Set(
+                    mapDoc.regions.filter(o => o.hexes !== 'remaining')
+                                  .flatMap(o => o.hexes)
+                );
+                const remaining = allKeys.filter(k => !excluded.has(k) && !explicit.has(k)).length;
+                terrain = { sea: remaining };
+            } else {
+                terrain = { ...r.pool.terrain };
+            }
+            return {
+                id: r.id,
+                kind: r.kind,
+                color: r.color,
+                hexes: r.hexes === 'remaining' ? 'remaining' : sortHexKeys([...r.hexes]),
+                pool: { mode: r.pool.mode, terrain, numbers: [...r.pool.numbers] },
+            };
+        }),
         harbours: { mode: mapDoc.harbours.mode, types: { ...mapDoc.harbours.types } },
     };
 }
