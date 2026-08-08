@@ -135,31 +135,31 @@ function buildFrameHexKeys(radius) {
 // ─── authored-view board data ─────────────────────────────────────────────────
 
 function buildFrameBoardData(radius) {
-    // Minimal boardData the renderer accepts: hexes as ocean, no vertices,
-    // edges, players, or robber. Excluded hexes are omitted so they appear as
-    // blank gaps in the grid. Replaced as a new object on every edit so the
-    // renderer's identity-based memo always sees a fresh board.
+    // All frame hexes are present so findNearestHex can register clicks on
+    // excluded (null) hexes too. The overlay tints them distinctly.
     const hexes = {};
-    const excluded = new Set(mapDoc.frame.excluded || []);
     for (const key of buildFrameHexKeys(radius)) {
-        if (!excluded.has(key)) {
-            hexes[key] = { type: 'ocean', number: null };
-        }
+        hexes[key] = { type: 'ocean', number: null };
     }
     return { hexes, vertices: {}, edges: {}, players: [], robber_hex: null };
 }
 
 // ─── overlay (region tinting) ─────────────────────────────────────────────────
 
+const VOID_COLOR = '#555566';  // dark grey-blue — visually distinct from ocean
+
 function buildOverlay() {
     const regionOf = {};
-    const colors = {};
+    const colors = { __void__: VOID_COLOR };
     for (const region of mapDoc.regions) {
         if (region.hexes === 'remaining') continue;
         colors[region.id] = region.color;
         for (const key of region.hexes) {
             regionOf[key] = region.id;
         }
+    }
+    for (const key of (mapDoc.frame.excluded || [])) {
+        regionOf[key] = '__void__';
     }
     return { regionOf, colors };
 }
@@ -311,7 +311,7 @@ function applyToolAt(e) {
 function paintHex(hexKey) {
     if (!selectedRegionId) return;
     const region = mapDoc.regions.find(r => r.id === selectedRegionId);
-    if (!region || region.hexes === 'remaining') return;
+    if (!region) return;
 
     // Remove from whichever explicit region currently holds it.
     for (const r of mapDoc.regions) {
@@ -319,12 +319,16 @@ function paintHex(hexKey) {
             r.hexes = r.hexes.filter(k => k !== hexKey);
         }
     }
-    region.hexes = [...region.hexes, hexKey];
+    // If the target region is explicit, add the hex.
+    // If it uses 'remaining', removing it from all other explicit regions is
+    // enough — 'remaining' auto-claims everything not explicitly assigned.
+    if (region.hexes !== 'remaining') {
+        region.hexes = [...region.hexes, hexKey];
+    }
 
-    // Un-exclude if the user is painting a previously erased hex.
+    // Un-exclude so the hex re-enters the frame.
     const newExcluded = (mapDoc.frame.excluded || []).filter(k => k !== hexKey);
 
-    // Replace mapDoc object to bust the renderer's layout memo.
     mapDoc = {
         ...mapDoc,
         frame: { ...mapDoc.frame, excluded: newExcluded },
