@@ -125,6 +125,42 @@ class TestMapsButtonOpensEditor:
             "BoardRenderer did not draw anything"
         )
 
+    def test_pool_popover_fits_in_viewport(self, lobby):
+        """Pool ▾ opens the pool popover and its bottom edge stays on screen.
+
+        Regression target: the original layout stacked 17 rows (7 terrain + 10
+        tokens) in a single scrollable-less column, pushing the footer and the
+        Auto-fill / Done buttons off the bottom of the viewport. A player
+        clicking Pool ▾ could not reach Done or Auto-fill on any screen height
+        that the lobby supports. The fix splits terrain and tokens side by side
+        inside a scrolling body so the popover stays within its max-height cap.
+        """
+        alice, _ = lobby
+        if alice.page.query_selector("#map-editor-screen.hidden") is not None:
+            alice.page.click("#maps-btn")
+            alice.page.wait_for_selector(
+                "#map-editor-screen:not(.hidden)", timeout=5000
+            )
+
+        alice.page.click("#editor-pool-trigger")
+        alice.page.wait_for_selector(
+            "#editor-pool-popover:not(.hidden)", timeout=5000
+        )
+
+        popover_bottom = alice.page.evaluate(
+            "() => document.getElementById('editor-pool-popover')"
+            "         .getBoundingClientRect().bottom"
+        )
+        viewport_height = alice.page.evaluate("() => window.innerHeight")
+        shot(alice, "editor-02-pool-popover")
+        assert popover_bottom <= viewport_height, (
+            f"pool popover bottom ({popover_bottom:.0f}px) is below the viewport "
+            f"({viewport_height}px) — Auto-fill and Done are unreachable"
+        )
+
+        # Close so later tests start clean
+        alice.page.keyboard.press("Escape")
+
     def test_done_button_returns_to_lobby(self, lobby):
         """Done closes the editor and reveals the lobby again.
 

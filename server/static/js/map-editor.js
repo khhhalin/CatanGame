@@ -394,17 +394,14 @@ function openPoolPopover(regionId) {
 function buildPoolPopover(region) {
     editorPoolPopover.innerHTML = '';
 
-    const title = document.createElement('div');
-    title.className = 'popover-title';
-    title.textContent = region.name;
-    editorPoolPopover.appendChild(title);
-
-    // Kind selector
-    const kindRow = document.createElement('div');
-    kindRow.className = 'editor-pool-row';
-    const kindLabel = document.createElement('label');
-    kindLabel.textContent = 'Kind';
+    // Fixed header: region name + kind selector
+    const head = document.createElement('div');
+    head.className = 'popover-head';
+    const headTitle = document.createElement('span');
+    headTitle.textContent = region.name;
+    head.appendChild(headTitle);
     const kindSelect = document.createElement('select');
+    kindSelect.className = 'editor-pool-kind-select';
     for (const k of ['main', 'island', 'sea']) {
         const opt = document.createElement('option');
         opt.value = k;
@@ -416,13 +413,20 @@ function buildPoolPopover(region) {
         region.kind = kindSelect.value;
         mapDoc = { ...mapDoc };
     });
-    kindRow.appendChild(kindLabel);
-    kindRow.appendChild(kindSelect);
-    editorPoolPopover.appendChild(kindRow);
+    head.appendChild(kindSelect);
+    editorPoolPopover.appendChild(head);
+
+    // Scrollable body: terrain and token sections side by side
+    const body = document.createElement('div');
+    body.className = 'popover-body editor-pool-columns';
 
     // Terrain counters
     const terrainSection = document.createElement('div');
     terrainSection.className = 'editor-pool-section';
+    const terrainHead = document.createElement('div');
+    terrainHead.className = 'editor-pool-section-head';
+    terrainHead.textContent = 'Terrain';
+    terrainSection.appendChild(terrainHead);
     for (const terrain of TERRAIN_TYPES) {
         const row = document.createElement('div');
         row.className = 'editor-pool-row';
@@ -460,11 +464,15 @@ function buildPoolPopover(region) {
         row.appendChild(inc);
         terrainSection.appendChild(row);
     }
-    editorPoolPopover.appendChild(terrainSection);
+    body.appendChild(terrainSection);
 
     // Token counters
     const tokenSection = document.createElement('div');
     tokenSection.className = 'editor-pool-section';
+    const tokenHead = document.createElement('div');
+    tokenHead.className = 'editor-pool-section-head';
+    tokenHead.textContent = 'Tokens';
+    tokenSection.appendChild(tokenHead);
     const tokenCounts = {};
     for (const v of region.pool.numbers) tokenCounts[v] = (tokenCounts[v] || 0) + 1;
 
@@ -506,9 +514,13 @@ function buildPoolPopover(region) {
         row.appendChild(inc);
         tokenSection.appendChild(row);
     }
-    editorPoolPopover.appendChild(tokenSection);
+    body.appendChild(tokenSection);
+    editorPoolPopover.appendChild(body);
 
-    // R4 / R5 badges
+    // Fixed footer: badges + auto-fill + done
+    const footer = document.createElement('div');
+    footer.className = 'editor-pool-footer';
+
     const badges = document.createElement('div');
     badges.className = 'editor-pool-badges';
     const tilesUsed = document.createElement('span');
@@ -517,25 +529,23 @@ function buildPoolPopover(region) {
     tokensBadge.className = 'editor-pool-badge';
     badges.appendChild(tilesUsed);
     badges.appendChild(tokensBadge);
-    editorPoolPopover.appendChild(badges);
+    footer.appendChild(badges);
     refreshPoolBadges(region, tilesUsed, tokensBadge);
 
-    // Auto-fill
     const autoFill = document.createElement('button');
     autoFill.textContent = 'Auto-fill';
     autoFill.addEventListener('click', () => {
         autoFillPool(region);
-        buildPoolPopover(region); // rebuild to reflect new counts
-        togglePopover(editorPoolTrigger);
-        togglePopover(editorPoolTrigger);
+        buildPoolPopover(region);
     });
-    editorPoolPopover.appendChild(autoFill);
+    footer.appendChild(autoFill);
 
-    // Done
     const done = document.createElement('button');
     done.textContent = 'Done';
     done.addEventListener('click', () => closePopover());
-    editorPoolPopover.appendChild(done);
+    footer.appendChild(done);
+
+    editorPoolPopover.appendChild(footer);
 }
 
 function refreshPoolBadges(region, tilesBadge, tokensBadge) {
