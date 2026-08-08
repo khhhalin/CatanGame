@@ -125,15 +125,13 @@ class TestMapsButtonOpensEditor:
             "BoardRenderer did not draw anything"
         )
 
-    def test_pool_popover_fits_in_viewport(self, lobby):
-        """Pool ▾ opens the pool popover and its bottom edge stays on screen.
+    def test_region_popover_fits_in_viewport(self, lobby):
+        """Clicking a region gear opens the region popover inside the viewport.
 
-        Regression target: the original layout stacked 17 rows (7 terrain + 10
-        tokens) in a single scrollable-less column, pushing the footer and the
-        Auto-fill / Done buttons off the bottom of the viewport. A player
-        clicking Pool ▾ could not reach Done or Auto-fill on any screen height
-        that the lobby supports. The fix splits terrain and tokens side by side
-        inside a scrolling body so the popover stays within its max-height cap.
+        Regression target: the original pool popover stacked 17 rows in a
+        single column, pushing Auto-fill / Done off the bottom of the screen.
+        The region popover uses a scrollable body with terrain+token columns
+        side by side so it stays within its max-height cap on any viewport.
         """
         alice, _ = lobby
         if alice.page.query_selector("#map-editor-screen.hidden") is not None:
@@ -142,19 +140,20 @@ class TestMapsButtonOpensEditor:
                 "#map-editor-screen:not(.hidden)", timeout=5000
             )
 
-        alice.page.click("#editor-pool-trigger")
+        # Click the gear of the first region in the sidebar.
+        alice.page.click("#editor-region-list .editor-region-gear")
         alice.page.wait_for_selector(
-            "#editor-pool-popover:not(.hidden)", timeout=5000
+            "#editor-region-popover:not(.hidden)", timeout=5000
         )
 
         popover_bottom = alice.page.evaluate(
-            "() => document.getElementById('editor-pool-popover')"
+            "() => document.getElementById('editor-region-popover')"
             "         .getBoundingClientRect().bottom"
         )
         viewport_height = alice.page.evaluate("() => window.innerHeight")
-        shot(alice, "editor-02-pool-popover")
+        shot(alice, "editor-02-region-popover")
         assert popover_bottom <= viewport_height, (
-            f"pool popover bottom ({popover_bottom:.0f}px) is below the viewport "
+            f"region popover bottom ({popover_bottom:.0f}px) is below the viewport "
             f"({viewport_height}px) — Auto-fill and Done are unreachable"
         )
 

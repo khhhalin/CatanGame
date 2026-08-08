@@ -4401,23 +4401,10 @@ button:disabled {
     flex-shrink: 0;
 }
 
-.editor-frame-controls label,
-.editor-region-controls label {
+.editor-frame-controls label {
     font-size: var(--text-sm);
     color: var(--text-muted);
     white-space: nowrap;
-}
-
-.editor-region-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex: 1 1 auto;
-}
-
-.editor-region-controls select {
-    min-width: 8rem;
-    font-size: var(--text-sm);
 }
 
 .editor-actions {
@@ -4426,11 +4413,103 @@ button:disabled {
     margin-left: auto;
 }
 
+/* Sidebar + canvas share the space below the toolbar */
+.editor-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#editor-sidebar {
+    width: 11rem;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+}
+
+.editor-region-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 2px solid transparent;
+    user-select: none;
+}
+
+.editor-region-item:hover {
+    background: var(--sunken);
+}
+
+.editor-region-item.active {
+    background: var(--sunken);
+    border-color: var(--accent);
+}
+
+.editor-region-swatch {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.editor-null-swatch {
+    background: #555566;
+    border: 1px solid #88889a;
+}
+
+.editor-region-name {
+    flex: 1;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.editor-region-gear {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 0.8rem;
+    opacity: 0.45;
+    line-height: 1;
+}
+
+.editor-region-gear:hover {
+    opacity: 1;
+}
+
+.editor-add-region-btn {
+    margin-top: auto;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+    border: 1px dashed var(--border);
+    background: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-muted);
+    text-align: left;
+}
+
+.editor-add-region-btn:hover {
+    background: var(--sunken);
+    color: var(--text);
+}
+
 #editor-canvas {
     flex: 1 1 auto;
     min-height: 0;
     display: block;
-    width: 100%;
     touch-action: none;
     cursor: crosshair;
 }
@@ -4449,13 +4528,65 @@ button:disabled {
     min-height: 1.6rem;
 }
 
-/* Pool popover — wider than the default 18rem to fit two columns */
-#editor-pool-popover {
-    width: 26rem;
+/* Region settings popover */
+#editor-region-popover {
+    width: 24rem;
 }
 
-.editor-pool-kind-select {
+.editor-rp-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.editor-rp-label {
+    width: 3.5rem;
+    flex-shrink: 0;
     font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.editor-rp-row select {
+    font-size: var(--text-sm);
+}
+
+.editor-color-swatches {
+    display: flex;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+}
+
+.editor-color-swatch {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.editor-color-swatch.active {
+    border-color: var(--text);
+    outline: 1px solid var(--text);
+}
+
+.editor-resource-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-1) var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.editor-resource-check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    text-transform: capitalize;
+    cursor: pointer;
+    user-select: none;
 }
 
 /* The scrollable body holds two sections side by side */

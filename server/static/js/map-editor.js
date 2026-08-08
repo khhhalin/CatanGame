@@ -21,17 +21,16 @@ import {
     editorAddRegionBtn,
     editorCanvas,
     editorDoneBtn,
-    editorEraseBtn,
     editorHarbourCounters,
     editorInspectBtn,
     editorMapListEl,
     editorMapNameInput,
+    editorNullItem,
     editorPaintBtn,
-    editorPoolPopover,
-    editorPoolTrigger,
     editorPreviewBtn,
     editorRadiusSelect,
-    editorRegionSelect,
+    editorRegionList,
+    editorRegionPopover,
     editorSaveBtn,
     editorSaveConfirmBtn,
     editorSaveCopyBtn,
@@ -90,7 +89,12 @@ function newMapDoc() {
                 kind: 'main',
                 color: REGION_PALETTE[0],
                 hexes: [],
-                pool: { mode: 'shuffled', terrain: {}, numbers: [] },
+                pool: {
+                    mode: 'shuffled',
+                    resources: ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'],
+                    terrain: {},
+                    numbers: [],
+                },
             },
             {
                 id: 'ocean',
@@ -98,7 +102,7 @@ function newMapDoc() {
                 kind: 'sea',
                 color: REGION_PALETTE[2],
                 hexes: 'remaining',
-                pool: { mode: 'shuffled', terrain: { sea: 1 }, numbers: [] },
+                pool: { mode: 'shuffled', resources: [], terrain: { sea: 1 }, numbers: [] },
             },
         ],
         harbours: {
@@ -224,21 +228,17 @@ export function enterEditor() {
 
     // Toolbar buttons.
     editorPaintBtn.addEventListener('click', () => setTool('paint'), { signal });
-    editorEraseBtn.addEventListener('click', () => setTool('erase'), { signal });
     editorInspectBtn.addEventListener('click', () => setTool('inspect'), { signal });
     editorRadiusSelect.addEventListener('change', changeRadius, { signal });
-    editorAddRegionBtn.addEventListener('click', addRegion, { signal });
-    editorRegionSelect.addEventListener('change', () => {
-        selectedRegionId = editorRegionSelect.value || null;
-    }, { signal });
-    editorPoolTrigger.addEventListener('click', () => {
-        if (selectedRegionId) openPoolPopover(selectedRegionId);
-    }, { signal });
     editorPreviewBtn.addEventListener('click', requestPreview, { signal });
     editorSaveBtn.addEventListener('click', () => togglePopover(editorSaveBtn), { signal });
     editorDoneBtn.addEventListener('click', exitEditor, { signal });
     editorSaveConfirmBtn.addEventListener('click', saveMap, { signal });
     editorSaveCopyBtn.addEventListener('click', saveMapAsCopy, { signal });
+
+    // Sidebar.
+    editorNullItem.addEventListener('click', () => selectRegion('__null__'), { signal });
+    editorAddRegionBtn.addEventListener('click', addRegion, { signal });
 
     // Server events relayed as DOM custom events by net.js.
     document.addEventListener('map-list-updated', onMapListUpdated, { signal });
@@ -246,7 +246,7 @@ export function enterEditor() {
 
     emitGame('request_maps', null);
     syncToolUI();
-    syncRegionSelect();
+    renderSidebar();
     syncRadiusSelect();
     buildHarbourCounters();
     renderEditor();
@@ -268,7 +268,7 @@ function setTool(t) {
 }
 
 function syncToolUI() {
-    for (const [btn, t] of [[editorPaintBtn, 'paint'], [editorEraseBtn, 'erase'], [editorInspectBtn, 'inspect']]) {
+    for (const [btn, t] of [[editorPaintBtn, 'paint'], [editorInspectBtn, 'inspect']]) {
         btn.setAttribute('aria-pressed', String(tool === t));
     }
     editorCanvas.dataset.tool = tool;
@@ -368,7 +368,7 @@ function undo() {
     if (!undoStack.length) return;
     mapDoc = JSON.parse(undoStack.pop());
     previewBoard = null;
-    syncRegionSelect();
+    renderSidebar();
     syncRadiusSelect();
     renderEditor();
 }
@@ -384,11 +384,17 @@ function addRegion() {
         kind: 'island',
         color: REGION_PALETTE[colorIdx],
         hexes: [],
-        pool: { mode: 'shuffled', terrain: {}, numbers: [] },
+        pool: {
+            mode: 'shuffled',
+            resources: ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'],
+            terrain: {},
+            numbers: [],
+        },
     };
     mapDoc = { ...mapDoc, regions: [...mapDoc.regions, region] };
     selectedRegionId = id;
-    syncRegionSelect();
+    setTool('paint');
+    renderSidebar();
     syncRadiusSelect();
     renderEditor();
 }
@@ -418,42 +424,124 @@ function changeRadius() {
     renderEditor();
 }
 
-function syncRegionSelect() {
-    editorRegionSelect.innerHTML = '';
-    for (const r of mapDoc.regions) {
-        const opt = document.createElement('option');
-        opt.value = r.id;
-        opt.textContent = r.name;
-        editorRegionSelect.appendChild(opt);
-    }
-    if (selectedRegionId) editorRegionSelect.value = selectedRegionId;
-    else if (mapDoc.regions.length) {
-        selectedRegionId = mapDoc.regions[0].id;
-        editorRegionSelect.value = selectedRegionId;
+function renderSidebar() {
+    editorRegionList.innerHTML = '';
+
+    editorNullItem.classList.toggle('active', selectedRegionId === '__null__');
+
+    for (const region of mapDoc.regions) {
+        const item = document.createElement('div');
+        item.className = 'editor-region-item' + (selectedRegionId === region.id ? ' active' : '');
+        item.dataset.region = region.id;
+
+        const swatch = document.createElement('span');
+        swatch.className = 'editor-region-swatch';
+        swatch.style.background = region.color;
+
+        const name = document.createElement('span');
+        name.className = 'editor-region-name';
+        name.textContent = region.name;
+
+        const gear = document.createElement('button');
+        gear.className = 'editor-region-gear';
+        gear.textContent = '⚙';
+        gear.setAttribute('aria-label', `Settings for ${region.name}`);
+        gear.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRegionPopover(region, gear);
+        });
+
+        item.appendChild(swatch);
+        item.appendChild(name);
+        item.appendChild(gear);
+        item.addEventListener('click', () => selectRegion(region.id));
+        editorRegionList.appendChild(item);
     }
 }
 
-// ─── pool popover ─────────────────────────────────────────────────────────────
-
-function openPoolPopover(regionId) {
-    const region = mapDoc.regions.find(r => r.id === regionId);
-    if (!region) return;
-    buildPoolPopover(region);
-    togglePopover(editorPoolTrigger);
+function selectRegion(regionId) {
+    if (regionId === '__null__') {
+        selectedRegionId = '__null__';
+        setTool('erase');
+    } else {
+        selectedRegionId = regionId;
+        setTool('paint');
+    }
+    renderSidebar();
 }
 
-function buildPoolPopover(region) {
-    editorPoolPopover.innerHTML = '';
+function inferResources(region) {
+    if (Array.isArray(region.pool.resources)) return [...region.pool.resources];
+    const fromTerrain = TERRAIN_TYPES.filter(t => t !== 'sea' && (region.pool.terrain[t] || 0) > 0);
+    if (fromTerrain.length > 0) return fromTerrain;
+    return region.kind === 'sea' ? [] : ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'];
+}
 
-    // Fixed header: region name + kind selector
+// ─── region settings popover ──────────────────────────────────────────────────
+
+const DEFAULT_REGION_IDS = new Set(['mainland', 'ocean']);
+
+function openRegionPopover(region, gear) {
+    buildRegionPopover(region);
+    togglePopover(gear);
+}
+
+function buildRegionPopover(region) {
+    editorRegionPopover.innerHTML = '';
+
+    // Head: name input
     const head = document.createElement('div');
     head.className = 'popover-head';
-    const headTitle = document.createElement('span');
-    headTitle.textContent = region.name;
-    head.appendChild(headTitle);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = region.name;
+    nameInput.maxLength = 32;
+    nameInput.style.flex = '1';
+    nameInput.addEventListener('input', () => {
+        region.name = nameInput.value;
+        mapDoc = { ...mapDoc };
+        renderSidebar();
+    });
+    head.appendChild(nameInput);
+    editorRegionPopover.appendChild(head);
+
+    // Scrollable body
+    const body = document.createElement('div');
+    body.className = 'popover-body';
+
+    // Color row
+    const colorRow = document.createElement('div');
+    colorRow.className = 'editor-rp-row';
+    const colorLbl = document.createElement('span');
+    colorLbl.className = 'editor-rp-label';
+    colorLbl.textContent = 'Color';
+    const swatches = document.createElement('div');
+    swatches.className = 'editor-color-swatches';
+    for (const c of REGION_PALETTE) {
+        const sw = document.createElement('button');
+        sw.className = 'editor-color-swatch' + (region.color === c ? ' active' : '');
+        sw.style.background = c;
+        sw.title = c;
+        sw.addEventListener('click', () => {
+            region.color = c;
+            mapDoc = { ...mapDoc };
+            renderSidebar();
+            buildRegionPopover(region);
+        });
+        swatches.appendChild(sw);
+    }
+    colorRow.appendChild(colorLbl);
+    colorRow.appendChild(swatches);
+    body.appendChild(colorRow);
+
+    // Kind row
+    const kindRow = document.createElement('div');
+    kindRow.className = 'editor-rp-row';
+    const kindLbl = document.createElement('span');
+    kindLbl.className = 'editor-rp-label';
+    kindLbl.textContent = 'Kind';
     const kindSelect = document.createElement('select');
-    kindSelect.className = 'editor-pool-kind-select';
-    for (const k of ['main', 'island', 'sea']) {
+    for (const k of ['main', 'island', 'sea', 'fog']) {
         const opt = document.createElement('option');
         opt.value = k;
         opt.textContent = k;
@@ -464,12 +552,49 @@ function buildPoolPopover(region) {
         region.kind = kindSelect.value;
         mapDoc = { ...mapDoc };
     });
-    head.appendChild(kindSelect);
-    editorPoolPopover.appendChild(head);
+    kindRow.appendChild(kindLbl);
+    kindRow.appendChild(kindSelect);
+    body.appendChild(kindRow);
 
-    // Scrollable body: terrain and token sections side by side
-    const body = document.createElement('div');
-    body.className = 'popover-body editor-pool-columns';
+    // Resources section — checkboxes control what auto-fill distributes
+    const resHead = document.createElement('div');
+    resHead.className = 'editor-pool-section-head';
+    resHead.style.marginTop = 'var(--space-2)';
+    resHead.textContent = 'Resources';
+    body.appendChild(resHead);
+
+    const resources = inferResources(region);
+    const resGrid = document.createElement('div');
+    resGrid.className = 'editor-resource-grid';
+    for (const t of TERRAIN_TYPES) {
+        const lbl = document.createElement('label');
+        lbl.className = 'editor-resource-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = resources.includes(t);
+        cb.addEventListener('change', () => {
+            const cur = inferResources(region);
+            region.pool.resources = cb.checked
+                ? [...cur, t]
+                : cur.filter(r => r !== t);
+            mapDoc = { ...mapDoc };
+        });
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(t));
+        resGrid.appendChild(lbl);
+    }
+    body.appendChild(resGrid);
+
+    // Terrain + Token columns
+    const columns = document.createElement('div');
+    columns.className = 'editor-pool-columns';
+    columns.style.marginTop = 'var(--space-2)';
+
+    // badges declared early so terrain/token handlers can close over them
+    const tilesUsed = document.createElement('span');
+    tilesUsed.className = 'editor-pool-badge';
+    const tokensBadge = document.createElement('span');
+    tokensBadge.className = 'editor-pool-badge';
 
     // Terrain counters
     const terrainSection = document.createElement('div');
@@ -481,10 +606,8 @@ function buildPoolPopover(region) {
     for (const terrain of TERRAIN_TYPES) {
         const row = document.createElement('div');
         row.className = 'editor-pool-row';
-
         const lbl = document.createElement('label');
         lbl.textContent = terrain;
-
         const dec = document.createElement('button');
         dec.textContent = '−';
         const count = document.createElement('span');
@@ -492,7 +615,6 @@ function buildPoolPopover(region) {
         count.textContent = String(region.pool.terrain[terrain] || 0);
         const inc = document.createElement('button');
         inc.textContent = '+';
-
         dec.addEventListener('click', () => {
             const cur = region.pool.terrain[terrain] || 0;
             if (cur <= 0) return;
@@ -501,21 +623,22 @@ function buildPoolPopover(region) {
             count.textContent = String(region.pool.terrain[terrain] || 0);
             mapDoc = { ...mapDoc };
             refreshPoolBadges(region, tilesUsed, tokensBadge);
+            updateStatusStrip();
         });
         inc.addEventListener('click', () => {
             region.pool.terrain[terrain] = (region.pool.terrain[terrain] || 0) + 1;
             count.textContent = String(region.pool.terrain[terrain]);
             mapDoc = { ...mapDoc };
             refreshPoolBadges(region, tilesUsed, tokensBadge);
+            updateStatusStrip();
         });
-
         row.appendChild(lbl);
         row.appendChild(dec);
         row.appendChild(count);
         row.appendChild(inc);
         terrainSection.appendChild(row);
     }
-    body.appendChild(terrainSection);
+    columns.appendChild(terrainSection);
 
     // Token counters
     const tokenSection = document.createElement('div');
@@ -526,14 +649,11 @@ function buildPoolPopover(region) {
     tokenSection.appendChild(tokenHead);
     const tokenCounts = {};
     for (const v of region.pool.numbers) tokenCounts[v] = (tokenCounts[v] || 0) + 1;
-
     for (const val of TOKEN_VALUES) {
         const row = document.createElement('div');
         row.className = 'editor-pool-row';
-
         const lbl = document.createElement('label');
         lbl.textContent = String(val);
-
         const dec = document.createElement('button');
         dec.textContent = '−';
         const cnt = document.createElement('span');
@@ -541,7 +661,6 @@ function buildPoolPopover(region) {
         cnt.textContent = String(tokenCounts[val] || 0);
         const inc = document.createElement('button');
         inc.textContent = '+';
-
         dec.addEventListener('click', () => {
             const idx = region.pool.numbers.indexOf(val);
             if (idx === -1) return;
@@ -550,6 +669,7 @@ function buildPoolPopover(region) {
             cnt.textContent = String(tokenCounts[val] || 0);
             mapDoc = { ...mapDoc };
             refreshPoolBadges(region, tilesUsed, tokensBadge);
+            updateStatusStrip();
         });
         inc.addEventListener('click', () => {
             region.pool.numbers.push(val);
@@ -557,27 +677,24 @@ function buildPoolPopover(region) {
             cnt.textContent = String(tokenCounts[val]);
             mapDoc = { ...mapDoc };
             refreshPoolBadges(region, tilesUsed, tokensBadge);
+            updateStatusStrip();
         });
-
         row.appendChild(lbl);
         row.appendChild(dec);
         row.appendChild(cnt);
         row.appendChild(inc);
         tokenSection.appendChild(row);
     }
-    body.appendChild(tokenSection);
-    editorPoolPopover.appendChild(body);
+    columns.appendChild(tokenSection);
+    body.appendChild(columns);
+    editorRegionPopover.appendChild(body);
 
-    // Fixed footer: badges + auto-fill + done
+    // Footer: badges + auto-fill + delete + close
     const footer = document.createElement('div');
     footer.className = 'editor-pool-footer';
 
     const badges = document.createElement('div');
     badges.className = 'editor-pool-badges';
-    const tilesUsed = document.createElement('span');
-    tilesUsed.className = 'editor-pool-badge';
-    const tokensBadge = document.createElement('span');
-    tokensBadge.className = 'editor-pool-badge';
     badges.appendChild(tilesUsed);
     badges.appendChild(tokensBadge);
     footer.appendChild(badges);
@@ -587,16 +704,35 @@ function buildPoolPopover(region) {
     autoFill.textContent = 'Auto-fill';
     autoFill.addEventListener('click', () => {
         autoFillPool(region);
-        buildPoolPopover(region);
+        buildRegionPopover(region);
     });
     footer.appendChild(autoFill);
 
+    if (!DEFAULT_REGION_IDS.has(region.id)) {
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Delete';
+        delBtn.dataset.confirm = '0';
+        delBtn.addEventListener('click', () => {
+            if (delBtn.dataset.confirm !== '1') {
+                delBtn.textContent = 'Sure?';
+                delBtn.dataset.confirm = '1';
+                return;
+            }
+            mapDoc = { ...mapDoc, regions: mapDoc.regions.filter(r => r.id !== region.id) };
+            if (selectedRegionId === region.id) selectedRegionId = mapDoc.regions[0]?.id ?? null;
+            renderSidebar();
+            renderEditor();
+            closePopover();
+        });
+        footer.appendChild(delBtn);
+    }
+
     const done = document.createElement('button');
     done.textContent = 'Done';
-    done.addEventListener('click', () => closePopover());
+    done.addEventListener('click', closePopover);
     footer.appendChild(done);
 
-    editorPoolPopover.appendChild(footer);
+    editorRegionPopover.appendChild(footer);
 }
 
 function refreshPoolBadges(region, tilesBadge, tokensBadge) {
@@ -618,30 +754,51 @@ function autoFillPool(region) {
     const slots = region.hexes.length;
     if (slots === 0) return;
 
-    // Scale the standard 19-hex mix to this region's size.
-    const scale = slots / 19;
+    const resources = inferResources(region);
+    if (resources.length === 0) {
+        region.pool.terrain = {};
+        region.pool.numbers = [];
+        mapDoc = { ...mapDoc };
+        renderEditor();
+        return;
+    }
+
+    // Build weights from STANDARD_MIX for only the enabled resources.
+    const weights = {};
+    let totalWeight = 0;
+    for (const t of resources) {
+        const w = STANDARD_MIX[t] ?? 1;
+        weights[t] = w;
+        totalWeight += w;
+    }
+
     const terrain = {};
     let placed = 0;
-    for (const [t, count] of Object.entries(STANDARD_MIX)) {
-        if (t === 'sea') continue;
-        const n = Math.round(count * scale);
+    for (const t of resources) {
+        if (!weights[t]) continue;
+        const n = Math.round((weights[t] / totalWeight) * slots);
         if (n > 0) { terrain[t] = n; placed += n; }
     }
-    // Adjust to hit exactly `slots`.
-    while (placed < slots) { terrain.wood = (terrain.wood || 0) + 1; placed++; }
-    while (placed > slots && terrain.wood > 0) { terrain.wood--; placed--; }
+
+    // Pad/trim to hit exactly `slots` using the first non-sea, non-desert resource.
+    const adj = resources.find(t => t !== 'sea' && t !== 'desert') ?? resources[0];
+    while (placed < slots) { terrain[adj] = (terrain[adj] || 0) + 1; placed++; }
+    while (placed > slots && (terrain[adj] || 0) > 0) {
+        terrain[adj]--;
+        if (!terrain[adj]) delete terrain[adj];
+        placed--;
+    }
 
     region.pool.terrain = terrain;
 
-    // Scale the standard token distribution to the non-desert tile count.
-    const landTiles = slots - (terrain.desert || 0);
+    // Tokens for non-desert, non-sea tiles.
+    const landTiles = slots - (terrain.desert || 0) - (terrain.sea || 0);
     const tokenScale = landTiles / 18;
     const numbers = [];
     for (const [val, count] of Object.entries(STANDARD_TOKENS)) {
         const n = Math.round(count * tokenScale);
         for (let i = 0; i < n; i++) numbers.push(Number(val));
     }
-    // Trim or pad to match land tile count exactly.
     while (numbers.length > landTiles) numbers.pop();
     while (numbers.length < landTiles) numbers.push(5);
     region.pool.numbers = numbers;
@@ -699,7 +856,7 @@ function loadMap(mapData) {
     undoStack = [];
     selectedRegionId = mapDoc.regions[0]?.id ?? null;
     editorMapNameInput.value = mapDoc.name;
-    syncRegionSelect();
+    renderSidebar();
     syncRadiusSelect();
     buildHarbourCounters();
     renderEditor();
@@ -709,7 +866,7 @@ function loadMap(mapData) {
 function onMapListUpdated() {
     mapList = viewState.server.mapList || [];
     rebuildMapList();
-    syncRegionSelect();
+    renderSidebar();
     syncRadiusSelect();
 }
 
@@ -789,12 +946,19 @@ function duplicateMap(m) {
         id: '',
         name: `${m.name || m.id} copy`,
         frame: { radius: m.frame?.radius || 4, excluded: Array.isArray(m.frame?.excluded) ? [...m.frame.excluded] : [] },
-        regions: (m.regions || []).map(r => ({
-            ...r,
-            color: r.color || REGION_PALETTE[0],
-            hexes: Array.isArray(r.hexes) ? [...r.hexes] : r.hexes,
-            pool: r.pool ? { ...r.pool, numbers: [...(r.pool.numbers || [])] } : { mode: 'shuffled', terrain: {}, numbers: [] },
-        })),
+        regions: (m.regions || []).map(r => {
+            const pool = r.pool
+                ? { ...r.pool, terrain: { ...(r.pool.terrain || {}) }, numbers: [...(r.pool.numbers || [])] }
+                : { mode: 'shuffled', terrain: {}, numbers: [] };
+            const stub = { kind: r.kind || 'island', pool };
+            pool.resources = inferResources(stub);
+            return {
+                ...r,
+                color: r.color || REGION_PALETTE[0],
+                hexes: Array.isArray(r.hexes) ? [...r.hexes] : r.hexes,
+                pool,
+            };
+        }),
         harbours: m.harbours ? { ...m.harbours, types: { ...(m.harbours.types || {}) } }
                              : { mode: 'bag', types: { generic: 4, wood: 1, brick: 1, sheep: 1, wheat: 1, ore: 1 } },
     };
@@ -881,19 +1045,24 @@ function serverMapToDoc(m) {
         id: m.id || '',
         name: m.name || m.id,
         frame: { radius: m.frame?.radius || 4, excluded: Array.isArray(m.frame?.excluded) ? [...m.frame.excluded] : [] },
-        regions: (m.regions || []).map(r => ({
-            id: r.id,
-            name: r.name || r.id,
-            kind: r.kind || 'island',
-            color: r.color || REGION_PALETTE[0],
-            hexes: r.hexes === 'remaining' ? 'remaining'
-                 : Array.isArray(r.hexes) ? [...r.hexes] : [],
-            pool: r.pool ? {
+        regions: (m.regions || []).map(r => {
+            const pool = r.pool ? {
                 mode: r.pool.mode || 'shuffled',
                 terrain: { ...(r.pool.terrain || {}) },
                 numbers: [...(r.pool.numbers || [])],
-            } : { mode: 'shuffled', terrain: {}, numbers: [] },
-        })),
+            } : { mode: 'shuffled', terrain: {}, numbers: [] };
+            const stub = { kind: r.kind || 'island', pool };
+            pool.resources = inferResources(stub);
+            return {
+                id: r.id,
+                name: r.name || r.id,
+                kind: r.kind || 'island',
+                color: r.color || REGION_PALETTE[0],
+                hexes: r.hexes === 'remaining' ? 'remaining'
+                     : Array.isArray(r.hexes) ? [...r.hexes] : [],
+                pool,
+            };
+        }),
         harbours: m.harbours ? {
             mode: m.harbours.mode || 'bag',
             types: { ...(m.harbours.types || {}) },
@@ -908,13 +1077,12 @@ function onKeyDown(e) {
 
     if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); return; }
     if (e.key === 'p' || e.key === 'P') { setTool('paint'); return; }
-    if (e.key === 'e' || e.key === 'E') { setTool('erase'); return; }
+    if (e.key === 'e' || e.key === 'E') { selectRegion('__null__'); return; }
     if (e.key === 'i' || e.key === 'I') { setTool('inspect'); return; }
 
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= 9 && mapDoc.regions[n - 1]) {
-        selectedRegionId = mapDoc.regions[n - 1].id;
-        editorRegionSelect.value = selectedRegionId;
+        selectRegion(mapDoc.regions[n - 1].id);
     }
 }
 

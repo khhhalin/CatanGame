@@ -218,15 +218,13 @@
             </div>
         </div>
 
-        <!-- Map editor: a full-screen canvas with toolbar and status strip.
-             Entered from the lobby Maps button; exited with Done. Nothing here
-             is built until map-editor.js initialises it: the popovers are
-             populated dynamically so the HTML stays a skeleton. -->
+        <!-- Map editor: sidebar + canvas. Toolbar holds tools and global actions;
+             the left sidebar lists regions as coloured swatches. Popovers are
+             built dynamically by map-editor.js; only the skeleton lives here. -->
         <div id="map-editor-screen" class="hidden">
             <div class="editor-toolbar">
                 <div class="editor-tools">
                     <button id="editor-paint-btn" class="editor-tool-btn" aria-pressed="false">Paint</button>
-                    <button id="editor-erase-btn" class="editor-tool-btn" aria-pressed="false">Erase</button>
                     <button id="editor-inspect-btn" class="editor-tool-btn" aria-pressed="true">Inspect</button>
                 </div>
                 <div class="editor-frame-controls">
@@ -241,25 +239,29 @@
                         <option value="8">8</option>
                     </select>
                 </div>
-                <div class="editor-region-controls">
-                    <label for="editor-region-select">Region:</label>
-                    <select id="editor-region-select"></select>
-                    <button id="editor-add-region-btn" aria-label="Add region">+</button>
-                    <button id="editor-pool-trigger" aria-controls="editor-pool-popover">Pool ▾</button>
-                </div>
                 <div class="editor-actions">
                     <button id="editor-preview-btn">Preview</button>
                     <button id="editor-save-btn" aria-controls="editor-save-popover">Save ▾</button>
                     <button id="editor-done-btn">Done</button>
                 </div>
             </div>
-            <canvas id="editor-canvas" tabindex="0" role="img"
-                    aria-label="Map editor board — paint hexes to assign them to regions"></canvas>
+            <div class="editor-body">
+                <div id="editor-sidebar">
+                    <div id="editor-null-item" class="editor-region-item" title="Erase — remove a hex from all regions (Null tile)">
+                        <span class="editor-region-swatch editor-null-swatch"></span>
+                        <span class="editor-region-name">Null</span>
+                    </div>
+                    <div id="editor-region-list"></div>
+                    <button id="editor-add-region-btn" class="editor-add-region-btn">+ Add region</button>
+                </div>
+                <canvas id="editor-canvas" tabindex="0" role="img"
+                        aria-label="Map editor board — paint hexes to assign them to regions"></canvas>
+            </div>
             <div id="editor-status" class="editor-status" aria-live="polite"></div>
 
-            <div id="editor-pool-popover" class="popover hidden" role="dialog"
-                 aria-label="Region pool editor">
-                <!-- Populated by map-editor.js openPoolPopover() -->
+            <div id="editor-region-popover" class="popover hidden" role="dialog"
+                 aria-label="Region settings">
+                <!-- Populated by map-editor.js openRegionPopover() -->
             </div>
 
             <div id="editor-save-popover" class="popover popover-wide hidden" role="dialog"
