@@ -446,6 +446,7 @@ function renderSidebar() {
         gear.className = 'editor-region-gear';
         gear.textContent = '⚙';
         gear.setAttribute('aria-label', `Settings for ${region.name}`);
+        gear.setAttribute('aria-controls', 'editor-region-popover');
         gear.addEventListener('click', (e) => {
             e.stopPropagation();
             openRegionPopover(region, gear);
