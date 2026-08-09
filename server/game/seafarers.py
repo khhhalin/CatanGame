@@ -13,6 +13,7 @@ owner has a building, and each is built from its own network alone.
 
 import logging
 
+from game import tiles
 from game.results import refused
 
 logger = logging.getLogger(__name__)
@@ -385,7 +386,7 @@ class SeafarersRules:
         hex_obj = self.hexes.get(hex_key)
         if hex_obj is None:
             return refused('INVALID_TARGET', 'Invalid hex')
-        if hex_obj.type != 'ocean':
+        if not tiles.is_sea(hex_obj.type):
             return refused('INVALID_TARGET', 'The pirate sails; it may only sit on a sea hex')
         if hex_key == self.pirate_hex:
             return refused('INVALID_TARGET', 'The pirate is already there')

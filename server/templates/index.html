@@ -6,6 +6,7 @@
     <title>Catan - User Connection</title>
     <!-- Tokens first: style.css reads colour, spacing, radii and motion from
          it and declares no literal of its own. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -369,6 +370,10 @@
                  tabindex="0"></div>
 
             <aside class="table-aside">
+                <!-- Whose turn it is and which round, at the top of the panel.
+                     panels.js writes it on every board update; hidden in the
+                     lobby, where there is no turn yet. -->
+                <div id="turn-banner" class="turn-banner hidden" aria-live="polite"></div>
                 <!-- The right panel: log/trade tabs, a big always-on Bank panel,
                      the Details folds, and the log/chat below. The log is never
                      hidden - it and chat are the two things a player reads
@@ -656,7 +661,9 @@
                                     data-close-popover aria-label="Close">×</button>
                         </div>
                         <div class="popover-body">
-                            <button id="propose-trade-btn">Propose Trade</button>
+                            <!-- The tray's morph action proposes now; this modal
+                                 path is retired but kept dormant in the DOM. -->
+                            <button id="propose-trade-btn" hidden>Propose Trade</button>
                             <div class="trade-scroll">
                                 <div id="trade-offers" class="trade-offers"></div>
                                 <div id="my-offers" class="my-offers"></div>
@@ -671,19 +678,6 @@
                          roll and the rolled faces after. The turn clocks sit
                          beside them. Hidden in the lobby, where there is no game
                          to roll for. -->
-                    <div class="dice-footer" id="dice-footer">
-                        <button id="roll-dice-btn">Roll Dice</button>
-                        <div class="dice-cluster">
-                            <div id="dice-display" class="dice-display"></div>
-                            <!-- Which dice these two faces came out of. Empty and
-                                 hidden for the standard pair. -->
-                            <span id="dice-set" class="dice-set hidden"></span>
-                        </div>
-                        <div class="timer-container">
-                            <div id="dice-timer" class="timer">Dice: 15s</div>
-                            <div id="round-timer" class="timer">Round: 120s</div>
-                        </div>
-                    </div>
                 </section>
             </aside>
         </div><!-- /.table -->
@@ -708,6 +702,21 @@
             <ul id="game-players" class="user-list"></ul>
         </section>
 
+        <!-- The dice: their own floating glass panel, bottom-right (Deep Harbour).
+             Moved out of the right panel so it stands alone as the mockup draws
+             it. dice.js and panels.js drive it by the ids unchanged. -->
+        <div class="dice-footer" id="dice-footer">
+            <button id="roll-dice-btn">Roll Dice</button>
+            <div class="dice-cluster">
+                <div id="dice-display" class="dice-display"></div>
+                <span id="dice-set" class="dice-set hidden"></span>
+            </div>
+            <div class="timer-container">
+                <div id="dice-timer" class="timer">Dice: 15s</div>
+                <div id="round-timer" class="timer">Round: 120s</div>
+            </div>
+        </div>
+
         <!-- The unified build+trade tray, bottom-left (v2.1 phase 2). One
              surface: tap hand cards to gather materials, and the tray works out
              what they make - a build to arm, a bank trade to run, or an offer to
@@ -726,7 +735,10 @@
                          or which build the gathered materials make. -->
                     <span class="tray-note" id="tray-note">Tap your cards to build or trade</span>
                 </div>
-                <div class="console-group build-group tray-builds">
+                <!-- Kept in the DOM as the placement-arming controls the rest of
+                     the app drives (panels/seafarers/cities-knights), but no
+                     longer shown: the tray's one morph action arms them now. -->
+                <div class="console-group build-group tray-builds" hidden>
                     <button id="place-settlement-btn" data-build="settlement">Build Settlement</button>
                     <button id="place-road-btn" data-build="road">Build Road</button>
                     <button id="upgrade-city-btn" data-build="city">Build City</button>

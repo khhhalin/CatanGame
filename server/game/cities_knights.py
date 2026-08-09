@@ -10,18 +10,15 @@ a given mechanic actually happens is decided by that mechanic's own rule, never
 by the presence of this object.
 """
 
-from game import progress_cards
+from game import progress_cards, tiles
 
 COMMODITY_TYPES = ("cloth", "coin", "paper")
 
-# Which terrain upgrades to a commodity when a *city* produces. Fields and hills
-# have no commodity — a city on them just yields two of the resource, as in the
-# base game.
-COMMODITY_FROM_TERRAIN = {
-    "sheep": "cloth",
-    "ore": "coin",
-    "wood": "paper",
-}
+# Which terrain upgrades to a commodity when a *city* produces. Read from the
+# terrain registry (a terrain declares its own commodity) so the pairing lives in
+# one place. Fields and hills have no commodity — a city on them just yields two
+# of the resource, as in the base game.
+COMMODITY_FROM_TERRAIN = tiles.commodities_by_terrain()
 
 TRADE = "trade"
 POLITICS = "politics"

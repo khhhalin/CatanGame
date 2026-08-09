@@ -187,4 +187,6 @@ decision. Read it before starting anything new.
 - `expansions.md` — the rulebook the rules are cited against.
 - `explorers-and-pirates-plan.md` — the E&P build plan.
 - `map-creator.md` — the map editor spec + §5 handoff.
+- `extending-cards-and-tiles.md` — how to add a card or a terrain through the
+  `cards.py` / `tiles.py` registries, and the whole path a new one still needs.
 - `CHANGELOG.md` — player-facing release notes; also the deployed build id.

@@ -1035,8 +1035,10 @@ let zoneGiveSlots = null;
 let zoneWantSlots = null;
 let zoneAddBtn = null;
 let zonePicker = null;
-let zoneProposeBtn = null;
-let zoneBankBtn = null;
+// One morphing action button: the staged pile reads as a build, a bank trade or
+// an offer, and this becomes whichever fits. The three console build buttons and
+// the propose button collapsed into one, as the redesign asks.
+let zoneActionBtn = null;
 
 /**
  * The card types the zone offers, matching the modal: the five resources, plus
@@ -1152,8 +1154,17 @@ function refreshTrayBuilds() {
             ready = kind;
         }
     }
+    // A free road (Road Building) is paid for already, so the morph offers it
+    // with nothing staged — otherwise, now the console road button is gone,
+    // there is no way to arm the two roads the card owes.
+    const freeRoad = (getBoard()?.free_roads_remaining || 0) > 0 && isMyTurn();
+    if (freeRoad && !ready) {
+        ready = 'road';
+    }
     if (trayNote) {
-        if (ready) {
+        if (freeRoad) {
+            trayNote.textContent = 'Free road — click Build Road, then tap an edge';
+        } else if (ready) {
             trayNote.textContent = `These make a ${BUILD_LABEL[ready]} — click Build ${BUILD_LABEL[ready]}`;
         } else if (Object.keys(materials()).length > 0) {
             trayNote.textContent = 'No build fits these — trade them below';
@@ -1216,21 +1227,48 @@ function runBankTrade() {
     clearTradeZone();
 }
 
+// The hidden console button that arms each build. They stay in the DOM as the
+// placement-arming controls the rest of the app drives (panels.js, seafarers.js,
+// cities-knights.js), no longer shown; the morph action clicks the right one.
+function buildArmButton(kind) {
+    return { settlement: placeSettlementBtn, road: placeRoadBtn, city: upgradeCityBtn }[kind];
+}
+
 /**
- * Show or hide the one-press bank action from the current materials and want.
+ * Set the one morph action from the staged pile, in priority order: a build the
+ * materials exactly make, else a bank trade at this player's rate, else an offer
+ * to the table. Hidden when the pile spells none of them.
+ *
+ * @param {string|null} ready - The build kind the materials make, from refreshTrayBuilds
  */
-function refreshBankAction() {
-    if (!zoneBankBtn) {
+function renderTrayAction(ready) {
+    if (!zoneActionBtn) {
         return;
     }
-    const intent = isMyTurn() ? bankTradeIntent() : null;
-    if (intent) {
-        zoneBankBtn.hidden = false;
-        zoneBankBtn.textContent =
-            `Bank: ${intent.rate} ${CARD_NAMES[intent.giveCard] || intent.giveCard}`
-            + ` → 1 ${CARD_NAMES[intent.wantCard] || intent.wantCard}`;
-    } else {
-        zoneBankBtn.hidden = true;
+    const bank = isMyTurn() ? bankTradeIntent() : null;
+    const givenCards = Object.keys(materials()).length;
+    const wantedCards = Object.keys(zoneWant).filter(card => zoneWant[card] > 0).length;
+
+    let act = null;
+    let label = '';
+    if (ready && isMyTurn()) {
+        act = 'build';
+        label = `Build ${BUILD_LABEL[ready]}`;
+    } else if (bank) {
+        act = 'bank';
+        label = `Bank · ${bank.rate} ${CARD_NAMES[bank.giveCard] || bank.giveCard}`
+            + ` → 1 ${CARD_NAMES[bank.wantCard] || bank.wantCard}`;
+    } else if (givenCards > 0 && wantedCards > 0) {
+        act = 'offer';
+        label = 'Offer to players';
+    }
+
+    zoneActionBtn.hidden = !act;
+    zoneActionBtn.dataset.act = act || '';
+    zoneActionBtn.dataset.build = act === 'build' ? ready : '';
+    zoneActionBtn.className = `tray-action${act ? ` is-${act}` : ''}`;
+    if (act) {
+        zoneActionBtn.textContent = label;
     }
 }
 
@@ -1272,13 +1310,13 @@ function renderTradeZone() {
 
     // Quiet until something is chosen: an idle zone is a hint, not a demand.
     zoneEl.classList.toggle('is-quiet', givenCards === 0 && wantedCards === 0);
-    // The server refuses a half-empty offer; the button says so by staying off.
-    zoneProposeBtn.disabled = givenCards === 0 || wantedCards === 0;
 
-    // The materials read three ways: which build they make, whether they are a
-    // one-press bank trade, and (below) the give half of an offer.
-    refreshTrayBuilds();
-    refreshBankAction();
+    // The staged pile reads three ways — the build it makes, a bank trade at this
+    // player's rate, or an offer to the table — and one morph button becomes
+    // whichever fits. refreshTrayBuilds also writes the note and returns the
+    // build kind the pile makes.
+    const ready = refreshTrayBuilds();
+    renderTrayAction(ready);
 
     syncHandSelection();
 }
@@ -1439,12 +1477,17 @@ function handleZoneClick(event) {
         addWantCard(pick.dataset.card);
         return;
     }
-    if (event.target.closest('.trade-bank')) {
-        runBankTrade();
-        return;
-    }
-    if (event.target.closest('.trade-propose')) {
-        proposeZoneTrade();
+    const action = event.target.closest('.tray-action');
+    if (action) {
+        if (action.dataset.act === 'build') {
+            // Arm placement through the hidden console button the rest of the
+            // app keeps in sync; the board tap and the server spend the cards.
+            buildArmButton(action.dataset.build)?.click();
+        } else if (action.dataset.act === 'bank') {
+            runBankTrade();
+        } else if (action.dataset.act === 'offer') {
+            proposeZoneTrade();
+        }
     }
 }
 
@@ -1494,20 +1537,14 @@ function buildTradeZone() {
     zonePicker.className = 'trade-picker hidden';
     wantWrap.append(wantLabel, zoneWantSlots, zonePicker);
 
-    // The one-press bank action: shown only when the materials are a bank trade
-    // at this player's rate for the chosen want. Hidden the rest of the time so
-    // it never competes with the player-offer button.
-    zoneBankBtn = document.createElement('button');
-    zoneBankBtn.type = 'button';
-    zoneBankBtn.className = 'trade-bank';
-    zoneBankBtn.hidden = true;
+    // The single morph action — Build / Bank / Offer — set by renderTrayAction
+    // from the staged pile. Hidden until the pile spells one of them.
+    zoneActionBtn = document.createElement('button');
+    zoneActionBtn.type = 'button';
+    zoneActionBtn.className = 'tray-action';
+    zoneActionBtn.hidden = true;
 
-    zoneProposeBtn = document.createElement('button');
-    zoneProposeBtn.type = 'button';
-    zoneProposeBtn.className = 'trade-propose';
-    zoneProposeBtn.textContent = 'Propose to players';
-
-    zoneEl.append(giveWrap, swap, wantWrap, zoneBankBtn, zoneProposeBtn);
+    zoneEl.append(giveWrap, swap, wantWrap, zoneActionBtn);
     trayTrade.replaceChildren(zoneEl);
 
     zoneEl.addEventListener('click', handleZoneClick);

@@ -7,6 +7,7 @@ is owed it on the Game, which is why these methods stay mixed into it.
 
 import logging
 
+from game import cards
 from game import rules as rules_module
 from game.results import refused
 
@@ -197,27 +198,13 @@ class DevCardRules:
             'victory_points': 0,
         }
 
-        if card_type == 'knight':
-            self.must_move_robber = True
-            player.knights_played += 1
-            self.update_largest_army()
-            result['must_move_robber'] = True
-        elif card_type == 'victory_point':
-            player.victory_points += 1
-            points = self.claim_victory(player_name)
-            if points is not None:
-                result['won'] = True
-                result['victory_points'] = points
-        elif card_type == 'invention':
-            # Record who is owed the follow-up. Without this, use_invention is a
-            # free action any client can call without ever holding the card.
-            self.pending_invention = player_name
-            result['needs_resources'] = True
-        elif card_type == 'two_roads':
-            self.free_roads_remaining = 2
-        elif card_type == 'monopoly':
-            self.pending_monopoly = player_name
-            result['needs_resource'] = True
+        # The per-card effect is a registered resolver; it mutates the game and
+        # returns only the result keys its effect sets. The lifecycle around it —
+        # phase/turn/robber guards above, spending the card, the pending flags'
+        # follow-up methods — stays here.
+        card_def = cards.get(card_type)
+        if card_def is not None and card_def.resolve is not None:
+            result.update(card_def.resolve(self, player_name, None))
 
         logger.debug("Player %s played %s", player_name, card_type)
         return result

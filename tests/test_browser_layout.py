@@ -307,7 +307,7 @@ class TestCitiesAndKnightsFits:
             "#game-players",        # the full scoreboard
             "#bank-display",        # the big Bank panel (a permanent panel, not a fold now)
             "#award-summary",       # who holds longest road / largest army
-            "#place-settlement-btn", "#place-road-btn", "#upgrade-city-btn",
+            "#action-tray",         # the build & trade tray (the build buttons folded in)
             "#log-entries",         # the event log
             "#chat-input",          # chat
         ):
@@ -606,7 +606,6 @@ class TestBaseGameFits:
         player.page.wait_for_selector("#trade-panel:not(.hidden)", timeout=3000)
         assert player.page.is_visible("#log-entries"), "opening Trade hid the log"
         assert player.page.is_visible("#chat-input"), "opening Trade hid chat"
-        assert player.page.is_visible("#propose-trade-btn")
         shot(player, "base-trade-panel")
         player.page.click("#tab-log")
         player.page.wait_for_function(

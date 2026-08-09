@@ -42,6 +42,7 @@ from contextlib import contextmanager
 import pytest
 from browser_harness import (
     Player,
+    _arm_build,
     browser_session,
     build_road,
     build_settlement,
@@ -986,7 +987,7 @@ class TestReachingAnIslandScoresItsPoints:
         before = alice.board().get("island_points", {}).get("Alice", 0)
         points_before = alice.me()["victory_points"]
 
-        alice.page.click("#place-settlement-btn")
+        _arm_build(alice, "settlement", SETTLEMENT_COST)
         click_vertex(alice, marks["target"])
         confirm_placement(alice)
         alice.page.wait_for_function(
@@ -1014,7 +1015,7 @@ class TestReachingAnIslandScoresItsPoints:
         for."""
         tabs, marks = an_island_within_reach
         alice = tabs["Alice"]
-        alice.page.click("#place-settlement-btn")
+        _arm_build(alice, "settlement", SETTLEMENT_COST)
         click_vertex(alice, marks["target"])
         confirm_placement(alice)
         alice.page.wait_for_function(

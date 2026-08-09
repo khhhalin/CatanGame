@@ -14,7 +14,7 @@ rather than shuffled.
 
 import logging
 
-from game import maps
+from game import maps, tiles
 from game.hex_models import Edge, Hex, Vertex
 
 logger = logging.getLogger(__name__)
@@ -346,7 +346,7 @@ class BoardBuilder:
         meta = instance.meta or {}
         for hex_key in maps.sort_hex_keys(instance.placed):
             terrain, number = instance.placed[hex_key]
-            hex_obj = Hex(hex_key, 'ocean' if terrain == 'sea' else terrain, number)
+            hex_obj = Hex(hex_key, tiles.hex_type_of(terrain), number)
             # A hidden tile keeps its real terrain here — the board holds the
             # truth and `get_board_data` is what redacts it — but is flagged so
             # the renderer draws its back and discovery can reveal it later.
@@ -361,7 +361,8 @@ class BoardBuilder:
         self.main_hex_keys = self.map_definition.hexes_of_kind('main')
 
         land_hex_keys = {
-            hex_key for hex_key, (terrain, _) in instance.placed.items() if terrain != 'sea'
+            hex_key for hex_key, (terrain, _) in instance.placed.items()
+            if not tiles.is_sea(terrain)
         }
         return land_hex_keys, set(instance.placed) - land_hex_keys
 

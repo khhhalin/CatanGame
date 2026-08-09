@@ -7,6 +7,7 @@ from game import cities_knights as ck_module
 from game import ep as ep_module
 from game import modifiers as modifiers_module
 from game import rules as rules_module
+from game import tiles
 from game.bank import Bank
 from game.board import BoardBuilder
 from game.cargo import CargoRules
@@ -1111,7 +1112,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                     continue
 
                 hex_obj = self.hexes[hex_key]
-                if hex_obj.number != dice_total or hex_obj.type in ('desert', 'ocean'):
+                # Anything that pays out on its roll: the resource terrains and a
+                # gold field (which pays gold, not a card). Desert, sea, and the
+                # fish/spice mission tiles carry no token, so they never pay here.
+                if hex_obj.number != dice_total or not tiles.takes_token(hex_obj.type):
                     continue
 
                 produced = self.production_for(
@@ -1183,7 +1187,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         for hex_key in vertex.neighbors.get('hexes', []):
             hex_obj = self.hexes.get(hex_key)
-            if hex_obj and hex_obj.type not in ('desert', 'ocean'):
+            if hex_obj and tiles.produces(hex_obj.type) is not None:
                 if self.bank.take(hex_obj.type):
                     player.resources[hex_obj.type] = player.resources.get(hex_obj.type, 0) + 1
                     gained[hex_obj.type] = gained.get(hex_obj.type, 0) + 1

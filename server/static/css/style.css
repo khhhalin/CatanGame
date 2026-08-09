@@ -120,6 +120,84 @@ body {
     min-height: 0;
 }
 
+/* In a running game the right panel floats over the board — the Deep Harbour
+   History panel. Scoped to the game screen so it stays a plain docked column in
+   the lobby and never covers the map editor.
+
+   Deliberately NOT backdrop-filter here (unlike the other floats): the C&K fold
+   popovers inside it are `position: fixed`, and a backdrop-filter ancestor
+   becomes their containing block, which threw them off the right edge. A nearly
+   opaque translucent fill reads as the same dark panel without the trap. */
+.container:has(#game-screen:not(.hidden)) .table-aside {
+    position: absolute;
+    top: 0;
+    right: 0;
+    /* Stops short of the bottom, leaving the bottom-right corner for the dice
+       float below it — the way the mockup stacks the History panel over the
+       dice, so the two never overlap and neither reaches the centre hand. */
+    bottom: 7rem;
+    width: var(--panel-aside);
+    /* Above the board overlays (hand, tray) rather than level with them: the
+       panel's fold popovers open leftward over the board and must sit over the
+       hand, not behind it — the two share --z-sticky and the hand, later in the
+       DOM, would otherwise intercept the click. */
+    z-index: var(--z-dropdown);
+    padding: var(--space-3);
+    background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    overflow-y: auto;
+}
+
+/* The seam parted the board from a docked panel; in game the panel floats. */
+.container:has(#game-screen:not(.hidden)) .board-resizer {
+    display: none;
+}
+
+
+/* The settings cluster and the build/changelog pill move to the free top strip
+   in game, clear of the floating panels and the bottom row (tray, hand, dice)
+   they otherwise collide with. `body:has` — both sit outside `.container`. */
+body:has(#game-screen:not(.hidden)) .settings-float {
+    top: var(--space-3);
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+body:has(#game-screen:not(.hidden)) .changelog-panel {
+    top: var(--space-3);
+    bottom: auto;
+    left: 14rem;
+    /* Grow the expanded panel downward off the button now it sits at the top. */
+    flex-direction: column;
+}
+
+/* The dice: their own frosted-glass float, bottom-right of the board. Moved out
+   of the right panel (a fixed child cannot escape the panel's backdrop-filter),
+   so it is positioned against #board-overlays, which is sized to the board. */
+body:has(#game-screen:not(.hidden)) #dice-footer {
+    position: absolute;
+    /* Bottom-right corner, in the gap the right panel leaves below itself. */
+    right: var(--space-3);
+    bottom: var(--space-3);
+    z-index: var(--z-sticky);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: auto;
+    max-width: none;
+    padding: var(--space-3) var(--space-4);
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    pointer-events: auto;
+}
+
 /* v2 minimalist: the log/trade aside is a quiet column, not a boxed panel -
    same box-free direction as the rail. The tab bar's own hairline rule is the
    only frame; no border, surface or shadow around the whole thing. */
@@ -128,6 +206,42 @@ body {
     border: none;
     border-radius: 0;
     box-shadow: none;
+}
+
+/* Whose turn it is, at the top of the right panel: a dot in the player's colour,
+   the name in that colour, and the round on the right. */
+.turn-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-1);
+    border-bottom: 1px solid var(--hairline);
+    font-size: var(--text-sm);
+    font-weight: 700;
+}
+
+.turn-dot {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--turn-color, var(--accent));
+}
+
+.turn-who {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.turn-round {
+    margin-left: auto;
+    flex: none;
+    font-family: var(--font-num);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-faint);
 }
 
 /* -------------------------------------------------------- draggable seam
@@ -196,12 +310,12 @@ body {
 .action-tray {
     position: absolute;
     z-index: var(--z-board-overlay);
-    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
-    border: 1px solid var(--hairline);
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-2);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
     min-width: 0;
     pointer-events: auto;
 }
@@ -220,6 +334,14 @@ body {
     display: flex;
     flex-direction: column;
     pointer-events: none;
+    /* One frosted-glass panel, as the mockup draws it. */
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
 }
 
 .dice-cluster {
@@ -3864,8 +3986,8 @@ button:disabled {
 }
 
 .hand-card-label {
-    background: var(--surface-1);
-    color: var(--text);
+    background: var(--card-strip);
+    color: var(--card-ink);
     font-size: 11px;
     font-weight: 650;
     text-align: center;
@@ -3887,17 +4009,17 @@ button:disabled {
     text-shadow: none;
 }
 
-/* A card you hold none of: greyed to a quiet surface, not dropped - the dimmed
-   card in the fan is the tell. The count drops to the faint ink, which clears
-   AA on this surface. */
+/* A card you hold none of: a bare parchment face rather than a terrain one, its
+   glyph and 0 in the card ink. The face colour (terrain vs parchment) and the
+   count are the tell, not a dimming. Ink on parchment clears AA well clear. */
 .hand-card.spent {
-    background: var(--surface-3);
+    background: var(--card-face);
     box-shadow: var(--shadow-1);
 }
 
 .hand-card.spent .hand-card-count,
 .hand-card.spent .hand-card-glyph {
-    color: var(--text-faint);
+    color: var(--card-ink);
     text-shadow: none;
 }
 
@@ -3949,9 +4071,8 @@ button:disabled {
     display: none;
 }
 
-/* The actions fill the column width, one under the other. */
-.trade-zone .trade-bank,
-.trade-zone .trade-propose {
+/* The morph action fills the column width. */
+.trade-zone .tray-action {
     align-self: stretch;
     width: 100%;
 }
@@ -3964,6 +4085,41 @@ button:disabled {
    still cost the tray's row gap. */
 .tray-trade:has(.trade-zone.is-quiet) {
     display: none;
+}
+
+/* Deep Harbour draws the spend area as two stacked panels that are always
+   there: the want side with its action on top, the materials/staged side below.
+   So the zone stays shown even when idle, and each side reads as its own well. */
+body:has(#game-screen:not(.hidden)) .tray-trade:has(.trade-zone.is-quiet) {
+    display: block;
+}
+
+body:has(#game-screen:not(.hidden)) .trade-zone {
+    background: transparent;
+    border: none;
+    padding: 0;
+    gap: var(--space-3);
+}
+
+body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap {
+    padding: var(--space-3);
+    background: var(--well);
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-md);
+}
+
+/* The want side (with the morph action) on top, the materials side below. */
+body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.want) {
+    order: 1;
+}
+
+body:has(#game-screen:not(.hidden)) .trade-zone .tray-action {
+    order: 2;
+    margin-top: calc(-1 * var(--space-1));
+}
+
+body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.give) {
+    order: 3;
 }
 
 .trade-slotwrap {
@@ -4120,26 +4276,44 @@ button:disabled {
     height: 18px;
 }
 
-.trade-propose {
+/* The single morph action — Build / Bank / Offer — set from the staged pile.
+   Build takes the primary accent; bank and offer take quieter fills. All three
+   carry AA on both themes (dark ink or --text on their own fill). */
+.tray-action {
     flex: none;
     white-space: nowrap;
-    padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-pill);
-    font-weight: 600;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-family: var(--font-ui);
+    font-size: var(--text-md);
+    font-weight: 700;
+    cursor: pointer;
 }
 
-/* The one-press bank action, shown only when the materials are a bank trade at
-   this player's rate. The default accent/on-accent treatment carries AA on both
-   themes, so it borrows it rather than minting a new colour pair. */
-.trade-bank {
-    flex: none;
-    white-space: nowrap;
-    padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-pill);
-    font-weight: 600;
+.tray-action.is-build {
+    background: var(--accent);
+    color: var(--on-accent);
 }
 
-.trade-bank[hidden] {
+.tray-action.is-build:hover {
+    background: var(--accent-hover);
+}
+
+.tray-action.is-bank {
+    background: var(--well-strong);
+    color: var(--text);
+    border-color: var(--glass-line-strong);
+}
+
+.tray-action.is-offer {
+    background: var(--good-soft);
+    color: var(--text);
+    border-color: var(--good);
+}
+
+.tray-action[hidden] {
     display: none;
 }
 

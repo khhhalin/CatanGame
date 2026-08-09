@@ -6,8 +6,8 @@ this module is the part that has to reach into the board and the players, so it
 is a mixin on Game rather than methods on CitiesKnights.
 """
 
+from game import cards, progress_cards, tiles
 from game import cities_knights as ck_module
-from game import progress_cards
 from game import rules as rules_module
 from game.validation import CARD_TYPES, COMMODITY_TYPES, RESOURCE_TYPES
 
@@ -571,11 +571,11 @@ class CitiesKnightsRules:
         elif not self.has_rolled_dice:
             return {'success': False, 'error': 'Roll the dice before playing a progress card'}
 
-        resolve = getattr(self, f'_progress_{card_id}', None)
-        if resolve is None:
+        card_def = cards.get(card_id)
+        if card_def is None or card_def.resolve is None:
             return {'success': False, 'error': f"{card['name']} is not implemented yet"}
 
-        result = resolve(player_name, target)
+        result = card_def.resolve(self, player_name, target)
         if not result['success']:
             result.setdefault('error', 'That card cannot be played')
             return result
@@ -776,7 +776,7 @@ class CitiesKnightsRules:
     def _progress_bishop(self, player_name: str, target) -> dict:
         """Move the robber, then steal from everyone it now touches."""
         hex_obj = self.hexes.get(target)
-        if hex_obj is None or hex_obj.type == 'ocean':
+        if hex_obj is None or tiles.is_sea(hex_obj.type):
             return {'success': False, 'error': 'The robber goes on a land hex'}
         if not self.robber_is_allowed(target):
             return {'success': False, 'error': 'Friendly Robber: pick another hex'}
@@ -836,7 +836,7 @@ class CitiesKnightsRules:
         2:1 rate on that hex and the victory point that goes with it.
         """
         hex_obj = self.hexes.get(target)
-        if hex_obj is None or hex_obj.type == 'ocean':
+        if hex_obj is None or tiles.is_sea(hex_obj.type):
             return {'success': False, 'error': 'The merchant stands on a land hex'}
         if not self._touches_own_building(player_name, target):
             return {

@@ -25,6 +25,7 @@ import logging
 import re
 from dataclasses import dataclass, replace
 
+from game import tiles
 from game.validation import InvalidPayload, require_int, require_str
 
 logger = logging.getLogger(__name__)
@@ -35,25 +36,25 @@ logger = logging.getLogger(__name__)
 # unchanged. A version beyond this is refused loudly rather than guessed at.
 MAP_VERSION = 2
 
-# What a v1 map file may put in a pool. `sea` is the file's word for water.
-TERRAIN_TYPES = ('wood', 'brick', 'sheep', 'wheat', 'ore', 'desert', 'sea')
+# What a v1 map file may put in a pool, read from the terrain registry so the
+# map file, the board builder and production cannot drift into three answers.
+# `sea` is the file's word for water.
+TERRAIN_TYPES = tiles.names()
 
-# v2 adds three E&P terrains: `gold` pays out when its number is rolled (like a
-# Seafarers gold field), while `fish` (a fish-shoal) and `spice` are special
-# hexes whose production lands with the mechanics — so they take no token yet,
-# the same way a desert or sea does not. Gated to v2: a v1 file that names one
-# is still refused, exactly as before.
-TERRAIN_TYPES_V2 = TERRAIN_TYPES + ('gold', 'fish', 'spice')
+# v2 adds three Explorers & Pirates terrains — gold, fish and spice — which the
+# registry carries flagged v2. A v1 file naming one is still refused.
+TERRAIN_TYPES_V2 = tiles.all_names()
 
-# The base-game resources: what a settlement collects and what the bank stocks.
-# Imported by `board._create_hexes` so the board and the map file cannot drift.
-RESOURCE_TERRAINS = ('wood', 'brick', 'sheep', 'wheat', 'ore')
+# The base-game resources: what a settlement collects and what the bank stocks,
+# from the registry so the board and the map file cannot drift.
+RESOURCE_TERRAINS = tiles.resource_terrains()
 
 # Every terrain that carries a number token. A token means "pays out on this
 # roll", which is why gold joins the list and fish/spice do not: their yield is
-# not a die roll on the hex. Kept separate from RESOURCE_TERRAINS so a gold tile
-# can take a token without the bank having to stock a "gold" resource here.
-TOKEN_TERRAINS = RESOURCE_TERRAINS + ('gold',)
+# not a die roll on the hex. From the registry (gold sets its token flag), kept
+# separate from RESOURCE_TERRAINS so a gold tile can take a token without the
+# bank stocking a "gold" resource.
+TOKEN_TERRAINS = tiles.token_terrains()
 
 # The tokens in the box. A 7 is the robber's roll and never sits on a hex.
 TOKEN_VALUES = (2, 3, 4, 5, 6, 8, 9, 10, 11, 12)
@@ -107,10 +108,12 @@ def takes_a_token(terrain: str) -> bool:
     An allowlist rather than "everything but the desert", so a pool holding sea
     — or a fish-shoal, a spice hex, or any other terrain that produces nothing
     on a roll — cannot quietly pop a token out of the box and leave a number
-    floating where production would pay nobody. Answers for the map file's `sea`
-    and the engine's `ocean` alike, since neither is a resource.
+    floating where production would pay nobody. Read live from the registry, where
+    a producer (and gold, by its token flag) carries a token and sea, desert,
+    fish and spice do not. Answers for the map file's `sea` and the engine's
+    `ocean` alike, since neither is a resource.
     """
-    return terrain in TOKEN_TERRAINS
+    return tiles.takes_token(terrain)
 
 
 def parse_hex_key(key: str) -> tuple:
