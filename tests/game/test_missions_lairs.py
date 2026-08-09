@@ -171,3 +171,26 @@ class TestCapturingALair:
         _plant_crew_ship(game, 'Alice', far, 2)
         result = game.land_crews_on_lair('Alice', far, gold)
         assert result['code'] == 'INVALID_PLACEMENT'
+
+    def test_a_ship_picks_surviving_crews_back_up(self):
+        game = _game(seed=3)
+        gold = _gold_hex(game)
+        game._reveal_hex(gold, 'Alice')
+        edges = _edges_touching(game, gold)
+        _plant_crew_ship(game, 'Alice', edges[0], 2)
+        _plant_crew_ship(game, 'Bob', edges[1], 1)
+        game.land_crews_on_lair('Alice', edges[0], gold)
+        game.land_crews_on_lair('Bob', edges[1], gold)
+
+        survivors = dict(game.ep.lairs[gold]['crews'])
+        assert survivors, 'a capture should leave some crews beside the lair'
+        name = next(iter(survivors))
+        edge = edges[0] if name == 'Alice' else edges[1]  # their now-empty ship
+        before = survivors[name]
+
+        result = game.pickup_crews_from_lair(name, edge, gold)
+        assert result['picked_up'] == min(before, 2)
+        ship = game.edges[edge].ship
+        aboard = sum(1 for piece in ship['cargo'] if piece['type'] == 'crew')
+        assert aboard == result['picked_up']
+        assert game.ep.lairs[gold]['crews'].get(name, 0) == before - result['picked_up']

@@ -5,17 +5,25 @@ advances) and the two sibling missions. Every method is gated on
 `self.rules['mission_pirate_lairs']`, so a table not running the mission is
 untouched.
 
-This is the mission's entry point (expansions.md 980-984): every gold field hex
-is occupied by a pirate lair, so discovering one drops a face-down lair token on
-it, and while that lair sits unturned the gold field is locked — no road on its
-edges, no settlement on its corners — until it is captured.
+The mission, end to end (expansions.md 980-991):
 
-The capture itself (landing crews from a ship, the die-roll hero battle, the
-rewards, and the liberated field's 2-gold-per-building payout) is the next
-increment; it hangs on the lair this places and on the crews `cargo.py` builds.
+- Every gold field is occupied by a pirate lair, so discovering one drops a
+  face-down lair token on it, and while that lair sits unturned the gold field is
+  locked — no road on its edges, no settlement on its corners.
+- A ship with crews aboard, one end pointing at a corner of the lair, lands them
+  onto it; the 3rd crew captures it, rewarding every participant and fighting for
+  a hero (`land_crews_on_lair` / `_resolve_lair_capture`). Capturing flips the
+  lair and unlocks its field.
+- A player picks their surviving crews back up with a ship (`pickup_crews_from_lair`).
+
+The liberated field's "2 gold per adjacent building on its number" is not coded
+here: a captured gold field is an ordinary gold hex, and the production loop
+already pays 2 gold per building on it (see `test_gold`) once the build-lock is
+lifted, so it needs nothing mission-specific.
 """
 
 from game.results import refused
+from game.transport import HOLD_SLOTS
 
 # The Pirate Lairs mission card's track length: a marker caps here. Approximate
 # until it is pinned to the printed card — the lead-card VP (whoever is furthest,
@@ -171,3 +179,39 @@ class MissionLairsRules:
         if len(by_crews) == 1:
             return by_crews[0]
         return self._battle_for_hero(by_crews, crews)
+
+    def pickup_crews_from_lair(self, player_name: str, ship_edge_key: str,
+                              lair_hex_key: str) -> dict:
+        """Load a player's surviving crews from beside a captured lair back into a
+        ship's hold (expansions.md 989). The ship must point at the lair and have
+        room; a crew is a small piece, so a hold takes up to two.
+        """
+        if not self.rules['mission_pirate_lairs'] or self.ep is None:
+            return refused('RULE_NOT_IN_PLAY', 'This table is not chasing pirate lairs')
+        lair = self.ep.lairs.get(lair_hex_key)
+        if lair is None or not lair['captured']:
+            return refused('INVALID_TARGET', 'No captured lair to pick crews up from there')
+
+        edge = self.edges.get(ship_edge_key)
+        ship = edge.ship if edge is not None else None
+        if ship is None or ship.get('player') != player_name:
+            return refused('NOT_YOUR_PIECE', 'That is not one of your ships')
+        if not any(lair_hex_key in self.vertices[v].neighbors['hexes']
+                   for v in edge.neighbors['vertices']):
+            return refused('INVALID_PLACEMENT', 'The ship does not point at that lair')
+
+        mine = lair['crews'].get(player_name, 0)
+        if mine <= 0:
+            return refused('NO_CREWS', 'You have no crews beside that lair')
+        # A crew fills one hold slot; the hold holds two.
+        room = HOLD_SLOTS - self._hold_used(ship['cargo'])
+        take = min(mine, room)
+        if take <= 0:
+            return refused('HOLD_FULL', 'That ship has no room for a crew')
+
+        lair['crews'][player_name] -= take
+        if lair['crews'][player_name] == 0:
+            del lair['crews'][player_name]
+        for _ in range(take):
+            ship['cargo'].append({'type': 'crew', 'size': 'small'})
+        return {'success': True, 'error': '', 'picked_up': take}
