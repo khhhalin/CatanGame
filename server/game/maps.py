@@ -25,6 +25,7 @@ import logging
 import re
 from dataclasses import dataclass, replace
 
+from game import tiles
 from game.validation import InvalidPayload, require_int, require_str
 
 logger = logging.getLogger(__name__)
@@ -33,15 +34,15 @@ logger = logging.getLogger(__name__)
 # it: `map_version` exists for that, and nobody has a library of maps yet.
 MAP_VERSION = 1
 
-# What a map file may put in a pool. `sea` is the file's word for water; `gold`
-# is reserved for v2 — it needs a production modifier and a pending-choice
-# client, neither of which exists — and is refused today.
-TERRAIN_TYPES = ('wood', 'brick', 'sheep', 'wheat', 'ore', 'desert', 'sea')
+# What a map file may put in a pool, and which of those pay out — both read from
+# the terrain registry so the map file, the board builder and production cannot
+# drift into three answers. `sea` is the file's word for water. A terrain not
+# registered there (a v2 gold or fish tile) is simply not in this tuple and so
+# is refused by a v1 pool today.
+TERRAIN_TYPES = tiles.names()
 
-# The terrain that pays out when its number is rolled, and therefore the only
-# terrain a number token may sit on. Imported by `board._create_hexes` so the
-# board and the map file cannot drift into two answers.
-RESOURCE_TERRAINS = ('wood', 'brick', 'sheep', 'wheat', 'ore')
+# The only terrain a number token may sit on. Imported by `board._create_hexes`.
+RESOURCE_TERRAINS = tiles.resource_terrains()
 
 # The tokens in the box. A 7 is the robber's roll and never sits on a hex.
 TOKEN_VALUES = (2, 3, 4, 5, 6, 8, 9, 10, 11, 12)
@@ -86,13 +87,13 @@ AUTO = 'auto'
 def takes_a_token(terrain: str) -> bool:
     """Whether a hex of this terrain carries a number token.
 
-    An allowlist rather than "everything but the desert", so a pool holding sea
-    — or, later, any other terrain that produces nothing — cannot quietly pop a
-    token out of the box and leave a number floating on open water. Answers for
-    the map file's `sea` and the engine's `ocean` alike, since neither is a
-    resource.
+    An allowlist by what a terrain produces rather than "everything but the
+    desert", so a pool holding sea — or any other terrain that produces nothing
+    — cannot quietly pop a token out of the box and leave a number floating on
+    open water. Answers for the map file's `sea` and the engine's `ocean` alike,
+    since neither is a resource.
     """
-    return terrain in RESOURCE_TERRAINS
+    return tiles.takes_token(terrain)
 
 
 def parse_hex_key(key: str) -> tuple:

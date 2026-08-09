@@ -7,6 +7,7 @@ hands, and the pending-choice flags the socket handlers drive the UI from.
 
 import logging
 
+from game import tiles
 from game.results import refused
 from game.validation import CARD_TYPES, COMMODITY_TYPES
 
@@ -42,7 +43,7 @@ class RobberRules:
         hex_obj = self.hexes.get(hex_key)
         if hex_obj is None:
             return refused('INVALID_TARGET', 'Invalid hex')
-        if hex_obj.type == 'ocean':
+        if tiles.is_sea(hex_obj.type):
             return refused('INVALID_TARGET', 'Cannot place robber on ocean')
 
         # The robber is *moved*, so the hex it already stands on is not an

@@ -14,7 +14,7 @@ rather than shuffled.
 
 import logging
 
-from game import maps
+from game import maps, tiles
 from game.hex_models import Edge, Hex, Vertex
 
 logger = logging.getLogger(__name__)
@@ -344,7 +344,7 @@ class BoardBuilder:
         for hex_key in maps.sort_hex_keys(instance.placed):
             terrain, number = instance.placed[hex_key]
             self.hexes[hex_key] = Hex(
-                hex_key, 'ocean' if terrain == 'sea' else terrain, number
+                hex_key, tiles.hex_type_of(terrain), number
             )
 
         self.robber_hex = instance.robber_hex
@@ -353,7 +353,8 @@ class BoardBuilder:
         self.main_hex_keys = self.map_definition.hexes_of_kind('main')
 
         land_hex_keys = {
-            hex_key for hex_key, (terrain, _) in instance.placed.items() if terrain != 'sea'
+            hex_key for hex_key, (terrain, _) in instance.placed.items()
+            if not tiles.is_sea(terrain)
         }
         return land_hex_keys, set(instance.placed) - land_hex_keys
 
