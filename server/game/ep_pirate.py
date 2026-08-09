@@ -75,6 +75,10 @@ class EpPirateRules:
 
         self.ep.place_pirate(player_name, hex_key)
         self.must_move_robber = False
+        # A pirate on a fish shoal scatters its haul back to the supply. Dormant
+        # while a shoal is not a sea hex (the pirate cannot sit on one), but wired
+        # so it simply works once shoals become sea-navigable.
+        self.strip_fish_haul(hex_key)
 
         victims = self.pirate_ship_victims(player_name, hex_key)
         if victims:

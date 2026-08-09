@@ -98,9 +98,11 @@ class ExplorationRules:
         self._grant_discovery_reward(hex_obj.type, player_name)
 
         # Missions react to a freshly turned tile: the Pirate Lairs mission drops
-        # a face-down lair on a gold field. A no-op for every other terrain and
-        # for a table not running the mission.
+        # a face-down lair on a gold field, and Fish for Catan pins a placement
+        # number to a fish shoal. Each is a no-op for every other terrain and for
+        # a table not running that mission.
         self.place_pirate_lair(hex_key)
+        self.place_fish_shoal(hex_key)
 
     def _grant_discovery_reward(self, terrain: str, player_name: str):
         """Pay the discoverer: 1 resource of the terrain's type, or 2 gold (887).

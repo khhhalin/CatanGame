@@ -18,6 +18,7 @@ from game.exploration import ExplorationRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
 from game.missions import MissionRules
+from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
-           MissionLairsRules, PendingChoiceRules, TurnClock):
+           MissionLairsRules, MissionFishRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -235,6 +236,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 self.ep.register(player.name)
             # Each active mission declares its track now the container exists.
             self.setup_pirate_lairs()
+            self.setup_fish()
 
         # How many times each player has converted at the gold supply this turn
         # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions

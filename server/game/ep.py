@@ -86,6 +86,11 @@ class EP:
         # the board (not in a player's hand), so it lives here rather than in
         # `tokens_held`; its token is drawn from `token_supply['lair_token']`.
         self.lairs = {}
+        # Fish for Catan mission: hex_key -> {'number': 1..6, 'haul': bool} for
+        # each discovered fish shoal. The number, drawn on discovery, is what a
+        # fish-placement roll must match; `haul` is whether a fish token sits on
+        # it, drawn from `token_supply['fish_haul']`.
+        self.fish_shoals = {}
 
     def register(self, player_name: str):
         self.pirate_hex.setdefault(player_name, None)
