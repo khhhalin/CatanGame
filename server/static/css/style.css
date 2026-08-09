@@ -4844,6 +4844,26 @@ body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.give) {
     color: var(--warn);
 }
 
+/* Hint shown in a fixed-pool region popover, where tiles are placed per hex */
+.editor-pool-hint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+    line-height: 1.4;
+}
+
+/* The Inspect popover is pinned to the click point via a zero-size anchor that
+   never shows or takes a pointer itself. */
+.editor-inspect-anchor {
+    position: fixed;
+    width: 0;
+    height: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
 /* Save popover */
 .editor-save-name {
     display: flex;

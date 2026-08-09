@@ -23,7 +23,9 @@ import {
     editorClearBtn,
     editorDoneBtn,
     editorHarbourCounters,
+    editorInspectAnchor,
     editorInspectBtn,
+    editorInspectPopover,
     editorMapListEl,
     editorMapNameInput,
     editorNullItem,
@@ -42,7 +44,7 @@ import {
     userScreen,
 } from './dom.js';
 import { showNotice } from './notices.js';
-import { togglePopover, closePopover } from './popovers.js';
+import { togglePopover, openPopover, closePopover } from './popovers.js';
 import { emitGame } from './socket.js';
 import { viewState } from './state.js';
 
@@ -56,6 +58,25 @@ const REGION_PALETTE = [
 const TERRAIN_TYPES = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert', 'sea'];
 const LAND_TERRAINS = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'];
 const RESOURCE_TERRAINS = new Set(['wood', 'brick', 'sheep', 'wheat', 'ore']);
+
+// Explorers & Pirates terrains (map_version 2). Gold takes a number token like a
+// resource but is not tradable; a fish shoal and a spice hex take none. Opt-in
+// per region, so a v1 map never sees them and stays map_version 1.
+const V2_TERRAINS = ['gold', 'fish', 'spice'];
+// Everything paintable into a region's pool: the six base land tiles plus the v2
+// terrains. `sea` stays out — it is the ocean region's single tile, not a pool
+// choice — matching what LAND_TERRAINS meant for the resource checklist.
+const POOL_TERRAINS = [...LAND_TERRAINS, ...V2_TERRAINS];
+// Tiles the deal must hand a number token: the five base resources and gold.
+// Mirrors the server's TOKEN_TERRAINS, and is what the token-count badge checks.
+const TOKEN_TERRAINS = new Set([...RESOURCE_TERRAINS, 'gold']);
+// A region pool's three deal modes. `shuffled` is the base game; `hidden` deals
+// its tiles face-down for ships to discover; `fixed` prints a named tile (and
+// its token) on each of the region's hexes. The last two need map_version 2.
+const POOL_MODE_LABELS = { shuffled: 'Shuffled', hidden: 'Hidden (discover)', fixed: 'Fixed (printed)' };
+// The six sides of a hex a Council-of-Catan dock can sit on.
+const HEX_SIDES = [0, 1, 2, 3, 4, 5];
+
 const TOKEN_VALUES = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
 const HARBOUR_TYPES = ['generic', 'wood', 'brick', 'sheep', 'wheat', 'ore'];
 
@@ -206,11 +227,9 @@ function updateStatusStrip() {
         if (region.hexes === 'remaining') continue;
         for (const key of region.hexes) assigned.add(key);
         const slots = region.hexes.length;
-        const tiles = Object.values(region.pool.terrain).reduce((s, n) => s + n, 0);
-        const tokenRequired = TERRAIN_TYPES.filter(t => RESOURCE_TERRAINS.has(t))
-            .reduce((s, t) => s + (region.pool.terrain[t] || 0), 0);
+        const { tiles, tokenRequired, tokens } = poolCounts(region);
         if (tiles !== slots) problems++;
-        if (region.pool.numbers.length !== tokenRequired) problems++;
+        if (tokens !== tokenRequired) problems++;
     }
     const unassigned = total - assigned.size;
 
@@ -239,6 +258,8 @@ export function enterEditor() {
     editorCanvas.addEventListener('pointermove', onPointerMove, { signal });
     editorCanvas.addEventListener('pointerup', onPointerUp, { signal });
     editorCanvas.addEventListener('pointercancel', onPointerUp, { signal });
+    // Click in Inspect mode opens the per-hex metadata popover.
+    editorCanvas.addEventListener('click', onCanvasClick, { signal });
 
     // Keyboard shortcuts.
     document.addEventListener('keydown', onKeyDown, { signal });
@@ -323,6 +344,18 @@ function applyToolAt(e) {
     } else if (tool === 'erase') {
         eraseHex(key);
     }
+}
+
+function onCanvasClick(e) {
+    // Inspect is the only click tool; paint/erase work on pointerdown/drag. A
+    // drag that panned the camera is not a hex pick.
+    if (tool !== 'inspect') return;
+    if (window.BoardRenderer.wasPanning && window.BoardRenderer.wasPanning()) return;
+    const board = previewBoard ?? buildFrameBoardData(mapDoc.frame.radius);
+    const pos = window.BoardRenderer.clientToBoard(editorCanvas, e.clientX, e.clientY);
+    const key = window.BoardRenderer.findNearestHex(board, pos.x, pos.y);
+    if (!key) return;
+    openInspectPopover(key, e.clientX, e.clientY);
 }
 
 // ─── hex assignment ───────────────────────────────────────────────────────────
@@ -445,9 +478,7 @@ function changeRadius() {
 
 function regionHasProblem(region) {
     if (region.hexes === 'remaining') return false;
-    const slots = region.hexes.length;
-    const tiles = Object.values(region.pool.terrain).reduce((s, n) => s + n, 0);
-    return tiles !== slots;
+    return poolCounts(region).tiles !== region.hexes.length;
 }
 
 function renderSidebar() {
@@ -508,9 +539,58 @@ function selectRegion(regionId) {
 
 function inferResources(region) {
     if (Array.isArray(region.pool.resources)) return [...region.pool.resources];
-    const fromTerrain = LAND_TERRAINS.filter(t => (region.pool.terrain[t] || 0) > 0);
+    const fromTerrain = POOL_TERRAINS.filter(t => (region.pool.terrain[t] || 0) > 0);
     if (fromTerrain.length > 0) return fromTerrain;
     return region.kind === 'sea' ? [] : [...LAND_TERRAINS];
+}
+
+// A region's deal mode, defaulting to shuffled for a v1 document.
+function poolMode(region) {
+    return region.pool.mode || 'shuffled';
+}
+
+// The tile and token tallies a pool contributes. A fixed pool reads them off its
+// per-hex placements; the others off the terrain and number multisets. Kept in
+// one place so the sidebar, the status strip and the popover badges agree.
+function poolCounts(region) {
+    if (poolMode(region) === 'fixed') {
+        const placements = Object.values(region.pool.placements || {}).filter(Boolean);
+        const placed = placements.filter(p => p.terrain);
+        const tokenRequired = placed.filter(p => TOKEN_TERRAINS.has(p.terrain)).length;
+        const tokens = placed.filter(p => TOKEN_TERRAINS.has(p.terrain) && p.number != null).length;
+        return { tiles: placed.length, tokenRequired, tokens };
+    }
+    const tiles = Object.values(region.pool.terrain).reduce((s, n) => s + n, 0);
+    const tokenRequired = [...TOKEN_TERRAINS].reduce((s, t) => s + (region.pool.terrain[t] || 0), 0);
+    return { tiles, tokenRequired, tokens: region.pool.numbers.length };
+}
+
+// A hex's per-hex metadata for a region, created empty on first touch.
+function hexMetaOf(region, hexKey) {
+    if (!region.meta) region.meta = {};
+    if (!region.meta[hexKey]) region.meta[hexKey] = { docks: [], village: false };
+    return region.meta[hexKey];
+}
+
+// Drop a hex's metadata once it carries nothing, so an untouched hex never
+// serialises an empty entry.
+function pruneHexMeta(region, hexKey) {
+    const meta = region.meta?.[hexKey];
+    if (meta && meta.docks.length === 0 && !meta.village) {
+        delete region.meta[hexKey];
+    }
+}
+
+// The region that owns a hex: the explicit one holding it, else the 'remaining'
+// region, else null for an excluded (void) hex.
+function regionOwning(hexKey) {
+    let remaining = null;
+    for (const region of mapDoc.regions) {
+        if (region.hexes === 'remaining') { remaining = region; continue; }
+        if (region.hexes.includes(hexKey)) return region;
+    }
+    if ((mapDoc.frame.excluded || []).includes(hexKey)) return null;
+    return remaining;
 }
 
 // ─── region settings popover ──────────────────────────────────────────────────
@@ -592,6 +672,34 @@ function buildRegionPopover(region) {
     kindRow.appendChild(kindSelect);
     body.appendChild(kindRow);
 
+    // Deal-mode row — shuffled (base), hidden (discover by ship) or fixed
+    // (printed per hex). The last two lift the map to version 2 on save.
+    const modeRow = document.createElement('div');
+    modeRow.className = 'editor-rp-row';
+    const modeLbl = document.createElement('span');
+    modeLbl.className = 'editor-rp-label';
+    modeLbl.textContent = 'Deal';
+    const modeSelect = document.createElement('select');
+    for (const m of Object.keys(POOL_MODE_LABELS)) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = POOL_MODE_LABELS[m];
+        if (poolMode(region) === m) opt.selected = true;
+        modeSelect.appendChild(opt);
+    }
+    modeSelect.addEventListener('change', () => {
+        region.pool.mode = modeSelect.value;
+        if (region.pool.mode === 'fixed' && !region.pool.placements) {
+            region.pool.placements = {};
+        }
+        mapDoc = { ...mapDoc };
+        buildRegionPopover(region);   // the terrain/token columns switch on mode
+        renderSidebar();
+    });
+    modeRow.appendChild(modeLbl);
+    modeRow.appendChild(modeSelect);
+    body.appendChild(modeRow);
+
     // Resources section — checkboxes control what auto-fill distributes
     const resHead = document.createElement('div');
     resHead.className = 'editor-pool-section-head';
@@ -602,7 +710,7 @@ function buildRegionPopover(region) {
     const resources = inferResources(region);
     const resGrid = document.createElement('div');
     resGrid.className = 'editor-resource-grid';
-    for (const t of LAND_TERRAINS) {
+    for (const t of POOL_TERRAINS) {
         const lbl = document.createElement('label');
         lbl.className = 'editor-resource-check';
         const cb = document.createElement('input');
@@ -630,7 +738,14 @@ function buildRegionPopover(region) {
     const tokensBadge = document.createElement('span');
     tokensBadge.className = 'editor-pool-badge';
 
-    if (resources.length > 0) {
+    // A fixed pool has no counts to distribute — each hex names its own tile in
+    // the Inspect tool — so it shows a hint in place of the terrain/token columns.
+    if (poolMode(region) === 'fixed') {
+        const hint = document.createElement('div');
+        hint.className = 'editor-pool-hint';
+        hint.textContent = 'Fixed pool: pick the Inspect tool, then click each hex to set its tile and number.';
+        body.appendChild(hint);
+    } else if (resources.length > 0) {
         const columns = document.createElement('div');
         columns.className = 'editor-pool-columns';
         columns.style.marginTop = 'var(--space-2)';
@@ -741,13 +856,17 @@ function buildRegionPopover(region) {
         footer.appendChild(badges);
         refreshPoolBadges(region, tilesUsed, tokensBadge);
 
-        const autoFill = document.createElement('button');
-        autoFill.textContent = 'Auto-fill';
-        autoFill.addEventListener('click', () => {
-            autoFillPool(region);
-            buildRegionPopover(region);
-        });
-        footer.appendChild(autoFill);
+        // Auto-fill distributes a shuffled/hidden pool; a fixed one is placed by
+        // hand, so it offers no button to fill.
+        if (poolMode(region) !== 'fixed') {
+            const autoFill = document.createElement('button');
+            autoFill.textContent = 'Auto-fill';
+            autoFill.addEventListener('click', () => {
+                autoFillPool(region);
+                buildRegionPopover(region);
+            });
+            footer.appendChild(autoFill);
+        }
     }
 
     if (!DEFAULT_REGION_IDS.has(region.id)) {
@@ -779,11 +898,7 @@ function buildRegionPopover(region) {
 
 function refreshPoolBadges(region, tilesBadge, tokensBadge) {
     const slots = region.hexes === 'remaining' ? 0 : region.hexes.length;
-    const tiles = Object.values(region.pool.terrain).reduce((s, n) => s + n, 0);
-    const tokenRequired = TERRAIN_TYPES
-        .filter(t => RESOURCE_TERRAINS.has(t))
-        .reduce((s, t) => s + (region.pool.terrain[t] || 0), 0);
-    const tokens = region.pool.numbers.length;
+    const { tiles, tokenRequired, tokens } = poolCounts(region);
 
     tilesBadge.textContent = `tiles ${tiles}/${slots}`;
     tilesBadge.classList.toggle('bad', tiles !== slots);
@@ -791,8 +906,187 @@ function refreshPoolBadges(region, tilesBadge, tokensBadge) {
     tokensBadge.classList.toggle('bad', tokens !== tokenRequired);
 }
 
+// ─── per-hex inspect popover (docks, village, fixed placement) ─────────────────
+
+function openInspectPopover(hexKey, x, y) {
+    const region = regionOwning(hexKey);
+    if (region === null) {
+        showNotice('Paint this hex into a region before setting its tile or docks', 'info');
+        return;
+    }
+    buildInspectPopover(hexKey, region);
+    // Pin the zero-size anchor to the click so the shared placer sits the popover
+    // beside the hex the player actually pressed.
+    editorInspectAnchor.style.left = `${Math.round(x)}px`;
+    editorInspectAnchor.style.top = `${Math.round(y)}px`;
+    openPopover(editorInspectAnchor);
+}
+
+function buildInspectPopover(hexKey, region) {
+    editorInspectPopover.innerHTML = '';
+
+    const head = document.createElement('div');
+    head.className = 'popover-head';
+    const title = document.createElement('span');
+    title.style.flex = '1';
+    title.textContent = `Hex ${hexKey} · ${region.name}`;
+    head.appendChild(title);
+    editorInspectPopover.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'popover-body';
+
+    // Fixed pools print a named tile (and its number) on this hex.
+    if (poolMode(region) === 'fixed') {
+        body.appendChild(buildFixedPlacementSection(hexKey, region));
+    }
+
+    // Docks — a Council-of-Catan sea hex carries a dock on any of its six sides.
+    const docksHead = document.createElement('div');
+    docksHead.className = 'editor-pool-section-head';
+    docksHead.textContent = 'Docks (Council of Catan)';
+    body.appendChild(docksHead);
+
+    const docksGrid = document.createElement('div');
+    docksGrid.className = 'editor-resource-grid';
+    for (const side of HEX_SIDES) {
+        const lbl = document.createElement('label');
+        lbl.className = 'editor-resource-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = (region.meta?.[hexKey]?.docks || []).includes(side);
+        cb.addEventListener('change', () => {
+            const meta = hexMetaOf(region, hexKey);
+            meta.docks = cb.checked
+                ? [...new Set([...meta.docks, side])]
+                : meta.docks.filter(s => s !== side);
+            afterMetaChange(region, hexKey);
+        });
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(`Side ${side}`));
+        docksGrid.appendChild(lbl);
+    }
+    body.appendChild(docksGrid);
+
+    // Village — a spice-scenario advantage tile.
+    const villageRow = document.createElement('label');
+    villageRow.className = 'editor-resource-check';
+    villageRow.style.marginTop = 'var(--space-2)';
+    const villageCb = document.createElement('input');
+    villageCb.type = 'checkbox';
+    villageCb.checked = !!region.meta?.[hexKey]?.village;
+    villageCb.addEventListener('change', () => {
+        hexMetaOf(region, hexKey).village = villageCb.checked;
+        afterMetaChange(region, hexKey);
+    });
+    villageRow.appendChild(villageCb);
+    villageRow.appendChild(document.createTextNode('Village'));
+    body.appendChild(villageRow);
+
+    editorInspectPopover.appendChild(body);
+
+    const footer = document.createElement('div');
+    footer.className = 'editor-pool-footer';
+    const done = document.createElement('button');
+    done.textContent = 'Done';
+    done.addEventListener('click', () => closePopover());
+    footer.appendChild(done);
+    editorInspectPopover.appendChild(footer);
+}
+
+function buildFixedPlacementSection(hexKey, region) {
+    const section = document.createElement('div');
+
+    const head = document.createElement('div');
+    head.className = 'editor-pool-section-head';
+    head.textContent = 'Tile';
+    section.appendChild(head);
+
+    const placement = region.pool.placements[hexKey] || { terrain: '', number: null };
+
+    const terrainRow = document.createElement('div');
+    terrainRow.className = 'editor-rp-row';
+    const terrainLbl = document.createElement('span');
+    terrainLbl.className = 'editor-rp-label';
+    terrainLbl.textContent = 'Terrain';
+    const terrainSelect = document.createElement('select');
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '(none)';
+    terrainSelect.appendChild(none);
+    // The region's checked resources bound what may be placed here.
+    for (const t of inferResources(region)) {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        if (placement.terrain === t) opt.selected = true;
+        terrainSelect.appendChild(opt);
+    }
+    terrainSelect.value = placement.terrain || '';
+    terrainSelect.addEventListener('change', () => {
+        const terrain = terrainSelect.value;
+        if (!terrain) {
+            delete region.pool.placements[hexKey];
+        } else {
+            const keepNumber = TOKEN_TERRAINS.has(terrain) ? placement.number ?? null : null;
+            region.pool.placements[hexKey] = { terrain, number: keepNumber };
+        }
+        afterPlacementChange(region);
+        buildInspectPopover(hexKey, region);   // number row appears/disappears
+    });
+    terrainRow.appendChild(terrainLbl);
+    terrainRow.appendChild(terrainSelect);
+    section.appendChild(terrainRow);
+
+    // A number is printed only for a tile that takes one.
+    if (placement.terrain && TOKEN_TERRAINS.has(placement.terrain)) {
+        const numberRow = document.createElement('div');
+        numberRow.className = 'editor-rp-row';
+        const numberLbl = document.createElement('span');
+        numberLbl.className = 'editor-rp-label';
+        numberLbl.textContent = 'Number';
+        const numberSelect = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = '—';
+        numberSelect.appendChild(blank);
+        for (const val of TOKEN_VALUES) {
+            const opt = document.createElement('option');
+            opt.value = String(val);
+            opt.textContent = String(val);
+            if (placement.number === val) opt.selected = true;
+            numberSelect.appendChild(opt);
+        }
+        numberSelect.value = placement.number != null ? String(placement.number) : '';
+        numberSelect.addEventListener('change', () => {
+            region.pool.placements[hexKey].number =
+                numberSelect.value ? Number(numberSelect.value) : null;
+            afterPlacementChange(region);
+        });
+        numberRow.appendChild(numberLbl);
+        numberRow.appendChild(numberSelect);
+        section.appendChild(numberRow);
+    }
+
+    return section;
+}
+
+function afterMetaChange(region, hexKey) {
+    pruneHexMeta(region, hexKey);
+    mapDoc = { ...mapDoc };
+}
+
+function afterPlacementChange(region) {
+    mapDoc = { ...mapDoc };
+    renderSidebar();
+    updateStatusStrip();
+}
+
 function autoFillPool(region) {
     if (region.hexes === 'remaining') return;
+    // A fixed pool is placed hex by hex in the Inspect tool; there is nothing to
+    // distribute, so auto-fill leaves it alone.
+    if (poolMode(region) === 'fixed') return;
     const slots = region.hexes.length;
     if (slots === 0) return;
 
@@ -815,8 +1109,10 @@ function autoFillPool(region) {
 
     region.pool.terrain = terrain;
 
-    // Tokens for non-desert, non-sea tiles — scale standard distribution.
-    const tokenTiles = slots - (terrain.desert || 0) - (terrain.sea || 0);
+    // Tokens only for tiles that take one (the base resources and gold), scaling
+    // the standard distribution; desert, sea, fish and spice take none.
+    const tokenTiles = resources.filter(t => TOKEN_TERRAINS.has(t))
+        .reduce((s, t) => s + (terrain[t] || 0), 0);
     const tokenScale = tokenTiles / 18;
     const numbers = [];
     for (const [val, count] of Object.entries(STANDARD_TOKENS)) {
@@ -1060,40 +1356,88 @@ function buildHarbourCounters() {
 
 // ─── wire serialisation ───────────────────────────────────────────────────────
 
+// The map is version 2 the moment it uses anything the base format cannot carry:
+// a non-shuffled pool, an Explorers & Pirates terrain, or per-hex metadata.
+// Otherwise it stays version 1 and means exactly what it always did.
+function mapVersion() {
+    for (const r of mapDoc.regions) {
+        if (poolMode(r) !== 'shuffled') return 2;
+        if (r.meta && Object.keys(metaToWire(r)).length) return 2;
+        if (Object.keys(r.pool.terrain || {}).some(t => V2_TERRAINS.includes(t))) return 2;
+    }
+    return 1;
+}
+
+// A region's per-hex metadata as the server reads it: a hex maps to its docks
+// and/or village, and a hex with neither is left out entirely.
+function metaToWire(region) {
+    const out = {};
+    for (const [key, m] of Object.entries(region.meta || {})) {
+        const entry = {};
+        if (m.docks?.length) entry.docks = [...m.docks].sort((a, b) => a - b);
+        if (m.village) entry.village = true;
+        if (Object.keys(entry).length) out[key] = entry;
+    }
+    return out;
+}
+
+// A fixed pool's placements as the server reads them: each hex names its tile,
+// and prints a number only when the tile takes one.
+function placementsToWire(region) {
+    const out = {};
+    for (const [key, p] of Object.entries(region.pool.placements || {})) {
+        if (!p || !p.terrain) continue;
+        const spec = { terrain: p.terrain };
+        if (TOKEN_TERRAINS.has(p.terrain) && p.number != null) spec.number = p.number;
+        out[key] = spec;
+    }
+    return out;
+}
+
+function poolToWire(r) {
+    if (poolMode(r) === 'fixed') {
+        return { mode: 'fixed', placements: placementsToWire(r) };
+    }
+    let terrain;
+    if (r.hexes === 'remaining') {
+        // Compute exact remaining count so the server pool-size check passes.
+        const allKeys = buildFrameHexKeys(mapDoc.frame.radius);
+        const excluded = new Set(mapDoc.frame.excluded || []);
+        const explicit = new Set(
+            mapDoc.regions.filter(o => o.hexes !== 'remaining')
+                          .flatMap(o => o.hexes)
+        );
+        const remaining = allKeys.filter(k => !excluded.has(k) && !explicit.has(k)).length;
+        terrain = { sea: remaining };
+    } else {
+        terrain = { ...r.pool.terrain };
+    }
+    return { mode: poolMode(r), terrain, numbers: [...r.pool.numbers] };
+}
+
 function mapDocToWire() {
     if (!mapDoc.id) {
         showNotice('Enter a map name first', 'error');
         return null;
     }
     return {
-        map_version: 1,
+        map_version: mapVersion(),
         id: mapDoc.id,
         name: mapDoc.name,
         frame: mapDoc.frame.excluded?.length
             ? { radius: mapDoc.frame.radius, excluded: sortHexKeys([...mapDoc.frame.excluded]) }
             : { radius: mapDoc.frame.radius },
         regions: mapDoc.regions.map(r => {
-            let terrain;
-            if (r.hexes === 'remaining') {
-                // Compute exact remaining count so the server pool-size check passes.
-                const allKeys = buildFrameHexKeys(mapDoc.frame.radius);
-                const excluded = new Set(mapDoc.frame.excluded || []);
-                const explicit = new Set(
-                    mapDoc.regions.filter(o => o.hexes !== 'remaining')
-                                  .flatMap(o => o.hexes)
-                );
-                const remaining = allKeys.filter(k => !excluded.has(k) && !explicit.has(k)).length;
-                terrain = { sea: remaining };
-            } else {
-                terrain = { ...r.pool.terrain };
-            }
-            return {
+            const wire = {
                 id: r.id,
                 kind: r.kind,
                 color: r.color,
                 hexes: r.hexes === 'remaining' ? 'remaining' : sortHexKeys([...r.hexes]),
-                pool: { mode: r.pool.mode, terrain, numbers: [...r.pool.numbers] },
+                pool: poolToWire(r),
             };
+            const meta = metaToWire(r);
+            if (Object.keys(meta).length) wire.meta = meta;
+            return wire;
         }),
         harbours: { mode: mapDoc.harbours.mode, types: { ...mapDoc.harbours.types } },
     };
@@ -1105,13 +1449,34 @@ function serverMapToDoc(m) {
         name: m.name || m.id,
         frame: { radius: m.frame?.radius || 4, excluded: Array.isArray(m.frame?.excluded) ? [...m.frame.excluded] : [] },
         regions: (m.regions || []).map(r => {
-            const pool = r.pool ? {
-                mode: r.pool.mode || 'shuffled',
-                terrain: { ...(r.pool.terrain || {}) },
-                numbers: [...(r.pool.numbers || [])],
-            } : { mode: 'shuffled', terrain: {}, numbers: [] };
-            const stub = { kind: r.kind || 'island', pool };
-            pool.resources = inferResources(stub);
+            const raw = r.pool || {};
+            const mode = raw.mode || 'shuffled';
+            let pool;
+            if (mode === 'fixed') {
+                const placements = {};
+                for (const [key, spec] of Object.entries(raw.placements || {})) {
+                    placements[key] = { terrain: spec.terrain, number: spec.number ?? null };
+                }
+                pool = { mode, terrain: {}, numbers: [], placements };
+                // The allowed placement terrains come from what was placed, so a
+                // reloaded fixed pool still offers gold/fish/spice in its dropdown.
+                const placed = [...new Set(Object.values(placements).map(p => p.terrain).filter(Boolean))];
+                pool.resources = placed.length ? placed : [...LAND_TERRAINS];
+            } else {
+                pool = {
+                    mode,
+                    terrain: { ...(raw.terrain || {}) },
+                    numbers: [...(raw.numbers || [])],
+                };
+                pool.resources = inferResources({ kind: r.kind || 'island', pool });
+            }
+            const meta = {};
+            for (const [key, spec] of Object.entries(r.meta || {})) {
+                meta[key] = {
+                    docks: Array.isArray(spec.docks) ? [...spec.docks] : [],
+                    village: !!spec.village,
+                };
+            }
             return {
                 id: r.id,
                 name: r.name || r.id,
@@ -1120,6 +1485,7 @@ function serverMapToDoc(m) {
                 hexes: r.hexes === 'remaining' ? 'remaining'
                      : Array.isArray(r.hexes) ? [...r.hexes] : [],
                 pool,
+                meta,
             };
         }),
         harbours: m.harbours ? {

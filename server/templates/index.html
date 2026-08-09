@@ -266,6 +266,16 @@
                 <!-- Populated by map-editor.js openRegionPopover() -->
             </div>
 
+            <!-- Anchor for the per-hex Inspect popover: a zero-size element the
+                 editor pins to the click point so the shared popover placer has
+                 something to sit beside. -->
+            <button id="editor-inspect-anchor" class="editor-inspect-anchor" tabindex="-1"
+                    aria-hidden="true" aria-controls="editor-inspect-popover"></button>
+            <div id="editor-inspect-popover" class="popover hidden" role="dialog"
+                 aria-label="Hex metadata">
+                <!-- Populated by map-editor.js openInspectPopover() -->
+            </div>
+
             <div id="editor-save-popover" class="popover popover-wide hidden" role="dialog"
                  aria-label="Save map">
                 <div class="editor-save-name">
