@@ -12,7 +12,7 @@ const BOARD_CONFIG = {
         // Fallbacks only. The live values come from the CSS custom properties
         // read in readPalette(), so the board follows the page's theme; these
         // are what is drawn if a token is missing or the sheet has not loaded.
-        ocean: '#1a5276',
+        ocean: '#2f6288',
         desert: '#e6d9bb',
         ore: '#8a9bb0',
         wheat: '#e0b64a',

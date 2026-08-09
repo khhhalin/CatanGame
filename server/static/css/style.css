@@ -3864,8 +3864,8 @@ button:disabled {
 }
 
 .hand-card-label {
-    background: var(--surface-1);
-    color: var(--text);
+    background: var(--card-strip);
+    color: var(--card-ink);
     font-size: 11px;
     font-weight: 650;
     text-align: center;
@@ -3887,17 +3887,17 @@ button:disabled {
     text-shadow: none;
 }
 
-/* A card you hold none of: greyed to a quiet surface, not dropped - the dimmed
-   card in the fan is the tell. The count drops to the faint ink, which clears
-   AA on this surface. */
+/* A card you hold none of: a bare parchment face rather than a terrain one, its
+   glyph and 0 in the card ink. The face colour (terrain vs parchment) and the
+   count are the tell, not a dimming. Ink on parchment clears AA well clear. */
 .hand-card.spent {
-    background: var(--surface-3);
+    background: var(--card-face);
     box-shadow: var(--shadow-1);
 }
 
 .hand-card.spent .hand-card-count,
 .hand-card.spent .hand-card-glyph {
-    color: var(--text-faint);
+    color: var(--card-ink);
     text-shadow: none;
 }
 
