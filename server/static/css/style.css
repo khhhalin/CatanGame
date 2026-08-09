@@ -120,9 +120,14 @@ body {
     min-height: 0;
 }
 
-/* In a running game the right panel floats over the board as frosted glass —
-   the Deep Harbour History panel. Scoped to the game screen so it stays a plain
-   docked column in the lobby and never covers the map editor. */
+/* In a running game the right panel floats over the board — the Deep Harbour
+   History panel. Scoped to the game screen so it stays a plain docked column in
+   the lobby and never covers the map editor.
+
+   Deliberately NOT backdrop-filter here (unlike the other floats): the C&K fold
+   popovers inside it are `position: fixed`, and a backdrop-filter ancestor
+   becomes their containing block, which threw them off the right edge. A nearly
+   opaque translucent fill reads as the same dark panel without the trap. */
 .container:has(#game-screen:not(.hidden)) .table-aside {
     position: absolute;
     top: 0;
@@ -134,9 +139,7 @@ body {
     width: var(--panel-aside);
     z-index: var(--z-sticky);
     padding: var(--space-3);
-    background: var(--glass);
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    backdrop-filter: blur(var(--glass-blur));
+    background: color-mix(in srgb, var(--surface-1) 92%, transparent);
     border: 1px solid var(--glass-line);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-2);
