@@ -84,24 +84,6 @@ class MissionFishRules:
         self.ep.fish_shoals[target]['haul'] = True
         return {'success': True, 'error': '', 'roll': roll, 'placed': target}
 
-    def _hex_corner_vertices(self, hex_key: str) -> set:
-        """The intersection keys around a hex, read from the edges bordering it.
-
-        A sea hex is deliberately absent from a vertex's own hex list (a
-        settlement belongs to the land), but every edge lists whichever hexes it
-        separates, sea included — so a Council-of-Catan sea hex and a fish shoal
-        alike find their corners this way.
-        """
-        corners = set()
-        for edge in self.edges.values():
-            if hex_key in edge.neighbors['hexes']:
-                corners.update(edge.neighbors['vertices'])
-        return corners
-
-    def _ship_points_at(self, edge, hex_key: str) -> bool:
-        """Whether an end of the ship on this edge is a corner of the hex."""
-        return bool(set(edge.neighbors['vertices']) & self._hex_corner_vertices(hex_key))
-
     def catch_fish(self, player_name: str, ship_edge_key: str, shoal_hex_key: str) -> dict:
         """Scoop a shoal's haul into an empty ship (expansions.md 1011).
 

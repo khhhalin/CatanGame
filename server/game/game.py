@@ -20,6 +20,7 @@ from game.harbor_settlements import HarborSettlementRules
 from game.missions import MissionRules
 from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
+from game.missions_spices import MissionSpicesRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -35,7 +36,8 @@ logger = logging.getLogger(__name__)
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
-           MissionLairsRules, MissionFishRules, PendingChoiceRules, TurnClock):
+           MissionLairsRules, MissionFishRules, MissionSpicesRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -237,6 +239,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Each active mission declares its track now the container exists.
             self.setup_pirate_lairs()
             self.setup_fish()
+            self.setup_spices()
 
         # How many times each player has converted at the gold supply this turn
         # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions
@@ -596,6 +599,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         lair = self.pirate_lair_build_refusal(vertex.neighbors['hexes'])
         if lair is not None:
             return lair
+        # A spice village locks its corners for a player until they befriend it.
+        spice = self.spice_build_refusal(player_name, vertex.neighbors['hexes'])
+        if spice is not None:
+            return spice
         # The scenario setup restriction, when the table asked for it: you start
         # at home and sail to the far islands, rather than starting on one. Only
         # the *starting* settlements — nothing stops you settling there later,
@@ -709,6 +716,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         lair = self.pirate_lair_build_refusal(edge.neighbors['hexes'])
         if lair is not None:
             return lair
+        # A spice village locks its edges for a player until they befriend it.
+        spice = self.spice_build_refusal(player_name, edge.neighbors['hexes'])
+        if spice is not None:
+            return spice
 
         used_free_road = False
         if in_setup:

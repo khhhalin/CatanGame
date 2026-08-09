@@ -91,6 +91,16 @@ class EP:
         # fish-placement roll must match; `haul` is whether a fish token sits on
         # it, drawn from `token_supply['fish_haul']`.
         self.fish_shoals = {}
+        # Spices for Catan mission: hex_key -> {'sacks': int, 'advantage': str,
+        # 'crews': [player]} for each discovered spice hex. On discovery a village
+        # is stocked with one sack per player from `token_supply['spice_sack']`
+        # and dealt one of the three advantages; each player may befriend it once,
+        # trading a crew for a sack and earning the advantage for good.
+        self.spice_hexes = {}
+        # The advantages still undealt to a spice village, drawn in order. Seeded
+        # by the mission at setup (two of each, as the box holds), refilled if a
+        # scenario reveals more spice hexes than the bag.
+        self.spice_advantage_bag = []
 
     def register(self, player_name: str):
         self.pirate_hex.setdefault(player_name, None)

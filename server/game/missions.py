@@ -90,3 +90,29 @@ class MissionRules:
         if not self.rules['missions'] or self.ep is None:
             return 0
         return self.ep.lead_card_count(player_name)
+
+    # --- Shared ship-to-hex geometry ---------------------------------------
+    #
+    # Every mission asks the same question — does an end of this ship point at
+    # that hex? — of both land destinations (a lair on a gold field, a spice
+    # village) and sea ones (the Council of Catan hex a fish or spice ship
+    # delivers to). It lives here, on the container all three missions share,
+    # rather than on any one of them.
+
+    def _hex_corner_vertices(self, hex_key: str) -> set:
+        """The intersection keys around a hex, read from the edges bordering it.
+
+        A sea hex is deliberately absent from a vertex's own hex list (a
+        settlement belongs to the land), but every edge lists whichever hexes it
+        separates, sea included — so a Council-of-Catan sea hex, a fish shoal and
+        a spice village alike find their corners this way.
+        """
+        corners = set()
+        for edge in self.edges.values():
+            if hex_key in edge.neighbors['hexes']:
+                corners.update(edge.neighbors['vertices'])
+        return corners
+
+    def _ship_points_at(self, edge, hex_key: str) -> bool:
+        """Whether an end of the ship on this edge is a corner of the hex."""
+        return bool(set(edge.neighbors['vertices']) & self._hex_corner_vertices(hex_key))
