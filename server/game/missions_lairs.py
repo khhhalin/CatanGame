@@ -62,7 +62,7 @@ class MissionLairsRules:
 
         expansions.md 984: while a lair sits unturned on a gold field, no road may
         lie on that field's edges and no settlement may stand at its corners.
-        Capturing the lair (a later increment) lifts the lock.
+        Capturing the lair lifts the lock.
         """
         if not self.rules['mission_pirate_lairs']:
             return None
@@ -74,3 +74,100 @@ class MissionLairsRules:
                     'An uncaptured pirate lair blocks building on its gold field',
                 )
         return None
+
+    # --- The capture -------------------------------------------------------
+    #
+    # A ship with crews aboard, one end pointing at a corner of a lair hex, may
+    # land those crews onto the lair (982). Up to 3 crews may stand on a lair,
+    # from any mix of players; the 3rd crew captures it. The rulebook resolves the
+    # capture after the mover finishes their movement phase — this resolves it the
+    # moment the 3rd crew lands, which is where the client wave will add the wait.
+
+    def _crews_on_lair(self, lair: dict) -> int:
+        return sum(lair['crews'].values())
+
+    def land_crews_on_lair(self, player_name: str, ship_edge_key: str,
+                           lair_hex_key: str) -> dict:
+        """Move a ship's crews onto an adjacent uncaptured lair (expansions.md 982).
+
+        The ship must belong to the player, one of its ends must be a corner of
+        the lair hex, and it must carry at least one crew. Lands as many of its
+        crews as fit under the 3-crew cap; the 3rd crew triggers the capture.
+        """
+        if not self.rules['mission_pirate_lairs'] or self.ep is None:
+            return refused('RULE_NOT_IN_PLAY', 'This table is not chasing pirate lairs')
+        lair = self.ep.lairs.get(lair_hex_key)
+        if lair is None or lair['captured']:
+            return refused('INVALID_TARGET', 'There is no uncaptured lair there')
+
+        edge = self.edges.get(ship_edge_key)
+        ship = edge.ship if edge is not None else None
+        if ship is None or ship.get('player') != player_name:
+            return refused('NOT_YOUR_PIECE', 'That is not one of your ships')
+        # An end of the ship points at the lair when a vertex of its edge is a
+        # corner of the lair hex.
+        if not any(lair_hex_key in self.vertices[v].neighbors['hexes']
+                   for v in edge.neighbors['vertices']):
+            return refused('INVALID_PLACEMENT', 'The ship does not point at that lair')
+
+        crews_aboard = [piece for piece in ship['cargo'] if piece['type'] == 'crew']
+        landing = min(len(crews_aboard), 3 - self._crews_on_lair(lair))
+        if landing <= 0:
+            return refused('NO_CREWS', 'That ship has no crews to land, or the lair is full')
+
+        for _ in range(landing):
+            ship['cargo'].remove(next(p for p in ship['cargo'] if p['type'] == 'crew'))
+        lair['crews'][player_name] = lair['crews'].get(player_name, 0) + landing
+
+        captured = self._crews_on_lair(lair) >= 3
+        result = {'success': True, 'error': '', 'landed': landing, 'captured': captured}
+        if captured:
+            result['hero'] = self._resolve_lair_capture(lair_hex_key)
+        return result
+
+    def _resolve_lair_capture(self, lair_hex_key: str) -> str:
+        """Resolve a full lair: reward every participant, fight for the hero, and
+        flip the lair face up (expansions.md 985-991).
+
+        Each player with a crew on the lair takes 2 gold and moves 1 space,
+        starting with the player whose turn it is and going clockwise. Then each
+        rolls a die and adds their crew count; the highest is the hero and moves 1
+        extra space and loses a crew. A tie on the total goes to more crews, and a
+        remaining tie re-rolls among the tied. A solo capturer is the hero
+        automatically. Returns the hero's name.
+        """
+        lair = self.ep.lairs[lair_hex_key]
+        order = (self.players[self.current_player_index:]
+                 + self.players[:self.current_player_index])
+        participants = [p.name for p in order if lair['crews'].get(p.name, 0) > 0]
+
+        for name in participants:
+            self.gain_gold(name, 2)
+            self.advance_mission(name, 'pirate_lairs', 1)
+
+        hero = self._battle_for_hero(participants, lair['crews'])
+        self.advance_mission(hero, 'pirate_lairs', 1)
+        # The hero returns one of their crews to their supply.
+        lair['crews'][hero] -= 1
+        if lair['crews'][hero] == 0:
+            del lair['crews'][hero]
+        self.get_player(hero).crews -= 1
+
+        lair['captured'] = True
+        return hero
+
+    def _battle_for_hero(self, participants: list, crews: dict) -> str:
+        """The hero of the battle: highest die + crew count, ties to more crews,
+        then a re-roll among any still tied. A lone capturer wins outright."""
+        if len(participants) == 1:
+            return participants[0]
+        totals = {name: self.rng.randint(1, 6) + crews[name] for name in participants}
+        best = max(totals.values())
+        leaders = [name for name in participants if totals[name] == best]
+        if len(leaders) == 1:
+            return leaders[0]
+        most_crews = max(crews[name] for name in leaders)
+        by_crews = [name for name in leaders if crews[name] == most_crews]
+        if len(by_crews) == 1:
+            return by_crews[0]
+        return self._battle_for_hero(by_crews, crews)

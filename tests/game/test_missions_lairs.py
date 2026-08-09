@@ -101,3 +101,73 @@ class TestDiscoveringAGoldFieldPlacesALair:
         gold = _gold_hex(game)
         game._reveal_hex(gold, 'Alice')
         assert gold not in game.ep.lairs
+
+
+def _edges_touching(game, hex_key):
+    return [e for e in sorted(game.edges)
+            if any(hex_key in game.vertices[v].neighbors['hexes']
+                   for v in game.edges[e].neighbors['vertices'])]
+
+
+def _plant_crew_ship(game, name, edge_key, crews):
+    game.edges[edge_key].ship = {
+        'player': name, 'kind': 'transport',
+        'cargo': [{'type': 'crew', 'size': 'small'} for _ in range(crews)],
+        'id': 1, 'built_turn': 0,
+    }
+    game.get_player(name).ships.append(edge_key)
+    game.get_player(name).crews += crews
+
+
+class TestCapturingALair:
+    def _marker(self, game, name):
+        return game.ep.markers[name]['pirate_lairs']
+
+    def test_the_third_crew_captures_and_rewards_both_players(self):
+        game = _game(seed=3)
+        gold = _gold_hex(game)
+        game._reveal_hex(gold, 'Alice')
+        edges = _edges_touching(game, gold)
+        _plant_crew_ship(game, 'Alice', edges[0], 2)
+        _plant_crew_ship(game, 'Bob', edges[1], 1)
+
+        # Two crews from Alice do not fill the lair.
+        first = game.land_crews_on_lair('Alice', edges[0], gold)
+        assert first['landed'] == 2 and first['captured'] is False
+        assert game.ep.lairs[gold]['captured'] is False
+
+        # Bob's crew is the third — it captures.
+        second = game.land_crews_on_lair('Bob', edges[1], gold)
+        assert second['captured'] is True
+        assert game.ep.lairs[gold]['captured'] is True
+
+        # Both participants moved at least a space; the hero moved one extra.
+        assert self._marker(game, 'Alice') >= 1
+        assert self._marker(game, 'Bob') >= 1
+        hero = second['hero']
+        assert self._marker(game, hero) == 2
+
+        # The hero returned one crew to their supply.
+        assert game.get_player(hero).crews == (2 if hero == 'Alice' else 1) - 1
+
+    def test_a_captured_lair_unlocks_its_field(self):
+        game = _game()
+        gold = _gold_hex(game)
+        game._reveal_hex(gold, 'Alice')
+        edges = _edges_touching(game, gold)
+        _plant_crew_ship(game, 'Alice', edges[0], 2)
+        _plant_crew_ship(game, 'Bob', edges[1], 1)
+        game.land_crews_on_lair('Alice', edges[0], gold)
+        game.land_crews_on_lair('Bob', edges[1], gold)
+
+        corner = game.vertices[_corner_of(game, gold)].neighbors['hexes']
+        assert game.pirate_lair_build_refusal(corner) is None
+
+    def test_a_ship_that_does_not_point_at_the_lair_lands_nothing(self):
+        game = _game()
+        gold = _gold_hex(game)
+        game._reveal_hex(gold, 'Alice')
+        far = next(e for e in sorted(game.edges) if e not in _edges_touching(game, gold))
+        _plant_crew_ship(game, 'Alice', far, 2)
+        result = game.land_crews_on_lair('Alice', far, gold)
+        assert result['code'] == 'INVALID_PLACEMENT'
