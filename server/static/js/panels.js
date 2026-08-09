@@ -179,7 +179,42 @@ buyDevCardBtn.addEventListener('click', () => {
 /**
  * Update game UI based on phase (setup vs playing)
  */
+/**
+ * Write the turn banner at the top of the right panel: whose turn it is, in
+ * their own colour, and which round. Hidden until a game is running.
+ *
+ * @param {object} boardData - The board payload
+ */
+function updateTurnBanner(boardData) {
+    const banner = document.getElementById('turn-banner');
+    if (!banner) {
+        return;
+    }
+    const name = boardData?.current_player;
+    const players = boardData?.players || [];
+    if (!name || players.length === 0) {
+        banner.classList.add('hidden');
+        return;
+    }
+    const color = players.find(p => p.name === name)?.color || 'var(--text)';
+    // turn_count rises once per completed turn; a round is one turn each.
+    const round = Math.floor((boardData.turn_count || 0) / players.length) + 1;
+    const setup = boardData.game_phase === 'setup';
+
+    banner.classList.remove('hidden');
+    banner.style.setProperty('--turn-color', color);
+    banner.innerHTML =
+        '<span class="turn-dot" aria-hidden="true"></span>'
+        + `<span class="turn-who">${setup ? 'Setup — ' : ''}`
+        + `<b>${''}</b>'s turn</span>`
+        + `<span class="turn-round num">Round ${round}</span>`;
+    // The name is player-picked text, so it goes in through textContent.
+    banner.querySelector('.turn-who b').textContent = name;
+    banner.querySelector('.turn-who').style.color = color;
+}
+
 export function updateGameUI(boardData) {
+    updateTurnBanner(boardData);
     const setupIndicator = document.getElementById('setup-indicator');
     const setupPlayerName = document.getElementById('setup-player-name');
     const setupActionText = document.getElementById('setup-action-text');

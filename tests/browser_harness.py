@@ -1012,15 +1012,40 @@ def _wait_for_new_piece(player, kind, before):
     )
 
 
-def build_road(player, candidates):
-    """Arm road placement, then aim — in that order, and it matters.
+def _stage_cards(player, cost):
+    """Tap the hand so exactly `cost` sits on the tray's Materials shelf.
 
-    Arming adds `placement-mode` to the board, which changes the canvas box and
-    therefore the camera. A point computed before the button is pressed is
-    stale by the time the click happens, and lands on a neighbouring edge.
+    A tap cycles that card's give count 1, 2, … up to the number held; the bot
+    holds the cost (its caller checked can_afford), so tapping each card its
+    count times lands the exact pile the morph Build action reads.
+    """
+    for card, count in cost.items():
+        for _ in range(count):
+            player.page.click(f'.hand-card[data-card="{card}"]')
+
+
+def _arm_build(player, kind, cost):
+    """Arm a build the way a player now does: press the tray's one morph action.
+
+    Setup auto-arms the board (a board tap places directly, no control needed),
+    so this is a no-op there. In play, stage the exact cost in the hand and press
+    the Build action the staged pile lights — the console's three build buttons
+    are gone, folded into that one button.
+    """
+    if player.board().get("game_phase") == 'setup':
+        return
+    _stage_cards(player, cost)
+    player.page.wait_for_selector(".tray-action.is-build", timeout=5000)
+    player.page.click(".tray-action.is-build")
+
+
+def build_road(player, candidates):
+    """Stage the road's cost, press Build, then aim — in that order, and it
+    matters. Arming adds `placement-mode`, which changes the canvas box and the
+    camera; a point computed before it lands on a neighbouring edge.
     """
     before = count_pieces(player, 'road')
-    player.page.click("#place-road-btn")
+    _arm_build(player, 'road', ROAD_COST)
     edge_key = _reachable(player, 'edge', candidates)
     if not edge_key:
         raise AssertionError(f"no clickable road among {len(candidates)} candidates")
@@ -1033,7 +1058,7 @@ def build_road(player, candidates):
 def build_settlement(player, candidates):
     """Arm settlement placement, then aim. See build_road for why."""
     before = count_pieces(player, 'building')
-    player.page.click("#place-settlement-btn")
+    _arm_build(player, 'settlement', SETTLEMENT_COST)
     vertex_key = _reachable(player, 'vertex', candidates)
     if not vertex_key:
         raise AssertionError(f"no clickable vertex among {len(candidates)} candidates")
@@ -1053,8 +1078,8 @@ def legal_city_vertices(board, player_name):
 
 
 def build_city(player, candidates):
-    """Upgrade a settlement. See build_road for why the button comes first."""
-    player.page.click("#upgrade-city-btn")
+    """Upgrade a settlement. See build_road for why the build is armed first."""
+    _arm_build(player, 'city', CITY_COST)
     vertex_key = _reachable(player, 'vertex', candidates)
     if not vertex_key:
         raise AssertionError(f"no clickable settlement among {len(candidates)}")
@@ -1075,35 +1100,43 @@ def build_city(player, candidates):
     return vertex_key
 
 
-def bank_trade(player, give_resource, give_count, want_resource):
-    """Trade surplus to the bank through the real trade dialog.
+def _clear_tray(player):
+    """Take everything back off the tray by clicking each staged mini-card off.
 
-    Without this the bot deadlocks: two players can sit on brick-and-no-wood
-    and wood-and-no-brick forever, affording nothing, and the game never ends.
-    Trading is how a real player breaks that, so the bot has to do it too.
+    Bounded rather than while-true: a mini that will not clear should fail the
+    test loudly through the caller, not spin here.
+    """
+    for _ in range(12):
+        minis = player.page.query_selector_all(".trade-mini")
+        if not minis:
+            return
+        minis[0].click()
+
+
+def bank_trade(player, give_resource, give_count, want_resource):
+    """Bank-trade through the tray, the way a player now does: stage the give
+    resource, pick the want, and press the Bank action the staged pile lights.
+
+    Without this the bot deadlocks — two players sit on brick-and-no-wood and
+    wood-and-no-brick forever — so the bot trades like a person. The one-press
+    Bank only appears when the pile is exactly this player's rate: a harbour that
+    lowered the rate below the staged count leaves it off, and this returns False
+    so the caller tries another card rather than hanging.
     """
     held_before = dict((player.me() or {}).get("resources") or {})
 
-    # Propose Trade lives in the Trade tab, which starts unselected, so the
-    # button is genuinely not clickable until the tab is opened — exactly as
-    # it is for a player.
-    player.page.click("#tab-trade")
-    player.page.wait_for_selector("#propose-trade-btn", state="visible", timeout=5000)
-    player.page.click("#propose-trade-btn")
-    player.page.wait_for_selector("#trade-modal.show", timeout=5000)
-    for resource in RESOURCES:
-        player.page.fill(f"#give-{resource}", "0")
-        player.page.fill(f"#want-{resource}", "0")
-    player.page.fill(f"#give-{give_resource}", str(give_count))
-    player.page.fill(f"#want-{want_resource}", "1")
-    player.page.click("#submit-trade-btn")
+    _clear_tray(player)
+    _stage_cards(player, {give_resource: give_count})
+    player.page.click(".trade-add")
+    player.page.click(f'.trade-pick[data-card="{want_resource}"]')
 
-    # A player holding a harbour is offering the bank more than it may charge
-    # them, so the dialog lowers the give side to their own rate and waits to be
-    # told again. A person reads the line and presses Propose; so does this.
-    if player.page.is_visible("#trade-modal.show"):
-        player.page.click("#submit-trade-btn")
+    try:
+        player.page.wait_for_selector(".tray-action.is-bank", timeout=2000)
+    except PlaywrightTimeout:
+        _clear_tray(player)
+        return False
 
+    player.page.click(".tray-action.is-bank")
     try:
         player.page.wait_for_function(
             "([res, before]) => {"
@@ -1114,9 +1147,7 @@ def bank_trade(player, give_resource, give_count, want_resource):
         )
         return True
     except PlaywrightTimeout:
-        player.page.evaluate(
-            "() => document.getElementById('trade-modal').classList.remove('show')"
-        )
+        _clear_tray(player)
         return False
 
 
