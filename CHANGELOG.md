@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.0.0 — 2026-08-09 20:30
+
+- **New** A whole new look — "Deep Harbour". The game is dark by default, with frosted, floating panels over a full, centred board: your standings top-left, your hand of cards along the bottom, the dice in their own corner, and the build-and-trade tray on the left.
+- **New** Build and trade straight from your hand: tap your resource cards onto the tray and it works out what they make — a road or settlement to build, a bank trade at your own rate, or an offer to the table — and becomes that one button. The separate build buttons and the trade dialog are gone.
+- **New** New type throughout (Space Grotesk, with JetBrains Mono for every number), a deeper ocean, and the whole board and panels recoloured for the dark theme — every label rechecked to stay readable.
+- **Known issue** The light theme is a rough carry-over of the old parchment look for now; the dark Deep Harbour theme is the tuned one.
+
 ## v2.1.0 — 2026-08-06 22:38
 
 - **New** The board fills the screen now. Your players, your hand, the dice and the build/trade tray all float over it instead of penning it into a corner, and it zooms in further by default.
