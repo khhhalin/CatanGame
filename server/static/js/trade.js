@@ -1154,8 +1154,17 @@ function refreshTrayBuilds() {
             ready = kind;
         }
     }
+    // A free road (Road Building) is paid for already, so the morph offers it
+    // with nothing staged — otherwise, now the console road button is gone,
+    // there is no way to arm the two roads the card owes.
+    const freeRoad = (getBoard()?.free_roads_remaining || 0) > 0 && isMyTurn();
+    if (freeRoad && !ready) {
+        ready = 'road';
+    }
     if (trayNote) {
-        if (ready) {
+        if (freeRoad) {
+            trayNote.textContent = 'Free road — click Build Road, then tap an edge';
+        } else if (ready) {
             trayNote.textContent = `These make a ${BUILD_LABEL[ready]} — click Build ${BUILD_LABEL[ready]}`;
         } else if (Object.keys(materials()).length > 0) {
             trayNote.textContent = 'No build fits these — trade them below';

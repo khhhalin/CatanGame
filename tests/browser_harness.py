@@ -1032,9 +1032,14 @@ def _arm_build(player, kind, cost):
     the Build action the staged pile lights — the console's three build buttons
     are gone, folded into that one button.
     """
-    if player.board().get("game_phase") == 'setup':
+    board = player.board()
+    if board.get("game_phase") == 'setup':
         return
-    _stage_cards(player, cost)
+    # A free road (Road Building) is paid for already: the morph offers it with
+    # nothing staged, so don't gather cards for it.
+    free_road = kind == 'road' and (board.get("free_roads_remaining") or 0) > 0
+    if not free_road:
+        _stage_cards(player, cost)
     player.page.wait_for_selector(".tray-action.is-build", timeout=5000)
     player.page.click(".tray-action.is-build")
 

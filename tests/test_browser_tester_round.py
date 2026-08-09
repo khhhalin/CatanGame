@@ -777,26 +777,31 @@ def commodity_traders(browser, tmp_path):
 
 
 class TestCommoditiesCanBeOffered:
-    def test_the_dialog_offers_commodities_when_the_table_plays_them(
+    def test_the_tray_offers_commodities_when_the_table_plays_them(
         self, commodity_traders
     ):
         player, _ = commodity_traders
-        player.page.click("#tab-trade")
-        player.page.click("#propose-trade-btn")
-        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
+        # Commodities are cards in the hand (givable by tapping), and the want
+        # picker offers them alongside the resources.
         for card in ("cloth", "coin", "paper"):
-            assert player.page.is_visible(f"#give-{card}"), f"no give input for {card}"
-            assert player.page.is_visible(f"#want-{card}"), f"no want input for {card}"
+            assert player.page.query_selector(f'.hand-card[data-card="{card}"]'), (
+                f"no hand card for {card}"
+            )
+        player.page.click(".trade-add")
+        for card in ("cloth", "coin", "paper"):
+            assert player.page.is_visible(f'.trade-pick[data-card="{card}"]'), (
+                f"no want pick for {card}"
+            )
 
     def test_an_offer_of_cloth_reaches_the_table(self, commodity_traders):
         """The whole point: the server takes it, so the client may send it."""
         player, marks = commodity_traders
-        player.page.click("#tab-trade")
-        player.page.click("#propose-trade-btn")
-        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
-        player.page.fill("#give-cloth", "2")
-        player.page.fill("#want-ore", "1")
-        player.page.click("#submit-trade-btn")
+        # Stage 2 cloth from the hand, ask for 1 ore, and press Offer.
+        for _ in range(2):
+            player.page.click('.hand-card[data-card="cloth"]')
+        player.page.click(".trade-add")
+        player.page.click('.trade-pick[data-card="ore"]')
+        player.page.click(".tray-action.is-offer")
 
         player.page.wait_for_function(
             "() => (window.__catanDebug.getBoard().trades.active || []).length > 0",
@@ -839,12 +844,11 @@ class TestTheTradeClockOnScreen:
         self, slow_trade_table
     ):
         player, _ = slow_trade_table
-        player.page.click("#tab-trade")
-        player.page.click("#propose-trade-btn")
-        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
-        player.page.fill("#give-wood", "1")
-        player.page.fill("#want-brick", "1")
-        player.page.click("#submit-trade-btn")
+        # Offer 1 wood for 1 brick through the tray.
+        player.page.click('.hand-card[data-card="wood"]')
+        player.page.click(".trade-add")
+        player.page.click('.trade-pick[data-card="brick"]')
+        player.page.click(".tray-action.is-offer")
 
         player.page.wait_for_function(
             "() => document.querySelector('.trade-timer')?.textContent.trim()",

@@ -148,23 +148,23 @@ body {
     display: none;
 }
 
-/* Deep Harbour declutters the right panel toward the History design: no tab bar
-   (the log is always shown), and the boxed Titles / Costs fold out — they belong
-   on the player cards and in the spend tray now. The expansion folds stay: they
-   are rule-gated, so a base game shows none and a Cities & Knights game still
-   gets its knights and barbarians. */
-.container:has(#game-screen:not(.hidden)) .tab-bar,
-.container:has(#game-screen:not(.hidden)) .right-titles,
-.container:has(#game-screen:not(.hidden)) #costs-panel {
-    display: none;
+
+/* The settings cluster and the build/changelog pill move to the free top strip
+   in game, clear of the floating panels and the bottom row (tray, hand, dice)
+   they otherwise collide with. `body:has` — both sit outside `.container`. */
+body:has(#game-screen:not(.hidden)) .settings-float {
+    top: var(--space-3);
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
 }
 
-/* The build/changelog pill and the personal YOLO/Mute toggles are not part of
-   the in-game design and collided with the floating panels; hidden in game.
-   `body:has` rather than `.container:has` — both sit outside `.container`. */
-body:has(#game-screen:not(.hidden)) .changelog-panel,
-body:has(#game-screen:not(.hidden)) .settings-float {
-    display: none;
+body:has(#game-screen:not(.hidden)) .changelog-panel {
+    top: var(--space-3);
+    bottom: auto;
+    left: 14rem;
+    /* Grow the expanded panel downward off the button now it sits at the top. */
+    flex-direction: column;
 }
 
 /* The dice: their own frosted-glass float, bottom-right of the board. Moved out

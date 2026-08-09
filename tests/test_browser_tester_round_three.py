@@ -324,24 +324,10 @@ class TestTheHandIsReadableWhileDiscarding:
         assert left["wood"] == 0 and left["sheep"] == 0 and left["ore"] == 2
 
 
-class TestTheHandIsReadableWhileTrading:
-    """The other half, and the one no previous fix touched: an offer is decided
-    entirely by what is in hand, and the dialog covered it."""
-
-    def test_the_trade_dialog_states_every_count_in_hand(self, trading):
-        player, _marks = trading
-
-        player.page.click("#tab-trade")
-        player.page.wait_for_selector("#propose-trade-btn", state="visible", timeout=5000)
-        player.page.click("#propose-trade-btn")
-        player.page.wait_for_selector("#trade-modal.show", timeout=5000)
-
-        assert player.page.evaluate(READ_CHIPS, "#trade-hand") == expected_chips(), (
-            "the trade dialog does not say what the player holds"
-        )
-        assert_legible(player, "#trade-hand", "mid-trade")
-        assert player.page.evaluate(MODAL_FILTER, "trade-modal") == "none"
-        shot(player, "trade-dialog")
+# test_the_trade_dialog_states_every_count_in_hand retired: it guarded a propose
+# *modal* that covered the hand. There is no such modal now — an offer is built
+# in the bottom tray and the physical hand of cards stays shown beside it the
+# whole time, so a dialog can no longer hide what a player holds while they trade.
 
 
 # --- A knight's own actions, at the knight ---------------------------------
