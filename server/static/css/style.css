@@ -137,7 +137,11 @@ body {
        dice, so the two never overlap and neither reaches the centre hand. */
     bottom: 7rem;
     width: var(--panel-aside);
-    z-index: var(--z-sticky);
+    /* Above the board overlays (hand, tray) rather than level with them: the
+       panel's fold popovers open leftward over the board and must sit over the
+       hand, not behind it — the two share --z-sticky and the hand, later in the
+       DOM, would otherwise intercept the click. */
+    z-index: var(--z-dropdown);
     padding: var(--space-3);
     background: color-mix(in srgb, var(--surface-1) 92%, transparent);
     border: 1px solid var(--glass-line);
