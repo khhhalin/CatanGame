@@ -18,6 +18,7 @@ from game.exploration import ExplorationRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
 from game.missions import MissionRules
+from game.missions_lairs import MissionLairsRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
-           PendingChoiceRules, TurnClock):
+           MissionLairsRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -232,6 +233,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             self.ep = ep_module.EP()
             for player in self.players:
                 self.ep.register(player.name)
+            # Each active mission declares its track now the container exists.
+            self.setup_pirate_lairs()
 
         # How many times each player has converted at the gold supply this turn
         # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions
@@ -587,6 +590,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             undiscovered = self.undiscovered_build_refusal(vertex.neighbors['hexes'])
             if undiscovered is not None:
                 return undiscovered
+        # An uncaptured pirate lair locks the corners of its gold field.
+        lair = self.pirate_lair_build_refusal(vertex.neighbors['hexes'])
+        if lair is not None:
+            return lair
         # The scenario setup restriction, when the table asked for it: you start
         # at home and sail to the far islands, rather than starting on one. Only
         # the *starting* settlements — nothing stops you settling there later,
@@ -696,6 +703,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             undiscovered = self.undiscovered_build_refusal(edge.neighbors['hexes'])
             if undiscovered is not None:
                 return undiscovered
+        # An uncaptured pirate lair locks the edges of its gold field.
+        lair = self.pirate_lair_build_refusal(edge.neighbors['hexes'])
+        if lair is not None:
+            return lair
 
         used_free_road = False
         if in_setup:

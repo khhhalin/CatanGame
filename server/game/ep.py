@@ -81,6 +81,11 @@ class EP:
 
         # player -> the village advantages they have earned
         self.village_advantages = {}
+        # Pirate Lairs mission: hex_key -> {'captured': bool, 'crews': {player:
+        # count}} for each gold field that carries a lair token. A lair sits on
+        # the board (not in a player's hand), so it lives here rather than in
+        # `tokens_held`; its token is drawn from `token_supply['lair_token']`.
+        self.lairs = {}
 
     def register(self, player_name: str):
         self.pirate_hex.setdefault(player_name, None)
