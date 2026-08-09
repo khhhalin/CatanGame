@@ -629,13 +629,16 @@ class TestAlchemist:
 
         roll_dice(player)
         player.page.wait_for_function(
-            "() => document.getElementById('dice-display').innerText.trim() !== ''",
+            "() => document.querySelectorAll('#dice-display .die').length === 2",
             timeout=8000,
         )
+        # The dice are physical pip dice now, so the face is read from the pip
+        # count drawn on it, not a printed number.
         faces = player.page.eval_on_selector_all(
-            "#dice-display .die", "dice => dice.map(die => die.textContent)"
+            "#dice-display .die",
+            "dice => dice.map(die => die.querySelectorAll('.pip').length)",
         )
-        assert faces == ["2", "3"], f"the dice came up {faces}, not the pair chosen"
+        assert faces == [2, 3], f"the dice came up {faces}, not the pair chosen"
         assert player.noisy_errors() == [], player.noisy_errors()
 
 

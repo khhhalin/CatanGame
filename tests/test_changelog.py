@@ -163,6 +163,30 @@ class TestTheServerCanNameItsOwnBuild:
         assert build_info.resolve() == ('unknown', 'none')
 
 
+class TestTheReleaseIsVersioned:
+    """A deployed server names itself with a version — the identity a tester
+    quotes — because the container carries no `.git` to name the commit."""
+
+    def test_a_version_heading_parses(self):
+        """`## v1.4.0 — ...` is a legal release heading, not only a sha."""
+        releases = changelog.parse(
+            "# Changelog\n\nIntro.\n\n## v1.4.0 — 2026-08-05\n\n- **New** A thing.\n"
+        )
+        assert releases[0]['build'] == 'v1.4.0'
+
+    def test_the_version_file_names_the_current_release(self):
+        """VERSION and the newest changelog heading must not drift.
+
+        The build id a deployed server serves is the newest heading; VERSION is
+        the source a human bumps. If they disagree the panel names a different
+        release than the repo believes it shipped — checked against the real
+        files, not a copy of either.
+        """
+        with open(os.path.join(REPO_ROOT, 'VERSION')) as handle:
+            version = handle.read().strip()
+        assert changelog.newest_build() == f'v{version}'
+
+
 class TestWhatTheClientIsSent:
     """The panel is drawn from this and holds no entry of its own."""
 

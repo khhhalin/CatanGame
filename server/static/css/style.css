@@ -43,8 +43,17 @@
 body {
     font-family: var(--font-ui);
     font-size: var(--text-md);
+    /* v2: the board is the focus, so the page is warm space with a single
+       soft light lifting off the top-centre where the board sits. Layered over
+       the flat parchment fill rather than replacing it, so a browser that
+       cannot paint the gradient still gets the right base colour. */
     background-color: var(--page-bg);
+    background-image: radial-gradient(120% 85% at 50% -8%,
+        color-mix(in srgb, var(--accent) 5%, transparent), transparent 55%);
     color: var(--text);
+    /* Slight negative tracking: the refined type scale reads tighter without
+       shrinking anything. Counts opt back to tabular via `.num`. */
+    letter-spacing: -0.006em;
     height: 100dvh;
     overflow: hidden;
     padding: 0;
@@ -56,9 +65,11 @@ body {
     width: 100%;
     min-width: 0;
     display: grid;
+    /* v2.1: the header and the table. The hand, the dice tray and the
+       build/trade controls all float over the board now, so there is no
+       separate bottom tray row - the board region is the whole greedy area. */
     grid-template-rows: auto minmax(0, 1fr);
     text-align: left;
-    background-color: var(--page-bg);
     padding: var(--space-3);
     gap: var(--space-2);
 }
@@ -109,13 +120,192 @@ body {
     min-height: 0;
 }
 
-/* Resources and the bank only mean anything once a game is running */
-.table:has(#game-screen.hidden) #info-panel {
+/* v2 minimalist: the log/trade aside is a quiet column, not a boxed panel -
+   same box-free direction as the rail. The tab bar's own hairline rule is the
+   only frame; no border, surface or shadow around the whole thing. */
+.table-aside > .panel {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* -------------------------------------------------------- draggable seam
+
+   v2.1: the seam parts the board (the greedy area) from the right panel.
+   Dragging the handle resizes the panel width (seam.js writes --panel-aside,
+   clamped ~220-520px). Hidden in the lobby, where there is no board. */
+.board-resizer {
+    flex: none;
+    width: 8px;
+    align-self: stretch;
+    cursor: col-resize;
+    position: relative;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    touch-action: none;
+}
+
+.board-resizer::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 40px;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong);
+    opacity: 0.55;
+    transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+
+.board-resizer:hover::before,
+.board-resizer.dragging::before,
+.board-resizer:focus-visible::before {
+    opacity: 1;
+    background: var(--accent);
+}
+
+.container:has(#game-screen.hidden) .board-resizer {
     display: none;
 }
 
-/* A compact bar, not a hero. Every row the header takes is a row the board
-   does not get, and the title is the least useful thing on the page. */
+/* --------------------------------------------------- floating board overlays
+
+   The board region is the greedy area; the standing information floats over it.
+   The wrapper is `position: fixed` and lives OUTSIDE `.container` (like the
+   changelog panel), so none of it is part of `#game-screen` or `.table-aside` -
+   the layout suite's overflow sweep walks those, and a fanned hand overflows
+   its own box by design. overlays.js pins the wrapper to the board box on every
+   resize and seam drag; the floats position themselves within it. The wrapper
+   is transparent to pointer events so board clicks pass through it; each float
+   that carries controls restores them. */
+.board-overlays {
+    position: fixed;
+    z-index: var(--z-sticky);
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: var(--radius);
+}
+
+/* The build tray floats over the board on a translucent surface with a soft
+   blur so the board reads through it; the opacity is kept high (94%) so the
+   WCAG sweep, which composites the surface over the board backdrop, still
+   measures text on a surface where the tokens are validated. */
+.action-tray {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    min-width: 0;
+    pointer-events: auto;
+}
+
+/* Floating scoreboard, top-left. The float itself carries no surface - each
+   player is its own compact card (see .pcard) with a gap between, so the panel
+   is a stack of cards rather than a boxed list. Information only: transparent
+   to pointers so the board vertices under it stay reachable. */
+.players-float {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    top: var(--space-3);
+    left: var(--space-3);
+    width: 13rem;
+    max-width: 40%;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+}
+
+.dice-cluster {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+/* Floating build/trade tray, bottom-left. Sits clear of the changelog pill,
+   which stacks above it. */
+.action-tray {
+    left: var(--space-3);
+    bottom: var(--space-3);
+    max-width: 28rem;
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.container:has(#game-screen.hidden) .players-float,
+.container:has(#game-screen.hidden) .action-tray {
+    display: none;
+}
+
+/* Hide the titles strip until there is a game with awards to show. */
+#award-summary:empty {
+    display: none;
+}
+
+.container:has(#game-screen.hidden) .right-titles {
+    display: none;
+}
+
+/* The hand, bottom-centre: big physical cards jutting up from the bottom edge.
+   Keeps the `.game-tray` class so the short-viewport suite finds it. It is not
+   a boxed panel - it is cards on the table - so it carries no surface of its
+   own; the cards bring their own. */
+.game-tray {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    left: 50%;
+    bottom: var(--space-4);
+    transform: translateX(-50%);
+    display: flex;
+    justify-content: center;
+    max-width: 90%;
+    min-width: 0;
+    pointer-events: none;
+}
+
+#info-panel {
+    flex: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    max-width: 100%;
+    pointer-events: auto;
+}
+
+/* The "Your Hand" label is a screen-reader affordance now - the fan is
+   self-evidently the hand - so it is hidden visually while kept in the tree. */
+#player-resources-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+}
+
+/* The fan is self-evidently the hand, and each card carries its own label, so
+   the "Your Hand" heading is dropped from the float - a dark-on-dark heading
+   over the board backdrop would only fail the contrast sweep. */
+#player-resources-panel .panel-title {
+    display: none;
+}
+
+/* The trade zone the click-to-trade component builds into the action tray.
+   Empty for an idle game and out of the accessibility tree until it holds
+   something. */
+.tray-trade:empty {
+    display: none;
+}
+
+/* A compact bar, not a hero. The title sits beside the turn chip. */
 .app-header {
     display: flex;
     flex-direction: row;
@@ -128,6 +318,60 @@ body {
 .container:has(#join-screen:not(.hidden)) .app-header {
     flex-direction: column;
     align-items: center;
+}
+
+/* The title beside the turn chip. */
+.app-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+/* The turn chip has no place until a game is running: hidden in the lobby and
+   on the join screen. */
+.container:has(#game-screen.hidden) #turn-indicator {
+    display: none;
+}
+
+/* Personal settings, floating top-right over the board (v2.1 phase 2): colour
+   and the two this-browser-only toggles. A quiet corner cluster, pinned to the
+   board box by overlays.js like the scoreboard and the tray, so it costs the
+   shell no height - the short-viewport shell has none to give a new bar. */
+.settings-float {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    top: var(--space-3);
+    right: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    pointer-events: auto;
+}
+
+.container:has(#game-screen.hidden) .settings-float {
+    display: none;
+}
+
+/* The floating settings colour swatch is small and round to sit in the pill. */
+.settings-float #color-picker {
+    width: 26px;
+    height: 24px;
+}
+
+/* On a phone the toggle words drop so the cluster stays a small corner chip;
+   the checkbox and its title carry the meaning. */
+@media (max-width: 480px) {
+    .settings-float .yolo-toggle span {
+        display: none;
+    }
 }
 
 h1 {
@@ -152,6 +396,9 @@ h2 {
 
 /* ---------------------------------------------------------------- panels */
 
+/* v2 minimalist chrome: a panel is a quiet surface marked by a hairline, not a
+   boxed border with a drop shadow. The surface still lifts off the warm page,
+   so text contrast is unchanged; only the weight of the frame came down. */
 .panel {
     display: flex;
     flex-direction: column;
@@ -159,9 +406,8 @@ h2 {
     min-width: 0;
     text-align: left;
     background-color: var(--panel-bg);
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--hairline);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-1);
     padding: var(--space-2) var(--space-3);
 }
 
@@ -174,7 +420,7 @@ h2 {
     color: var(--text-muted);
     margin-bottom: var(--space-2);
     padding-bottom: var(--space-1);
-    border-bottom: 1px solid var(--panel-rule);
+    border-bottom: 1px solid var(--hairline);
 }
 
 /* The one place variable-length content is allowed to overflow, and it
@@ -639,17 +885,14 @@ button:disabled {
 
 /* Two regions - the rail of standing information and the board. Only the
    board grows. The aside is a sibling of this whole screen. */
+/* v2.1: a single greedy region. The rail is gone - the standing information
+   floats over the board - so the game screen is just the board region, filling
+   the shell row. */
 #game-screen {
-    display: grid;
-    grid-template-columns: var(--panel-rail) minmax(0, 1fr);
-    grid-template-areas: "rail main";
-    gap: var(--gap);
-    /* Fills the shell row rather than naming a height. The old
-       `--table-height: clamp(30rem, 100vh - 10rem, 58rem)` guessed at what
-       was left over; with `min-height: 0` up the chain and `100dvh` on the
-       body, the height falls out of the layout instead. */
+    display: flex;
     flex: 1 1 auto;
     min-height: 0;
+    min-width: 0;
     text-align: left;
 }
 
@@ -667,8 +910,25 @@ button:disabled {
     min-height: 0;
 }
 
+/* v2 minimalist: the rail is ONE quiet flowing column, not a stack of boxes.
+   No border, surface, radius or shadow - the eyebrow heading and whitespace set
+   each section off, with a single hairline between them. Same box-free treatment
+   the scoreboard's player cards and the folds already wear, carried across the
+   whole rail. */
 .game-rail > .panel {
     flex: none;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* The one rule the rail is allowed: a single hairline parting its two sections.
+   Nothing boxed, just a line and the whitespace above it. */
+.game-rail > .panel + .panel {
+    border-top: 1px solid var(--hairline);
+    padding-top: var(--space-3);
 }
 
 /* The full scoreboard is one of the things that must never be hidden or cut
@@ -678,14 +938,10 @@ button:disabled {
     overflow: visible;
 }
 
-/* The stage: board over console, and the board is the ONLY greedy track. */
+/* The board region fills the whole game screen; every control floats over it. */
 .game-main {
-    grid-area: main;
-    display: grid;
-    grid-template-rows: minmax(var(--shell-min-board), 1fr) auto;
-    gap: var(--gap);
-    /* Without this the rows size to content and the page scrolls instead of
-       the board taking the leftover height. */
+    flex: 1 1 auto;
+    display: flex;
     min-width: 0;
     min-height: 0;
 }
@@ -693,12 +949,14 @@ button:disabled {
 /* The box has a real height and it clips. The canvas below is taken out of
    flow inside it, so nothing in here can impose a size on the layout. */
 .game-board {
+    flex: 1 1 auto;
     background-color: var(--board-backdrop);
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--hairline);
     border-radius: var(--radius);
     position: relative;
     overflow: hidden;
     min-height: 0;
+    min-width: 0;
     overscroll-behavior: contain;
 }
 
@@ -771,7 +1029,12 @@ button:disabled {
    left/top in pixels; everything else is here. */
 .placement-confirm {
     position: absolute;
-    z-index: var(--z-board-overlay);
+    /* Lives in #board-overlays with the floats, but one layer up: at
+       --z-sticky it paints over the hand/tray/dice (all --z-board-overlay), so
+       a confirm anchored to a bottom/corner hex stays clickable. The overlay
+       layer is pointer-transparent, so the popover re-enables pointers. */
+    z-index: var(--z-sticky);
+    pointer-events: auto;
     transform: translateX(-50%);
     display: flex;
     gap: var(--space-1);
@@ -811,7 +1074,9 @@ button:disabled {
    left/top in pixels; everything else is here. */
 .knight-actions {
     position: absolute;
-    z-index: var(--z-board-overlay);
+    /* Same reasoning as .placement-confirm: above the floats, pointers on. */
+    z-index: var(--z-sticky);
+    pointer-events: auto;
     transform: translateX(-50%);
     display: flex;
     gap: var(--space-1);
@@ -854,17 +1119,15 @@ button:disabled {
     pointer-events: none;
 }
 
+/* v2.1: the build/trade controls float bottom-left over the board (the phase-1
+   playable home; the unified tray is phase 2). A compact column of groups, not
+   a full-width console row. */
 .game-console {
-    padding: var(--space-2);
-    background-color: var(--panel-bg);
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-1);
     display: flex;
-    justify-content: center;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: var(--space-2);
-    flex-wrap: wrap;
+    min-width: 0;
 }
 
 /* --------------------------------------------------------- console pieces */
@@ -972,9 +1235,11 @@ button:disabled {
     flex-wrap: wrap;
 }
 
+/* Soft chips, not solid signal boxes: a warm tint with the status colour as
+   ink, so the clocks sit quietly in the row until they turn amber or red. */
 .timer {
-    background-color: var(--good);
-    color: var(--on-status);
+    background-color: var(--good-soft);
+    color: var(--good);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     font-weight: bold;
@@ -983,11 +1248,13 @@ button:disabled {
 }
 
 .timer.warning {
-    background-color: var(--warn);
+    background-color: var(--warn-soft);
+    color: var(--warn);
 }
 
 .timer.danger {
-    background-color: var(--bad);
+    background-color: var(--bad-soft);
+    color: var(--bad);
 }
 
 .dice-container {
@@ -1013,18 +1280,71 @@ button:disabled {
     white-space: nowrap;
 }
 
+/* Physical pip dice: an ivory rounded face with dark dots, both fixed light in
+   every theme because real dice are light objects. v2.1 shows them larger, in
+   the right-panel dice footer under the log. */
 .dice-display .die {
-    background-color: var(--surface-1);
-    color: var(--text);
-    border: 1px solid var(--border-strong);
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-sm);
+    width: 44px;
+    height: 44px;
+    filter: drop-shadow(0 3px 4px rgb(30 20 10 / 0.4));
+}
+
+/* The dice footer, pinned to the bottom of the right panel below the log/chat.
+   Roll on the left, the physical dice centred, the clocks on the right. `flex:
+   none` and `margin-top: auto` push it to the bottom while the log takes the
+   space above. */
+.dice-footer {
+    flex: none;
+    margin-top: auto;
     display: flex;
-    justify-content: center;
+    flex-wrap: wrap;
     align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) 0 var(--space-1);
+    border-top: 1px solid var(--hairline);
+}
+
+.container:has(#game-screen.hidden) .dice-footer {
+    display: none;
+}
+
+/* The footer's Roll button, larger than the old console row. */
+.dice-footer #roll-dice-btn {
+    flex: none;
     font-size: var(--text-md);
-    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    padding: var(--space-3) var(--space-4);
+    white-space: nowrap;
+}
+
+/* The footer always reserves room for two dice, so rolling does not resize it. */
+.dice-footer .dice-display {
+    min-width: 96px;
+    min-height: 44px;
+    align-items: center;
+}
+
+.dice-footer .dice-cluster {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* The clocks take their own full-width row under the roll+dice line, so the
+   footer never has to widen the narrow panel to fit them side by side. */
+.dice-footer .timer-container {
+    flex: 1 0 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.dice-display .die rect {
+    fill: var(--die-face);
+}
+
+.dice-display .die .pip {
+    fill: var(--die-pip);
 }
 
 #color-picker {
@@ -1054,25 +1374,18 @@ button:disabled {
     color: var(--good);
 }
 
-/* The build buttons carry their cost. Two rows, name over cost, so adding the
-   cost widened nothing: a console button that changes width rewraps the
-   console, which resizes the board box and moves the camera. */
+/* Clean single-line labels. What each build costs is the Costs panel in the
+   rail now, so the button carries only its name and its afford state - and,
+   with nothing on it that grows or shrinks with the hand, it can no longer
+   change width and rewrap the console under a click already in flight. The
+   compact padding keeps the console to its one-row budget. */
 #place-settlement-btn,
 #place-road-btn,
 #upgrade-city-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1) var(--space-3);
     font-size: var(--text-sm);
     line-height: var(--leading-tight);
-}
-
-.build-cost {
-    font-size: var(--text-2xs);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
+    white-space: nowrap;
 }
 
 /* Armed. Border *colour* and an outer glow only - both are free of layout.
@@ -1090,16 +1403,69 @@ button:disabled {
     box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 5px var(--text);
 }
 
+/* The materials on the shelf make this build: a green ring says which button
+   the gathered cards afford, the same rings-not-borders way arming does, so
+   lighting a build never changes a box and moves the camera. */
+#place-settlement-btn.ready,
+#place-road-btn.ready,
+#upgrade-city-btn.ready {
+    box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 5px var(--good);
+}
+
+/* The tray's head: its name and the live read-out of what the materials make. */
+.tray-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tray-title {
+    font-size: var(--text-xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.tray-note {
+    font-size: var(--text-2xs);
+    color: var(--text-faint);
+}
+
+/* The build buttons wrap as a group; the tray keeps them together under the
+   note and above the trade shelf. */
+.tray-builds {
+    flex-wrap: wrap;
+}
+
+/* The turn controls, a small row at the foot of the tray. A hairline sets them
+   off from the build and trade actions above without boxing them. */
+.turn-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--hairline);
+}
+
+.turn-controls #next-turn-btn {
+    flex: 1 1 auto;
+    width: auto;
+}
+
 #roll-dice-btn {
     padding: var(--space-2) var(--space-4);
     font-size: var(--text-md);
 }
 
-/* Bounded in both directions and clipped, so "Waiting for Kalina..." and
-   "Next Turn" occupy the same width. A button that resizes on every turn
-   change rewraps the console, and a rewrapped console resizes the board. */
+/* Same height and font as the build group, so the turn controls read as one
+   deliberate tier with them rather than an accidentally larger blue button.
+   Roll Dice stays the taller primary accent above; everything else in the row
+   shares this size. Bounded and clipped, so "Waiting for Kalina..." and "Next
+   Turn" occupy the same width - a button that resizes on every turn change
+   rewraps the console, and a rewrapped console resizes the board. */
 #next-turn-btn {
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-3);
     font-size: var(--text-sm);
     width: 9rem;
     white-space: nowrap;
@@ -1129,16 +1495,19 @@ button:disabled {
     color: var(--warn);
 }
 
-/* Destructive: ends the match for the whole table */
+/* Destructive, but gated behind a confirm, so it reads as a quiet ghost rather
+   than a heavy red box: a soft red fill with red ink until hover deepens it. */
 #end-game-btn {
     padding: var(--space-1) var(--space-2);
     font-size: var(--text-sm);
-    background-color: var(--bad);
-    color: var(--on-status);
+    background-color: var(--bad-soft);
+    color: var(--bad);
+    border-color: var(--hairline);
 }
 
-#end-game-btn:hover {
-    background-color: color-mix(in srgb, var(--bad) 80%, var(--text));
+#end-game-btn:hover:not(:disabled) {
+    background-color: var(--bad);
+    color: var(--on-status);
 }
 
 /* --------------------------------------------------------- folds and popovers */
@@ -1152,10 +1521,14 @@ button:disabled {
    load-bearing part: it is outside every flow on the page, so opening one can
    neither reflow the rail nor resize the board box nor move the camera. */
 
+/* v2 minimalist: the folds are quiet hairline-ruled rows now, like the
+   scoreboard's player cards, not a stack of filled bordered boxes. The eyebrow
+   name and the summary carry the chip; a thin rule between rows is the only
+   frame. Same treatment the PLAYERS panel already wears, carried across the
+   whole rail. */
 .fold-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
     min-width: 0;
 }
 
@@ -1169,24 +1542,27 @@ button:disabled {
     align-items: flex-start;
     gap: 0.1rem;
     width: 100%;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1);
     text-align: left;
-    background-color: var(--surface-2);
+    background-color: transparent;
     color: var(--text);
-    border: 1px solid var(--border);
+    border: none;
+    border-top: 1px solid var(--hairline-soft);
+    border-radius: var(--radius-sm);
     font-size: var(--text-2xs);
     line-height: var(--leading-tight);
 }
 
 .fold-chip:hover {
-    background-color: var(--surface-3);
+    background-color: var(--surface-2);
 }
 
-/* The chip is a disclosure, so it says which way it is pointing. Colour and a
-   ring only - a chip that grew when opened would reflow the rail. */
+/* The chip is a disclosure, so it says which way it is pointing. A warm wash
+   and an accent edge rather than a heavy border - and no size change, because a
+   chip that grew when opened would reflow the rail. */
 .fold-chip[aria-expanded="true"] {
     background-color: var(--accent-soft);
-    border-color: var(--accent);
+    box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .fold-name {
@@ -1207,6 +1583,62 @@ button:disabled {
 
 .fold-value.warning { color: var(--warn); }
 .fold-value.danger { color: var(--bad); }
+
+/* ------------------------------------------------------------ costs panel */
+
+/* The build prices, off the buttons and gathered into their own quiet rail
+   section. Hairline-ruled rows under an eyebrow heading, the same treatment as
+   the scoreboard and the folds: the name on the left, the price in resource
+   tiles on the right, and the whole row dimmed when the hand cannot pay it. */
+.build-costs {
+    display: flex;
+    flex-direction: column;
+}
+
+.cost-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-1) 0;
+    font-size: var(--text-sm);
+    min-width: 0;
+}
+
+.cost-row + .cost-row {
+    border-top: 1px solid var(--hairline-soft);
+}
+
+.cost-name {
+    color: var(--text-muted);
+    font-weight: 600;
+    min-width: 0;
+}
+
+.cost-tiles {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 2px;
+    color: var(--text);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Cannot pay for it right now. Dimmed to faint - which still clears AA in both
+   themes - never by `opacity`, which would fade the label below AA the way the
+   disabled-button rule warns against; the price tiles desaturate, so the row
+   reads as out of reach without hiding what it costs. */
+.cost-row.cant-afford .cost-name,
+.cost-row.cant-afford .cost-tiles {
+    color: var(--text-faint);
+}
+
+.cost-row.cant-afford .cost-tiles .tile {
+    opacity: 0.5;
+}
 
 .popover {
     position: fixed;
@@ -1274,12 +1706,18 @@ button:disabled {
    nowhere on screen, so a player could lose Longest Road without being told. */
 .award-summary {
     flex: none;
-    margin-top: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--panel-rule);
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+}
+
+/* The titles strip in the right panel: a quiet fixed region under the bank,
+   the same weight as the bank and details around it. */
+.right-titles {
+    flex: none;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
 }
 
 .award-row {
@@ -1395,15 +1833,17 @@ button:disabled {
 
 /* --------------------------------------------------- resources and bank */
 
-#info-panel {
-    flex: none;
-    gap: 0.5rem;
-}
-
+/* In the tray the "Your Hand" title is a quiet inline label to the left of the
+   cards, not a stacked panel heading - so its underline and bottom spacing come
+   off. (The horizontal layout, transparent surface and dropped chrome are set
+   in the bottom-tray block above.) */
 #info-panel .panel-title {
+    flex: none;
     font-size: 0.72rem;
-    margin-bottom: 0.3rem;
-    padding-bottom: 0.2rem;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+    white-space: nowrap;
 }
 
 .resource-display,
@@ -1504,6 +1944,86 @@ button:disabled {
 
 [hidden] {
     display: none !important;
+}
+
+/* ------------------------------------------------- right panel: bank + details
+
+   v2.1: the right panel carries the log/trade tabs, a big always-on Bank panel
+   and the Details folds above the log. The bank and the details are fixed
+   height (flex: none); only the log scrolls. Both are hidden in the lobby,
+   where there is no running game to draw them from. */
+.right-eyebrow {
+    flex: none;
+    font-size: var(--text-2xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-faint);
+    margin-bottom: var(--space-2);
+}
+
+.right-bank {
+    flex: none;
+    padding: var(--space-2) 0 var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+}
+
+.right-details {
+    flex: none;
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+}
+
+.container:has(#game-screen.hidden) .right-bank,
+.container:has(#game-screen.hidden) .right-details {
+    display: none;
+}
+
+/* Big Bank panel: a two-column grid of large tiles, a thin stock meter and a
+   big count. The meter is kept (the stock-depletion signal, and what the hand
+   suite reads) but slimmed so the number leads. */
+.bank-big .bank-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-3);
+}
+
+.bank-big .bank-cell {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    width: auto;
+    min-width: 0;
+}
+
+.bank-big .bank-cell .tile {
+    flex: none;
+    width: 36px;
+    height: 36px;
+}
+
+.bank-big .bank-cell .tile .icon {
+    width: 21px;
+    height: 21px;
+}
+
+.bank-big .bank-cell .meter {
+    order: 3;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 18px;
+    height: 6px;
+}
+
+.bank-big .bank-cell .pct {
+    order: 2;
+    flex: none;
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text);
+    text-align: right;
 }
 
 /* --------------------------------------------------------------- trade */
@@ -1647,6 +2167,14 @@ button:disabled {
 
 .chat-panel {
     position: relative;
+}
+
+/* v2.1: the log/chat used to eat the whole right column. Capped so it stays a
+   reading strip rather than the panel, leaving the dice footer pinned to the
+   bottom below it. The log's own list is the one thing that scrolls. */
+.tabbed-panel .tab-panel.chat-panel {
+    flex: 0 1 auto;
+    max-height: min(42vh, 20rem);
 }
 
 .log-entries {
@@ -3056,6 +3584,41 @@ button:disabled {
     }
 }
 
+/* Short viewport: a laptop after browser chrome is ~700-800px tall, well under
+   the 1080 the shell was tuned at. The board is the only greedy track, so at a
+   short height it yields harder - a smaller floor - and the physical cards shrink
+   to a compact face, so the console, the (empty) trade slot and the full hand of
+   cards always clear the fold instead of being jammed against the bottom edge.
+   Gated on height, so the 1080 layout is left exactly as it was. */
+/* Short viewport: the hand floats over the board now, so it can no longer be
+   clipped by the layout - the board is not a greedy track pushing it off the
+   edge. The cards only come down a little so a short board keeps clearance below
+   the fan. */
+@media (max-height: 820px) {
+    .hand-card {
+        width: 64px;
+        height: 84px;
+    }
+
+    .hand-card-glyph {
+        width: 36px;
+        height: 36px;
+    }
+}
+
+/* The rail carries the whole fold stack, and at a short height it is taller than
+   its column - the folds used to spill past the fold and grow the page past the
+   viewport. In the two-column desktop shell it scrolls within its own column
+   instead. Below 1200px the layout is already a single scrolling column (see the
+   max-width rules), so this is the desktop case alone; at 1080 the rail fits and
+   never scrolls, so nothing is added there. */
+@media (min-width: 1201px) and (max-height: 940px) {
+    .game-rail {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+}
+
 /* One column. The page is allowed to scroll here and only here - the board
    keeps a fixed share of the viewport and every panel keeps a bounded height,
    so nothing runs away. No control is dropped; they move. */
@@ -3218,6 +3781,371 @@ button:disabled {
     font-weight: 500;
 }
 
+/* --- the hand as a fan of physical cards (the bottom tray).
+   The card face carries the terrain fill itself, so the corner count sits
+   directly on the colour it is contrast-checked against - the same layer the
+   WCAG sweep walks - rather than on a nested tile. The label strip paints its
+   own surface over the bottom. Rotation arrives per card as `--rot`; hover and
+   the trade component's `.is-up` lift the card, composing over that angle. */
+.hand-fan {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    min-width: 0;
+    max-width: 100%;
+    /* A lifted card overflows upward into the (empty) trade slot above rather
+       than reserving resting headroom the crowded 4-player layout cannot spare. */
+    overflow: visible;
+}
+
+.hand-card {
+    position: relative;
+    flex: none;
+    /* The big physical card from the mockup: 100x146, rounded, a soft double
+       shadow, fanned by a -18px overlap. */
+    width: 100px;
+    height: 146px;
+    /* The overlap that makes a fan: each card tucks under the next. */
+    margin: 0 -18px;
+    display: flex;
+    flex-direction: column;
+    background: var(--tile, var(--surface-3));
+    color: var(--on-tile);
+    border: 1px solid rgb(0 0 0 / 0.15);
+    border-radius: 13px;
+    box-shadow: 0 -1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -6px rgb(0 0 0 / 0.6);
+    cursor: pointer;
+    transform-origin: bottom center;
+    transform: rotate(var(--rot, 0deg));
+    transition: transform 0.13s ease;
+}
+
+/* A lifted card sits above its neighbours so the raised one is not tucked
+   behind the next in the fan. */
+.hand-card:hover,
+.hand-card.is-up {
+    z-index: 1;
+}
+
+.hand-card:hover {
+    transform: translateY(-48px);
+}
+
+/* The trade component raises a chosen card and rings it. Kept here so both
+   lifted states share one transform origin and never fight. */
+.hand-card.is-up {
+    transform: translateY(-48px);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.hand-card-count {
+    position: absolute;
+    top: 7px;
+    left: 9px;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--on-tile);
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+}
+
+.hand-card-face {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    border-radius: 12px 12px 0 0;
+}
+
+.hand-card-glyph {
+    width: 48px;
+    height: 48px;
+    vertical-align: 0;
+}
+
+.hand-card-label {
+    background: var(--surface-1);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 650;
+    text-align: center;
+    padding: var(--space-1) 0;
+    border-radius: 0 0 12px 12px;
+    letter-spacing: 0.02em;
+}
+
+/* Wheat and sheep faces are pale; their count and glyph take the dark ink the
+   tiles use, or they wash out below AA. */
+.hand-card.t-wheat,
+.hand-card.t-sheep {
+    color: var(--on-tile-pale);
+}
+
+.hand-card.t-wheat .hand-card-count,
+.hand-card.t-sheep .hand-card-count {
+    color: var(--on-tile-pale);
+    text-shadow: none;
+}
+
+/* A card you hold none of: greyed to a quiet surface, not dropped - the dimmed
+   card in the fan is the tell. The count drops to the faint ink, which clears
+   AA on this surface. */
+.hand-card.spent {
+    background: var(--surface-3);
+    box-shadow: var(--shadow-1);
+}
+
+.hand-card.spent .hand-card-count,
+.hand-card.spent .hand-card-glyph {
+    color: var(--text-faint);
+    text-shadow: none;
+}
+
+/* A narrow phone: shrink and tighten the fan so it never pushes the page wide,
+   and let it scroll within the tray if the full commodity hand still overruns. */
+@media (max-width: 480px) {
+    .hand-fan {
+        overflow-x: auto;
+    }
+
+    .hand-card {
+        width: 74px;
+        height: 108px;
+        margin: 0 -18px;
+    }
+
+    .hand-card-glyph {
+        width: 34px;
+        height: 34px;
+    }
+}
+
+/* --- trade zone: the offer-builder in the bottom tray, above the hand.
+
+   A quiet parchment shelf (--surface-quiet, the token the foundation left for
+   it) so it reads as part of the table rather than a boxed panel. The give side
+   is filled by tapping hand cards, the want side by an inline picker; the
+   mini-cards mirror the hand's physical cards at shelf size, drawing the same
+   terrain fill through the shared `.t-*` variables. */
+/* In the unified tray the zone is a narrow column: the materials shelf, the
+   want row, then the trade actions stacked full-width, matching the mockup. It
+   used to be a horizontal give/want/propose row when the tray was wider; the
+   tray is a slim vertical panel now, so a row overflowed and clipped Propose. */
+.trade-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-quiet);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+}
+
+/* The ⇄ between the give and want sides reads across a row; stacked, the two
+   labelled sides are plain enough without it. */
+.trade-zone .trade-swap {
+    display: none;
+}
+
+/* The actions fill the column width, one under the other. */
+.trade-zone .trade-bank,
+.trade-zone .trade-propose {
+    align-self: stretch;
+    width: 100%;
+}
+
+/* Quiet until a card is chosen: the zone collapses out of the tray entirely, so
+   an idle game reserves no height for it - the crowded 1920x1080 four-player
+   layout has none to spare - and a lifted hand card still overflows up into the
+   space it leaves. Tapping a hand card fills the give side and expands it. The
+   whole slot goes, gap and all, rather than a zero-height flex item that would
+   still cost the tray's row gap. */
+.tray-trade:has(.trade-zone.is-quiet) {
+    display: none;
+}
+
+.trade-slotwrap {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.trade-side-label {
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+
+.trade-slots {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    min-height: 60px;
+    padding: var(--space-2);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+}
+
+.trade-slot-hint {
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+}
+
+.trade-swap {
+    flex: none;
+    font-size: var(--text-lg);
+    color: var(--text-faint);
+}
+
+/* A mini physical card: the terrain fill through --tile (.t-*), the glyph and a
+   corner count. It is a button - a tap removes that card type from its side. */
+.trade-mini {
+    position: relative;
+    flex: none;
+    width: 38px;
+    height: 50px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: var(--tile, var(--surface-3));
+    color: var(--on-tile);
+    border: 1px solid rgb(0 0 0 / 0.08);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-2);
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease);
+}
+
+.trade-mini:hover:not(:disabled) {
+    transform: translateY(-2px);
+    background: var(--tile, var(--surface-3));
+}
+
+.trade-mini-glyph {
+    width: 20px;
+    height: 20px;
+    vertical-align: 0;
+}
+
+.trade-mini-count {
+    position: absolute;
+    bottom: 1px;
+    right: 3px;
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--on-tile);
+    text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+}
+
+/* Pale terrains take the dark ink, as the tiles and hand cards do. */
+.trade-mini.t-wheat,
+.trade-mini.t-sheep,
+.trade-pick.t-wheat,
+.trade-pick.t-sheep {
+    color: var(--on-tile-pale);
+}
+
+.trade-mini.t-wheat .trade-mini-count,
+.trade-mini.t-sheep .trade-mini-count {
+    color: var(--on-tile-pale);
+    text-shadow: none;
+}
+
+/* The + that opens the want picker. */
+.trade-add {
+    flex: none;
+    width: 38px;
+    height: 50px;
+    padding: 0;
+    font-size: var(--text-xl);
+    line-height: 1;
+    color: var(--text-faint);
+    background: transparent;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.trade-add:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: transparent;
+}
+
+/* The want picker: a small popover of card types above the want row. */
+.trade-picker {
+    position: absolute;
+    z-index: var(--z-dropdown);
+    left: 0;
+    bottom: calc(100% + var(--space-1));
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+}
+
+.trade-pick {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    background: var(--tile, var(--surface-3));
+    color: var(--on-tile);
+    border: 1px solid rgb(0 0 0 / 0.08);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.trade-pick:hover:not(:disabled) {
+    background: var(--tile, var(--surface-3));
+    transform: translateY(-1px);
+}
+
+.trade-pick .trade-mini-glyph {
+    width: 18px;
+    height: 18px;
+}
+
+.trade-propose {
+    flex: none;
+    white-space: nowrap;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+}
+
+/* The one-press bank action, shown only when the materials are a bank trade at
+   this player's rate. The default accent/on-accent treatment carries AA on both
+   themes, so it borrows it rather than minting a new colour pair. */
+.trade-bank {
+    flex: none;
+    white-space: nowrap;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+}
+
+.trade-bank[hidden] {
+    display: none;
+}
+
+/* The zone is a full-width column at every size now (see .trade-zone), so the
+   sides and the Propose bar already stack; no phone-specific override needed. */
+
 /* --- bank cell: tile, a thin stock meter, the raw count under it. */
 .bank-row {
     display: flex;
@@ -3261,23 +4189,35 @@ button:disabled {
     padding: var(--space-2) var(--space-3);
 }
 
-/* `#game-players` is a `.user-list` <ul>, so `.user-list li` (0,1,1) would
-   otherwise outweigh `.pcard` (0,1,0) and hand each card the list row's sunken
-   fill and its bottom margin. The id lifts the card's own surface back over it.
-   The fill is not just cosmetic: `.pturn`'s accent ink meets WCAG AA on
-   `--surface-2` and drops below it on the darker `--sunken`. */
+/* v2.1: each floating player is its own compact card - a translucent surface
+   with a soft blur, marked by a hairline, with a gap between. `#game-players` is
+   a `.user-list` <ul>, so the id is needed to outweigh `.user-list li` (0,1,1)
+   and strip the list row's sunken fill and margin. The surface opacity is kept
+   high (94%) so the WCAG sweep, which composites over the board backdrop, still
+   measures text where the tokens are validated. */
+#game-players {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
 #game-players .pcard {
-    background: var(--surface-2);
-    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
 }
 
-.pcard + .pcard {
-    margin-top: var(--space-2);
-}
-
-.pcard.me {
-    border-color: var(--accent);
-    box-shadow: inset 3px 0 0 var(--accent);
+/* The player's own card, marked by an accent edge rather than a heavy box. */
+#game-players .pcard.me {
+    box-shadow: var(--shadow-2), inset 2px 0 0 var(--accent);
 }
 
 .pcard-head {
@@ -3287,9 +4227,9 @@ button:disabled {
 }
 
 .swatch {
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
+    width: 11px;
+    height: 11px;
+    border-radius: 4px;
     flex: none;
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2);
 }
@@ -3299,9 +4239,12 @@ button:disabled {
     font-size: var(--text-sm);
 }
 
+/* accent-hover, not accent: this small label can land on the `.me` card's warm
+   accent-soft wash, where the base accent drops below WCAG AA. The deeper
+   hover shade clears it on every surface it can sit on. */
 .pturn {
     font-size: var(--text-2xs);
-    color: var(--accent);
+    color: var(--accent-hover);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -3328,25 +4271,27 @@ button:disabled {
 
 /* Piece counters. The icon is decorative here - the count is the value and the
    panel names it - so panels give each chip a title/aria-label of its own. */
+/* One compact row of piece counters under the head, matching the mockup's
+   mini row: small icons, muted, sitting close under the name/score line. */
 .chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
-    margin-top: var(--space-2);
+    gap: var(--space-1) var(--space-2);
+    margin-top: 0;
 }
 
 .chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: var(--text-sm);
+    gap: 3px;
+    font-size: var(--text-2xs);
     color: var(--text-muted);
 }
 
 .chip .icon {
     color: var(--text-faint);
-    width: 1em;
-    height: 1em;
+    width: 11px;
+    height: 11px;
 }
 
 .chip b {
@@ -3407,4 +4352,397 @@ button:disabled {
 .award.lead {
     background: var(--accent-soft);
     color: var(--accent);
+}
+
+/* ─── Map editor ──────────────────────────────────────────────────────────── */
+
+#map-editor-screen {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.editor-tools {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.editor-tool-btn {
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    font-size: var(--text-sm);
+}
+
+.editor-tool-btn[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+}
+
+.editor-frame-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+
+.editor-frame-controls label {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.editor-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-left: auto;
+}
+
+/* Sidebar + canvas share the space below the toolbar */
+.editor-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#editor-sidebar {
+    width: 11rem;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+}
+
+.editor-region-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 2px solid transparent;
+    user-select: none;
+}
+
+.editor-region-item:hover {
+    background: var(--sunken);
+}
+
+.editor-region-item.active {
+    background: var(--sunken);
+    border-color: var(--accent);
+}
+
+.editor-region-swatch {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.editor-null-swatch {
+    background: #555566;
+    border: 1px solid #88889a;
+}
+
+.editor-region-name {
+    flex: 1;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.editor-region-warn {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    font-weight: bold;
+    color: var(--bad, #e53e3e);
+    line-height: 1;
+    cursor: default;
+}
+
+.editor-region-gear {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 0.8rem;
+    opacity: 0.45;
+    line-height: 1;
+}
+
+.editor-region-gear:hover {
+    opacity: 1;
+}
+
+.editor-add-region-btn {
+    margin-top: auto;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+    border: 1px dashed var(--border);
+    background: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-muted);
+    text-align: left;
+}
+
+.editor-add-region-btn:hover {
+    background: var(--sunken);
+    color: var(--text);
+}
+
+#editor-canvas {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+#editor-canvas[data-tool="inspect"] {
+    cursor: default;
+}
+
+.editor-status {
+    padding: var(--space-1) var(--space-4);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 1.6rem;
+}
+
+/* Region settings popover */
+#editor-region-popover {
+    width: 24rem;
+}
+
+.editor-rp-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.editor-rp-label {
+    width: 3.5rem;
+    flex-shrink: 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.editor-rp-row select {
+    font-size: var(--text-sm);
+}
+
+.editor-color-swatches {
+    display: flex;
+    gap: var(--space-1);
+    flex-wrap: wrap;
+}
+
+.editor-color-swatch {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.editor-color-swatch.active {
+    border-color: var(--text);
+    outline: 1px solid var(--text);
+}
+
+.editor-resource-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-1) var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.editor-resource-check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    text-transform: capitalize;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* The scrollable body holds two sections side by side */
+.editor-pool-columns {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+}
+
+.editor-pool-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.editor-pool-section-head {
+    font-size: var(--text-xs);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-1);
+}
+
+.editor-pool-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+}
+
+.editor-pool-row label {
+    flex: 1;
+    text-transform: capitalize;
+    min-width: 0;
+}
+
+.editor-pool-row .count {
+    min-width: 1.4rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Fixed footer below the scrolling body */
+.editor-pool-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--border);
+}
+
+.editor-pool-badges {
+    display: flex;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    flex: 1;
+}
+
+.editor-pool-badge {
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--good-soft);
+    color: var(--good);
+}
+
+.editor-pool-badge.bad {
+    background: var(--warn-soft);
+    color: var(--warn);
+}
+
+/* Save popover */
+.editor-save-name {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
+}
+
+.editor-save-name label {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.editor-save-name input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.editor-harbour-counters {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-1) var(--space-3);
+    margin-bottom: var(--space-3);
+    font-size: var(--text-sm);
+}
+
+.editor-harbour-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.editor-harbour-row label {
+    flex: 1 1 auto;
+    text-transform: capitalize;
+}
+
+.editor-save-row {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.editor-map-list {
+    list-style: none;
+    max-height: 14rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.editor-map-entry {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+}
+
+.editor-map-entry:hover {
+    background: var(--sunken);
+}
+
+.editor-map-entry .map-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.editor-map-entry .map-builtin {
+    font-size: var(--text-xs);
+    color: var(--text-faint);
 }

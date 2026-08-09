@@ -11,17 +11,49 @@ hours before the report came in. Every one of them was a tab left open on an
 older build.
 
 Adding to it, for whoever deploys next: put a new release at the top, newest
-first. The heading is `## <build id> — <YYYY-MM-DD HH:MM>`, where the build id
-is `git rev-parse --short HEAD` at the moment of the deploy, or `unreleased`
-while the work has not gone out yet. Every line under it is
+first. The heading is `## <build id> — <YYYY-MM-DD HH:MM>`, where the build id is
+a **version** — `v<MAJOR>.<MINOR>.<PATCH>`, e.g. `v1.0.0` — the moment it goes
+out, or `unreleased` while the work has not shipped, or a bare
+`git rev-parse --short HEAD` for a one-off dev build. The version is the identity
+a deployed server shows (a container carries no `.git`), so cutting a release is:
+bump `VERSION` at the repo root — **patch** for a bug-fix deploy, **minor** for a
+batch of features, **major** for a milestone — and rename the top `unreleased`
+heading to `v<the new VERSION>`. `VERSION` and this heading must agree; a test
+enforces it. Every line under the heading is
 `- **Fixed|New|Known issue** <one line>`, with an optional `[reported]` straight
 after the kind for anything that answers something a tester filed — that marker
 is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
-## unreleased — 2026-08-04 22:00
+## v2.1.0 — 2026-08-06 22:38
 
+- **New** The board fills the screen now. Your players, your hand, the dice and the build/trade tray all float over it instead of penning it into a corner, and it zooms in further by default.
+- **New** Your resource cards sit as real cards jutting up from the bottom edge; building and trading share one tray in the bottom-left, and the dice have their own tray in the bottom-right.
+- **New** The last of the boxed, nested panels are gone — the rail reads as one quiet flowing list.
+- **Fixed** Placing the robber, the pirate, a road or a ship against a hex low on the board or in a corner could leave the ✓ confirm tucked behind your hand or a tray, refusing the click; it now always sits on top of the floating panels.
+
+## v2.0.2 — 2026-08-05 19:30
+
+- **New** The build buttons are clean labels now, and what each build costs lives in its own Costs panel in the sidebar instead of being crammed onto the buttons.
+- **New** The sidebar panels lost their heavy boxes — Details, Costs, the bank and the rest read as one quiet list, in keeping with the rest of the redesign.
+
+## v2.0.1 — 2026-08-05 19:00
+
+- **Fixed** Your hand of cards no longer gets cut off the bottom of the screen on a laptop. The board gives up a little room and the cards shrink a touch below a short height, so the whole hand stays on screen.
+
+## v2.0.0 — 2026-08-05 18:30
+
+- **New** A calmer, warmer, more minimalist look. The panels stepped back to quiet surfaces and the board takes the room — the game reads at a glance now.
+- **New** Your resources are a hand of physical cards along the bottom of the screen; tap one to lift it into a trade.
+- **New** Trading is a shelf right above your hand — tap your own cards into "You give", pick what you want, and Propose, with no separate dialog.
+- **New** The board wears clean minimalist patterns instead of the old textures — a woven motif per land, quiet beneath the numbers and pieces.
+- **New** The dice are physical dice with pips.
+
+## v1.0.0 — 2026-08-05 12:00
+
+- **New** The whole interface swapped its emoji for one matching set of drawn icons — resources are small coloured tiles in the board's own colours, everything else a clean line icon. The player list reads as a card per player now, not a run of abbreviations.
+- **New** Two house rules that cannot both be on now say so: tick one and its rival unticks itself with a line explaining why, instead of one silently cancelling the other out.
 - **Fixed** [reported] The give and want pickers in Propose Trade are evenly spaced. Ore and cloth sat flush against each other because commodities are a second block, so the one seam in the list was tighter than every other gap.
 - **Fixed** [reported] Propose Trade is shorter and fits a phone without scrolling inside itself. The pickers are two columns rather than one, which took the dialog from 927px to 680px with commodities in play — Propose used to be below the fold at 390x780.
 - **Fixed** [reported] Every trade number has its own − and + button now, 48x40px to aim at instead of the browser's hairline arrows, on a phone as well as a desk — and the dialog is no taller for it. The give side stops at the cards you hold, and Clear puts all sixteen numbers back to zero.

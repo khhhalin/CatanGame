@@ -2,14 +2,14 @@
 // made in a dialog before the server can resolve them.
 
 import { COMMODITY_TYPES } from './constants.js';
-import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, proposeTradeBtn, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities } from './dom.js';
+import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, trayNote, trayTrade, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities, upgradeCityBtn } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
-import { resourceTile } from './icons.js';
+import { icon, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { renderDialogHands } from './panels.js';
 import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
-import { getBoard, isMyTurn, viewState } from './state.js';
+import { getBuildCost, getBoard, isMyTurn, viewState } from './state.js';
 
 /**
  * How long an offer stays open, in seconds, as the table set it. The countdown
@@ -780,15 +780,23 @@ function clearOverpayOffer() {
 }
 
 /**
- * Send a trade to the server and close the dialog.
+ * Put an offer on the table. The one place `propose_trade` is emitted, so the
+ * modal and the tray's trade zone both settle through the same protocol rather
+ * than each carrying its own copy of the payload shape.
  */
-function sendTrade(offered, wanted) {
+function emitProposeTrade(offered, wanted) {
     emitGame('propose_trade', {
         name: viewState.identity.name,
         offered: offered,
         wanted: wanted
     });
+}
 
+/**
+ * Send a trade from the modal and close the dialog.
+ */
+function sendTrade(offered, wanted) {
+    emitProposeTrade(offered, wanted);
     hideTradeModal();
 }
 
@@ -999,3 +1007,529 @@ document.querySelectorAll('.monopoly-res-btn').forEach(btn => {
         confirmMonopoly(resourceType);
     });
 });
+
+// ============================================================== trade zone
+//
+// The everyday offer-builder, in the bottom tray directly above the hand of
+// cards. Tapping a hand card lifts it onto the "You give" side; the "You want"
+// side is filled by a compact picker of card types. Propose sends exactly the
+// offer the modal sends - both go through `emitProposeTrade`, so there is one
+// `propose_trade` protocol and this feeds it rather than inventing a second.
+//
+// Incoming offers from other players are untouched: they still render in the
+// aside (`renderTradeOffers`). This replaces only the builder, not the inbox.
+//
+// hand.js deliberately leaves each `.hand-card` its `data-card` and does not
+// consume the click; the give side is driven entirely from here through those.
+
+// The two sides as {card: count}. Give is bounded by the hand - a player may
+// not offer cards they do not hold - and want by a sane ceiling so a repeated
+// tap cannot overflow the row. The server settles the real trade either way.
+const zoneGive = {};
+const zoneWant = {};
+const ZONE_WANT_MAX = 19;
+
+// Filled in by buildTradeZone once, at load.
+let zoneEl = null;
+let zoneGiveSlots = null;
+let zoneWantSlots = null;
+let zoneAddBtn = null;
+let zonePicker = null;
+let zoneProposeBtn = null;
+let zoneBankBtn = null;
+
+/**
+ * The card types the zone offers, matching the modal: the five resources, plus
+ * the three commodities where the table deals them.
+ */
+function zoneCards() {
+    return tradableCards();
+}
+
+/**
+ * One mini physical card for a side: the terrain fill through the shared `.t-*`
+ * variable, the glyph, and a corner count. It is a button so a tap removes that
+ * whole card type from its side - the give side also empties by cycling the
+ * hand card back past its held count.
+ *
+ * @param {string} card - Resource or commodity id
+ * @param {number} count - How many are on this side
+ * @param {string} side - 'give' or 'want'
+ * @returns {HTMLButtonElement}
+ */
+function zoneMiniCard(card, count, side) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `trade-mini t-${card}`;
+    button.dataset.card = card;
+    button.dataset.side = side;
+    const name = CARD_NAMES[card] || card;
+    button.setAttribute('aria-label', `${count} ${name} — remove from ${side}`);
+    button.title = `Remove ${name}`;
+    button.innerHTML = icon(card, { cls: 'trade-mini-glyph' })
+        + `<span class="trade-mini-count num">${count}</span>`;
+    return button;
+}
+
+/**
+ * Reapply `.is-up` to the hand so a chosen card reads as lifted. The hand is
+ * re-rendered from scratch on every board update (hand.js sets its innerHTML),
+ * which drops the class - a MutationObserver below calls the reconcile that
+ * ends here, so the lift survives a card gained or spent mid-offer.
+ */
+function syncHandSelection() {
+    if (!resourceDisplay) {
+        return;
+    }
+    for (const card of resourceDisplay.querySelectorAll('.hand-card')) {
+        card.classList.toggle('is-up', (zoneGive[card.dataset.card] || 0) > 0);
+    }
+}
+
+// ------------------------------------------------------- what the materials make
+//
+// The give side of the zone is the tray's materials pool: the cards the player
+// has gathered by tapping their hand. The same pile is read three ways - as a
+// build the server would let them make, as a bank trade at their own rate, or as
+// the give half of an offer to the table - so the one gesture (tap a card) feeds
+// build and trade alike, and the tray says which it currently affords.
+
+// The build the tray can arm from the materials, in check order, mapped to the
+// button that arms it. Only the base builds are matched here; a house rule that
+// reprices them moves `board.costs`, which `getBuildCost` reads, so the match
+// follows the table's real price rather than a copy.
+const BUILD_LABEL = { settlement: 'Settlement', road: 'Road', city: 'City' };
+
+/**
+ * The materials on the shelf as {card: count}, dropping any zeroed entry.
+ */
+function materials() {
+    const pile = {};
+    for (const [card, count] of Object.entries(zoneGive)) {
+        if (count > 0) {
+            pile[card] = count;
+        }
+    }
+    return pile;
+}
+
+/**
+ * Whether the materials are exactly a build's cost - no card missing and none to
+ * spare, so tapping "Build" spends the pile and nothing lingers unaccounted for.
+ *
+ * @param {object} cost - {resource: amount} from `board.costs`
+ * @returns {boolean}
+ */
+function materialsMatchCost(cost) {
+    const pile = materials();
+    const cards = new Set([...Object.keys(pile), ...Object.keys(cost)]);
+    for (const card of cards) {
+        if ((pile[card] || 0) !== (cost[card] || 0)) {
+            return false;
+        }
+    }
+    return Object.keys(pile).length > 0;
+}
+
+/**
+ * Light the build the materials make, and say so in the tray note. Returns the
+ * kind that is ready, or null. The buttons stay live either way - they arm the
+ * same placement flow whether or not the pile matches, exactly as the old
+ * console buttons did, and setup (where nothing is held) still arms through them.
+ */
+function refreshTrayBuilds() {
+    const buttons = {
+        settlement: placeSettlementBtn,
+        road: placeRoadBtn,
+        city: upgradeCityBtn,
+    };
+    let ready = null;
+    for (const kind of ['settlement', 'road', 'city']) {
+        const cost = getBuildCost(kind);
+        const fits = Boolean(cost) && materialsMatchCost(cost);
+        buttons[kind]?.classList.toggle('ready', fits);
+        if (fits) {
+            ready = kind;
+        }
+    }
+    if (trayNote) {
+        if (ready) {
+            trayNote.textContent = `These make a ${BUILD_LABEL[ready]} — click Build ${BUILD_LABEL[ready]}`;
+        } else if (Object.keys(materials()).length > 0) {
+            trayNote.textContent = 'No build fits these — trade them below';
+        } else {
+            trayNote.textContent = 'Tap your cards to build or trade';
+        }
+    }
+    return ready;
+}
+
+/**
+ * The bank trade the materials and the chosen want spell out, or null. It only
+ * reads as a bank trade when the materials are one resource at exactly this
+ * player's rate for it and a single want is chosen: that is the "materials equal
+ * the bank rate for a chosen want" the tray runs with one press.
+ *
+ * @returns {object|null} - {give, want, giveCard, wantCard, rate}
+ */
+function bankTradeIntent() {
+    const pile = materials();
+    const giveCards = Object.keys(pile);
+    const wantCards = Object.keys(zoneWant).filter(card => zoneWant[card] > 0);
+    if (giveCards.length !== 1 || wantCards.length !== 1) {
+        return null;
+    }
+    const giveCard = giveCards[0];
+    const wantCard = wantCards[0];
+    if (giveCard === wantCard) {
+        return null;
+    }
+    const rate = bestTradeRate([giveCard]);
+    if (pile[giveCard] !== rate) {
+        return null;
+    }
+    return {
+        give: { [giveCard]: rate },
+        want: { [wantCard]: 1 },
+        giveCard,
+        wantCard,
+        rate,
+    };
+}
+
+/**
+ * Run the bank trade the materials spell out. The bank settles a give at the
+ * player's rate the moment the offer lands, so this is the same `propose_trade`
+ * the modal and the zone send - the server, not the client, decides it is a bank
+ * trade and pays it out.
+ */
+function runBankTrade() {
+    if (!isMyTurn()) {
+        displayError('You can only trade on your turn');
+        return;
+    }
+    const intent = bankTradeIntent();
+    if (!intent) {
+        return;
+    }
+    emitProposeTrade(intent.give, intent.want);
+    clearTradeZone();
+}
+
+/**
+ * Show or hide the one-press bank action from the current materials and want.
+ */
+function refreshBankAction() {
+    if (!zoneBankBtn) {
+        return;
+    }
+    const intent = isMyTurn() ? bankTradeIntent() : null;
+    if (intent) {
+        zoneBankBtn.hidden = false;
+        zoneBankBtn.textContent =
+            `Bank: ${intent.rate} ${CARD_NAMES[intent.giveCard] || intent.giveCard}`
+            + ` → 1 ${CARD_NAMES[intent.wantCard] || intent.wantCard}`;
+    } else {
+        zoneBankBtn.hidden = true;
+    }
+}
+
+/**
+ * Redraw both sides, the quiet state and the Propose button from the current
+ * give/want state.
+ */
+function renderTradeZone() {
+    if (!zoneEl) {
+        return;
+    }
+
+    const giveFragment = document.createDocumentFragment();
+    let givenCards = 0;
+    for (const card of zoneCards()) {
+        if (zoneGive[card] > 0) {
+            giveFragment.appendChild(zoneMiniCard(card, zoneGive[card], 'give'));
+            givenCards += 1;
+        }
+    }
+    if (givenCards === 0) {
+        const hint = document.createElement('span');
+        hint.className = 'trade-slot-hint';
+        hint.textContent = 'Tap a card below';
+        giveFragment.appendChild(hint);
+    }
+    zoneGiveSlots.replaceChildren(giveFragment);
+
+    const wantFragment = document.createDocumentFragment();
+    let wantedCards = 0;
+    for (const card of zoneCards()) {
+        if (zoneWant[card] > 0) {
+            wantFragment.appendChild(zoneMiniCard(card, zoneWant[card], 'want'));
+            wantedCards += 1;
+        }
+    }
+    wantFragment.appendChild(zoneAddBtn);
+    zoneWantSlots.replaceChildren(wantFragment);
+
+    // Quiet until something is chosen: an idle zone is a hint, not a demand.
+    zoneEl.classList.toggle('is-quiet', givenCards === 0 && wantedCards === 0);
+    // The server refuses a half-empty offer; the button says so by staying off.
+    zoneProposeBtn.disabled = givenCards === 0 || wantedCards === 0;
+
+    // The materials read three ways: which build they make, whether they are a
+    // one-press bank trade, and (below) the give half of an offer.
+    refreshTrayBuilds();
+    refreshBankAction();
+
+    syncHandSelection();
+}
+
+/**
+ * Fold any give entry back inside what the player actually holds. Called after
+ * a hand re-render: a card spent elsewhere this turn drops the give count with
+ * it rather than leaving an offer of cards that are gone.
+ */
+function reconcileZoneGive() {
+    for (const card of Object.keys(zoneGive)) {
+        const held = heldCount(card);
+        if (held <= 0) {
+            delete zoneGive[card];
+        } else if (zoneGive[card] > held) {
+            zoneGive[card] = held;
+        }
+    }
+    renderTradeZone();
+}
+
+/**
+ * A tap on a hand card. Cycles the give count for that card 1, 2, … up to the
+ * number held, then off - so the hand alone sets both the quantity and the
+ * removal, and a spent card (none held) does nothing.
+ *
+ * @param {Event} event - Click from the hand container
+ */
+function handleHandClick(event) {
+    const cardEl = event.target.closest('.hand-card');
+    if (!cardEl || !resourceDisplay?.contains(cardEl)) {
+        return;
+    }
+    const card = cardEl.dataset.card;
+    if (!card) {
+        return;
+    }
+    const held = heldCount(card);
+    if (held <= 0) {
+        return;
+    }
+    const current = zoneGive[card] || 0;
+    if (current >= held) {
+        delete zoneGive[card];
+    } else {
+        zoneGive[card] = current + 1;
+    }
+    renderTradeZone();
+}
+
+/**
+ * Add one of a card to the want side, up to the ceiling. Reached from the
+ * picker; the picker stays open so several can be asked for in a row.
+ *
+ * @param {string} card - Resource or commodity id
+ */
+function addWantCard(card) {
+    zoneWant[card] = Math.min(ZONE_WANT_MAX, (zoneWant[card] || 0) + 1);
+    renderTradeZone();
+}
+
+/**
+ * Build the want picker fresh for the table's current card set, so a commodity
+ * row never shows where commodities are not dealt.
+ */
+function buildZonePicker() {
+    const fragment = document.createDocumentFragment();
+    for (const card of zoneCards()) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `trade-pick t-${card}`;
+        button.dataset.card = card;
+        const name = CARD_NAMES[card] || card;
+        button.setAttribute('aria-label', `Add ${name} to want`);
+        button.title = `Want ${name}`;
+        button.innerHTML = icon(card, { cls: 'trade-mini-glyph' });
+        fragment.appendChild(button);
+    }
+    zonePicker.replaceChildren(fragment);
+}
+
+function toggleZonePicker(show) {
+    const open = show ?? zonePicker.classList.contains('hidden');
+    if (open) {
+        buildZonePicker();
+    }
+    zonePicker.classList.toggle('hidden', !open);
+}
+
+/**
+ * Remove a whole card type from one side.
+ *
+ * @param {string} side - 'give' or 'want'
+ * @param {string} card - Resource or commodity id
+ */
+function removeZoneCard(side, card) {
+    const offer = side === 'give' ? zoneGive : zoneWant;
+    delete offer[card];
+    renderTradeZone();
+}
+
+/**
+ * Empty both sides and close the picker.
+ */
+function clearTradeZone() {
+    for (const card of Object.keys(zoneGive)) {
+        delete zoneGive[card];
+    }
+    for (const card of Object.keys(zoneWant)) {
+        delete zoneWant[card];
+    }
+    toggleZonePicker(false);
+    renderTradeZone();
+}
+
+/**
+ * Send the zone's offer through the same path the modal uses.
+ */
+function proposeZoneTrade() {
+    if (!isMyTurn()) {
+        displayError('You can only propose trades on your turn');
+        return;
+    }
+    const offered = {};
+    const wanted = {};
+    for (const [card, count] of Object.entries(zoneGive)) {
+        if (count > 0) offered[card] = count;
+    }
+    for (const [card, count] of Object.entries(zoneWant)) {
+        if (count > 0) wanted[card] = count;
+    }
+    if (Object.keys(offered).length === 0 || Object.keys(wanted).length === 0) {
+        displayError('Put cards on both sides of the trade');
+        return;
+    }
+    emitProposeTrade(offered, wanted);
+    clearTradeZone();
+}
+
+/**
+ * A click anywhere in the zone: remove a mini-card, open the picker, pick a
+ * want, or propose. One delegated listener so the sides can be rebuilt freely.
+ *
+ * @param {Event} event - Click from the zone container
+ */
+function handleZoneClick(event) {
+    const mini = event.target.closest('.trade-mini');
+    if (mini) {
+        removeZoneCard(mini.dataset.side, mini.dataset.card);
+        return;
+    }
+    if (event.target.closest('.trade-add')) {
+        toggleZonePicker();
+        return;
+    }
+    const pick = event.target.closest('.trade-pick');
+    if (pick) {
+        addWantCard(pick.dataset.card);
+        return;
+    }
+    if (event.target.closest('.trade-bank')) {
+        runBankTrade();
+        return;
+    }
+    if (event.target.closest('.trade-propose')) {
+        proposeZoneTrade();
+    }
+}
+
+/**
+ * Build the trade zone into the tray slot the foundation left empty, and wire
+ * it up. The hand's click is caught by a delegated listener on its container
+ * (which survives the hand's re-renders), and a MutationObserver reconciles the
+ * give side each time the hand is redrawn.
+ */
+function buildTradeZone() {
+    if (!trayTrade) {
+        return;
+    }
+
+    zoneEl = document.createElement('div');
+    zoneEl.className = 'trade-zone';
+
+    const giveWrap = document.createElement('div');
+    giveWrap.className = 'trade-slotwrap';
+    const giveLabel = document.createElement('span');
+    giveLabel.className = 'trade-side-label';
+    // The give side is the tray's materials shelf: the same pile that lights a
+    // build above also fills the give half of a bank or player trade here.
+    giveLabel.textContent = 'Materials';
+    zoneGiveSlots = document.createElement('div');
+    zoneGiveSlots.className = 'trade-slots give';
+    giveWrap.append(giveLabel, zoneGiveSlots);
+
+    const swap = document.createElement('span');
+    swap.className = 'trade-swap';
+    swap.setAttribute('aria-hidden', 'true');
+    swap.textContent = '⇄';
+
+    const wantWrap = document.createElement('div');
+    wantWrap.className = 'trade-slotwrap';
+    const wantLabel = document.createElement('span');
+    wantLabel.className = 'trade-side-label';
+    wantLabel.textContent = 'You want';
+    zoneWantSlots = document.createElement('div');
+    zoneWantSlots.className = 'trade-slots want';
+    zoneAddBtn = document.createElement('button');
+    zoneAddBtn.type = 'button';
+    zoneAddBtn.className = 'trade-add';
+    zoneAddBtn.setAttribute('aria-label', 'Add a card to want');
+    zoneAddBtn.textContent = '+';
+    zonePicker = document.createElement('div');
+    zonePicker.className = 'trade-picker hidden';
+    wantWrap.append(wantLabel, zoneWantSlots, zonePicker);
+
+    // The one-press bank action: shown only when the materials are a bank trade
+    // at this player's rate for the chosen want. Hidden the rest of the time so
+    // it never competes with the player-offer button.
+    zoneBankBtn = document.createElement('button');
+    zoneBankBtn.type = 'button';
+    zoneBankBtn.className = 'trade-bank';
+    zoneBankBtn.hidden = true;
+
+    zoneProposeBtn = document.createElement('button');
+    zoneProposeBtn.type = 'button';
+    zoneProposeBtn.className = 'trade-propose';
+    zoneProposeBtn.textContent = 'Propose to players';
+
+    zoneEl.append(giveWrap, swap, wantWrap, zoneBankBtn, zoneProposeBtn);
+    trayTrade.replaceChildren(zoneEl);
+
+    zoneEl.addEventListener('click', handleZoneClick);
+    resourceDisplay?.addEventListener('click', handleHandClick);
+
+    // A tap outside the picker closes it, the way any lightweight popover does.
+    document.addEventListener('click', (event) => {
+        if (!zonePicker.classList.contains('hidden')
+            && !event.target.closest('.trade-picker')
+            && !event.target.closest('.trade-add')) {
+            toggleZonePicker(false);
+        }
+    });
+
+    // The hand is redrawn from scratch on every board update; reconcile the
+    // give side (and reapply `.is-up`) whenever its children are replaced.
+    if (resourceDisplay) {
+        new MutationObserver(reconcileZoneGive)
+            .observe(resourceDisplay, { childList: true });
+    }
+
+    renderTradeZone();
+}
+
+buildTradeZone();

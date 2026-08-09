@@ -62,9 +62,11 @@ GAME_SEED = 20260803
 
 # The folds, as (chip id, popover id). Every one of these must state its
 # headline numbers on the chip and open its detail on demand.
+# The bank is no longer a fold: the v2.1 right panel carries it as a big,
+# always-on Bank panel, so it is not in these lists (it is asserted visible
+# directly, below).
 BASE_FOLDS = [
     ("dev-cards-chip", "dev-cards-popover"),
-    ("bank-chip", "bank-popover"),
     ("active-rules-chip", "active-rules-popover"),
 ]
 
@@ -73,7 +75,6 @@ CK_FOLDS = [
     ("improvements-chip", "improvements-popover"),
     ("knights-chip", "knights-popover"),
     ("progress-cards-chip", "progress-cards-popover"),
-    ("bank-chip", "bank-popover"),
     ("active-rules-chip", "active-rules-popover"),
 ]
 
@@ -302,8 +303,9 @@ class TestCitiesAndKnightsFits:
         for selector in (
             "#board-canvas",        # the board
             "#resource-display",    # your own hand
-            "#turn-indicator",      # whose turn it is
+            "#turn-indicator",      # whose turn it is (now the top-bar chip)
             "#game-players",        # the full scoreboard
+            "#bank-display",        # the big Bank panel (a permanent panel, not a fold now)
             "#award-summary",       # who holds longest road / largest army
             "#place-settlement-btn", "#place-road-btn", "#upgrade-city-btn",
             "#log-entries",         # the event log
@@ -321,15 +323,36 @@ class TestCitiesAndKnightsFits:
             assert any(name in row for row in rows), f"{name} is missing from the scoreboard"
         assert all("pts" in row for row in rows), f"a row has no score: {rows}"
 
-    def test_the_build_buttons_state_their_costs(self, ck_table):
+    def test_the_costs_panel_states_each_build_price(self, ck_table):
+        """The prices moved off the buttons - where the cost icons crammed onto
+        the label were unreadable - into their own quiet rail panel. Each build
+        the table plays states its cost there in resource tiles, and the buttons
+        are left as clean labels."""
         player = ck_table[0]
-        costs = player.page.eval_on_selector_all(
-            "#place-settlement-btn .build-cost, #place-road-btn .build-cost,"
-            " #upgrade-city-btn .build-cost",
+        names = player.page.eval_on_selector_all(
+            "#build-costs .cost-row .cost-name",
             "els => els.map(e => e.textContent.trim())",
         )
-        assert len(costs) == 3, f"a build button has no cost on it: {costs}"
-        assert all(costs), f"a build button's cost is blank: {costs}"
+        for label in ("Settlement", "Road", "City"):
+            assert label in names, f"the Costs panel has no {label} row: {names}"
+
+        # The price is stated in resource tiles, not text or emoji glyphs.
+        tiles = player.page.eval_on_selector_all(
+            "#build-costs .cost-row .cost-tiles .tile", "els => els.length"
+        )
+        assert tiles > 0, "the Costs panel states no prices in resource tiles"
+
+        # And the thing the owner complained about is gone: the buttons carry
+        # their build action and nothing else - no cost icons crammed on. In the
+        # v2.1 unified tray the arm buttons read "Build <X>"; the price stays in
+        # the Costs panel checked above.
+        for selector, label in (
+            ("#place-settlement-btn", "Build Settlement"),
+            ("#place-road-btn", "Build Road"),
+            ("#upgrade-city-btn", "Build City"),
+        ):
+            text = player.page.inner_text(selector).strip()
+            assert text == label, f"{selector} still carries more than its name: {text!r}"
 
     def test_each_fold_summarises_itself_without_being_opened(self, ck_table):
         """A chip that says nothing is a button, not a summary."""
@@ -410,10 +433,16 @@ class TestCitiesAndKnightsFits:
         rewrapped the console, which resized the board box, which moved the
         camera — under a click the player had already started.
 
+        The cost icons that used to sit on the button (and could change width
+        with the hand) are gone - they live in the Costs panel now - so a button
+        cannot reflow on an afford-state change at all. This still holds the
+        remaining size-changers to account: arming paints a ring, and the
+        disabled treatment paints a fill, and neither may change the box.
+
         Driven by setting the classes rather than by pressing the buttons: the
         buttons are correctly disabled when the hand cannot pay, and this is a
         question about the stylesheet, not about affordability. Both states are
-        checked, because the new disabled treatment paints a border too."""
+        checked, because the disabled treatment paints a border too."""
         player = ck_table[0]
         measure = (
             "() => { const console_ = document.getElementById('game-console');"
@@ -479,11 +508,19 @@ class TestCitiesAndKnightsFits:
             assert expected in text, f"{player.name} sees {text!r}, expected {expected!r}"
 
     def test_the_console_stays_one_row(self, ck_table):
-        """Every row the console grows is a row the board loses."""
-        height = ck_table[0].page.evaluate(
-            "() => document.getElementById('game-console').getBoundingClientRect().height"
+        """The build controls float over the board now (v2.1), so growing them no
+        longer steals a row from the board - the old one-row budget is void. What
+        must still hold is that the floating build/trade tray stays fully inside
+        the viewport, not hanging off an edge."""
+        box = ck_table[0].page.evaluate(
+            "() => { const c = document.getElementById('game-console').getBoundingClientRect();"
+            "        return [c.left, c.top, c.right, c.bottom,"
+            "                window.innerWidth, window.innerHeight]; }"
         )
-        assert height <= 72, f"the console has wrapped onto a second row: {height}px"
+        left, top, right, bottom, width, height = box
+        assert left >= -1 and top >= -1 and right <= width + 1 and bottom <= height + 1, (
+            f"the floating build tray hangs off the screen: {box}"
+        )
 
     def test_the_board_gets_most_of_the_screen(self, ck_table):
         """The rail was doing all the work while the board had dead margins."""

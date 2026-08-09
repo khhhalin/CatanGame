@@ -70,7 +70,11 @@ def table(browser, tmp_path_factory):
             harbours = _harbour_vertices(board, "generic")
             # First placement only: the second is wherever is left, which keeps
             # the test honest about a player who holds exactly one harbour.
-            if harbours and not board["players"][0]["settlements"]:
+            # Gate on Alice's own settlements — she is not always seat 0 in the
+            # payload (the lobby seats Bob there on this board), so indexing
+            # players[0] here checked the wrong hand and never forced a harbour.
+            alice_seat = next(p for p in board["players"] if p["name"] == "Alice")
+            if harbours and not alice_seat["settlements"]:
                 candidates = harbours
         else:
             # Bob must stay off every harbour, or the no-harbour half of this

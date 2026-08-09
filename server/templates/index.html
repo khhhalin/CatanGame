@@ -136,8 +136,17 @@
     </div>
 
     <div class="container">
+        <!-- The top bar. The title sits beside a quiet "your turn" chip - the
+             indicator moved here out of the console (v2.1) so whose turn it is
+             is read at the top of the page rather than beside the build
+             buttons. The chip is hidden until a game is running. -->
         <header class="app-header">
-            <h1 id="game-title">Catan</h1>
+            <div class="app-brand">
+                <h1 id="game-title">Catan</h1>
+                <!-- Whose turn it is, stated as a top-bar accent chip. Rendered
+                     by scoreboard.js; hidden in the lobby via CSS. -->
+                <div id="turn-indicator" class="turn-indicator">—</div>
+            </div>
             <div id="connection-status" class="connection-status connection-connecting">Connecting…</div>
         </header>
 
@@ -165,9 +174,15 @@
         </div>
 
         <!-- Lobby and game share one shell: the left column swaps between the
-             two screens while the aside - the log, chat and trade box - stays
-             put. Chat has to work before a game starts, and there is exactly
-             one #chat-form / #log-entries in the document either way. -->
+             two screens while the aside - the log, chat, bank and details -
+             stays put. Chat has to work before a game starts, and there is
+             exactly one #chat-form / #log-entries in the document either way.
+
+             v2.1 shell: the left column is the board itself (the greedy area),
+             a draggable seam parts it from the right panel, and the standing
+             information that used to sit in a left rail now floats over the
+             board (players top-left, dice bottom-right, hand bottom-centre,
+             build/trade bottom-left). -->
         <div class="table">
         <div class="table-main">
 
@@ -197,230 +212,90 @@
                 <div id="rules-list" class="rules-list panel-body"></div>
             </section>
             <div class="lobby-actions">
+                <button id="maps-btn">Maps</button>
                 <button id="start-game-btn" class="hidden">Start Game</button>
                 <p id="start-reason" class="start-reason hidden"></p>
             </div>
         </div>
 
-        <!-- Two regions inside the game screen: a rail of standing information
-             and the board, which is the visual focus. The third region, the
-             aside, is a sibling of the whole screen so the lobby shares it.
-             The grid areas are re-arranged by media query, so nothing here
-             assumes a column count.
-
-             The rail holds only what must never be hidden: the scoreboard, and
-             one summary line per folded subject. Everything else is a `.fold` -
-             a chip that always states its headline numbers, and a popover that
-             carries the detail and the actions. The popovers are
-             `position: fixed` and placed by popovers.js, so opening one can
-             neither reflow the rail nor resize the board. -->
-        <div id="game-screen" class="hidden">
-            <div class="game-rail">
-                <section class="panel" id="players-panel">
-                    <h2 class="panel-title">Players</h2>
-                    <!-- Deliberately not a `.panel-body`: the full scoreboard
-                         is one of the things that must never scroll. -->
-                    <ul id="game-players" class="user-list"></ul>
-                    <div id="award-summary" class="award-summary"></div>
-                </section>
-
-                <section class="panel" id="folds-panel">
-                    <h2 class="panel-title">Details</h2>
-                    <div class="fold-list">
-                        <!-- Cities & Knights. Every fold below is hidden until
-                             a board payload says the rule is on, so a base game
-                             shows exactly what it always did. Nothing in here
-                             is populated from the template: the client fills
-                             the bodies from `board.cities_knights`. -->
-                        <div class="fold hidden ck-panel" id="barbarian-panel">
-                            <button type="button" class="fold-chip" id="barbarian-chip"
-                                    aria-expanded="false" aria-controls="barbarian-popover">
-                                <span class="fold-name">Barbarians</span>
-                                <span class="fold-value" id="barbarian-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="barbarian-popover"
-                                 role="dialog" aria-label="Barbarians">
-                                <div class="popover-head">
-                                    <span>Barbarians</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div class="popover-body">
-                                    <div id="barbarian-track" class="barbarian-track"
-                                         role="img" aria-label="Barbarian ship position"></div>
-                                    <div id="barbarian-status" class="barbarian-status"></div>
-                                    <div id="barbarian-defense" class="ck-note"></div>
-                                    <!-- The attack is resolved server-side
-                                         inside the roll and announced once, so
-                                         it is restated here rather than left in
-                                         a notice that has already faded. -->
-                                    <div id="barbarian-last-attack" class="ck-note hidden"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="fold hidden ck-panel" id="improvements-panel">
-                            <button type="button" class="fold-chip" id="improvements-chip"
-                                    aria-expanded="false" aria-controls="improvements-popover">
-                                <span class="fold-name">City Improvements</span>
-                                <span class="fold-value" id="improvements-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="improvements-popover"
-                                 role="dialog" aria-label="City Improvements">
-                                <div class="popover-head">
-                                    <span>City Improvements</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div id="improvement-tracks"
-                                     class="popover-body improvement-tracks"></div>
-                            </div>
-                        </div>
-
-                        <div class="fold hidden ck-panel" id="knights-panel">
-                            <button type="button" class="fold-chip" id="knights-chip"
-                                    aria-expanded="false" aria-controls="knights-popover">
-                                <span class="fold-name">Knights</span>
-                                <span class="fold-value" id="knights-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="knights-popover"
-                                 role="dialog" aria-label="Knights">
-                                <div class="popover-head">
-                                    <span>Knights</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div class="popover-body">
-                                    <!-- Static so their listeners are registered
-                                         once; the client only rewrites their
-                                         labels and state. -->
-                                    <div class="ck-actions">
-                                        <button type="button" id="build-knight-btn" class="ck-action"></button>
-                                        <button type="button" id="move-knight-btn" class="ck-action"></button>
-                                        <button type="button" id="build-wall-btn" class="ck-action"></button>
-                                    </div>
-                                    <div id="knight-hint" class="ck-note"></div>
-                                    <div id="knight-list" class="knight-list"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Seafarers. Hidden in a base game; the client
-                             unhides it only when the running game has ships
-                             on, and each control inside answers to its own
-                             rule (ship movement can be off with ships on). -->
-                        <div class="fold hidden sea-panel" id="seafarers-panel">
-                            <button type="button" class="fold-chip" id="seafarers-chip"
-                                    aria-expanded="false" aria-controls="seafarers-popover">
-                                <span class="fold-name">Seafarers</span>
-                                <span class="fold-value" id="seafarers-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="seafarers-popover"
-                                 role="dialog" aria-label="Seafarers">
-                                <div class="popover-head">
-                                    <span>Seafarers</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div class="popover-body">
-                                    <!-- Static so their listeners are registered
-                                         once; the client only rewrites their
-                                         labels and state. -->
-                                    <div class="ck-actions">
-                                        <button type="button" id="build-ship-btn" class="ck-action"></button>
-                                        <button type="button" id="move-ship-btn" class="ck-action"></button>
-                                    </div>
-                                    <div id="ship-hint" class="ck-note"></div>
-                                    <div id="island-points" class="ck-note hidden"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="fold" id="dev-cards-panel">
-                            <button type="button" class="fold-chip" id="dev-cards-chip"
-                                    aria-expanded="false" aria-controls="dev-cards-popover">
-                                <span class="fold-name">Development Cards</span>
-                                <span class="fold-value" id="dev-cards-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="dev-cards-popover"
-                                 role="dialog" aria-label="Development Cards">
-                                <div class="popover-head">
-                                    <span>Development Cards</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div class="popover-body">
-                                    <div id="dev-deck-remaining" class="dev-deck-remaining">Deck: 0 left</div>
-                                    <button id="buy-dev-card-btn">Buy Card</button>
-                                    <div id="my-dev-cards" class="my-dev-cards"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Cities & Knights replaces the development card
-                             deck outright with three progress card decks, and
-                             the server refuses `buy_dev_card` once it is on.
-                             So exactly one of these two folds is ever shown. -->
-                        <div class="fold hidden ck-panel" id="progress-cards-panel">
-                            <button type="button" class="fold-chip" id="progress-cards-chip"
-                                    aria-expanded="false" aria-controls="progress-cards-popover">
-                                <span class="fold-name">Progress Cards</span>
-                                <span class="fold-value" id="progress-cards-chip-value">—</span>
-                            </button>
-                            <div class="popover popover-wide hidden" id="progress-cards-popover"
-                                 role="dialog" aria-label="Progress Cards">
-                                <div class="popover-head">
-                                    <span>Progress Cards</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div id="progress-hand" class="popover-body progress-hand"></div>
-                            </div>
-                        </div>
-
-                        <div class="fold" id="bank-panel">
-                            <button type="button" class="fold-chip" id="bank-chip"
-                                    aria-expanded="false" aria-controls="bank-popover">
-                                <span class="fold-name">Bank</span>
-                                <span class="fold-value" id="bank-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="bank-popover"
-                                 role="dialog" aria-label="Bank">
-                                <div class="popover-head">
-                                    <span>Bank</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div id="bank-display" class="popover-body bank-display"></div>
-                            </div>
-                        </div>
-
-                        <div class="fold hidden" id="active-rules-panel">
-                            <button type="button" class="fold-chip" id="active-rules-chip"
-                                    aria-expanded="false" aria-controls="active-rules-popover">
-                                <span class="fold-name">House Rules</span>
-                                <span class="fold-value" id="active-rules-chip-value">—</span>
-                            </button>
-                            <div class="popover hidden" id="active-rules-popover"
-                                 role="dialog" aria-label="House Rules">
-                                <div class="popover-head">
-                                    <span>House Rules</span>
-                                    <button type="button" class="popover-close"
-                                            data-close-popover aria-label="Close">×</button>
-                                </div>
-                                <div id="active-rules" class="popover-body active-rules"></div>
-                            </div>
-                        </div>
+        <!-- Map editor: sidebar + canvas. Toolbar holds tools and global actions;
+             the left sidebar lists regions as coloured swatches. Popovers are
+             built dynamically by map-editor.js; only the skeleton lives here. -->
+        <div id="map-editor-screen" class="hidden">
+            <div class="editor-toolbar">
+                <div class="editor-tools">
+                    <button id="editor-paint-btn" class="editor-tool-btn" aria-pressed="false">Paint</button>
+                    <button id="editor-inspect-btn" class="editor-tool-btn" aria-pressed="true">Inspect</button>
+                </div>
+                <div class="editor-frame-controls">
+                    <label for="editor-radius-select">Size:</label>
+                    <select id="editor-radius-select">
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4" selected>4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                    </select>
+                </div>
+                <div class="editor-actions">
+                    <button id="editor-clear-btn">Clear</button>
+                    <button id="editor-preview-btn">Preview</button>
+                    <button id="editor-save-btn" aria-controls="editor-save-popover">Save ▾</button>
+                    <button id="editor-done-btn">Done</button>
+                </div>
+            </div>
+            <div class="editor-body">
+                <div id="editor-sidebar">
+                    <div id="editor-null-item" class="editor-region-item" title="Erase — remove a hex from all regions (Null tile)">
+                        <span class="editor-region-swatch editor-null-swatch"></span>
+                        <span class="editor-region-name">Null</span>
                     </div>
-                </section>
+                    <div id="editor-region-list"></div>
+                    <button id="editor-add-region-btn" class="editor-add-region-btn">+ Add region</button>
+                </div>
+                <canvas id="editor-canvas" tabindex="0" role="img"
+                        aria-label="Map editor board — paint hexes to assign them to regions"></canvas>
+            </div>
+            <div id="editor-status" class="editor-status" aria-live="polite"></div>
+
+            <div id="editor-region-popover" class="popover hidden" role="dialog"
+                 aria-label="Region settings">
+                <!-- Populated by map-editor.js openRegionPopover() -->
             </div>
 
+            <div id="editor-save-popover" class="popover popover-wide hidden" role="dialog"
+                 aria-label="Save map">
+                <div class="editor-save-name">
+                    <label for="editor-map-name">Name</label>
+                    <input id="editor-map-name" type="text" maxlength="64" autocomplete="off">
+                </div>
+                <div id="editor-harbour-counters" class="editor-harbour-counters"></div>
+                <div class="editor-save-row">
+                    <button id="editor-save-confirm-btn">Save</button>
+                    <button id="editor-save-copy-btn">Save as copy</button>
+                </div>
+                <hr>
+                <ul id="editor-map-list" class="editor-map-list"></ul>
+            </div>
+        </div>
+
+        <!-- The game screen is now a single greedy region: the board, with the
+             standing information floated over it. The old left rail is gone -
+             the scoreboard floats top-left, the dice tray bottom-right, the
+             build/trade controls bottom-left and the hand bottom-centre. Each
+             float is absolutely positioned inside the board box, so raising or
+             hiding one can no more resize the canvas or move the camera than the
+             popovers can. -->
+        <div id="game-screen" class="hidden">
             <div class="game-main">
-                <!-- position: relative + overflow: hidden so the planned
-                     viewport-sized canvas can be laid over this box without
-                     the layout changing again. -->
+                <!-- position: relative + overflow: hidden so the viewport-sized
+                     canvas and every floating overlay can be laid over this box
+                     without the layout changing. -->
                 <div class="game-board" id="game-board">
                     <canvas id="board-canvas" tabindex="0" role="img" aria-label="Catan board"></canvas>
+
                     <!-- Mid-turn indicators overlay the board rather than
                          taking a row above it. Anything that appears when a 7
                          is rolled and changes the board box forces the drawing
@@ -460,45 +335,18 @@
                             <div id="choice-options" class="choice-options"></div>
                         </div>
                     </div>
-                    <!-- Raised where a click landed, over the board and never
-                         in flow above it: anything that took a row of its own
-                         would resize the drawing buffer and move the camera
-                         under the very click it is asking about. placement.js
-                         positions it; the ✓ and ✗ are real buttons so they can
-                         be tabbed to and named for a screen reader. -->
-                    <div id="placement-confirm" class="placement-confirm hidden"
-                         role="group" aria-label="Confirm placement">
-                        <button type="button" id="placement-confirm-yes"
-                                class="placement-confirm-btn confirm-yes"
-                                aria-label="Confirm placement"
-                                title="Confirm placement (Enter)">
-                            <span aria-hidden="true">✓</span>
-                        </button>
-                        <button type="button" id="placement-confirm-no"
-                                class="placement-confirm-btn confirm-no"
-                                aria-label="Cancel placement"
-                                title="Cancel placement (Escape)">
-                            <span aria-hidden="true">✗</span>
-                        </button>
-                    </div>
-                    <!-- Tapping a knight you own raises its own actions where
-                         it stands, instead of leaving them in the Knights fold
-                         with no connection to the piece. Positioned by
-                         knight-overlay.js in the same way and for the same
-                         reason as the ✓/✗ above: absolutely, inside the board
-                         box, so it can never resize the canvas or move the
-                         camera. The buttons are static so their listeners are
-                         registered once; only the labels and the disabled
-                         state are rewritten. -->
-                    <div id="knight-actions" class="knight-actions hidden"
-                         role="group" aria-label="Knight actions">
-                        <button type="button" id="knight-action-activate"
-                                class="knight-action" data-knight-overlay="activate"></button>
-                        <button type="button" id="knight-action-promote"
-                                class="knight-action" data-knight-overlay="promote"></button>
-                        <button type="button" id="knight-action-move"
-                                class="knight-action" data-knight-overlay="move"></button>
-                    </div>
+                    <!-- The ✓/✗ placement confirm and the knight-action popover
+                         used to live here, but the floating overlays (hand,
+                         trays, dice) sit in #board-overlays — a fixed layer at
+                         z-index:sticky that paints over everything in
+                         #game-screen. A popover anchored to a bottom/corner hex
+                         was therefore covered by the hand and could not be
+                         clicked (see the seafaring pirate regression). Both now
+                         live in #board-overlays so they share that layer's
+                         stacking context and can sit above the floats; overlays
+                         sizes that layer to the board rect, so placement.js and
+                         knight-overlay.js position them with the same board-
+                         relative maths as before. -->
                     <!-- The canvas is keyboard-zoomable (+ - 0, arrows); these
                          are the visible affordance for the same thing. -->
                     <div class="board-controls">
@@ -507,86 +355,26 @@
                         <button type="button" id="zoom-fit-btn" aria-label="Fit board to view" title="Fit board to view">⤢</button>
                     </div>
                 </div>
-                <div class="game-console" id="game-console">
-                    <!-- Whose turn it is, stated rather than left to be
-                         inferred from the Next Turn button's label. -->
-                    <div id="turn-indicator" class="turn-indicator">—</div>
-                    <div class="timer-container">
-                        <div id="dice-timer" class="timer">Dice: 15s</div>
-                        <div id="round-timer" class="timer">Round: 120s</div>
-                    </div>
-                    <div class="dice-container">
-                        <button id="roll-dice-btn">Roll Dice</button>
-                        <div id="dice-display" class="dice-display"></div>
-                        <!-- Which dice these two faces came out of. Two faces
-                             on their own cannot say that the table is playing
-                             a constrained set, so a player who never sees a 12
-                             has no way to tell a rule from a run of luck.
-                             Empty and hidden for the standard pair, so a base
-                             game's console is exactly the row it always was. -->
-                        <span id="dice-set" class="dice-set hidden"></span>
-                    </div>
-                    <!-- Grouped so the row wraps between groups instead of
-                         mid-group: a build button landing on its own second
-                         row is what made the console two rows tall at 1366,
-                         and every row it grows is a row the board loses.
-                         The cost sits in a span of its own so panels.js can
-                         rewrite the count without touching the name - the
-                         labels are fixed width, because a button that resizes
-                         rewraps the console and moves the camera. -->
-                    <div class="console-group build-group">
-                        <input type="color" id="color-picker" title="Choose your color">
-                        <button id="place-settlement-btn">Settlement
-                            <span class="build-cost">🌲🧱🌾🐑</span></button>
-                        <button id="place-road-btn">Road
-                            <span class="build-cost">🌲🧱</span></button>
-                        <button id="upgrade-city-btn">City
-                            <span class="build-cost">🌾🌾🪨🪨🪨</span></button>
-                    </div>
-                    <div class="console-group turn-group">
-                        <button id="next-turn-btn">Next Turn</button>
-                        <button id="end-game-btn">End Game</button>
-                    </div>
-                    <!-- Personal, this browser only: it changes nothing anyone
-                         else can see, so it is not a house rule and never
-                         reaches the server. -->
-                    <div class="console-group option-group">
-                        <label class="yolo-toggle" for="yolo-mode-toggle"
-                               title="YOLO mode: place on click, with no ✓/✗ confirmation. Personal setting, this browser only.">
-                            <input type="checkbox" id="yolo-mode-toggle">
-                            <span>YOLO</span>
-                        </label>
-                        <!-- There is a cue on every placement now, so there has
-                             to be a way to stop them. Personal setting like the
-                             one above; it starts on when the browser asks for
-                             reduced motion. -->
-                        <label class="yolo-toggle" for="mute-toggle"
-                               title="Mute the placement cues and the turn sound. Personal setting, this browser only.">
-                            <input type="checkbox" id="mute-toggle">
-                            <span>Mute</span>
-                        </label>
-                    </div>
-                </div>
             </div>
 
         </div>
 
         </div><!-- /.table-main -->
 
-            <aside class="table-aside">
-                <section class="panel" id="info-panel">
-                    <div id="player-resources-panel">
-                        <h2 class="panel-title">Your Hand</h2>
-                        <div id="resource-display" class="resource-display"></div>
-                    </div>
-                </section>
+            <!-- Draggable seam between the board and the right panel. Dragging
+                 the handle resizes the right panel's width (clamped ~220-520px).
+                 Hidden in the lobby, where there is no board to part from. -->
+            <div class="board-resizer" id="board-resizer" role="separator"
+                 aria-orientation="vertical" aria-label="Resize the side panel"
+                 tabindex="0"></div>
 
-                <!-- The log is never hidden - it and chat are the two things a
-                     player reads continuously. Trade is the tab that folds: the
-                     Trade button opens `#trade-panel` as a popover over this
-                     box rather than taking the log's place. Both tabs keep
-                     their ids, roles and badges; only where the trade panel is
-                     painted changed. -->
+            <aside class="table-aside">
+                <!-- The right panel: log/trade tabs, a big always-on Bank panel,
+                     the Details folds, and the log/chat below. The log is never
+                     hidden - it and chat are the two things a player reads
+                     continuously. Trade is the tab that folds: the Trade button
+                     opens `#trade-panel` as a popover over the log rather than
+                     taking its place. -->
                 <section class="panel tabbed-panel" id="side-tabs">
                     <div class="tab-bar" role="tablist" aria-label="Side panels">
                         <button type="button" class="tab" id="tab-log" role="tab"
@@ -599,6 +387,225 @@
                             Trade
                             <span id="trade-tab-badge" class="tab-badge hidden" aria-hidden="true"></span>
                         </button>
+                    </div>
+
+                    <!-- Big Bank panel: large tiles, big numbers, a thin stock
+                         meter. Always on in a running game - it is not a fold -
+                         and hidden in the lobby. hand.js renders into
+                         #bank-display, unchanged. -->
+                    <div class="right-bank" id="right-bank">
+                        <div class="right-eyebrow">Bank</div>
+                        <div id="bank-display" class="bank-display bank-big"></div>
+                    </div>
+
+                    <!-- Who holds each title. Moved out of the floating player
+                         cards (v2.1 rev): the Longest Road / Largest Army pills
+                         were bloating the compact scoreboard, so they live here
+                         as a quiet strip. scoreboard.js renders into
+                         #award-summary by id, unchanged. -->
+                    <div class="right-titles" id="right-titles">
+                        <div class="right-eyebrow">Titles</div>
+                        <div id="award-summary" class="award-summary"></div>
+                    </div>
+
+                    <!-- The Details folds: the build costs and every expansion
+                         subject, each a chip that states its headline numbers
+                         and a popover that carries the detail and the actions.
+                         The popovers are `position: fixed` and placed by
+                         popovers.js, so opening one neither reflows this column
+                         nor resizes the board. Hidden in the lobby. -->
+                    <div class="right-details" id="folds-panel">
+                        <div class="right-eyebrow">Details</div>
+                        <div class="fold-list">
+                            <!-- The build prices, off the buttons and folded
+                                 here so the buttons stay clean labels. The chip
+                                 states how many buildables the table has; the
+                                 popover lists each one's cost in resource tiles,
+                                 filled by panels.js from the board's own price
+                                 list (`board.costs`). Always present. -->
+                            <div class="fold" id="costs-panel">
+                                <button type="button" class="fold-chip" id="costs-chip"
+                                        aria-expanded="false" aria-controls="costs-popover">
+                                    <span class="fold-name">Costs</span>
+                                    <span class="fold-value" id="costs-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="costs-popover"
+                                     role="dialog" aria-label="Build costs">
+                                    <div class="popover-head">
+                                        <span>Costs</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div id="build-costs" class="popover-body build-costs"></div>
+                                </div>
+                            </div>
+
+                            <!-- Cities & Knights. Every fold below is hidden
+                                 until a board payload says the rule is on, so a
+                                 base game shows exactly what it always did.
+                                 Nothing in here is populated from the template:
+                                 the client fills the bodies from
+                                 `board.cities_knights`. -->
+                            <div class="fold hidden ck-panel" id="barbarian-panel">
+                                <button type="button" class="fold-chip" id="barbarian-chip"
+                                        aria-expanded="false" aria-controls="barbarian-popover">
+                                    <span class="fold-name">Barbarians</span>
+                                    <span class="fold-value" id="barbarian-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="barbarian-popover"
+                                     role="dialog" aria-label="Barbarians">
+                                    <div class="popover-head">
+                                        <span>Barbarians</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div class="popover-body">
+                                        <div id="barbarian-track" class="barbarian-track"
+                                             role="img" aria-label="Barbarian ship position"></div>
+                                        <div id="barbarian-status" class="barbarian-status"></div>
+                                        <div id="barbarian-defense" class="ck-note"></div>
+                                        <!-- The attack is resolved server-side
+                                             inside the roll and announced once, so
+                                             it is restated here rather than left in
+                                             a notice that has already faded. -->
+                                        <div id="barbarian-last-attack" class="ck-note hidden"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="fold hidden ck-panel" id="improvements-panel">
+                                <button type="button" class="fold-chip" id="improvements-chip"
+                                        aria-expanded="false" aria-controls="improvements-popover">
+                                    <span class="fold-name">City Improvements</span>
+                                    <span class="fold-value" id="improvements-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="improvements-popover"
+                                     role="dialog" aria-label="City Improvements">
+                                    <div class="popover-head">
+                                        <span>City Improvements</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div id="improvement-tracks"
+                                         class="popover-body improvement-tracks"></div>
+                                </div>
+                            </div>
+
+                            <div class="fold hidden ck-panel" id="knights-panel">
+                                <button type="button" class="fold-chip" id="knights-chip"
+                                        aria-expanded="false" aria-controls="knights-popover">
+                                    <span class="fold-name">Knights</span>
+                                    <span class="fold-value" id="knights-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="knights-popover"
+                                     role="dialog" aria-label="Knights">
+                                    <div class="popover-head">
+                                        <span>Knights</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div class="popover-body">
+                                        <!-- Static so their listeners are
+                                             registered once; the client only
+                                             rewrites their labels and state. -->
+                                        <div class="ck-actions">
+                                            <button type="button" id="build-knight-btn" class="ck-action"></button>
+                                            <button type="button" id="move-knight-btn" class="ck-action"></button>
+                                            <button type="button" id="build-wall-btn" class="ck-action"></button>
+                                        </div>
+                                        <div id="knight-hint" class="ck-note"></div>
+                                        <div id="knight-list" class="knight-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Seafarers. Hidden in a base game; the client
+                                 unhides it only when the running game has ships
+                                 on, and each control inside answers to its own
+                                 rule (ship movement can be off with ships on). -->
+                            <div class="fold hidden sea-panel" id="seafarers-panel">
+                                <button type="button" class="fold-chip" id="seafarers-chip"
+                                        aria-expanded="false" aria-controls="seafarers-popover">
+                                    <span class="fold-name">Seafarers</span>
+                                    <span class="fold-value" id="seafarers-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="seafarers-popover"
+                                     role="dialog" aria-label="Seafarers">
+                                    <div class="popover-head">
+                                        <span>Seafarers</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div class="popover-body">
+                                        <div class="ck-actions">
+                                            <button type="button" id="build-ship-btn" class="ck-action"></button>
+                                            <button type="button" id="move-ship-btn" class="ck-action"></button>
+                                        </div>
+                                        <div id="ship-hint" class="ck-note"></div>
+                                        <div id="island-points" class="ck-note hidden"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="fold" id="dev-cards-panel">
+                                <button type="button" class="fold-chip" id="dev-cards-chip"
+                                        aria-expanded="false" aria-controls="dev-cards-popover">
+                                    <span class="fold-name">Development Cards</span>
+                                    <span class="fold-value" id="dev-cards-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="dev-cards-popover"
+                                     role="dialog" aria-label="Development Cards">
+                                    <div class="popover-head">
+                                        <span>Development Cards</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div class="popover-body">
+                                        <div id="dev-deck-remaining" class="dev-deck-remaining">Deck: 0 left</div>
+                                        <button id="buy-dev-card-btn">Buy Card</button>
+                                        <div id="my-dev-cards" class="my-dev-cards"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cities & Knights replaces the development card
+                                 deck outright with three progress card decks, and
+                                 the server refuses `buy_dev_card` once it is on.
+                                 So exactly one of these two folds is ever shown. -->
+                            <div class="fold hidden ck-panel" id="progress-cards-panel">
+                                <button type="button" class="fold-chip" id="progress-cards-chip"
+                                        aria-expanded="false" aria-controls="progress-cards-popover">
+                                    <span class="fold-name">Progress Cards</span>
+                                    <span class="fold-value" id="progress-cards-chip-value">—</span>
+                                </button>
+                                <div class="popover popover-wide hidden" id="progress-cards-popover"
+                                     role="dialog" aria-label="Progress Cards">
+                                    <div class="popover-head">
+                                        <span>Progress Cards</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div id="progress-hand" class="popover-body progress-hand"></div>
+                                </div>
+                            </div>
+
+                            <div class="fold hidden" id="active-rules-panel">
+                                <button type="button" class="fold-chip" id="active-rules-chip"
+                                        aria-expanded="false" aria-controls="active-rules-popover">
+                                    <span class="fold-name">House Rules</span>
+                                    <span class="fold-value" id="active-rules-chip-value">—</span>
+                                </button>
+                                <div class="popover hidden" id="active-rules-popover"
+                                     role="dialog" aria-label="House Rules">
+                                    <div class="popover-head">
+                                        <span>House Rules</span>
+                                        <button type="button" class="popover-close"
+                                                data-close-popover aria-label="Close">×</button>
+                                    </div>
+                                    <div id="active-rules" class="popover-body active-rules"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Chat and game log share one list: entries are
@@ -656,9 +663,159 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- The dice footer, pinned to the bottom of the panel under
+                         the log/chat (v2.1 rev). The Roll button and two physical
+                         pip dice that are always on screen - net.js keeps
+                         #dice-display filled with a resting pair before the first
+                         roll and the rolled faces after. The turn clocks sit
+                         beside them. Hidden in the lobby, where there is no game
+                         to roll for. -->
+                    <div class="dice-footer" id="dice-footer">
+                        <button id="roll-dice-btn">Roll Dice</button>
+                        <div class="dice-cluster">
+                            <div id="dice-display" class="dice-display"></div>
+                            <!-- Which dice these two faces came out of. Empty and
+                                 hidden for the standard pair. -->
+                            <span id="dice-set" class="dice-set hidden"></span>
+                        </div>
+                        <div class="timer-container">
+                            <div id="dice-timer" class="timer">Dice: 15s</div>
+                            <div id="round-timer" class="timer">Round: 120s</div>
+                        </div>
+                    </div>
                 </section>
             </aside>
         </div><!-- /.table -->
+    </div>
+
+    <!-- Board overlays: the standing information that floats over the board.
+         Deliberately outside `.container` and positioned `fixed`, exactly as the
+         changelog panel is, so none of it is part of `#game-screen` or the
+         `.table-aside` - the layout suite's per-element overflow sweep walks
+         those, and a fanned hand overflows its own box by design (which is why
+         the hand always lived outside the swept region). overlays.js pins this
+         wrapper to the board box on every resize and seam drag, so the floats
+         track the board without being measured as part of it. The wrapper is
+         transparent to pointer events; each float restores them. Hidden until a
+         game is running. -->
+    <div id="board-overlays" class="board-overlays hidden" aria-hidden="false">
+        <!-- Floating scoreboard, top-left. Each player is now its own compact
+             card (scoreboard.js renders into #game-players); the titles panel
+             (#award-summary) moved into the right panel so it no longer bloats
+             the float. -->
+        <section class="players-float" id="players-panel" aria-label="Players">
+            <ul id="game-players" class="user-list"></ul>
+        </section>
+
+        <!-- The unified build+trade tray, bottom-left (v2.1 phase 2). One
+             surface: tap hand cards to gather materials, and the tray works out
+             what they make - a build to arm, a bank trade to run, or an offer to
+             the table. The three build buttons keep their ids and arm the same
+             placement flow the old console buttons did; only the trigger and its
+             home moved. trade.js fills `.tray-trade` with the materials shelf,
+             the want picker, the bank-trade action and the propose button, and
+             lights the build whose cost the materials meet. -->
+        <div class="action-tray" id="action-tray">
+            <!-- The console keeps its id so the changelog pill positions above
+                 it and panels.js hides it for an observer. -->
+            <div class="game-console tray" id="game-console">
+                <div class="tray-head">
+                    <span class="tray-title">Build &amp; Trade</span>
+                    <!-- trade.js writes the live read-out here: the idle hint,
+                         or which build the gathered materials make. -->
+                    <span class="tray-note" id="tray-note">Tap your cards to build or trade</span>
+                </div>
+                <div class="console-group build-group tray-builds">
+                    <button id="place-settlement-btn" data-build="settlement">Build Settlement</button>
+                    <button id="place-road-btn" data-build="road">Build Road</button>
+                    <button id="upgrade-city-btn" data-build="city">Build City</button>
+                </div>
+                <!-- The materials shelf, want picker, bank-trade action and
+                     propose button trade.js builds into this slot. It collapses
+                     while no card is gathered. -->
+                <div class="tray-trade"></div>
+                <!-- The turn controls sit as small buttons at the foot of the
+                     tray (v2.1 phase 2). The dice footer in the right panel has
+                     no spare row at a short viewport, so advancing and ending the
+                     turn live here, by the actions, floating at no cost to the
+                     shell's height. panels.js drives their state and the console
+                     hide keeps them off an observer's screen. -->
+                <div class="turn-controls" id="turn-controls">
+                    <button id="next-turn-btn">Next Turn</button>
+                    <button id="end-game-btn">End Game</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Personal settings, top-right corner (v2.1 phase 2): colour and the
+             two this-browser-only toggles. A floating corner cluster - none of
+             it reaches the server, and floating keeps it off the shell height a
+             short viewport cannot spare. Hidden with the overlays in the lobby. -->
+        <div class="settings-float" id="settings-float">
+            <input type="color" id="color-picker" title="Choose your color">
+            <label class="yolo-toggle" for="yolo-mode-toggle"
+                   title="YOLO mode: place on click, with no ✓/✗ confirmation. Personal setting, this browser only.">
+                <input type="checkbox" id="yolo-mode-toggle">
+                <span>YOLO</span>
+            </label>
+            <label class="yolo-toggle" for="mute-toggle"
+                   title="Mute the placement cues and the turn sound. Personal setting, this browser only.">
+                <input type="checkbox" id="mute-toggle">
+                <span>Mute</span>
+            </label>
+        </div>
+
+        <!-- Floating hand, bottom-centre: big physical cards jutting up from the
+             bottom edge. Keeps `.game-tray`, #info-panel and #resource-display
+             so hand.js and the layout tests find them unchanged. -->
+        <div class="game-tray">
+            <section class="panel" id="info-panel">
+                <div id="player-resources-panel">
+                    <h2 class="panel-title">Your Hand</h2>
+                    <div id="resource-display" class="resource-display"></div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Board popovers live at the end of the overlay layer so they paint
+             over the floats above (hand, trays, dice) and stay clickable at
+             bottom/corner hexes. placement.js and knight-overlay.js position
+             them board-relative; overlays sizes this layer to the board rect, so
+             the maths is unchanged from when they sat inside #game-board. -->
+        <!-- Raised where a click landed, over the board and never in flow above
+             it: anything that took a row of its own would resize the drawing
+             buffer and move the camera under the very click it is asking about.
+             The ✓ and ✗ are real buttons so they can be tabbed to and named for
+             a screen reader. -->
+        <div id="placement-confirm" class="placement-confirm hidden"
+             role="group" aria-label="Confirm placement">
+            <button type="button" id="placement-confirm-yes"
+                    class="placement-confirm-btn confirm-yes"
+                    aria-label="Confirm placement"
+                    title="Confirm placement (Enter)">
+                <span aria-hidden="true">✓</span>
+            </button>
+            <button type="button" id="placement-confirm-no"
+                    class="placement-confirm-btn confirm-no"
+                    aria-label="Cancel placement"
+                    title="Cancel placement (Escape)">
+                <span aria-hidden="true">✗</span>
+            </button>
+        </div>
+        <!-- Tapping a knight you own raises its own actions where it stands,
+             instead of leaving them in the Knights fold with no connection to
+             the piece. The buttons are static so their listeners are registered
+             once; only the labels and the disabled state are rewritten. -->
+        <div id="knight-actions" class="knight-actions hidden"
+             role="group" aria-label="Knight actions">
+            <button type="button" id="knight-action-activate"
+                    class="knight-action" data-knight-overlay="activate"></button>
+            <button type="button" id="knight-action-promote"
+                    class="knight-action" data-knight-overlay="promote"></button>
+            <button type="button" id="knight-action-move"
+                    class="knight-action" data-knight-overlay="move"></button>
+        </div>
     </div>
 
     <!-- Trade Modal -->
@@ -818,11 +975,10 @@
          walks `#game-screen` and `.table-aside` — a floating panel is not part
          of either and must not be measured as if it were.
 
-         Bottom left: the hand and the chat box are in the aside on the right
-         and the board's zoom controls are at the board's top right, so this
-         corner is the one place a panel can be expanded without covering
-         something a player is using. It is available in the lobby and in a
-         running game, because a tester mid-game is exactly who needs it.
+         Bottom left: it stacks above the build/trade tray via its own
+         positionPanel logic, which reads the console box. It is available in
+         the lobby and in a running game, because a tester mid-game is exactly
+         who needs it.
 
          A disclosure, not a dialog: one button carrying aria-expanded and
          aria-controls, one region it controls. The build id is on the button

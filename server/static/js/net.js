@@ -108,13 +108,16 @@ socket.on('game_started', (data) => {
     // Update timers
     updateTimers(data.board);
     
+    // Two physical dice are on screen for every seat from the first frame -
+    // resting until the roll that fills them.
+    showRestingDice();
+
     // Enable dice button for the first player
     if (isMyTurn()) {
         rollDiceBtn.disabled = false;
         rollDiceBtn.textContent = 'Roll Dice';
-        diceDisplay.innerHTML = '';
     }
-    
+
     // Render dev cards
     renderDevCards();
 
@@ -165,6 +168,9 @@ socket.on('game_state', (data) => {
 
     if (data.board) {
         setHighlight(null);
+        // The faces of the last roll are not in the snapshot, so a reconnect
+        // returns the dice to rest rather than leaving the slot empty.
+        showRestingDice();
         renderResourcePanel();
         renderBank();
         renderDevCards();
@@ -216,17 +222,18 @@ socket.on('turn_changed', (data) => {
     noteServerClocks(data);
     updateTimers();
 
+    // A new turn has not rolled yet: reset every seat's dice to rest.
+    showRestingDice();
 
     // Play sound if it's now my turn
     if (isMyTurn() && !wasMyTurn) {
         playTurnSound();
     }
-    
+
     // Enable dice button for the current player
     if (isMyTurn()) {
         rollDiceBtn.disabled = false;
         rollDiceBtn.textContent = 'Roll Dice';
-        diceDisplay.innerHTML = '';
     }
 });
 
@@ -253,9 +260,45 @@ socket.on('player_color_changed', (data) => {
     }
 });
 
+// Pip positions for each face on a 30x30 die, on a 9/15/21 three-by-three grid.
+// A real die shows dots, not a printed number, so a rolled face is drawn as its
+// pips rather than written out.
+const DIE_PIPS = {
+    1: [[15, 15]],
+    2: [[9, 9], [21, 21]],
+    3: [[9, 9], [15, 15], [21, 21]],
+    4: [[9, 9], [21, 9], [9, 21], [21, 21]],
+    5: [[9, 9], [21, 9], [15, 15], [9, 21], [21, 21]],
+    6: [[9, 9], [21, 9], [9, 15], [21, 15], [9, 21], [21, 21]],
+};
+
+// One physical die as an SVG: ivory rounded face, dark pips laid out for the
+// value. `data-value` and the label carry the number for tests and readers a
+// glance at the dots cannot serve.
+function dieSvg(value) {
+    const pips = (DIE_PIPS[value] || [])
+        .map(([cx, cy]) => `<circle class="pip" cx="${cx}" cy="${cy}" r="2.4" />`)
+        .join('');
+    return `<svg class="die" data-value="${value}" viewBox="0 0 30 30" width="30" height="30" `
+        + `role="img" aria-label="${value}">`
+        + `<rect x="1.5" y="1.5" width="27" height="27" rx="7" />${pips}</svg>`;
+}
+
+// The physical dice never leave the footer: an empty dice slot was read as the
+// dice having vanished. Before a roll they rest on a default pair; a real roll
+// overwrites them, and a new turn returns them to rest. `.resting` marks the
+// pair as pre-roll so a spectator does not read it as the number just rolled.
+const RESTING_FACES = [4, 3];
+
+function showRestingDice() {
+    diceDisplay.innerHTML = RESTING_FACES.map(dieSvg).join('');
+    diceDisplay.classList.add('resting');
+}
+
 socket.on('dice_rolled', (data) => {
     console.log(`Player ${data.player} rolled ${data.dice1} + ${data.dice2} = ${data.total}`);
-    diceDisplay.innerHTML = `<span class="die">${data.dice1}</span><span class="die">${data.dice2}</span>`;
+    diceDisplay.innerHTML = dieSvg(data.dice1) + dieSvg(data.dice2);
+    diceDisplay.classList.remove('resting');
     rollDiceBtn.disabled = true;
     rollDiceBtn.textContent = `Rolled: ${data.total}`;
     
@@ -528,6 +571,29 @@ socket.on('connect_error', (error) => {
     console.error('Socket connection error:', error);
     setConnectionStatus('offline', 'Connection problem - retrying…');
     updateChatAvailability();
+});
+
+// Map editor events
+socket.on('map_list', (data) => {
+    if (!data?.maps) return;
+    viewState.server.mapList = data.maps;
+    document.dispatchEvent(new CustomEvent('map-list-updated'));
+});
+
+socket.on('map_saved', () => {
+    showNotice('Map saved', 'success');
+});
+
+socket.on('map_deleted', () => {
+    showNotice('Map deleted', 'info');
+});
+
+socket.on('map_preview', (data) => {
+    document.dispatchEvent(new CustomEvent('map-preview-received', { detail: data }));
+});
+
+socket.on('map_data', (data) => {
+    document.dispatchEvent(new CustomEvent('map-data-received', { detail: data }));
 });
 
 if (!socketAvailable) {

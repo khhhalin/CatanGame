@@ -328,8 +328,9 @@ def test_a_confirmation_does_not_steal_focus_from_the_chat_box(tmp_path):
 # --- Popovers, from the keyboard only --------------------------------------
 
 
+# The bank is a permanent panel now (v2.1), not a fold - the remaining folds
+# are the ones a keyboard user must still be able to open.
 POPOVERS = [
-    ("bank-chip", "bank-popover"),
     ("dev-cards-chip", "dev-cards-popover"),
     ("active-rules-chip", "active-rules-popover"),
 ]

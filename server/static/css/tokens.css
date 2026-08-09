@@ -73,28 +73,38 @@
     /* The rail carries the scoreboard and one line per folded subject, so it
        is sized by the widest of those lines rather than by a panel of tracks. */
     --panel-rail: 15.5rem;
-    --panel-aside: 21rem;
+    --panel-aside: 17rem;
 }
 
 /* ------------------------------------------------------------ light theme */
 
 :root,
 :root[data-theme="light"] {
-    --bg: #eef1f5;
-    --bg-sunken: #dde3ea;
-    --surface-1: #ffffff;
-    --surface-2: #f5f7fa;
-    --surface-3: #e7ebf1;
-    --border: #cbd3dd;
-    --border-strong: #a5b1c0;
+    /* v2 warmed to parchment. The neutrals carry a warm hue now; every text
+       token was re-checked on the warm surfaces (test_every_visible_label_
+       meets_wcag_aa) rather than assumed to survive the hue shift. */
+    --bg: #f4f0e9;
+    --bg-sunken: #e7dfd0;
+    --surface-1: #fdfbf7;
+    --surface-2: #f8f4ec;
+    --surface-3: #eee8da;
+    --border: #ddd2bf;
+    --border-strong: #b8ab93;
 
-    --text: #16202b;
-    --text-muted: #3d4a5c;     /* 8.6:1 on --surface-1 */
-    --text-faint: #4f5c6e;     /* 5.3:1 on the darkest light surface */
+    /* Semantic chrome hairlines for the minimalist shell: a divider that
+       states a boundary without a boxed border, and a barely-there warm fill
+       for a quiet region (the rail, the tray) that must not read as a panel. */
+    --hairline: #e6ddcd;
+    --hairline-soft: #efe8db;
+    --surface-quiet: #f0ebe1;
+
+    --text: #221d17;
+    --text-muted: #5c5142;     /* 7.5:1 on --surface-1 */
+    --text-faint: #6a5d4b;     /* 4.8:1 on the darkest light surface */
 
     --accent: #b5551a;         /* darkened Catan orange: AA on white */
     --accent-hover: #91410f;
-    --accent-soft: #fbeadd;
+    --accent-soft: #fbeade;
     --on-accent: #ffffff;
 
     --info: #1a5fb4;
@@ -147,7 +157,7 @@
     /* app: the board's backdrop. Deliberately the same dark in both themes -
        the canvas paints its own dark ocean, and a light box around it reads as
        a rendering fault rather than a table. */
-    --board-backdrop: #101922;
+    --board-backdrop: #16110b;
 
     --com-cloth: #6d3f8f;
     --com-coin: #8a6a12;
@@ -163,23 +173,32 @@
     --player-5: #654c0f;
     --player-6: #12545c;
     --on-player: #ffffff;
+
+    /* Physical dice are light objects with dark pips — a fixed ivory face and
+       near-black pips in both themes, never following the surface palette. */
+    --die-face: #f6f1e7;
+    --die-pip: #2c2318;
 }
 
 /* ------------------------------------------------------------- dark theme */
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --bg: #16202b;
-        --bg-sunken: #101922;
-        --surface-1: #1e2b39;
-        --surface-2: #26364a;
-        --surface-3: #2f4157;
-        --border: #35485f;
-        --border-strong: #4b6280;
+        --bg: #191510;
+        --bg-sunken: #120e09;
+        --surface-1: #221d15;
+        --surface-2: #2b241a;
+        --surface-3: #352d20;
+        --border: #3a3122;
+        --border-strong: #574a34;
 
-        --text: #eef3f8;
-        --text-muted: #b3c2d2;     /* 9.4:1 on --surface-1 */
-        --text-faint: #93a5b8;     /* 6.4:1 on --surface-1 */
+        --hairline: #2f2819;
+        --hairline-soft: #262019;
+        --surface-quiet: #201b13;
+
+        --text: #f3ede3;
+        --text-muted: #b7ab96;     /* 7.4:1 on --surface-1 */
+        --text-faint: #ab9d85;     /* 5.1:1 on --surface-3 */
 
         --accent: #f0913c;
         --accent-hover: #ffab5e;
@@ -220,7 +239,7 @@
         --terrain-ore: #74879e;
         --terrain-desert: #55503c;
 
-        --board-backdrop: #101922;
+        --board-backdrop: #16110b;
 
         --com-cloth: #c197e0;
         --com-coin: #e0bd5c;
@@ -233,21 +252,28 @@
         --player-5: #e0c15c;
         --player-6: #5fd0d8;
         --on-player: #10171f;
+
+        --die-face: #f6f1e7;
+        --die-pip: #2c2318;
     }
 }
 
 :root[data-theme="dark"] {
-    --bg: #16202b;
-    --bg-sunken: #101922;
-    --surface-1: #1e2b39;
-    --surface-2: #26364a;
-    --surface-3: #2f4157;
-    --border: #35485f;
-    --border-strong: #4b6280;
+    --bg: #191510;
+    --bg-sunken: #120e09;
+    --surface-1: #221d15;
+    --surface-2: #2b241a;
+    --surface-3: #352d20;
+    --border: #3a3122;
+    --border-strong: #574a34;
 
-    --text: #eef3f8;
-    --text-muted: #b3c2d2;
-    --text-faint: #93a5b8;
+    --hairline: #2f2819;
+    --hairline-soft: #262019;
+    --surface-quiet: #201b13;
+
+    --text: #f3ede3;
+    --text-muted: #b7ab96;
+    --text-faint: #ab9d85;
 
     --accent: #f0913c;
     --accent-hover: #ffab5e;
@@ -284,7 +310,7 @@
     --terrain-ore: #74879e;
     --terrain-desert: #55503c;
 
-    --board-backdrop: #101922;
+    --board-backdrop: #16110b;
 
     --com-cloth: #c197e0;
     --com-coin: #e0bd5c;
@@ -297,6 +323,9 @@
     --player-5: #e0c15c;
     --player-6: #5fd0d8;
     --on-player: #10171f;
+
+    --die-face: #f6f1e7;
+    --die-pip: #2c2318;
 }
 
 /* ------------------------------------------------------------ base + reset */

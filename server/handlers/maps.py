@@ -71,6 +71,20 @@ def handle_request_maps(data=None):
     emit('map_list', {'maps': map_store.list_maps()})
 
 
+@socketio.on('request_map')
+def handle_request_map(data=None):
+    if rate_limited():
+        return
+    map_id = (data or {}).get('id')
+    try:
+        full = map_store.read_map(map_id)
+    except (map_store.UnknownMap, map_store.ReadOnlyMap) as exc:
+        reject('UNKNOWN_MAP', str(exc))
+        return
+    builtin = map_store.is_builtin(map_id)
+    emit('map_data', {'map': full, 'builtin': builtin})
+
+
 @socketio.on('save_map')
 def handle_save_map(data=None):
     if rate_limited():

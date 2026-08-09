@@ -111,6 +111,21 @@ VIOLATION_TTL_SECONDS = 60.0
 # input is itself the denial of service.
 MAX_PAYLOAD_BYTES = 8192
 
+# Events that legitimately carry larger payloads get their own cap here.
+# Everything not listed falls back to MAX_PAYLOAD_BYTES. Map definitions are
+# the only payloads in this protocol that can exceed 8 KB — a radius-6 map
+# with every hex listed explicitly, or v2 fixed pools, can be several times
+# larger. 64 KB is generous without being open-ended.
+EVENT_PAYLOAD_LIMITS: dict[str, int] = {
+    'save_map':    65536,
+    'preview_map': 65536,
+}
+
+
+def max_bytes_for(event: str) -> int:
+    """Payload cap for one event, or the global default if not listed."""
+    return EVENT_PAYLOAD_LIMITS.get(event, MAX_PAYLOAD_BYTES)
+
 
 def limit_for(event: str) -> Limit:
     """The bucket settings for one event name, or `DEFAULT_LIMIT` if unlisted."""

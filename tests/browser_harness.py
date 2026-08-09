@@ -636,22 +636,96 @@ def hover_target(player, kind, key):
     return point
 
 
+_CANVAS_RECT = """
+() => {
+    const r = document.getElementById('board-canvas').getBoundingClientRect();
+    return { left: r.left, top: r.top, w: r.width, h: r.height };
+}
+"""
+
+
+def _reveal_target(player, kind, key):
+    """Pan a board target out from under a floating panel, as a player would.
+
+    The v2.1 hand and build tray float over the board and rightly intercept
+    their own taps, so a hex, edge or vertex that sits behind one cannot be
+    clicked where it lies. A player reaches it by zooming in a notch and panning
+    it into the clear; this does the same through the real camera. It is a no-op
+    when the target is already clickable, so a click that never needed to move
+    the camera does not, and the 18 targets that fit in the open are untouched.
+    """
+    if would_select(player, kind, key) == key:
+        return False
+    rect = player.page.evaluate(_CANVAS_RECT)
+    centre_x = rect["left"] + rect["w"] / 2
+    centre_y = rect["top"] + rect["h"] / 2
+    player.page.evaluate(
+        "([f, x, y]) => window.BoardRenderer.zoomAt(f, x, y)",
+        [2.0, centre_x - rect["left"], centre_y - rect["top"]],
+    )
+    board_x, board_y = _board_point(player, kind, key)
+    layout = player.page.evaluate(_LAYOUT)
+    point = player.page.evaluate(
+        _TO_CLIENT, [board_x, board_y, layout["offsetX"], layout["offsetY"]]
+    )
+    player.page.evaluate(
+        "([dx, dy]) => window.BoardRenderer.panBy(dx, dy)",
+        [centre_x - point["x"], centre_y - point["y"]],
+    )
+    return True
+
+
+def _restore_view(player):
+    """Hand the camera back to the default fit after a reveal.
+
+    A reveal zooms and pans to reach a target hidden behind a panel; left in
+    place it would carry into the next turn, so a seeded soak would drift onto a
+    different board than the one the seed drew. Restoring after the click keeps
+    every later action starting from the same view a fresh page shows.
+    """
+    player.page.evaluate("() => window.BoardRenderer.fitToView()")
+
+
+def _reachable(player, kind, candidates):
+    """A candidate a click will land on, panning one into the clear if need be.
+
+    `first_clickable` reports None when every candidate sits behind the floating
+    hand or tray — legal on the board, just not where it is drawn. The first
+    candidate is handed back for `click_*` to pan into the clear (and restore),
+    so a build whose only open squares are behind a panel still goes through
+    instead of raising.
+    """
+    key = first_clickable(player, kind, candidates)
+    if key is None and candidates:
+        return candidates[0]
+    return key
+
+
 def click_vertex(player, vertex_key):
+    revealed = _reveal_target(player, 'vertex', vertex_key)
     layout = player.page.evaluate(_LAYOUT)
     pos = layout["vertexPositions"][vertex_key]
     _click_board_point(player, pos["x"], pos["y"], layout)
+    if revealed:
+        _restore_view(player)
 
 
 def click_edge(player, edge_key):
+    revealed = _reveal_target(player, 'edge', edge_key)
     layout = player.page.evaluate(_LAYOUT)
     pos = layout["edgePositions"][edge_key]
     _click_board_point(player, (pos["x1"] + pos["x2"]) / 2, (pos["y1"] + pos["y2"]) / 2, layout)
+    if revealed:
+        _restore_view(player)
 
 
 def click_hex(player, hex_key):
+    revealed = _reveal_target(player, 'hex', hex_key)
     layout = player.page.evaluate(_LAYOUT)
     pos = layout["hexPositions"][hex_key]
     _click_board_point(player, pos["x"], pos["y"], layout)
+    if revealed:
+        _restore_view(player)
 
 
 # --- Reading the board ----------------------------------------------------
@@ -780,7 +854,7 @@ def build_ship(player, candidates):
     player.page.click("#build-ship-btn")
     player.page.keyboard.press("Escape")
 
-    edge_key = first_clickable(player, 'edge', candidates)
+    edge_key = _reachable(player, 'edge', candidates)
     if not edge_key:
         raise AssertionError(f"no clickable sea edge among {len(candidates)} candidates")
     click_edge(player, edge_key)
@@ -947,7 +1021,7 @@ def build_road(player, candidates):
     """
     before = count_pieces(player, 'road')
     player.page.click("#place-road-btn")
-    edge_key = first_clickable(player, 'edge', candidates)
+    edge_key = _reachable(player, 'edge', candidates)
     if not edge_key:
         raise AssertionError(f"no clickable road among {len(candidates)} candidates")
     click_edge(player, edge_key)
@@ -960,7 +1034,7 @@ def build_settlement(player, candidates):
     """Arm settlement placement, then aim. See build_road for why."""
     before = count_pieces(player, 'building')
     player.page.click("#place-settlement-btn")
-    vertex_key = first_clickable(player, 'vertex', candidates)
+    vertex_key = _reachable(player, 'vertex', candidates)
     if not vertex_key:
         raise AssertionError(f"no clickable vertex among {len(candidates)} candidates")
     click_vertex(player, vertex_key)
@@ -981,7 +1055,7 @@ def legal_city_vertices(board, player_name):
 def build_city(player, candidates):
     """Upgrade a settlement. See build_road for why the button comes first."""
     player.page.click("#upgrade-city-btn")
-    vertex_key = first_clickable(player, 'vertex', candidates)
+    vertex_key = _reachable(player, 'vertex', candidates)
     if not vertex_key:
         raise AssertionError(f"no clickable settlement among {len(candidates)}")
     before = player.page.evaluate(

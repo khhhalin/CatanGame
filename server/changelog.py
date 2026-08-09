@@ -57,8 +57,14 @@ KINDS = {'Fixed': 'fixed', 'New': 'new', 'Known issue': 'known'}
 UNRELEASED = 'unreleased'
 
 TITLE_RE = re.compile(r'^# \S')
+# A release is named by a version (`v1.4.0` — the deployed identity a tester
+# quotes and the only thing a container with no `.git` can show), a git
+# short-sha (a dev build, where the tree *is* the build), or `unreleased`
+# before it ships. `VERSION` at the repo root is the source of truth for the
+# version, and `test_the_version_file_names_the_current_release` refuses to let
+# it drift from the newest heading here.
 RELEASE_RE = re.compile(
-    r'^## (?P<build>[0-9a-f]{7,40}|' + UNRELEASED + r') — '
+    r'^## (?P<build>v\d+\.\d+\.\d+|[0-9a-f]{7,40}|' + UNRELEASED + r') — '
     r'(?P<when>\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?)$'
 )
 ENTRY_RE = re.compile(

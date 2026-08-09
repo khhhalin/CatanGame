@@ -1,12 +1,12 @@
-"""The resource hand and the bank, rendered as filled tiles, in a real browser.
+"""The resource hand and the bank, in a real browser.
 
-hand.js used to draw the hand and the bank with emoji ("🌲 3", "🌲100%"). This
-is the approved tile mockup in its place: a coloured tile and a large count per
-held card, and a bank cell that is a tile, a thin stock meter and the real card
-count. These assertions are written against what a broken conversion actually
-does, not what the DOM merely says:
+The hand is a fan of physical cards in the bottom tray: each held card is a
+terrain-coloured face with the resource glyph, a count in the corner and a label
+strip, and a card at zero greys rather than disappearing. The bank stays a tile,
+a thin stock meter and the real card count. These assertions are written against
+what a broken conversion actually does, not what the DOM merely says:
 
-  - a tile whose `<use>` points at a missing sprite id renders nothing while
+  - a card whose `<use>` points at a missing sprite id renders nothing while
     every DOM assertion over it still passes, so the glyph is proved through the
     SVG engine's own getBBox - a zero-area box is a glyph that did not paint;
   - the bank counts are read back against the real payload bank, so a cell that
@@ -73,11 +73,24 @@ def shot(player, label):
             "t => document.documentElement.setAttribute('data-theme', t)", theme
         )
         next_frame(player.page)
-        path = os.path.join(SHOT_DIR, f"hand-{label}-{theme}.png")
+        path = os.path.join(SHOT_DIR, f"ui-hand-{label}-{theme}.png")
         player.page.screenshot(path=path, full_page=False)
         paths.append(path)
     player.page.evaluate("() => document.documentElement.removeAttribute('data-theme')")
     return paths
+
+
+def shot_narrow(player, label):
+    """The fan at a phone width, to prove it neither overflows nor pushes the
+    page wide - shot after the viewport is narrowed so the responsive rules run."""
+    os.makedirs(SHOT_DIR, exist_ok=True)
+    player.page.set_viewport_size({"width": 390, "height": 780})
+    next_frame(player.page)
+    path = os.path.join(SHOT_DIR, f"ui-hand-{label}-390.png")
+    player.page.screenshot(path=path, full_page=False)
+    player.page.set_viewport_size(VIEWPORT)
+    next_frame(player.page)
+    return path
 
 
 # --- Arranging a table -----------------------------------------------------
@@ -124,16 +137,17 @@ def browser():
 @pytest.fixture
 def player(browser, tmp_path):
     with table(browser, tmp_path) as active:
-        active.page.wait_for_selector("#resource-display .res-cell", timeout=8000)
+        active.page.wait_for_selector("#resource-display .hand-card", timeout=8000)
         yield active
 
 
 # --- Reading what is on screen ---------------------------------------------
 
-# Per tile: its own box, whether its `<use>` resolves to a symbol that exists,
-# and the SVG-rendered bounding box of the glyph the `<use>` instantiates. A
-# broken or empty `<use>` reports a zero-area getBBox even though the tile box
-# is a perfectly good 30x30 - which is exactly the trap a DOM check falls into.
+# Per bank tile: its own box, whether its `<use>` resolves to a symbol that
+# exists, and the SVG-rendered bounding box of the glyph the `<use>`
+# instantiates. A broken or empty `<use>` reports a zero-area getBBox even though
+# the tile box is a perfectly good 30x30 - exactly the trap a DOM check falls
+# into.
 TILES = """
 selector => Array.from(document.querySelectorAll(selector + ' .tile')).map(tile => {
     const box = tile.getBoundingClientRect();
@@ -150,25 +164,45 @@ selector => Array.from(document.querySelectorAll(selector + ' .tile')).map(tile 
 })
 """
 
+# Per hand card: the card's own box (a fanned card is a real physical rectangle,
+# not a zero-height strip), and its glyph the same way the bank's is proved - a
+# card whose `<use>` names a renamed sprite paints an empty getBBox while the
+# card box stays a perfect 70x98.
+HAND_CARDS = """
+() => Array.from(document.querySelectorAll('#resource-display .hand-card')).map(card => {
+    const box = card.getBoundingClientRect();
+    const use = card.querySelector('.hand-card-glyph use');
+    const href = use && (use.getAttribute('href') || use.getAttribute('xlink:href'));
+    let glyph = {width: 0, height: 0};
+    try { const b = use.getBBox(); glyph = {width: b.width, height: b.height}; }
+    catch (e) { /* an unresolved use throws; a zero box below reports it */ }
+    return {
+        cardW: box.width, cardH: box.height,
+        symbolFound: !!(href && document.querySelector(href)),
+        glyphW: glyph.width, glyphH: glyph.height,
+    };
+})
+"""
+
 HAND_CELLS = """
-() => Array.from(document.querySelectorAll('#resource-display .res-cell')).map(cell => ({
-    count: cell.querySelector('.count').textContent.trim(),
-    spent: cell.classList.contains('spent'),
-    gone: getComputedStyle(cell).display === 'none',
+() => Array.from(document.querySelectorAll('#resource-display .hand-card')).map(card => ({
+    count: card.querySelector('.hand-card-count').textContent.trim(),
+    spent: card.classList.contains('spent'),
+    gone: getComputedStyle(card).display === 'none',
 }))
 """
 
-# The greyed count and a kept one must differ in colour, and the greyed one must
+# The greyed count and a kept one must differ in colour, and the greyed card must
 # still be laid out - "spent, not gone" is a class doing visible work, not a
 # name on an invisible node.
 SPENT_STYLE = """
 () => {
-    const cells = Array.from(document.querySelectorAll('#resource-display .res-cell'));
-    const spent = cells.find(c => c.classList.contains('spent'));
-    const kept = cells.find(c => !c.classList.contains('spent'));
+    const cards = Array.from(document.querySelectorAll('#resource-display .hand-card'));
+    const spent = cards.find(c => c.classList.contains('spent'));
+    const kept = cards.find(c => !c.classList.contains('spent'));
     return {
-        spentColor: getComputedStyle(spent.querySelector('.count')).color,
-        keptColor: getComputedStyle(kept.querySelector('.count')).color,
+        spentColor: getComputedStyle(spent.querySelector('.hand-card-count')).color,
+        keptColor: getComputedStyle(kept.querySelector('.hand-card-count')).color,
         spentVisible: getComputedStyle(spent).display !== 'none'
             && spent.getBoundingClientRect().width > 0,
     };
@@ -188,27 +222,26 @@ BANK_CELLS = """
 
 
 def open_bank(player):
-    if player.page.get_attribute("#bank-chip", "aria-expanded") != "true":
-        player.page.click("#bank-chip")
-    player.page.wait_for_selector("#bank-popover:not(.hidden)", timeout=5000)
+    # v2.1: the bank is a big, always-on panel in the right column, not a fold -
+    # there is nothing to open, so this just waits for it to have rendered.
     player.page.wait_for_selector("#bank-display .bank-cell", timeout=5000)
 
 
 # --- The hand --------------------------------------------------------------
 
 
-def test_every_hand_tile_paints_its_glyph(player):
-    """A tile is a coloured box and a glyph; the box alone is not the tile. Each
-    tile has a real box and a non-zero glyph bbox, so a `<use>` pointed at a
-    renamed sprite - which paints nothing - fails here rather than sailing
+def test_every_hand_card_paints_its_glyph(player):
+    """A card is a coloured rectangle and a glyph; the rectangle alone is not the
+    card. Each card has a real box and a non-zero glyph bbox, so a `<use>` pointed
+    at a renamed sprite - which paints nothing - fails here rather than sailing
     through on the box."""
-    tiles = player.page.evaluate(TILES, "#resource-display")
-    assert len(tiles) == len(RESOURCE_ORDER), tiles
-    for tile in tiles:
-        assert tile["tileW"] > 0 and tile["tileH"] > 0, tile
-        assert tile["symbolFound"], f"a tile's <use> resolves to no sprite: {tile}"
-        assert tile["glyphW"] > 0 and tile["glyphH"] > 0, (
-            f"a tile's glyph did not render (empty getBBox): {tile}"
+    cards = player.page.evaluate(HAND_CARDS)
+    assert len(cards) == len(RESOURCE_ORDER), cards
+    for card in cards:
+        assert card["cardW"] > 0 and card["cardH"] > 0, card
+        assert card["symbolFound"], f"a card's <use> resolves to no sprite: {card}"
+        assert card["glyphW"] > 0 and card["glyphH"] > 0, (
+            f"a card's glyph did not render (empty getBBox): {card}"
         )
 
 
@@ -285,14 +318,25 @@ def test_the_rendered_bank_has_no_emoji(player):
     open_bank(player)
     text = player.page.inner_text("#bank-display")
     assert not EMOJI.search(text), f"an emoji is still in the bank: {text!r}"
-    # The fold's one-line summary too - it used to spell "out" in emoji.
-    chip = player.page.inner_text("#bank-chip-value")
-    assert not EMOJI.search(chip), f"an emoji is still on the bank chip: {chip!r}"
+
+
+def test_the_fan_does_not_push_the_page_wide_at_phone_width(player):
+    """At 390px the fan tightens or scrolls within the tray; the document body
+    must not gain a horizontal scrollbar - a fan that overran would."""
+    player.page.set_viewport_size({"width": 390, "height": 780})
+    next_frame(player.page)
+    overflow = player.page.evaluate(
+        "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+    )
+    player.page.set_viewport_size(VIEWPORT)
+    next_frame(player.page)
+    assert overflow <= 1, f"the page scrolls horizontally by {overflow}px at 390 wide"
 
 
 def test_a_human_can_look_at_it(player):
     """Not an assertion - the screenshots the sign-off is read from."""
     open_bank(player)
     assert player.page.is_visible("#resource-display")
-    shot(player, "hand-and-bank")
+    shot(player, "fan")
+    shot_narrow(player, "fan")
     assert not player.noisy_errors(), player.noisy_errors()

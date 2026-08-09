@@ -31,9 +31,15 @@ export const gamePlayersList = document.getElementById('game-players');
 export const awardSummary = document.getElementById('award-summary');
 export const turnIndicator = document.getElementById('turn-indicator');
 export const gameConsole = document.getElementById('game-console');
+// The tray's live read-out: the idle hint, or which build the gathered
+// materials make. trade.js writes it as the materials shelf changes.
+export const trayNote = document.getElementById('tray-note');
 export const gameBoard = document.getElementById('game-board');
 export const nextTurnBtn = document.getElementById('next-turn-btn');
 export const endGameBtn = document.getElementById('end-game-btn');
+// The wrapper the turn controls (Next Turn, End Game) now share in the dice
+// footer. panels.js hides the pair for an observer through it.
+export const turnControls = document.getElementById('turn-controls');
 export const colorPicker = document.getElementById('color-picker');
 export const placeSettlementBtn = document.getElementById('place-settlement-btn');
 export const placeRoadBtn = document.getElementById('place-road-btn');
@@ -43,6 +49,10 @@ export const diceDisplay = document.getElementById('dice-display');
 export const diceSetEl = document.getElementById('dice-set');
 export const resourceDisplay = document.getElementById('resource-display');
 export const bankDisplay = document.getElementById('bank-display');
+export const buildCosts = document.getElementById('build-costs');
+// The empty slot the foundation left in the bottom tray, above the hand, for
+// the trade zone (trade.js builds the offer-builder into it).
+export const trayTrade = document.querySelector('.tray-trade');
 const tradePanel = document.getElementById('trade-panel');
 export const proposeTradeBtn = document.getElementById('propose-trade-btn');
 export const tradeOffersDiv = document.getElementById('trade-offers');
@@ -131,6 +141,7 @@ export const improvementsChipValue = document.getElementById('improvements-chip-
 export const knightsChipValue = document.getElementById('knights-chip-value');
 export const devCardsChipValue = document.getElementById('dev-cards-chip-value');
 export const bankChipValue = document.getElementById('bank-chip-value');
+export const costsChipValue = document.getElementById('costs-chip-value');
 export const progressCardsPanel = document.getElementById('progress-cards-panel');
 export const progressCardsChipValue = document.getElementById('progress-cards-chip-value');
 export const progressHandDiv = document.getElementById('progress-hand');
@@ -183,3 +194,26 @@ export const commandList = document.getElementById('command-list');
 // Turn sound - preload
 export const turnSound = new Audio('/static/audio/turn.wav');
 turnSound.preload = 'auto';
+
+// Map editor
+export const mapsBtn               = document.getElementById('maps-btn');
+export const editorScreen          = document.getElementById('map-editor-screen');
+export const editorCanvas          = document.getElementById('editor-canvas');
+export const editorPaintBtn        = document.getElementById('editor-paint-btn');
+export const editorInspectBtn      = document.getElementById('editor-inspect-btn');
+export const editorNullItem        = document.getElementById('editor-null-item');
+export const editorRegionList      = document.getElementById('editor-region-list');
+export const editorAddRegionBtn    = document.getElementById('editor-add-region-btn');
+export const editorRegionPopover   = document.getElementById('editor-region-popover');
+export const editorClearBtn        = document.getElementById('editor-clear-btn');
+export const editorPreviewBtn      = document.getElementById('editor-preview-btn');
+export const editorSaveBtn         = document.getElementById('editor-save-btn');
+export const editorSavePopover     = document.getElementById('editor-save-popover');
+export const editorDoneBtn         = document.getElementById('editor-done-btn');
+export const editorStatusEl        = document.getElementById('editor-status');
+export const editorMapNameInput    = document.getElementById('editor-map-name');
+export const editorHarbourCounters = document.getElementById('editor-harbour-counters');
+export const editorSaveConfirmBtn  = document.getElementById('editor-save-confirm-btn');
+export const editorSaveCopyBtn     = document.getElementById('editor-save-copy-btn');
+export const editorMapListEl       = document.getElementById('editor-map-list');
+export const editorRadiusSelect    = document.getElementById('editor-radius-select');
