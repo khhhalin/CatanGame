@@ -247,4 +247,11 @@ class EP:
             "tokens_held": self.tokens_held,
             "village_advantages": self.village_advantages,
             "missions": list(MISSIONS),
+            # The three missions' destinations, which sit on the board for
+            # everyone to see and act on: a lair token on each unturned gold
+            # field, the number and haul on each discovered fish shoal, and the
+            # sacks/advantage/crews on each discovered spice village.
+            "lairs": self.lairs,
+            "fish_shoals": self.fish_shoals,
+            "spice_hexes": self.spice_hexes,
         }
