@@ -50,7 +50,10 @@ export function seaRule(ruleId) {
  * without them the board has no sea edges and nothing else here means anything.
  */
 export function seaEnabled() {
-    return seaRule('ships');
+    // Explorers & Pirates transport ships build and move on the sea exactly as
+    // Seafarers ships do, so they share this whole interaction — the two rules
+    // are mutually exclusive (`sea_ship_model`), so only ever one is on.
+    return seaRule('ships') || seaRule('transport_ships');
 }
 
 /**
@@ -131,6 +134,9 @@ export function handleShipEdgeTap(edgeKey) {
     }
 
     const name = viewState.identity.name;
+    // The one difference between the two ship models: which action the tap
+    // sends. Everything else — the modes, the two-tap move, the ghosts — is one.
+    const transport = seaRule('transport_ships');
 
     if (viewState.selectedBuilding === 'ship_move') {
         const origin = viewState.shipMoveFrom;
@@ -139,14 +145,15 @@ export function handleShipEdgeTap(edgeKey) {
             return;
         }
         viewState.shipMoveFrom = null;
-        emitGame('move_ship', { name, from_edge: origin, to_edge: edgeKey });
+        emitGame(transport ? 'move_transport_ship' : 'move_ship',
+                 { name, from_edge: origin, to_edge: edgeKey });
         expectShipPlacement('ship_move', () => !myShipAt(origin));
         renderSeafarers();
         return;
     }
 
     const before = myShips().length;
-    emitGame('build_ship', { name, edge: edgeKey });
+    emitGame(transport ? 'build_transport_ship' : 'build_ship', { name, edge: edgeKey });
     expectShipPlacement('ship', () => myShips().length > before);
 }
 
@@ -341,7 +348,9 @@ function renderShipActions(player) {
 
     // Move. `ship_moved_this_turn` is the rulebook's one-per-turn limit, and it
     // is stated here rather than left to a refusal after the tap.
-    let moveReason = seaRule('ship_movement')
+    // Transport ships move as part of their own rule; a Seafarers table needs
+    // `ship_movement` on top of plain ships.
+    let moveReason = (seaRule('ship_movement') || seaRule('transport_ships'))
         ? turnBlockReason()
         : 'Moving ships is not one of this table\'s rules';
     if (!moveReason && inSetup) {
