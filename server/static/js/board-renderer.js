@@ -237,6 +237,14 @@ const PATTERN_DARK_SHIFT = 0.18;
 let terrainPatterns = null;
 let terrainPatternSignature = null;
 
+// The resource registry the server sent with the last board (hex_type to
+// {name, color, symbol, pattern}). The board's colours and patterns are drawn
+// from this; it is empty until the first board arrives, when getHexColor falls
+// back to the CSS terrain tokens. `resourceDefsSignature` busts the pattern
+// cache when the registry changes (a theme change or an imported file).
+let resourceDefs = {};
+let resourceDefsSignature = '';
+
 /**
  * Parse a #rgb or #rrggbb colour into its channels.
  *
@@ -310,11 +318,13 @@ function patternPolyline(ctx, u, points, close) {
     ctx.stroke();
 }
 
-// One motif per land terrain, drawn in a 12-unit tile scaled by `u`. The ocean
-// has none and keeps its flat fill. These are the "new textures": minimalist,
-// repeatable, and the same vocabulary as the resource glyphs on the harbours.
-const TERRAIN_MOTIFS = {
-    wood(ctx, u, ink) {
+// The named pattern styles a resource definition can pick from, each drawn in a
+// 12-unit tile scaled by `u` and in the resource's own ink. Once one motif per
+// terrain, now one per *style* referenced by id (see server resources.py) — so a
+// new resource picks a style rather than needing new code. 'solid' is the absence
+// of a style: no motif, just the flat fill (the ocean's look).
+const PATTERN_STYLES = {
+    pines(ctx, u, ink) {
         ctx.strokeStyle = ink;
         ctx.lineWidth = u;
         patternPolyline(ctx, u, [[6, 2], [9, 8], [3, 8]], true);
@@ -333,13 +343,13 @@ const TERRAIN_MOTIFS = {
         patternLine(ctx, u, 6, 10, 6, 12);
     },
 
-    sheep(ctx, u, ink) {
+    dots(ctx, u, ink) {
         ctx.fillStyle = ink;
         patternDot(ctx, u, 4, 4, 1.4);
         patternDot(ctx, u, 9, 9, 1.4);
     },
 
-    wheat(ctx, u, ink) {
+    stripes(ctx, u, ink) {
         // Vertical strokes: a field of standing stalks.
         ctx.strokeStyle = ink;
         ctx.lineWidth = u * 0.9;
@@ -348,27 +358,34 @@ const TERRAIN_MOTIFS = {
         patternLine(ctx, u, 9, 12, 9, 2);
     },
 
-    ore(ctx, u, ink) {
+    chevron(ctx, u, ink) {
         // Chevrons: the folded ridgeline of a mountain.
         ctx.strokeStyle = ink;
         ctx.lineWidth = u * 0.9;
         patternPolyline(ctx, u, [[0, 8], [3, 4], [6, 8], [9, 4], [12, 8]], false);
     },
 
-    desert(ctx, u, ink) {
+    stipple(ctx, u, ink) {
         ctx.fillStyle = ink;
         patternDot(ctx, u, 6, 6, 1);
     }
 };
 
 /**
- * Build one CanvasPattern per land terrain for the current theme.
+ * Build one CanvasPattern per resource for the current theme.
+ *
+ * Driven by the server resource registry: each definition names a `color` and a
+ * `pattern` style id, and the pattern is drawn in an ink shaded from that colour.
+ * A definition whose style is 'solid' (or unknown) gets no pattern — the flat
+ * fill, the ocean's look. Keyed by hex_type, which is what a hex carries as its
+ * `type` and what getTerrainPattern looks up.
  *
  * @param {CanvasRenderingContext2D} ctx - The board context the patterns fill
- * @param {object} colors - Terrain colours from readPalette()
- * @returns {object} - Terrain name to CanvasPattern
+ * @param {object} defs - The resource registry (hex_type to definition)
+ * @param {object} colors - Terrain colours from readPalette(), a fallback tint
+ * @returns {object} - hex_type to CanvasPattern
  */
-function buildTerrainPatterns(ctx, colors) {
+function buildTerrainPatterns(ctx, defs, colors) {
     const size = PATTERN_TILE * PATTERN_SUPERSAMPLE;
     const unit = size / 12;
     const root = document.documentElement;
@@ -376,13 +393,18 @@ function buildTerrainPatterns(ctx, colors) {
         || (!root.getAttribute('data-theme') && window.matchMedia
             && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const shift = dark ? PATTERN_DARK_SHIFT : PATTERN_LIGHT_SHIFT;
-    // Only reached if a terrain colour is not a hex string; a translucent ink
+    // Only reached if a resource colour is not a hex string; a translucent ink
     // then reads on either theme, the way the old texture wash did.
     const fallbackInk = dark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(20, 26, 34, 0.20)';
 
     const patterns = {};
-    for (const terrain in TERRAIN_MOTIFS) {
-        const base = colors[terrain];
+    for (const hexType in defs) {
+        const def = defs[hexType];
+        const motif = PATTERN_STYLES[def && def.pattern];
+        if (!motif) {
+            continue;  // 'solid' or an unknown style: flat fill, no motif.
+        }
+        const base = (def && def.color) || colors[hexType];
         if (!base) {
             continue;
         }
@@ -396,7 +418,7 @@ function buildTerrainPatterns(ctx, colors) {
         tileCtx.fillRect(0, 0, size, size);
         tileCtx.lineCap = 'round';
         tileCtx.lineJoin = 'round';
-        TERRAIN_MOTIFS[terrain](tileCtx, unit, ink);
+        motif(tileCtx, unit, ink);
 
         const pattern = ctx.createPattern(tile, 'repeat');
         // The tile is supersampled, so scale the pattern back to board units;
@@ -405,13 +427,14 @@ function buildTerrainPatterns(ctx, colors) {
             const scale = 1 / PATTERN_SUPERSAMPLE;
             pattern.setTransform(new DOMMatrix([scale, 0, 0, scale, 0, 0]));
         }
-        patterns[terrain] = pattern;
+        patterns[hexType] = pattern;
     }
     return patterns;
 }
 
 /**
- * The pattern to fill one terrain's hexes with, rebuilt when the theme changes.
+ * The pattern to fill one terrain's hexes with, rebuilt when the theme or the
+ * resource registry changes.
  *
  * @param {CanvasRenderingContext2D} ctx - The board context
  * @param {string} terrain - Hex type
@@ -419,9 +442,10 @@ function buildTerrainPatterns(ctx, colors) {
  */
 function getTerrainPattern(ctx, terrain) {
     const colors = readPalette();
-    if (!terrainPatterns || terrainPatternSignature !== paletteSignature) {
-        terrainPatterns = buildTerrainPatterns(ctx, colors);
-        terrainPatternSignature = paletteSignature;
+    const signature = paletteSignature + '|' + resourceDefsSignature;
+    if (!terrainPatterns || terrainPatternSignature !== signature) {
+        terrainPatterns = buildTerrainPatterns(ctx, resourceDefs, colors);
+        terrainPatternSignature = signature;
     }
     return terrainPatterns[terrain] || null;
 }
@@ -584,12 +608,18 @@ function drawNumberToken(ctx, centerX, centerY, number, isHighlighted = false) {
 }
 
 /**
- * Get the color for a hex type, from the page's terrain tokens.
+ * Get the color for a hex type. The server resource registry is the source of
+ * truth; the page's terrain tokens are a fallback for a hex the registry does
+ * not define (or before any board has loaded).
  *
  * @param {string} hexType - Type of hex (ore, wheat, sheep, brick, wood, desert, ocean)
  * @returns {string} - Hex color code
  */
 function getHexColor(hexType) {
+    const def = resourceDefs[hexType];
+    if (def && def.color) {
+        return def.color;
+    }
     const colors = readPalette();
     return colors[hexType] || colors.ocean;
 }
@@ -1715,6 +1745,17 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     const vertices = boardData.vertices || {};
     const edges = boardData.edges || {};
     const players = boardData.players || [];
+
+    // The resource registry travels with every server board. Adopt it so hex
+    // colours, patterns and glyphs draw from it; a client-built board (the map
+    // editor's authored frame) omits it and keeps the CSS-token fallback.
+    if (boardData.resources) {
+        resourceDefs = boardData.resources;
+        const signature = JSON.stringify(boardData.resources);
+        if (signature !== resourceDefsSignature) {
+            resourceDefsSignature = signature;
+        }
+    }
 
     const hexRadius = BOARD_CONFIG.hexRadius;
 
