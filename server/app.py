@@ -10,14 +10,16 @@ can ask for its own app, with its own configuration and its own game session,
 instead of every test sharing whatever the first import happened to build.
 """
 
+import json
 import logging
 import uuid
 
 import state
 from config import Config, get_config
 from extensions import socketio
-from flask import Flask, render_template, request
+from flask import Flask, Response, render_template, request
 from flask_socketio import emit
+from game import resources
 
 # Importing these registers every handler as a side effect of the decorators.
 # Without the import the events simply do not exist, with no error to say so —
@@ -71,6 +73,22 @@ def create_app(config=None):
     @app.route('/')
     def index():
         return render_template('index.html')
+
+    @app.route('/resources.json')
+    def resources_export():
+        """The current resource registry, as a file the player downloads.
+
+        This is the whole registry — the defaults with any `data/resources.json`
+        overrides already merged in — so the download doubles as a template: edit
+        it, drop it back at that path, and the server draws every board from it.
+        The attachment disposition makes the browser save rather than display it.
+        """
+        payload = json.dumps(resources.registry(), indent=2, ensure_ascii=False)
+        return Response(
+            payload,
+            mimetype='application/json',
+            headers={'Content-Disposition': 'attachment; filename="resources.json"'},
+        )
 
     return app
 

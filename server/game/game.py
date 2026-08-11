@@ -6,8 +6,8 @@ import random
 from game import cities_knights as ck_module
 from game import ep as ep_module
 from game import modifiers as modifiers_module
+from game import resources, tiles
 from game import rules as rules_module
-from game import tiles
 from game.bank import Bank
 from game.board import BoardBuilder
 from game.cargo import CargoRules
@@ -1014,6 +1014,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # client greys its buttons out from this and never from a table of
             # its own.
             'costs': self.priced_builds(),
+            # The resource registry — name, colour, symbol and pattern per
+            # resource. The client draws terrain from this rather than its own
+            # copy, so adding a resource is one server-side entry. Server-global.
+            'resources': resources.registry(),
             'cities_knights': self.ck.to_dict(viewer) if self.ck else None,
             # Pirate hexes, mission tracks/markers/lead cards, token supplies and
             # the undiscovered-pool count. Mission progress is public; the pool's

@@ -4754,6 +4754,26 @@ body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.give) {
     margin-left: auto;
 }
 
+/* An <a download> that has to read as one of the toolbar's buttons. It borrows
+   the global button box; the extras below are only what an anchor lacks. */
+.editor-action-link {
+    padding: calc(var(--space-3) - 2px) calc(var(--space-5) - 2px);
+    font-size: var(--text-md);
+    background-color: var(--accent);
+    color: var(--on-accent);
+    border: 2px solid transparent;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color var(--dur-med) var(--ease);
+}
+
+.editor-action-link:hover {
+    background-color: var(--accent-dark);
+}
+
 /* Sidebar + canvas share the space below the toolbar */
 .editor-body {
     display: flex;
