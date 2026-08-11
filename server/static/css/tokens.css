@@ -133,6 +133,12 @@
     --terrain-wheat: #e0b64a;
     --terrain-ore: #8a9bb0;
     --terrain-desert: #e6d9bb;
+    /* Explorers & Pirates: the dark back of an undiscovered tile, and the three
+       terrains a discovery can reveal. */
+    --terrain-hidden: #223247;
+    --terrain-gold: #d9a441;
+    --terrain-fish: #3f9fb8;
+    --terrain-spice: #b5643c;
 
     /* The board's own backdrop — the canvas paints its own dark ocean. */
     --board-backdrop: #16110b;
@@ -235,6 +241,10 @@
     --terrain-wheat: #c9973c;
     --terrain-ore: #74879e;
     --terrain-desert: #55503c;
+    --terrain-hidden: #1b2735;
+    --terrain-gold: #c99a3e;
+    --terrain-fish: #3a90a6;
+    --terrain-spice: #a55a36;
 
     --board-backdrop: #16110b;
 

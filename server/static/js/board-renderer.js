@@ -38,6 +38,12 @@ const PALETTE_TOKENS = {
     wheat: '--terrain-wheat',
     ore: '--terrain-ore',
     desert: '--terrain-desert',
+    // Explorers & Pirates terrains: an undiscovered tile's dark back, and the
+    // three v2 terrains a discovery can turn up.
+    hidden: '--terrain-hidden',
+    gold: '--terrain-gold',
+    fish: '--terrain-fish',
+    spice: '--terrain-spice',
     portWood: '--res-wood',
     portBrick: '--res-brick',
     portSheep: '--res-sheep',
@@ -51,6 +57,7 @@ const PALETTE_TOKENS = {
 const PALETTE_FALLBACKS = {
     wood: '#3f8f5a', brick: '#c9663a', sheep: '#8fbf4a', wheat: '#e0b64a',
     ore: '#8a9bb0', desert: '#e6d9bb',
+    hidden: '#223247', gold: '#d9a441', fish: '#3f9fb8', spice: '#b5643c',
     portWood: '#2f6b3a', portBrick: '#a4502a', portSheep: '#5c7d26',
     portWheat: '#8a6800', portOre: '#4d5b6b', onPort: '#ffffff',
     portGeneric: '#1a5fb4', onGeneric: '#ffffff'
@@ -177,6 +184,30 @@ function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlig
     if (isLand && number !== null && number !== undefined) {
         drawNumberToken(ctx, centerX, centerY, number, isHighlighted);
     }
+
+    // An undiscovered tile (Explorers & Pirates) shows only its back — a large,
+    // faint question mark — until a ship reaches it and it turns face up.
+    if (terrain === 'hidden') {
+        drawHiddenMark(ctx, centerX, centerY, radius);
+    }
+}
+
+/**
+ * The mark on a face-down, undiscovered tile: a big, faint question mark.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} centerX - Center x
+ * @param {number} centerY - Center y
+ * @param {number} radius - Hex radius
+ */
+function drawHiddenMark(ctx, centerX, centerY, radius) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(232, 240, 248, 0.5)';
+    ctx.font = `700 ${Math.round(radius * 0.95)}px "Space Grotesk", system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', centerX, centerY + radius * 0.05);
+    ctx.restore();
 }
 
 /**
