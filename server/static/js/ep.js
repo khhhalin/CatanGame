@@ -4,7 +4,8 @@
 // update, that hides the whole panel on a table not playing the expansion.
 
 import { markDirty } from './board.js';
-import { boardCanvas, epBuildShipBtn, epMissionBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSupply, gameBoard, moveShipBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
+import { boardCanvas, epBuildShipBtn, epBuyGoldBtn, epGold, epGoldPick, epMissionBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSellGoldBtn, epSupply, gameBoard, moveShipBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
+import { resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
 import { armShipMode, formatCost, SHIP_COST, turnBlockReason } from './seafarers.js';
@@ -28,6 +29,14 @@ const ADVANTAGE_LABELS = {
     pirate_bonus: 'Pirate Bonus',
     fast_gold: 'Fast Gold',
 };
+
+// The resources a gold trade can name, in the hand's order. The rates live on
+// the server (gold.py): a sell is 3 of one resource for 1 gold, a buy is 2 gold
+// for 1 chosen resource — shown on the buttons so the price is not a surprise.
+const RESOURCE_ORDER = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+
+// Which gold trade the resource pick is currently choosing for, or null.
+let goldPickMode = null;
 
 /** A small dot in a player's colour. */
 function colorDot(color) {
@@ -57,6 +66,7 @@ export function renderExplorersAndPirates() {
         colors[player.name] = player.color;
     }
     renderActions(board);
+    renderGold(board);
     renderMissions(ep, colors);
     renderSupply(ep);
     renderPlayers(board, ep, colors);
@@ -231,6 +241,67 @@ export function handleMissionTap(clientX, clientY) {
     return true;
 }
 
+/**
+ * The gold trades: two buttons that each reveal a resource pick, hidden whole on
+ * a table not playing gold and disabled off-turn. The pick row is rebuilt every
+ * render so a mid-trade board update does not leave stale buttons behind.
+ */
+function renderGold(board) {
+    if (!epGold) {
+        return;
+    }
+    const show = board.rules?.gold === true;
+    epGold.classList.toggle('hidden', !show);
+    if (!show) {
+        goldPickMode = null;
+        return;
+    }
+    const blocked = turnBlockReason();
+    for (const button of [epSellGoldBtn, epBuyGoldBtn]) {
+        if (button) {
+            button.disabled = Boolean(blocked);
+            button.title = blocked || '';
+        }
+    }
+    if (epSellGoldBtn) {
+        epSellGoldBtn.classList.toggle('active', goldPickMode === 'sell');
+    }
+    if (epBuyGoldBtn) {
+        epBuyGoldBtn.classList.toggle('active', goldPickMode === 'buy');
+    }
+    renderGoldPick();
+}
+
+/** The five resource tiles, or nothing when no trade is being chosen for. */
+function renderGoldPick() {
+    if (!epGoldPick) {
+        return;
+    }
+    epGoldPick.classList.toggle('hidden', goldPickMode === null);
+    if (goldPickMode === null) {
+        epGoldPick.replaceChildren();
+        return;
+    }
+    const event = goldPickMode === 'sell' ? 'sell_resources_for_gold' : 'buy_resource_with_gold';
+    const frag = document.createDocumentFragment();
+    for (const resource of RESOURCE_ORDER) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ep-gold-res';
+        button.dataset.resource = resource;
+        button.dataset.event = event;
+        // resourceTile is trusted markup from icons.js, not user input.
+        button.innerHTML = resourceTile(resource, { label: resource });
+        frag.appendChild(button);
+    }
+    epGoldPick.replaceChildren(frag);
+}
+
+function toggleGoldMode(mode) {
+    goldPickMode = goldPickMode === mode ? null : mode;
+    renderExplorersAndPirates();
+}
+
 function renderMissions(ep, colors) {
     const frag = document.createDocumentFragment();
     for (const mission of ep.missions || []) {
@@ -333,4 +404,21 @@ epMoveShipBtn?.addEventListener('click', () => armShipMode('ship_move'));
 epMissionBtn?.addEventListener('click', () => armMissionMode());
 epRollFishBtn?.addEventListener('click', () => {
     emitGame('roll_fish_haul', { name: viewState.identity.name });
+});
+
+epSellGoldBtn?.addEventListener('click', () => toggleGoldMode('sell'));
+epBuyGoldBtn?.addEventListener('click', () => toggleGoldMode('buy'));
+// One listener for the whole pick row; the tile clicked names the resource and
+// the trade it belongs to, so the row can be rebuilt without rewiring.
+epGoldPick?.addEventListener('click', event => {
+    const button = event.target.closest('.ep-gold-res');
+    if (!button) {
+        return;
+    }
+    emitGame(button.dataset.event, {
+        name: viewState.identity.name,
+        resource: button.dataset.resource,
+    });
+    goldPickMode = null;
+    renderExplorersAndPirates();
 });

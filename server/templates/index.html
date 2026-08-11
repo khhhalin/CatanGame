@@ -446,6 +446,15 @@
                             <button type="button" class="ep-action-btn" id="ep-mission">Mission action</button>
                             <button type="button" class="ep-action-btn" id="ep-roll-fish">Roll for fish</button>
                         </div>
+                        <!-- Gold trades: each button reveals a resource pick,
+                             then fires the sell (3 of one resource -> 1 gold) or
+                             the buy (2 gold -> 1 chosen resource). ep.js fills the
+                             pick row and hides the block when gold is off. -->
+                        <div class="ep-gold hidden" id="ep-gold">
+                            <button type="button" class="ep-action-btn" id="ep-sell-gold">Sell for gold</button>
+                            <button type="button" class="ep-action-btn" id="ep-buy-gold">Buy with gold</button>
+                            <div class="ep-gold-pick hidden" id="ep-gold-pick"></div>
+                        </div>
                         <div class="ep-missions" id="ep-missions"></div>
                         <div class="ep-supply" id="ep-supply"></div>
                         <div class="ep-players" id="ep-players"></div>

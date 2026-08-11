@@ -2246,6 +2246,27 @@ button:disabled {
     outline-offset: 1px;
 }
 
+/* Gold trades: the two buttons on one row, the resource pick revealed beneath. */
+.ep-gold {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+}
+
+.ep-gold-pick {
+    flex-basis: 100%;
+    display: flex;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+
+.ep-gold-res {
+    flex: 1 1 auto;
+    padding: var(--space-1);
+    min-width: 0;
+}
+
 /* Big Bank panel: a two-column grid of large tiles, a thin stock meter and a
    big count. The meter is kept (the stock-depletion signal, and what the hand
    suite reads) but slimmed so the number leads. */
