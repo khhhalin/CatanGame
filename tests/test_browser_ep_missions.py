@@ -151,6 +151,144 @@ def _click_key(player, kind, key):
     _click_board_point(player, board_x, board_y, layout)
 
 
+def _edge_between(game, cove, hex_key):
+    """The sea edge shared by the cove and an adjacent hex — an end of a ship
+    there points at both, which is what lets one ship catch/befriend then
+    deliver at the dock next door."""
+    corners = set(game._hex_corner_vertices(cove)) & set(game._hex_corner_vertices(hex_key))
+    return next(
+        edge_key for edge_key in sorted(game.edges)
+        if game.is_sea_edge(edge_key)
+        and set(game.edges[edge_key].neighbors['vertices']) <= corners
+        and len(corners.intersection(game.edges[edge_key].neighbors['vertices'])) == 2
+    )
+
+
+def _scenario_game():
+    """A started Pirate Cove game with Alice mid-turn and a mission set-up on each
+    of the three cove-adjacent special hexes: a fish shoal carrying a haul, a
+    pirate lair one crew short of capture, and a spice village. Each has one of
+    Alice's transport ships on the cove edge beside it, so a single gesture drives
+    each mission. Returns the game and the keys the taps need."""
+    document = map_store.read_map('pirate-cove')
+    rules = dict(rules_module.defaults())
+    for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
+                 'missions', 'mission_fish', 'mission_spices', 'mission_pirate_lairs'):
+        rules[rule] = True
+    rules['turn_order'] = 'lobby'
+    rules['board_layout'] = 'custom'
+    rules['board_map'] = document['id']
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=rules,
+                map_definition=maps.parse_map(document))
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+
+    cove = next(key for key, hex_obj in game.hexes.items()
+                if hex_obj.meta is not None and hex_obj.meta.docks)
+    specials = {}
+    for key, hex_obj in game.hexes.items():
+        if getattr(hex_obj, 'hidden', False):
+            hex_obj.hidden = False
+            specials[hex_obj.type] = key
+
+    fish_edge = _edge_between(game, cove, specials['fish'])
+    game.edges[fish_edge].ship = {'player': 'Alice', 'kind': 'transport', 'id': 1,
+                                  'built_turn': -1, 'cargo': []}
+    game.ep.fish_shoals[specials['fish']] = {'number': 4, 'haul': True}
+
+    gold_edge = _edge_between(game, cove, specials['gold'])
+    game.edges[gold_edge].ship = {'player': 'Alice', 'kind': 'transport', 'id': 2,
+                                  'built_turn': -1,
+                                  'cargo': [{'type': 'crew', 'size': 'small'},
+                                            {'type': 'crew', 'size': 'small'}]}
+    # One crew already on the lair, so Alice's two land to 3 and capture it.
+    game.ep.lairs[specials['gold']] = {'captured': False, 'crews': {'Alice': 1}}
+
+    spice_edge = _edge_between(game, cove, specials['spice'])
+    game.edges[spice_edge].ship = {'player': 'Alice', 'kind': 'transport', 'id': 3,
+                                   'built_turn': -1,
+                                   'cargo': [{'type': 'crew', 'size': 'small'}]}
+    game.ep.spice_hexes[specials['spice']] = {'sacks': 2, 'advantage': 'swift_voyage',
+                                              'crews': []}
+    return game, {
+        'cove': cove, 'fish': specials['fish'], 'gold': specials['gold'],
+        'spice': specials['spice'], 'fish_edge': fish_edge, 'gold_edge': gold_edge,
+        'spice_edge': spice_edge,
+    }
+
+
+def _pirate_seven_game():
+    """A started Pirate Cove game with the E&P pirate rule on and a seven
+    outstanding: Alice must place the pirate ship, the robber having been
+    replaced. No ships, so a sea placement steals from nobody."""
+    document = map_store.read_map('pirate-cove')
+    rules = dict(rules_module.defaults())
+    for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
+                 'missions', 'mission_fish', 'pirate_ship_instead_of_robber'):
+        rules[rule] = True
+    rules['turn_order'] = 'lobby'
+    rules['board_layout'] = 'custom'
+    rules['board_map'] = document['id']
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=rules,
+                map_definition=maps.parse_map(document))
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.must_move_robber = True
+    cove = next(key for key, hex_obj in game.hexes.items()
+                if hex_obj.meta is not None and hex_obj.meta.docks)
+    # The most central land hex, so its tap lands on-canvas clear of the panels.
+    land_hex = min(
+        (key for key, hex_obj in game.hexes.items()
+         if hex_obj.type != 'ocean' and not getattr(hex_obj, 'hidden', False)),
+        key=lambda key: sum(abs(int(part)) for part in key.split(',')),
+    )
+    return game, cove, land_hex
+
+
+def _hex_ink(player, hex_key):
+    """A signature of the canvas pixels around a hex — the sum of every channel in
+    a box at its centre. A pirate ship drawing onto a flat ocean hex changes it,
+    which is how a pixel-counting assertion sees the piece a player sees."""
+    board_x, board_y = _board_point(player, 'hex', hex_key)
+    layout = player.page.evaluate(_LAYOUT)
+    return player.page.evaluate(
+        """([bx, by, ox, oy]) => {
+            const canvas = document.getElementById('board-canvas');
+            const rect = canvas.getBoundingClientRect();
+            const origin = window.BoardRenderer.clientToBoard(canvas, rect.left, rect.top);
+            const far = window.BoardRenderer.clientToBoard(
+                canvas, rect.left + 100, rect.top + 100);
+            const sx = 100 / (far.x - origin.x), sy = 100 / (far.y - origin.y);
+            const cx = (bx + ox - origin.x) * sx, cy = (by + oy - origin.y) * sy;
+            const half = 34;
+            const ctx = canvas.getContext('2d');
+            const data = ctx.getImageData(
+                Math.max(0, cx - half), Math.max(0, cy - half), half * 2, half * 2).data;
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i];
+            return sum;
+        }""",
+        [board_x, board_y, layout["offsetX"], layout["offsetY"]],
+    )
+
+
+def _open(browser, tmp_path, game):
+    """Save the game, serve it, and bring Alice to a painted board."""
+    persistence.save(game, os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    alice = Player(browser, url, "Alice", viewport=VIEWPORT)
+    alice.page.check("#role-player")
+    alice.page.fill("#username", "Alice")
+    alice.page.click("#join-btn")
+    alice.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
+    wait_for_board_painted(alice)
+    next_frame(alice.page)
+    return alice, proc
+
+
 @pytest.fixture(scope="module")
 def browser():
     with browser_session() as engine:
@@ -217,6 +355,128 @@ def test_the_mission_gesture_delivers_a_haul_and_advances_the_track(browser, tmp
         )
         assert "2/6" in alice.page.inner_text("#ep-missions"), \
             alice.page.inner_text("#ep-missions")
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_the_gesture_catches_a_haul_then_delivers_it(browser, tmp_path):
+    """catch_fish, then deliver_fish, both through the mission gesture. The
+    delivery is only possible because the catch filled the hold, so the Fish
+    marker advancing is proof of both."""
+    game, ref = _scenario_game()
+    alice, proc = _open(browser, tmp_path, game)
+    try:
+        assert alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().ep.markers.Alice.fish") == 0
+        alice.page.click("#ep-mission")
+        # Catch: the laden shoal into the empty ship.
+        _click_key(alice, 'edge', ref['fish_edge'])
+        _click_key(alice, 'hex', ref['fish'])
+        alice.page.wait_for_function(
+            "e => (window.__catanDebug.getBoard().edges[e].ship.cargo || [])"
+            ".some(p => p.type === 'fish_haul')",
+            arg=ref['fish_edge'], timeout=8000,
+        )
+        # Deliver: the same ship at the dock next door.
+        _click_key(alice, 'edge', ref['fish_edge'])
+        _click_key(alice, 'hex', ref['cove'])
+        alice.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().ep.markers.Alice.fish === 1",
+            timeout=8000,
+        )
+        assert "1/6" in alice.page.inner_text("#ep-missions"), \
+            alice.page.inner_text("#ep-missions")
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_the_gesture_lands_crews_and_captures_a_lair(browser, tmp_path):
+    """land_crews_on_lair: two crews land on a lair that already held one, the
+    third captures it, and Alice's Pirate Lairs marker ticks up in the panel."""
+    game, ref = _scenario_game()
+    alice, proc = _open(browser, tmp_path, game)
+    try:
+        assert alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().ep.markers.Alice.pirate_lairs") == 0
+        alice.page.click("#ep-mission")
+        _click_key(alice, 'edge', ref['gold_edge'])
+        _click_key(alice, 'hex', ref['gold'])
+        alice.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().ep.markers.Alice.pirate_lairs > 0",
+            timeout=8000,
+        )
+        # The lair is captured and the panel shows Alice's advance on the track.
+        assert alice.page.evaluate(
+            "g => window.__catanDebug.getBoard().ep.lairs[g].captured", ref['gold']) is True
+        assert "Pirate Lairs" in alice.page.inner_text("#ep-missions")
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_the_gesture_befriends_a_village_then_delivers_spices(browser, tmp_path):
+    """befriend_spice_village grants a visible advantage in the players list, and
+    deliver_spices then advances the Spices marker — both through the gesture."""
+    game, ref = _scenario_game()
+    alice, proc = _open(browser, tmp_path, game)
+    try:
+        alice.page.click("#ep-mission")
+        # Befriend: a crew steps ashore, the village's advantage is earned.
+        _click_key(alice, 'edge', ref['spice_edge'])
+        _click_key(alice, 'hex', ref['spice'])
+        alice.page.wait_for_function(
+            "() => (window.__catanDebug.getBoard().ep.village_advantages.Alice || [])"
+            ".includes('swift_voyage')",
+            timeout=8000,
+        )
+        # The players list, what a player reads, now names the advantage.
+        assert "swift voyage" in alice.page.inner_text("#ep-players").lower(), \
+            alice.page.inner_text("#ep-players")
+        # Deliver: the sack that came aboard advances the Spices track.
+        _click_key(alice, 'edge', ref['spice_edge'])
+        _click_key(alice, 'hex', ref['cove'])
+        alice.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().ep.markers.Alice.spices === 1",
+            timeout=8000,
+        )
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_a_seven_places_the_pirate_on_the_sea_and_refuses_the_land(browser, tmp_path):
+    """The E&P pirate resolves a 7: a land-hex tap is refused with a cue (the
+    robber is gone, there is no land move), and a sea-hex tap places the pirate
+    ship — which draws onto that hex, a change the pixels show."""
+    game, cove, land_hex = _pirate_seven_game()
+    alice, proc = _open(browser, tmp_path, game)
+    try:
+        assert alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().ep.pirate_hex.Alice") is None
+
+        # A land tap owes nothing — no ✓ is pinned, and the player is told why.
+        _click_key(alice, 'hex', land_hex)
+        assert not alice.page.is_visible("#placement-confirm:not(.hidden)"), \
+            "a land tap on an E&P 7 pinned a placement it cannot make"
+        assert any("sea hex" in notice.lower() for notice in alice.notices()), \
+            f"no cue to aim at the sea: {alice.notices()}"
+        assert alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().ep.pirate_hex.Alice") is None
+
+        # A sea tap places the pirate. Capture the hex before and after so the
+        # assertion is that the piece actually drew, not just that state changed.
+        ink_before = _hex_ink(alice, cove)
+        _click_key(alice, 'hex', cove)
+        alice.page.click("#placement-confirm-yes")
+        alice.page.wait_for_function(
+            "c => window.__catanDebug.getBoard().ep.pirate_hex.Alice === c",
+            arg=cove, timeout=8000,
+        )
+        next_frame(alice.page)
+        assert _hex_ink(alice, cove) != ink_before, \
+            "the pirate ship left no mark on the sea hex it was placed on"
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)
