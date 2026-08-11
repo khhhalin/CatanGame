@@ -26,7 +26,7 @@ import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
 
-const SHIP_COST = { wood: 1, sheep: 1 };
+export const SHIP_COST = { wood: 1, sheep: 1 };
 
 // The board modes this section adds to the settlement/road/city set.
 const SEA_MODES = ['ship', 'ship_move'];
@@ -72,7 +72,7 @@ export function isSeaMode(mode) {
  * @param {object} cost - {resource: amount}
  * @returns {string} HTML (resource tiles), so the caller must use innerHTML.
  */
-function formatCost(cost) {
+export function formatCost(cost) {
     return Object.entries(cost)
         .map(([resource, amount]) => `${amount}${resourceTile(resource, { label: resource })}`)
         .join(' ');

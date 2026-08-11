@@ -5,7 +5,7 @@
 
 import { epBuildShipBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSupply } from './dom.js';
 import { findMyPlayer } from './player-view.js';
-import { armShipMode, turnBlockReason } from './seafarers.js';
+import { armShipMode, formatCost, SHIP_COST, turnBlockReason } from './seafarers.js';
 import { emitGame } from './socket.js';
 import { getBoard, isMyTurn, viewState } from './state.js';
 
@@ -76,6 +76,10 @@ function renderActions(board) {
         epBuildShipBtn.classList.toggle('hidden', !showShips);
         epMoveShipBtn.classList.toggle('hidden', !showShips);
         if (showShips && me) {
+            // The transport ship costs the Seafarers ship's wood+sheep; show it
+            // on the button the way the Seafarers panel does, so the price is
+            // visible before the tap. innerHTML because the cost is resource tiles.
+            epBuildShipBtn.innerHTML = `Build ship · ${formatCost(SHIP_COST)}`;
             // The server checks the harbour and the cost; the client only gates
             // on whose turn it is, and errs permissive.
             const blocked = turnBlockReason();
