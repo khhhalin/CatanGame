@@ -119,6 +119,11 @@ class TurnClock:
         # "for the rest of the turn" — and this is the path the watchdog takes,
         # so an abandoned turn cannot carry a Merchant Fleet into the next one.
         self.merchant_fleet_types = {}
+        # An open trade offer is good only while its maker is on; their turn
+        # ending takes it off the table (TEST 6). Both the manual next-turn and
+        # the watchdog's forced advance pass through here, so neither leaves an
+        # offer hanging into the next player's turn.
+        self.trade_manager.cancel_all_active()
 
         self.start_turn()
         if self.rules['knights'] and self.ck is not None:

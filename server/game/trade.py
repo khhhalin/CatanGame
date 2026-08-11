@@ -42,6 +42,19 @@ class TradeManager:
         self.offers[offer_id] = offer
         return offer
 
+    def cancel_all_active(self) -> None:
+        """Drop every open offer.
+
+        Only the player whose turn it is can hold an offer, so turn end calls
+        this to clear that player's offers as their turn passes — an offer is
+        good only while its maker is on. Without a clock (the physical-game
+        default), this is the one thing that takes an untaken offer off the
+        table.
+        """
+        for offer in self.offers.values():
+            if offer['status'] == 'active':
+                offer['status'] = 'cancelled'
+
     def has_expired(self, offer: dict) -> bool:
         """Whether this offer's clock has run out, and mark it if it has.
 

@@ -249,6 +249,26 @@ class TestAdvancingTheTurn:
 
         assert playing_game.advance_turn(other_player(playing_game, name))['success']
 
+    def test_ending_a_turn_clears_the_offer_left_on_the_table(self, playing_game):
+        """An open trade offer belongs to the offerer's turn — TEST 6.
+
+        Only the current player can make one, so an offer still active when
+        their turn ends would hang its popup over the whole table into the next
+        player's turn. The TEST 5 "offers persist until taken or withdrawn"
+        change (no expiry clock) removed the only thing that used to drop it;
+        turn end must now clear it. Written to fail first: before the fix the
+        offer is still active after the advance.
+        """
+        name = acting(playing_game)
+        playing_game.get_player(name).resources = {'wood': 1}
+        offer = playing_game.propose_trade(name, {'wood': 1}, {'ore': 1})['offer']
+        assert offer in playing_game.trade_manager.get_active_offers()
+
+        playing_game.advance_turn(name)
+
+        assert playing_game.trade_manager.get_active_offers() == [], \
+            "the offer outlived the turn it was made on"
+
     def test_an_owed_robber_blocks_the_turn(self, playing_game):
         playing_game.must_move_robber = True
 
