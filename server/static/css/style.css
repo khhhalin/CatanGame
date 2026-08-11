@@ -2225,6 +2225,27 @@ button:disabled {
     color: var(--text-muted);
 }
 
+/* The action strip's buttons: a wrapping row that shares the app's button look,
+   with an armed (active) ship mode ringed like the other placement buttons. */
+.ep-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+}
+
+.ep-action-btn {
+    flex: 1 1 auto;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+    white-space: nowrap;
+}
+
+.ep-action-btn.active {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
 /* Big Bank panel: a two-column grid of large tiles, a thin stock meter and a
    big count. The meter is kept (the stock-depletion signal, and what the hand
    suite reads) but slimmed so the number leads. */

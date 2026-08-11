@@ -429,6 +429,16 @@
                          ep state; ep.js fills the three bodies from `board.ep`. -->
                     <div class="right-ep hidden" id="right-ep">
                         <div class="right-eyebrow">Explorers &amp; Pirates</div>
+                        <!-- The E&P action strip: the ship controls (which arm
+                             the board gestures — click a sea side to build, tap
+                             ship then target to move) and the non-spatial
+                             actions. ep.js fills each button's state and hides
+                             the ones whose rule is off. -->
+                        <div class="ep-actions" id="ep-actions">
+                            <button type="button" class="ep-action-btn" id="ep-build-ship">Build ship</button>
+                            <button type="button" class="ep-action-btn" id="ep-move-ship">Move ship</button>
+                            <button type="button" class="ep-action-btn" id="ep-roll-fish">Roll for fish</button>
+                        </div>
                         <div class="ep-missions" id="ep-missions"></div>
                         <div class="ep-supply" id="ep-supply"></div>
                         <div class="ep-players" id="ep-players"></div>

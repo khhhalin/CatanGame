@@ -3,8 +3,11 @@
 // `board.ep`. Mirrors cities-knights.js — one render, called on every board
 // update, that hides the whole panel on a table not playing the expansion.
 
-import { epMissions, epPanel, epPlayers, epSupply } from './dom.js';
-import { getBoard } from './state.js';
+import { epBuildShipBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSupply } from './dom.js';
+import { findMyPlayer } from './player-view.js';
+import { armShipMode, turnBlockReason } from './seafarers.js';
+import { emitGame } from './socket.js';
+import { getBoard, isMyTurn, viewState } from './state.js';
 
 const MISSION_LABELS = {
     pirate_lairs: 'Pirate Lairs',
@@ -51,9 +54,57 @@ export function renderExplorersAndPirates() {
     for (const player of board.players || []) {
         colors[player.name] = player.color;
     }
+    renderActions(board);
     renderMissions(ep, colors);
     renderSupply(ep);
     renderPlayers(board, ep, colors);
+}
+
+/**
+ * The action strip: the ship controls (Build/Move arm the board gestures) and
+ * the non-spatial actions (Roll for fish). Each button is hidden when its rule
+ * is off and disabled with a reason when it cannot be taken; the ship modes
+ * light up while armed. Gold sell/buy — which needs a resource pick — is a
+ * later addition.
+ */
+function renderActions(board) {
+    const rules = board.rules || {};
+    const me = findMyPlayer();
+
+    if (epBuildShipBtn && epMoveShipBtn) {
+        const showShips = rules.transport_ships === true;
+        epBuildShipBtn.classList.toggle('hidden', !showShips);
+        epMoveShipBtn.classList.toggle('hidden', !showShips);
+        if (showShips && me) {
+            // The server checks the harbour and the cost; the client only gates
+            // on whose turn it is, and errs permissive.
+            const blocked = turnBlockReason();
+            epBuildShipBtn.disabled = Boolean(blocked);
+            epBuildShipBtn.title = blocked || 'Then tap a sea side beside a harbor settlement';
+            epBuildShipBtn.classList.toggle('active', viewState.selectedBuilding === 'ship');
+
+            const ships = me.ships || [];
+            let moveReason = blocked;
+            if (!moveReason && ships.length === 0) {
+                moveReason = 'You have no ships to move';
+            } else if (!moveReason && board.ship_moved_this_turn === true) {
+                moveReason = 'You have already moved a ship this turn';
+            }
+            epMoveShipBtn.disabled = Boolean(moveReason);
+            epMoveShipBtn.title = moveReason || 'Tap your ship, then the sea side to move it to';
+            epMoveShipBtn.classList.toggle('active', viewState.selectedBuilding === 'ship_move');
+        }
+    }
+
+    if (epRollFishBtn) {
+        const showFish = rules.mission_fish === true;
+        epRollFishBtn.classList.toggle('hidden', !showFish);
+        if (showFish) {
+            const blocked = !isMyTurn() ? 'Not your turn' : turnBlockReason();
+            epRollFishBtn.disabled = Boolean(blocked);
+            epRollFishBtn.title = blocked || 'Roll a die to try to place a fish haul on a matching shoal';
+        }
+    }
 }
 
 function renderMissions(ep, colors) {
@@ -149,3 +200,12 @@ function renderPlayers(board, ep, colors) {
     }
     epPlayers.replaceChildren(frag);
 }
+
+// The button listeners, registered once; the render above only sets each
+// button's state. Build/Move arm the shared ship board modes (the board tap
+// then does the work); Roll for fish is a direct action.
+epBuildShipBtn?.addEventListener('click', () => armShipMode('ship'));
+epMoveShipBtn?.addEventListener('click', () => armShipMode('ship_move'));
+epRollFishBtn?.addEventListener('click', () => {
+    emitGame('roll_fish_haul', { name: viewState.identity.name });
+});

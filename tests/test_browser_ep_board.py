@@ -130,6 +130,13 @@ def test_the_ep_board_paints_its_new_hex_types(browser, tmp_path):
         assert alice.page.query_selector("#right-ep:not(.hidden)") is not None, \
             "the E&P panel did not appear"
         assert "Fish for Catan" in alice.page.inner_text("#ep-missions")
+        # The action strip carries the ship controls and the fish roll; the
+        # Seafarers panel does not show on a transport table.
+        assert alice.page.query_selector("#ep-build-ship:not(.hidden)") is not None, \
+            "the E&P strip has no Build ship control"
+        assert alice.page.query_selector("#ep-roll-fish:not(.hidden)") is not None
+        assert alice.page.query_selector("#seafarers-panel:not(.hidden)") is None, \
+            "the Seafarers panel showed on a transport table"
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)

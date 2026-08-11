@@ -220,6 +220,16 @@ function myShipAt(edgeKey) {
  *
  * @param {string} mode - One of SEA_MODES
  */
+/**
+ * Arm one of the ship board modes from outside this module — the E&P strip's
+ * Build/Move ship buttons use it, since transport ships share these modes.
+ *
+ * @param {string} mode - 'ship' or 'ship_move'
+ */
+export function armShipMode(mode) {
+    toggleSeaMode(mode);
+}
+
 function toggleSeaMode(mode) {
     if (!seaEnabled()) {
         return;
@@ -257,7 +267,7 @@ export function syncSeaModeButtons() {
  *
  * @returns {string} - Empty when the player may act
  */
-function turnBlockReason() {
+export function turnBlockReason() {
     if (!isMyTurn()) {
         return 'Not your turn';
     }
@@ -276,7 +286,12 @@ export function renderSeafarers() {
     const enabled = seaEnabled();
     const player = enabled ? findMyPlayer() : null;
 
-    seafarersPanel?.classList.toggle('hidden', !enabled || !player);
+    // The panel itself is Seafarers' own — its label, island points and ship
+    // buttons. A transport table shares the ship *interaction* (seaEnabled) but
+    // draws its ship controls in the E&P strip instead (ep.js), so the panel
+    // stays hidden there.
+    const seafarersOwn = seaRule('ships');
+    seafarersPanel?.classList.toggle('hidden', !seafarersOwn || !player);
 
     // The hint under the robber belongs to the pirate rule, not to the panel:
     // it is read by the one player who has just rolled a 7, whether or not
@@ -297,7 +312,7 @@ export function renderSeafarers() {
     // every button below is drawn from that.
     clearSettledPlacement();
 
-    if (player) {
+    if (player && seafarersOwn) {
         renderShipActions(player);
         renderIslandPoints();
     }
