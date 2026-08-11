@@ -49,3 +49,20 @@ def test_a_file_override_retints_a_resource_and_adds_a_new_one(tmp_path, monkeyp
     assert registry['gold'] == {'name': 'Gold', 'color': '#d9a441',
                                 'symbol': 'coin', 'pattern': 'stipple'}
     resources.reload()  # restore the module registry for other tests
+
+
+def test_the_download_button_serves_the_registry_as_a_saveable_file(socket_app):
+    """The editor's `Resources ↓` link points at `/resources.json`. If that route
+    404s the button downloads nothing; if it forgets the attachment header the
+    browser opens it in a tab instead of saving; if the body is not the registry
+    the file is useless as a template. So all three are pinned."""
+    import json
+
+    response = socket_app.test_client().get('/resources.json')
+
+    assert response.status_code == 200
+    assert response.mimetype == 'application/json'
+    assert 'attachment' in response.headers.get('Content-Disposition', '')
+    assert 'resources.json' in response.headers.get('Content-Disposition', '')
+    body = json.loads(response.get_data(as_text=True))
+    assert body == resources.registry(), 'the file must be the live registry'

@@ -244,6 +244,12 @@
                     <button id="editor-clear-btn">Clear</button>
                     <button id="editor-preview-btn">Preview</button>
                     <button id="editor-save-btn" aria-controls="editor-save-popover">Save ▾</button>
+                    <!-- The resource registry the board draws from, as a file: edit
+                         it and drop it back at server/data/resources.json to retint
+                         a resource or add one. A plain download, no round-trip. -->
+                    <a id="editor-resources-btn" class="editor-action-link"
+                       href="/resources.json" download="resources.json"
+                       title="Download the resource registry (colours, symbols, patterns) as an editable file">Resources ↓</a>
                     <button id="editor-done-btn">Done</button>
                 </div>
             </div>

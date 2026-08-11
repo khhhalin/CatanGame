@@ -160,6 +160,40 @@ class TestMapsButtonOpensEditor:
         # Close so later tests start clean
         alice.page.keyboard.press("Escape")
 
+    def test_resources_download_link_is_present_and_wired(self, lobby):
+        """The editor toolbar's `Resources ↓` link downloads the registry.
+
+        If the link is missing, or its href does not resolve to the registry
+        route, the player has no way to get the file the whole feature exists to
+        hand them. The DOM assertion catches a missing/misplaced button; fetching
+        the href and parsing it proves the route behind it actually serves the
+        registry (a JSON object keyed by resource id).
+        """
+        alice, _ = lobby
+        if alice.page.query_selector("#map-editor-screen.hidden") is not None:
+            alice.page.click("#maps-btn")
+            alice.page.wait_for_selector(
+                "#map-editor-screen:not(.hidden)", timeout=5000
+            )
+
+        link = alice.page.query_selector("#editor-resources-btn")
+        assert link is not None and link.is_visible(), (
+            "the Resources download link is not visible in the editor toolbar"
+        )
+        shot(alice, "editor-03-resources-link")
+
+        body = alice.page.evaluate(
+            "async (href) => { const r = await fetch(href); "
+            "return { ok: r.ok, text: await r.text() }; }",
+            link.get_attribute("href"),
+        )
+        assert body["ok"], "the resources link did not resolve"
+        import json
+        registry = json.loads(body["text"])
+        assert "wood" in registry and "color" in registry["wood"], (
+            f"the downloaded file is not the resource registry: {body['text'][:120]}"
+        )
+
     def test_done_button_returns_to_lobby(self, lobby):
         """Done closes the editor and reveals the lobby again.
 
