@@ -93,7 +93,9 @@ def _player_state(player) -> dict:
         'ships': player.ships,
         'victory_points': player.victory_points,
         'knights_played': player.knights_played,
-        # Explorers & Pirates: gold currency and the settler/crew reserves.
+        # Explorers & Pirates: the harbour settlements (2 VP each, so a save that
+        # dropped them undercounted the score), gold currency, and the reserves.
+        'harbor_settlements': player.harbor_settlements,
         'gold': player.gold,
         'settlers': player.settlers,
         'crews': player.crews,
@@ -226,6 +228,10 @@ def serialize(game: Game) -> dict:
         'buildings': {k: v.building for k, v in game.vertices.items() if v.building},
         'roads_on_edges': {k: e.road for k, e in game.edges.items() if e.road},
         'ships_on_edges': {k: e.ship for k, e in game.edges.items() if e.ship},
+        # The per-game id the next transport ship will take. Without it a reload
+        # resets the counter to zero and the next ship built reuses an id already
+        # on the board, so the two become one ship for the one-move-per-turn rule.
+        'transport_ship_counter': game.transport_ship_counter,
         'cities_knights': _ck_state(game.ck),
         # Explorers & Pirates: the whole state container — pirate ships, mission
         # markers and destinations, token supplies, the undiscovered pool and its
@@ -324,6 +330,16 @@ def deserialize(data: dict, config=None) -> Game:
             logger.warning("saved ship on %s has no sea side on this board; dropping it", key)
             continue
         game.edges[edge_key].ship = ship
+
+    # The next transport ship's id. A pre-counter save predates the field, so
+    # derive a floor from the ids already on the board rather than risk a reused
+    # one; a newer save carries the exact value.
+    existing_ship_ids = [
+        edge.ship['id'] for edge in game.edges.values()
+        if edge.ship and isinstance(edge.ship.get('id'), int)
+    ]
+    game.transport_ship_counter = data.get(
+        'transport_ship_counter', max(existing_ship_ids, default=0))
     for key, road in sorted(data.get('roads_on_edges', {}).items()):
         edge_key = game.canonical_edge_key(key)
         if edge_key is None:
@@ -362,7 +378,8 @@ def deserialize(data: dict, config=None) -> Game:
         ]
         player.victory_points = saved.get('victory_points', 0)
         player.knights_played = saved.get('knights_played', 0)
-        # Explorers & Pirates; absent (0) on a pre-E&P save.
+        # Explorers & Pirates; absent ([]/0) on a pre-E&P save.
+        player.harbor_settlements = list(saved.get('harbor_settlements', []))
         player.gold = saved.get('gold', 0)
         player.settlers = saved.get('settlers', 0)
         player.crews = saved.get('crews', 0)

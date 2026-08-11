@@ -572,6 +572,74 @@ class TestExplorersAndPiratesStateSurvives:
         assert after.get_player('Alice').gold == 5
         assert after.get_player('Alice').crews == 3
 
+    def test_a_full_ep_game_keeps_its_score_and_holdings(self, tmp_path):
+        """A restart must not undercount a player or lose a ship's hold.
+
+        Harbour settlements were dropped on save, so the reloaded game reported
+        fewer victory points than the one it replaced; a laden ship's cargo and
+        the per-game ship-id counter round-trip alongside. Every assertion is
+        against the live game, never a hand-copied number, so it fails if the
+        save silently changes any of them."""
+        game = an_ep_game()
+        alice = game.get_player('Alice')
+
+        # Two harbour settlements (2 VP each) and a plain one, placed on the board
+        # and listed on the player the way the engine keeps them.
+        sites = [key for key in sorted(game.vertices)
+                 if game.vertices[key].neighbors.get('hexes')
+                 and game.is_coastal_settlement_site(key)]
+        harbor_a, harbor_b, plain = sites[0], sites[1], sites[2]
+        for key in (harbor_a, harbor_b):
+            game.vertices[key].building = {
+                'type': 'harbor_settlement', 'player': 'Alice', 'basin': []}
+            alice.harbor_settlements.append(key)
+        game.vertices[plain].building = {'type': 'settlement', 'player': 'Alice'}
+        alice.settlements.append(plain)
+
+        # A laden transport ship, and the counter that hands the next ship its id.
+        sea_edge = next(key for key in sorted(game.edges) if game.is_sea_edge(key))
+        game.transport_ship_counter = 2
+        game.edges[sea_edge].ship = {
+            'player': 'Alice', 'kind': 'transport', 'id': 2, 'built_turn': 0,
+            'cargo': [{'type': 'fish_haul', 'size': 'large'}],
+        }
+        alice.ships.append(sea_edge)
+
+        # Mission progress that scores: a captured lair, a village advantage, and
+        # the sole Fish lead (its 1-VP card). Plus the second currency and reserves.
+        gold_hex = next(k for k, h in game.hexes.items() if h.type == 'gold')
+        spice_hex = next(k for k, h in game.hexes.items() if h.type == 'spice')
+        game.ep.lairs[gold_hex] = {'captured': True, 'crews': {'Alice': 2}}
+        game.ep.spice_hexes[spice_hex] = {'sacks': 1, 'advantage': 'swift_voyage',
+                                          'crews': ['Alice']}
+        game.ep.grant_advantage('Alice', 'swift_voyage')
+        game.ep.markers['Alice']['fish'] = 3
+        game.ep.markers['Bob']['fish'] = 1
+        game.ep.recompute_lead_cards()
+        alice.gold = 7
+        alice.settlers = 4
+        alice.crews = 2
+
+        before_points = game.victory_points_for('Alice')
+        after = round_trip(game, tmp_path)
+        reloaded = after.get_player('Alice')
+
+        # The score is the headline: harbour settlements plus the lead card, and
+        # it must survive whole.
+        assert after.victory_points_for('Alice') == before_points
+        assert reloaded.harbor_settlements == alice.harbor_settlements
+        assert reloaded.settlements == alice.settlements
+        # The ship and its hold come back exactly, and the id counter with them,
+        # so the next ship built cannot collide with one already on the board.
+        assert after.edges[sea_edge].ship == game.edges[sea_edge].ship
+        assert after.transport_ship_counter == game.transport_ship_counter
+        # The mission state and the second economy round-trip too.
+        assert after.ep.lairs[gold_hex] == {'captured': True, 'crews': {'Alice': 2}}
+        assert after.ep.advantages_of('Alice') == ['swift_voyage']
+        assert reloaded.gold == 7
+        assert reloaded.settlers == 4
+        assert reloaded.crews == 2
+
     def test_a_pre_ep_save_still_loads(self, tmp_path):
         """The `ep` key is additive; a base-game save from before it existed has
         no `ep` and must still restore, with no container."""
