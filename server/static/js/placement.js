@@ -16,6 +16,7 @@ import { markDirty } from './board.js';
 import { ckEnabled, handleCkVertexTap, handleProgressTargetTap, isProgressMode, progressCardName, progressPickCompletes } from './cities-knights.js';
 import { handleMissionTap } from './ep.js';
 import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
+import { displayError } from './notices.js';
 import { emitGame } from './socket.js';
 import { handleShipEdgeTap, selectShipToMove } from './seafarers.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
@@ -624,6 +625,16 @@ export function handlePlacementTap(clientX, clientY) {
     }
 
     const aimed = resolveKind(kind, key);
+
+    // Explorers & Pirates resolves a 7 only on the sea: the pirate ship replaces
+    // the robber, so a land tap has no move to make. A sea tap became 'pirate'
+    // above; a still-'robber' tap is on land, so cue the player rather than pin a
+    // ✓ that would only draw a refusal. (Seafarers' own pirate leaves the robber
+    // in play, so its land taps are real and this never fires there.)
+    if (aimed === 'robber' && getBoard()?.rules?.pirate_ship_instead_of_robber === true) {
+        displayError('The pirate ship sails — place it on a sea hex.');
+        return true;
+    }
 
     if (yoloMode) {
         commit({ kind: aimed, key });
