@@ -61,6 +61,14 @@ let releases = [];
  * reflow the page or move the camera than the popovers can.
  */
 function positionPanel() {
+    // TEST 6: in game the pill is TOP-anchored (top-left, above the log rail),
+    // so pinning `bottom` to clear the console would stretch the fixed element
+    // from the top down over the rail. Clear it and let the CSS `bottom: auto`
+    // stand. The console-clearing lift is the lobby/bottom-anchored case only.
+    if (document.querySelector('#game-screen:not(.hidden)')) {
+        panel.style.bottom = '';
+        return;
+    }
     const console_ = document.getElementById('game-console');
     const box = console_ ? console_.getBoundingClientRect() : null;
     panel.style.bottom = box && box.height > 0

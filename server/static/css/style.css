@@ -130,14 +130,17 @@ body {
    opaque translucent fill reads as the same dark panel without the trap. */
 .container:has(#game-screen:not(.hidden)) .table-aside {
     position: absolute;
-    top: 0;
-    right: 0;
-    /* Stops short of the bottom, leaving the bottom-right corner clear for the
-       dice float below it (see #dice-footer). The gap is sized to clear the dice
-       at their tallest — the roll button plus the turn-timer row — so the panel
-       never covers the dice or the roll button beneath it. */
-    bottom: 9.5rem;
-    width: var(--panel-aside);
+    /* TEST 6: the log/chat is a wide LEFT rail now, not a narrow right column
+       the tester called "too small". Left edge, below the changelog pill (top:0
+       would sit under it) down to a generous bottom clearance that keeps it off
+       the bottom-left build tray stacked beneath it — see .action-tray, capped
+       to 15rem so a tall trade tray can never rise into the rail. The rail
+       scrolls internally (overflow-y below). */
+    top: 3.5rem;
+    left: 0;
+    right: auto;
+    bottom: 18rem;
+    width: var(--log-rail);
     /* Above the board overlays (hand, tray) rather than level with them: the
        panel's fold popovers open leftward over the board and must sit over the
        hand, not behind it — the two share --z-sticky and the hand, later in the
@@ -170,19 +173,53 @@ body:has(#game-screen:not(.hidden)) .settings-float {
 body:has(#game-screen:not(.hidden)) .changelog-panel {
     top: var(--space-3);
     bottom: auto;
-    /* Clear of the 13rem scoreboard column to its left, with a full gutter's
-       gap, so the build/"what changed" pill never sits on the players panel. */
-    left: calc(var(--space-3) + 13rem + var(--space-4));
+    /* TEST 6: the scoreboard vacated the top-left (now top-right), so the pill
+       returns to the left edge. It sits ABOVE the log rail's top (rail top is
+       3.5rem, this pill's collapsed height is well under that), so the two share
+       the left edge without colliding. */
+    left: var(--space-3);
     /* Grow the expanded panel downward off the button now it sits at the top. */
     flex-direction: column;
 }
 
-/* The zoom controls live at the board's top-right, which in game is under the
-   log panel — so in game they shift into the same gutter just left of it and
-   rise above the board overlays, where they stay reachable. */
+/* TEST 6: the scoreboard moves to the TOP-RIGHT, freeing the top-left for the
+   changelog pill and the log rail. Still 13rem wide, still grows down. */
+body:has(#game-screen:not(.hidden)) .players-float {
+    left: auto;
+    right: var(--space-3);
+    top: var(--space-3);
+}
+
+/* TEST 6: the incoming-offers popup drops its centre-of-board placement (the
+   reported bug) for a narrow RIGHT rail beneath the scoreboard — never over the
+   map. Below a full four-player scoreboard (~17rem tall), right gutter. */
+body:has(#game-screen:not(.hidden)) .incoming-offers {
+    left: auto;
+    right: var(--space-3);
+    top: calc(var(--space-3) + 18rem);
+    transform: none;
+    width: min(20rem, 22vw);
+    max-height: calc(100% - 24rem);
+}
+
+/* TEST 6: the log left the right gutter for the left, so the zoom controls
+   reclaim the right edge — parked just above the bottom-right dice, clear of the
+   top-right scoreboard/offers rail. */
 body:has(#game-screen:not(.hidden)) .board-controls {
-    right: calc(var(--panel-aside) + var(--space-3));
+    top: auto;
+    right: var(--space-3);
+    bottom: calc(var(--space-3) + 7rem);
     z-index: var(--z-sticky);
+}
+
+/* TEST 6: the robber/setup/choice prompt strip is offset to run BETWEEN the two
+   rails — past the left log rail on one side and short of the top-right
+   scoreboard (13rem + its gutter) on the other, so its left edge no longer sits
+   under the scoreboard (the item-3 collision). The 26rem choice-panel wraps
+   within the strip and still clears both rails at 1600px. */
+body:has(#game-screen:not(.hidden)) .board-status {
+    left: calc(var(--log-rail) + var(--space-4));
+    right: calc(13rem + var(--space-3) + var(--space-4));
 }
 
 /* The dice: their own frosted-glass float, bottom-right of the board. Moved out
@@ -370,6 +407,10 @@ body:has(#game-screen:not(.hidden)) #dice-footer {
     left: var(--space-3);
     bottom: var(--space-3);
     max-width: 28rem;
+    /* TEST 6: capped so a tall trade tray can never rise into the log rail
+       stacked above it (the rail's bottom is 18rem); it scrolls past the cap. */
+    max-height: 15rem;
+    overflow-y: auto;
     padding: var(--space-2) var(--space-3);
     display: flex;
     flex-direction: column;

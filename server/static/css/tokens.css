@@ -69,6 +69,9 @@
     --shell-min-board: 18rem;
     --panel-rail: 15.5rem;
     --panel-aside: 17rem;
+    /* In game the log/chat is a wide LEFT rail (TEST 6). A single width the
+       robber strip and the board controls read so they stay clear of it. */
+    --log-rail: clamp(20rem, 24vw, 30rem);
 
     /* ---------------------------------------------------- Deep Harbour palette */
 
