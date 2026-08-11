@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.2.1 — 2026-08-11 20:40
+
+- **Fixed** [reported] A trade offer you leave open is cleared when your turn ends, instead of hanging over the table into the next player's turn.
+- **Fixed** [reported] Incoming trade offers pop up on a side rail now, clear of the board, so they never cover the map.
+- **Fixed** [reported] The move-the-robber prompt (and the other turn prompts) no longer sits on top of the players panel.
+- **New** [reported] The game log and chat moved to a wide panel down the left side — much bigger, and it fits the screen.
+
 ## v3.2.0 — 2026-08-11 20:10
 
 - **New** Explorers & Pirates: build transport ships, carry cargo, and sail into fog to discover hidden parts of the map.
