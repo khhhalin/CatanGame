@@ -1258,6 +1258,105 @@ function drawPirate(ctx, centerX, centerY) {
     drawBoat(ctx, centerX, centerY + 6, PIRATE_HULL, PIRATE_HULL, 1.45);
 }
 
+/* -------------------------------------------------------------------------
+ * Explorers & Pirates markers
+ *
+ * Everything that lives on `board.ep`: each player's own pirate ship, and the
+ * three missions' destinations. All are drawn from the ep state onto the hexes,
+ * coloured so a lair reads dark, a shoal reads fish, a village reads spice.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * A player's own pirate ship on its sea hex — a boat in their colour, so it
+ * reads apart from the single black Seafarers pirate.
+ */
+function drawPlayerPirate(ctx, centerX, centerY, color) {
+    drawBoat(ctx, centerX, centerY + 6, color || '#888888', SHIP_HALO, 1.4);
+}
+
+/**
+ * A small disc badge on a hex — a mission token with an optional number on it.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Centre y
+ * @param {number} r - Badge radius
+ * @param {string} fill - Disc colour
+ * @param {string|number|null} text - Optional label (a count)
+ * @param {string} textColor - Label colour
+ */
+function drawHexBadge(ctx, x, y, r, fill, text = null, textColor = '#ffffff') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = SHIP_OUTLINE;
+    ctx.stroke();
+    if (text !== null && text !== '') {
+        ctx.fillStyle = textColor;
+        ctx.font = `700 ${Math.round(r * 1.15)}px "Space Grotesk", system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(text), x, y + r * 0.06);
+    }
+    ctx.restore();
+}
+
+/**
+ * Draw every Explorers & Pirates marker on `board.ep`: pirate ships, uncaptured
+ * lair tokens, fish shoals (number, and a haul token when one sits there), and
+ * spice villages (the sacks still on them). A no-op on a table without any ep
+ * state.
+ */
+function drawEpState(ctx, ep, hexPositions, playerColors, hexRadius) {
+    if (!ep) {
+        return;
+    }
+    const badge = hexRadius * 0.3;
+
+    // Each player's own pirate ship on its sea hex.
+    for (const [name, hexKey] of Object.entries(ep.pirate_hex || {})) {
+        const pos = hexKey && hexPositions[hexKey];
+        if (pos) {
+            drawPlayerPirate(ctx, pos.x, pos.y, playerColors[name]);
+        }
+    }
+
+    // Uncaptured pirate lairs: a dark token at the top of the gold field, clear
+    // of its number token in the centre.
+    for (const [hexKey, lair] of Object.entries(ep.lairs || {})) {
+        const pos = hexPositions[hexKey];
+        if (pos && !lair.captured) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.52, badge, '#6b1a1a');
+        }
+    }
+
+    // Discovered fish shoals: the placement number in the centre, and a fish
+    // token above it while a haul sits on the shoal.
+    for (const [hexKey, shoal] of Object.entries(ep.fish_shoals || {})) {
+        const pos = hexPositions[hexKey];
+        if (!pos) {
+            continue;
+        }
+        drawHexBadge(ctx, pos.x, pos.y, badge, '#0e2733', shoal.number, '#dff0f6');
+        if (shoal.haul) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.52, badge * 0.8,
+                         CARGO_COLORS.fish_haul);
+        }
+    }
+
+    // Discovered spice villages: the sacks still on the village.
+    for (const [hexKey, spice] of Object.entries(ep.spice_hexes || {})) {
+        const pos = hexPositions[hexKey];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y, badge, CARGO_COLORS.spice_sack,
+                         spice.sacks, '#ffffff');
+        }
+    }
+}
+
 /**
  * Draw the merchant: a market stall with a striped awning.
  *
@@ -1987,6 +2086,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
             drawKnight(ctx, pos.x, pos.y, knight, playerColor, occupied);
         }
     }
+
+    // Explorers & Pirates markers on the hexes: each player's pirate ship, and
+    // the three missions' destinations (lair tokens, fish shoals, spice
+    // villages). Over the tiles and buildings, under the choice ring and ghost.
+    drawEpState(ctx, boardData.ep, hexPositions, playerColors, hexRadius);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.

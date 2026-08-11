@@ -209,8 +209,11 @@ def serialize(game: Game) -> dict:
         'dice_deck': [list(pair) for pair in game.dice_deck],
         'bank': game.bank.resources,
         'dev_cards_deck': game.bank.dev_cards_deck,
-        # Board: only what was decided, not the derived graph.
-        'hexes': {k: {'type': h.type, 'number': h.number} for k, h in game.hexes.items()},
+        # Board: only what was decided, not the derived graph. `hidden` is the
+        # Explorers & Pirates reveal state — which face-down tiles a ship has
+        # turned up — so a reloaded game does not re-hide what was explored.
+        'hexes': {k: {'type': h.type, 'number': h.number, 'hidden': h.hidden}
+                  for k, h in game.hexes.items()},
         # Harbours twice over: `edge_ports` is the geometry, `ports` the two
         # intersections each one serves. Both are written so a save from before
         # harbours moved onto edges still restores the ports it recorded.
@@ -220,6 +223,10 @@ def serialize(game: Game) -> dict:
         'roads_on_edges': {k: e.road for k, e in game.edges.items() if e.road},
         'ships_on_edges': {k: e.ship for k, e in game.edges.items() if e.ship},
         'cities_knights': _ck_state(game.ck),
+        # Explorers & Pirates: the whole state container — pirate ships, mission
+        # markers and destinations, token supplies, the undiscovered pool and its
+        # number stacks. Absent (None) on a table without the expansion.
+        'ep': game.ep.snapshot() if game.ep is not None else None,
     }
 
     # The whole map definition, inlined, never its id. The file on disk can be
@@ -280,6 +287,8 @@ def deserialize(data: dict, config=None) -> Game:
         if hex_obj:
             hex_obj.type = saved['type']
             hex_obj.number = saved['number']
+            # Absent on pre-E&P saves, where nothing was ever hidden.
+            hex_obj.hidden = saved.get('hidden', False)
     for vertex in game.vertices.values():
         vertex.port = None
         vertex.building = None
@@ -405,6 +414,12 @@ def deserialize(data: dict, config=None) -> Game:
                 knight.activated_this_turn = saved_knight.get('activated_this_turn', False)
                 rebuilt.append(knight)
             game.ck.knights[name] = rebuilt
+
+    # Explorers & Pirates: lay the saved state over the fresh container the
+    # constructor and mission setups seeded. Absent on a pre-E&P save.
+    saved_ep = data.get('ep')
+    if saved_ep and game.ep is not None:
+        game.ep.load(saved_ep)
 
     return game
 

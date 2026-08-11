@@ -7,14 +7,45 @@ import json
 import random
 
 import pytest
+from game import board as board_module
 from game import cities_knights as ck
-from game import persistence
+from game import maps, persistence
 from game import rules as rules_module
 from game.game import Game
 
 
 def a_game(rules=None, players=('Alice', 'Bob')):
     return Game(list(players), [], rng=random.Random(11), rules=rules)
+
+
+def an_ep_game():
+    """A two-player Explorers & Pirates game: a hidden mainland carrying a gold
+    field, a fish shoal and a spice hex among the resources."""
+    mainland = maps.sort_hex_keys('{},{},{}'.format(*c) for c in board_module._hexagon(1))
+    sea = len(maps.frame_hex_keys(3)) - len(mainland)
+    document = {
+        'map_version': 2, 'id': 'ep-persist', 'name': 'EP Persist',
+        'frame': {'radius': 3},
+        'regions': [
+            {'id': 'mainland', 'kind': 'main', 'hexes': mainland,
+             'pool': {'mode': 'hidden',
+                      'terrain': {'gold': 1, 'fish': 1, 'spice': 1, 'wood': 2,
+                                  'wheat': 1, 'sheep': 1},
+                      'numbers': [3, 4, 5, 6, 8]}},
+            {'id': 'ocean', 'kind': 'sea', 'hexes': 'remaining',
+             'pool': {'mode': 'shuffled', 'terrain': {'sea': sea}, 'numbers': []}},
+        ],
+        'harbours': {'mode': 'bag', 'types': {}},
+    }
+    rules = dict(rules_module.defaults())
+    for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
+                 'missions', 'mission_fish', 'mission_spices', 'mission_pirate_lairs'):
+        rules[rule] = True
+    rules['turn_order'] = 'lobby'
+    rules['board_layout'] = 'custom'
+    rules['board_map'] = document['id']
+    return Game(['Alice', 'Bob'], [], rng=random.Random(11), rules=rules,
+                map_definition=maps.parse_map(document))
 
 
 def round_trip(game, tmp_path):
@@ -501,3 +532,51 @@ class TestACustomMapSurvives:
 
         restored = persistence.load(path)
         assert restored.map_definition.id == 'little-shores'
+
+
+class TestExplorersAndPiratesStateSurvives:
+    """Regression: `save` once serialised no `ep` at all, so a server restart
+    wiped every discovery, mission marker, lair, haul, sack and pirate ship —
+    the reloaded game re-hid the whole board. The container and the reveal state
+    are asserted against what actually comes back, never a second copy."""
+
+    def test_the_ep_container_and_reveals_come_back(self, tmp_path):
+        game = an_ep_game()
+        gold = next(k for k, h in game.hexes.items() if h.type == 'gold')
+        fish = next(k for k, h in game.hexes.items() if h.type == 'fish')
+        spice = next(k for k, h in game.hexes.items() if h.type == 'spice')
+        sea = next(k for k, h in game.hexes.items() if h.type == 'ocean')
+
+        game.hexes[gold].hidden = False
+        game.ep.lairs[gold] = {'captured': False, 'crews': {'Alice': 1}}
+        game.ep.fish_shoals[fish] = {'number': 4, 'haul': True}
+        game.ep.spice_hexes[spice] = {'sacks': 2, 'advantage': 'swift_voyage',
+                                      'crews': ['Bob']}
+        game.ep.place_pirate('Alice', sea)
+        game.ep.token_supply['spice_sack'] = 20
+        game.ep.markers['Alice']['fish'] = 3
+
+        after = round_trip(game, tmp_path)
+
+        assert after.hexes[gold].hidden is False
+        assert after.ep.lairs[gold] == {'captured': False, 'crews': {'Alice': 1}}
+        assert after.ep.fish_shoals[fish] == {'number': 4, 'haul': True}
+        assert after.ep.spice_hexes[spice] == {'sacks': 2, 'advantage': 'swift_voyage',
+                                               'crews': ['Bob']}
+        assert after.ep.pirate_of('Alice') == sea
+        assert after.ep.token_supply['spice_sack'] == 20
+        assert after.ep.marker('Alice', 'fish') == 3
+
+    def test_a_pre_ep_save_still_loads(self, tmp_path):
+        """The `ep` key is additive; a base-game save from before it existed has
+        no `ep` and must still restore, with no container."""
+        game = a_game()
+        data = persistence.serialize(game)
+        del data['ep']
+        for entry in data['hexes'].values():
+            entry.pop('hidden', None)
+        path = str(tmp_path / 'game.json')
+        with open(path, 'w') as handle:
+            json.dump(data, handle)
+        restored = persistence.load(path)
+        assert restored.ep is None

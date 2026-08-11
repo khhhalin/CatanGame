@@ -81,6 +81,21 @@ def _ep_game():
                   {'type': 'spice_sack', 'size': 'small'}],
         'id': 1, 'built_turn': 0,
     }
+
+    # Reveal the three mission-destination hexes and put their tokens on them,
+    # plus a pirate ship on a sea hex, so every ep marker renders.
+    def _first(hex_type):
+        return next(k for k, h in game.hexes.items() if h.type == hex_type)
+
+    gold, fish, spice = _first('gold'), _first('fish'), _first('spice')
+    for key in (gold, fish, spice):
+        game.hexes[key].hidden = False
+    game.ep.lairs[gold] = {'captured': False, 'crews': {}}
+    game.ep.fish_shoals[fish] = {'number': 4, 'haul': True}
+    game.ep.spice_hexes[spice] = {'sacks': 2, 'advantage': 'swift_voyage', 'crews': []}
+    pirate_hex = next(k for k, h in game.hexes.items()
+                      if h.type == 'ocean' and any(n in land for n in h.neighbors))
+    game.ep.place_pirate('Alice', pirate_hex)
     return game
 
 
@@ -103,7 +118,7 @@ def test_the_ep_board_paints_its_new_hex_types(browser, tmp_path):
         wait_for_board_painted(alice)
         next_frame(alice.page)
         os.makedirs(SHOT_DIR, exist_ok=True)
-        alice.page.screenshot(path=os.path.join(SHOT_DIR, "ep-01-hidden-tiles.png"))
+        alice.page.screenshot(path=os.path.join(SHOT_DIR, "ep-02-markers.png"))
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)

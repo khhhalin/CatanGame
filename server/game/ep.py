@@ -255,3 +255,24 @@ class EP:
             "fish_shoals": self.fish_shoals,
             "spice_hexes": self.spice_hexes,
         }
+
+    # The fields a save must remember, restore over a fresh container.
+    _SNAPSHOT_FIELDS = (
+        "pirate_hex", "markers", "lead_cards", "track_lengths", "hidden_tiles",
+        "reveal_order", "last_discovery", "number_stacks", "token_supply",
+        "tokens_held", "village_advantages", "lairs", "fish_shoals",
+        "spice_hexes", "spice_advantage_bag",
+    )
+
+    def snapshot(self) -> dict:
+        """The full state for persistence — unlike `to_dict`, nothing is
+        redacted: a save has to remember the hidden tiles and number stacks the
+        client is never shown, or a reloaded game would re-reveal them."""
+        return {field: getattr(self, field) for field in self._SNAPSHOT_FIELDS}
+
+    def load(self, data: dict):
+        """Lay a snapshot back over this container, replacing the fresh state the
+        constructor and the mission setups seeded."""
+        for field in self._SNAPSHOT_FIELDS:
+            if field in data:
+                setattr(self, field, data[field])
