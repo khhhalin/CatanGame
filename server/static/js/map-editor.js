@@ -19,6 +19,8 @@
 
 import {
     editorAddRegionBtn,
+    editorBuildingsImportBtn,
+    editorBuildingsImportInput,
     editorCanvas,
     editorClearBtn,
     editorDoneBtn,
@@ -34,6 +36,8 @@ import {
     editorRadiusSelect,
     editorRegionList,
     editorRegionPopover,
+    editorResourcesImportBtn,
+    editorResourcesImportInput,
     editorSaveBtn,
     editorSaveConfirmBtn,
     editorSaveCopyBtn,
@@ -275,6 +279,18 @@ export function enterEditor() {
     editorSaveConfirmBtn.addEventListener('click', saveMap, { signal });
     editorSaveCopyBtn.addEventListener('click', saveMapAsCopy, { signal });
 
+    // Registry import: a hidden file input opened by its visible button, the
+    // upload half of the Resources/Buildings download links beside them.
+    editorResourcesImportBtn.addEventListener(
+        'click', () => editorResourcesImportInput.click(), { signal });
+    editorResourcesImportInput.addEventListener(
+        'change', (event) => importRegistry('resources', event.target), { signal });
+    editorBuildingsImportBtn.addEventListener(
+        'click', () => editorBuildingsImportInput.click(), { signal });
+    editorBuildingsImportInput.addEventListener(
+        'change', (event) => importRegistry('buildings', event.target), { signal });
+    document.addEventListener('registry-imported', onRegistryImported, { signal });
+
     // Sidebar.
     editorNullItem.addEventListener('click', () => selectRegion('__null__'), { signal });
     editorAddRegionBtn.addEventListener('click', addRegion, { signal });
@@ -298,6 +314,41 @@ export function exitEditor() {
     closePopover();
     editorScreen.classList.add('hidden');
     userScreen.classList.remove('hidden');
+}
+
+// ─── registry import ──────────────────────────────────────────────────────────
+
+// Read the picked file, parse it here so nothing malformed is ever emitted, and
+// send it to the server. Parse failures are shown in the status line rather than
+// sent as garbage; the server's ack (registry-imported) or rejection surfaces
+// from there. The input is cleared so the same file can be re-picked.
+function importRegistry(kind, input) {
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+        editorStatusEl.textContent = `Import failed — could not read ${file.name}`;
+    };
+    reader.onload = () => {
+        let data;
+        try {
+            data = JSON.parse(reader.result);
+        } catch {
+            editorStatusEl.textContent = `Import failed — ${file.name} is not valid JSON`;
+            return;
+        }
+        emitGame('import_registry', { kind, data });
+    };
+    reader.readAsText(file);
+}
+
+function onRegistryImported(event) {
+    const { kind, count } = event.detail || {};
+    const label = kind === 'buildings' ? 'building' : 'resource';
+    editorStatusEl.textContent =
+        `Imported ${count} ${label} definition${count === 1 ? '' : 's'}`;
 }
 
 // ─── tool management ──────────────────────────────────────────────────────────

@@ -18,9 +18,10 @@ import random
 import state
 from extensions import socketio
 from flask_socketio import emit
-from game import map_store, maps
+from game import buildings, map_store, maps, resources
 from game.game import Game
 from state import (
+    bump_and_broadcast,
     emit_rules,
     rate_limited,
     reject,
@@ -28,6 +29,20 @@ from state import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The two registries an author may import, keyed by the `kind` the client sends.
+# Each module owns its own file path and format; the handler only validates the
+# payload's shape and hands it to `save`. Adding a third registry is one entry.
+_IMPORTABLE = {
+    'resources': resources,
+    'buildings': buildings,
+}
+
+# A registry override with more keys than this is not a hand-edited file; it is a
+# client trying to make the server write a large one. The transport size cap
+# (`import_registry` in EVENT_PAYLOAD_LIMITS) refuses oversized bytes first; this
+# bounds the key count independently, since many tiny keys can stay under it.
+MAX_IMPORT_KEYS = 500
 
 
 def _in_lobby() -> bool:
@@ -140,6 +155,67 @@ def handle_delete_map(data=None):
     emit('map_deleted', {'id': map_id})
     socketio.emit('map_list', {'maps': map_store.list_maps()})
     emit_rules()
+
+
+@socketio.on('import_registry')
+def handle_import_registry(data=None):
+    """Adopt an uploaded resource or building registry file.
+
+    The write-back half of the Download routes: an author edits the exported
+    JSON and sends it here, and the server persists it to `data/<kind>.json` and
+    re-reads it so every board dealt from then on draws the new colours or
+    charges the new prices. Allowed during a live game as well as in the lobby —
+    a retint or reprice is a table decision, not a board edit — but only a joined
+    viewer may do it, and the payload is validated hard before it reaches disk.
+
+    Tolerant like `_load`: a partial file that overrides a few keys is valid, so
+    only the object-of-objects shape and a size bound are enforced; the merge
+    over the defaults happens in `reload()`.
+    """
+    if rate_limited():
+        return
+    if viewer_for() is None:
+        reject('NOT_IN_LOBBY', 'Join before importing a registry')
+        return
+
+    data = data or {}
+    kind = data.get('kind')
+    module = _IMPORTABLE.get(kind)
+    if module is None:
+        reject('UNKNOWN_REGISTRY', "kind must be 'resources' or 'buildings'")
+        return
+
+    payload = data.get('data')
+    if not isinstance(payload, dict):
+        reject('INVALID_REGISTRY', 'The imported file must be a JSON object')
+        return
+    if len(payload) > MAX_IMPORT_KEYS:
+        reject('INVALID_REGISTRY', f'Too many entries (max {MAX_IMPORT_KEYS})')
+        return
+    if not all(isinstance(definition, dict) for definition in payload.values()):
+        reject('INVALID_REGISTRY', 'Every entry must itself be an object')
+        return
+
+    session = state.session()
+    with session.lock:
+        try:
+            module.save(payload)
+        except OSError:
+            logger.exception("could not write the %s registry", kind)
+            reject('IMPORT_FAILED', f'The server could not save the {kind} file')
+            return
+
+        logger.info("%s registry imported by %s (%d entries)",
+                    kind, viewer_for(), len(payload))
+        emit('registry_imported', {'kind': kind, 'count': len(payload)})
+        # A running game already carries per-board cost and colour data in its
+        # snapshot, so push a fresh board so connected clients redraw at once; a
+        # lobby with no board has nothing to broadcast and the next deal picks it
+        # up. (The engine's flat prices are read per game at deal time, so a
+        # reprice reaches an in-progress game's costs on its next board, not this
+        # instant — see game.Game.building_costs.)
+        if session.game is not None:
+            bump_and_broadcast()
 
 
 @socketio.on('preview_map')

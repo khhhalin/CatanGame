@@ -250,12 +250,23 @@
                     <a id="editor-resources-btn" class="editor-action-link"
                        href="/resources.json" download="resources.json"
                        title="Download the resource registry (colours, symbols, patterns) as an editable file">Resources ↓</a>
+                    <!-- The upload half of the download above: pick an edited
+                         resources.json and the server adopts it (no shell access
+                         needed). The input is hidden; the button opens it. -->
+                    <input id="editor-resources-import-input" type="file"
+                           accept="application/json,.json" class="hidden">
+                    <button id="editor-resources-import-btn" type="button" class="editor-action-link"
+                            title="Upload an edited resource registry and apply it to the server">Resources ↑</button>
                     <!-- The building registry the engine prices and labels from,
                          as a file: edit it and drop it back at
                          server/data/buildings.json to reprice or relabel a build. -->
                     <a id="editor-buildings-btn" class="editor-action-link"
                        href="/buildings.json" download="buildings.json"
                        title="Download the building registry (names, costs, icons) as an editable file">Buildings ↓</a>
+                    <input id="editor-buildings-import-input" type="file"
+                           accept="application/json,.json" class="hidden">
+                    <button id="editor-buildings-import-btn" type="button" class="editor-action-link"
+                            title="Upload an edited building registry and apply it to the server">Buildings ↑</button>
                     <button id="editor-done-btn">Done</button>
                 </div>
             </div>

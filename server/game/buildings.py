@@ -94,3 +94,18 @@ def reload() -> dict:
     global _registry
     _registry = _load()
     return registry()
+
+
+def save(overrides: dict) -> dict:
+    """Write `overrides` to `data/buildings.json` and reload the registry.
+
+    The write half of the import that `reload()` completes: the module that owns
+    the path and the file's format is the one that writes it, so the shape here
+    matches what the Download route exports and `_load` reads back. The caller
+    validates the payload's shape; this only persists it (pretty-printed, utf-8,
+    non-ASCII kept) and returns the freshly reloaded registry.
+    """
+    os.makedirs(os.path.dirname(_PATH), exist_ok=True)
+    with open(_PATH, "w", encoding="utf-8") as handle:
+        json.dump(overrides, handle, indent=2, ensure_ascii=False)
+    return reload()

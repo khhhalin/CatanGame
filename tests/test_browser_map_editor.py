@@ -194,6 +194,63 @@ class TestMapsButtonOpensEditor:
             f"the downloaded file is not the resource registry: {body['text'][:120]}"
         )
 
+    def test_import_buttons_sit_beside_the_download_links(self, lobby):
+        """Each download link has an upload button next to it in the toolbar.
+
+        The import is the write-back half of the download: without a visible
+        control the author can edit the file but has no way to hand it back. A
+        DOM assertion is enough here — the file-pick round-trip is exercised by
+        the socket test; the browser's job is to prove the button reached the UI.
+        """
+        alice, _ = lobby
+        if alice.page.query_selector("#map-editor-screen.hidden") is not None:
+            alice.page.click("#maps-btn")
+            alice.page.wait_for_selector(
+                "#map-editor-screen:not(.hidden)", timeout=5000
+            )
+
+        for btn_id in ("#editor-resources-import-btn", "#editor-buildings-import-btn"):
+            btn = alice.page.query_selector(btn_id)
+            assert btn is not None and btn.is_visible(), (
+                f"{btn_id} is not visible in the editor toolbar"
+            )
+        shot(alice, "editor-04-import-buttons")
+
+    def test_uploading_a_file_applies_it_and_shows_a_status(self, lobby, tmp_path):
+        """Picking an edited resources file applies it and reports success.
+
+        The whole round-trip in one shot: FileReader reads the file, the client
+        parses it, the server adopts it, and the editor status line confirms it.
+        The override lands in the repo's server/data/, so the file is deleted
+        afterward whatever happens — a leaked override would retint every later
+        board dealt from this checkout.
+        """
+        alice, _ = lobby
+        if alice.page.query_selector("#map-editor-screen.hidden") is not None:
+            alice.page.click("#maps-btn")
+            alice.page.wait_for_selector(
+                "#map-editor-screen:not(.hidden)", timeout=5000
+            )
+
+        upload = tmp_path / "resources.json"
+        upload.write_text('{"wood": {"color": "#123456"}}')
+        override = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "server", "data", "resources.json",
+        )
+        try:
+            alice.page.set_input_files("#editor-resources-import-input", str(upload))
+            alice.page.wait_for_function(
+                "() => document.getElementById('editor-status')"
+                "        .textContent.includes('Imported')",
+                timeout=5000,
+            )
+            shot(alice, "editor-05-import-applied")
+            assert alice.noisy_errors() == [], alice.noisy_errors()
+        finally:
+            if os.path.exists(override):
+                os.remove(override)
+
     def test_done_button_returns_to_lobby(self, lobby):
         """Done closes the editor and reveals the lobby again.
 

@@ -4,11 +4,15 @@ These drive real clients through the real handlers, so they prove the fix at
 the boundary a browser actually talks to.
 """
 
+import os
+import random
+
 import pytest
 import state
 from extensions import socketio
-from game import rate_limit
+from game import buildings, rate_limit, resources
 from game import rules as rules_module
+from game.game import Game
 from seafarers_board import build_ships_along, ship_path
 
 
@@ -1923,3 +1927,83 @@ class TestMovementPhaseOverTheWire:
 
         # It bounces on a real placement rule, never on the movement lock.
         assert last_error(actor)['code'] != 'MOVEMENT_STARTED'
+
+
+class TestRegistryImport:
+    """Uploading an edited registry over the wire (`import_registry`).
+
+    The write-back half of the Download routes: a valid file must reach the live
+    registry every Game reads from — a retint and a reprice both — and a
+    malformed one must be refused without touching disk or the defaults. Each
+    import writes a *process-global* override file, so a leak would reprice every
+    later test's board; the cleanup fixture deletes both files and reloads the
+    built-ins after every test here.
+    """
+
+    @pytest.fixture(autouse=True)
+    def restore_registries(self):
+        yield
+        for module in (resources, buildings):
+            if os.path.exists(module._PATH):
+                os.remove(module._PATH)
+            module.reload()
+
+    @pytest.fixture
+    def author(self, socket_app):
+        """A joined lobby client — the import needs a seated viewer, no game."""
+        client = socketio.test_client(socket_app)
+        client.emit('join', {'name': 'Author', 'role': 'player'})
+        client.get_received()
+        return client
+
+    def test_a_resources_import_retints_wood_and_adds_a_key(self, author):
+        payload = {
+            'wood': {'color': '#123456'},
+            'obsidian': {'name': 'Obsidian', 'color': '#0b0b14',
+                         'symbol': '', 'pattern': 'stipple'},
+        }
+        author.emit('import_registry', {'kind': 'resources', 'data': payload})
+
+        received = author.get_received()
+        assert not [msg for msg in received if msg['name'] == 'error']
+        acks = [msg['args'][0] for msg in received if msg['name'] == 'registry_imported']
+        assert acks[-1] == {'kind': 'resources', 'count': 2}
+        registry = resources.registry()
+        # The override merges over the default rather than replacing it: the new
+        # colour lands, the untouched name survives, and the brand-new key exists.
+        assert registry['wood']['color'] == '#123456'
+        assert registry['wood']['name'] == 'Wood'
+        assert registry['obsidian']['name'] == 'Obsidian'
+        assert os.path.exists(resources._PATH)
+
+    def test_a_buildings_import_reprices_and_reaches_get_cost(self, author):
+        payload = {'road': {'name': 'Track', 'cost': {'wood': 3}}}
+        author.emit('import_registry', {'kind': 'buildings', 'data': payload})
+
+        assert last_error(author) is None
+        assert buildings.registry()['road']['name'] == 'Track'
+        # The import reaches the *price path*, not just the display registry: a
+        # board dealt after it charges the new cost through the engine's own
+        # get_cost, which is what a player actually pays.
+        game = Game(['A', 'B'], [], rng=random.Random(1))
+        assert game.get_cost('road') == {'wood': 3}
+
+    def test_a_malformed_payload_is_refused_and_writes_nothing(self, author):
+        default_wood = resources.DEFAULT_RESOURCES['wood']['color']
+        for bad in (
+            {'kind': 'resources', 'data': ['not', 'a', 'dict']},
+            {'kind': 'resources', 'data': {'wood': 'not a dict'}},
+            {'kind': 'nonsense', 'data': {}},
+        ):
+            author.emit('import_registry', bad)
+            assert last_error(author) is not None
+
+        assert not os.path.exists(resources._PATH)
+        assert resources.registry()['wood']['color'] == default_wood
+
+    def test_too_many_keys_is_refused_before_it_reaches_disk(self, author):
+        payload = {str(n): {'name': str(n)} for n in range(600)}
+        author.emit('import_registry', {'kind': 'buildings', 'data': payload})
+
+        assert last_error(author)['code'] == 'INVALID_REGISTRY'
+        assert not os.path.exists(buildings._PATH)

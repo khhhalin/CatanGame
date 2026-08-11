@@ -76,6 +76,9 @@ EVENT_LIMITS: dict[str, Limit] = {
     "preview_map": Limit(capacity=10, refill_per_second=1.0),
     "save_map": Limit(capacity=10, refill_per_second=0.5),
     "delete_map": Limit(capacity=10, refill_per_second=0.5),
+    # A registry import writes a file and re-reads it; an author does it a
+    # handful of times while tuning, never in a stream.
+    "import_registry": Limit(capacity=10, refill_per_second=0.5),
     # Enough for a fast typist trading banter, not enough to fill the panel.
     "chat_message": Limit(capacity=8, refill_per_second=0.5),  # 30/min
     # The command bar is drawn from this, once per client.
@@ -119,6 +122,10 @@ MAX_PAYLOAD_BYTES = 8192
 EVENT_PAYLOAD_LIMITS: dict[str, int] = {
     'save_map':    65536,
     'preview_map': 65536,
+    # A registry file is one object of small dicts (a few fields each); the whole
+    # buildings/resources registry is well under this even after an author adds
+    # entries. 256 KB refuses a file that is trying to be big rather than edited.
+    'import_registry': 262144,
 }
 
 

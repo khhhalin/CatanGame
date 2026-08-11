@@ -594,6 +594,11 @@ socket.on('map_deleted', () => {
     showNotice('Map deleted', 'info');
 });
 
+socket.on('registry_imported', (data) => {
+    showNotice('Registry imported', 'success');
+    document.dispatchEvent(new CustomEvent('registry-imported', { detail: data }));
+});
+
 socket.on('map_preview', (data) => {
     document.dispatchEvent(new CustomEvent('map-preview-received', { detail: data }));
 });
