@@ -34,10 +34,18 @@ class Terrain:
     produces: str | None
     commodity: str | None = None
     is_sea: bool = False
+    # An Explorers & Pirates map-format-v2 terrain, refused in a v1 map file.
+    v2: bool = False
+    # Whether a number token sits on it, when that is not simply "does it
+    # produce": gold pays out on its roll (so takes a token) but its yield is a
+    # player's *choice*, so `produces` is None. Left None to derive from produces.
+    token: bool | None = None
 
     @property
     def takes_token(self) -> bool:
-        """A number token sits only on a tile that pays out when it is rolled."""
+        """A number token sits on a tile that pays out when it is rolled."""
+        if self.token is not None:
+            return self.token
         return self.produces is not None
 
 
@@ -69,13 +77,27 @@ def get(name_or_hex_type: str) -> Terrain | None:
 
 
 def names() -> tuple:
-    """Every terrain's map-file name, in registration order."""
+    """Every base (non-v2) terrain's map-file name, in registration order.
+
+    This is the v1 vocabulary; a v1 map naming a v2 terrain is refused. See
+    `all_names` for the full set an Explorers & Pirates (v2) map may use.
+    """
+    return tuple(name for name, terrain in REGISTRY.items() if not terrain.v2)
+
+
+def all_names() -> tuple:
+    """Every terrain, base and Explorers & Pirates v2, in registration order."""
     return tuple(REGISTRY)
 
 
 def resource_terrains() -> tuple:
-    """The names that pay out — the only terrains a number token may sit on."""
+    """The base resources — the terrains that pay out a fixed resource."""
     return tuple(name for name, terrain in REGISTRY.items() if terrain.produces)
+
+
+def token_terrains() -> tuple:
+    """Every terrain a number token may sit on — the producers plus gold."""
+    return tuple(name for name, terrain in REGISTRY.items() if terrain.takes_token)
 
 
 def hex_type_of(name: str) -> str:
@@ -121,3 +143,12 @@ register(Terrain("wheat", "wheat", produces="wheat"))
 register(Terrain("ore", "ore", produces="ore", commodity="coin"))
 register(Terrain("desert", "desert", produces=None))
 register(Terrain("sea", "ocean", produces=None, is_sea=True))
+
+# Explorers & Pirates map-format-v2 terrains, refused in a v1 map. Gold pays out
+# on its roll (a token sits on it) but its yield is a player's choice, so
+# `produces` stays None and `token` is set explicitly. Fish shoals and spice
+# hexes produce through the mission mechanics, not a dice roll, so they carry no
+# token — like a desert or the sea.
+register(Terrain("gold", "gold", produces=None, v2=True, token=True))
+register(Terrain("fish", "fish", produces=None, v2=True))
+register(Terrain("spice", "spice", produces=None, v2=True))

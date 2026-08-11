@@ -36,6 +36,13 @@ DEFAULT_RESOURCES = {
     "ore":    {"name": "Ore",    "color": "#8a9bb0", "symbol": "ore",    "pattern": "chevron"},
     "desert": {"name": "Desert", "color": "#e6d9bb", "symbol": "",       "pattern": "stipple"},
     "ocean":  {"name": "Sea",    "color": "#2f6288", "symbol": "",       "pattern": "solid"},
+    # Explorers & Pirates map-format-v2 terrains (see game/tiles.py). They carry
+    # no resource card, so no harbour glyph (symbol empty, like the desert); the
+    # colours match the renderer's own --terrain-gold/fish/spice fallbacks so a
+    # board looks the same whether it draws from here or the CSS tokens.
+    "gold":   {"name": "Gold",   "color": "#d9a441", "symbol": "",       "pattern": "stipple"},
+    "fish":   {"name": "Fish",   "color": "#3f9fb8", "symbol": "",       "pattern": "dots"},
+    "spice":  {"name": "Spice",  "color": "#b5643c", "symbol": "",       "pattern": "stripes"},
 }
 
 # The pattern styles the renderer knows how to draw; a definition's `pattern`

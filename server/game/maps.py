@@ -30,19 +30,31 @@ from game.validation import InvalidPayload, require_int, require_str
 
 logger = logging.getLogger(__name__)
 
-# The one format version. v2 will refuse a v1 file loudly rather than migrate
-# it: `map_version` exists for that, and nobody has a library of maps yet.
-MAP_VERSION = 1
+# The highest format version this build understands. A file still declares its
+# own version and keeps it: a v1 file is parsed with v1 rules and stays v1, so
+# the new v2 features below are additive and every map already on disk builds
+# unchanged. A version beyond this is refused loudly rather than guessed at.
+MAP_VERSION = 2
 
-# What a map file may put in a pool, and which of those pay out — both read from
-# the terrain registry so the map file, the board builder and production cannot
-# drift into three answers. `sea` is the file's word for water. A terrain not
-# registered there (a v2 gold or fish tile) is simply not in this tuple and so
-# is refused by a v1 pool today.
+# What a v1 map file may put in a pool, read from the terrain registry so the
+# map file, the board builder and production cannot drift into three answers.
+# `sea` is the file's word for water.
 TERRAIN_TYPES = tiles.names()
 
-# The only terrain a number token may sit on. Imported by `board._create_hexes`.
+# v2 adds three Explorers & Pirates terrains — gold, fish and spice — which the
+# registry carries flagged v2. A v1 file naming one is still refused.
+TERRAIN_TYPES_V2 = tiles.all_names()
+
+# The base-game resources: what a settlement collects and what the bank stocks,
+# from the registry so the board and the map file cannot drift.
 RESOURCE_TERRAINS = tiles.resource_terrains()
+
+# Every terrain that carries a number token. A token means "pays out on this
+# roll", which is why gold joins the list and fish/spice do not: their yield is
+# not a die roll on the hex. From the registry (gold sets its token flag), kept
+# separate from RESOURCE_TERRAINS so a gold tile can take a token without the
+# bank stocking a "gold" resource.
+TOKEN_TERRAINS = tiles.token_terrains()
 
 # The tokens in the box. A 7 is the robber's roll and never sits on a hex.
 TOKEN_VALUES = (2, 3, 4, 5, 6, 8, 9, 10, 11, 12)
@@ -51,10 +63,16 @@ TOKEN_VALUES = (2, 3, 4, 5, 6, 8, 9, 10, 11, 12)
 # mechanical effect, and only through the "start on the main land" rule.
 KINDS = ('main', 'island', 'sea', 'fog')
 
-# v1 shuffles every pool. `fixed` — a printed map, tile by tile — is v2, which
-# is why the beginner layout is the one built-in board this format cannot yet
-# express.
+# v1 shuffles every pool. v2 adds `hidden` — an exploration pool dealt
+# icon-side-up and revealed on discovery, its number tokens drawn per icon at
+# reveal time (a later wave) rather than at the deal — and `fixed`, a printed
+# map laid out tile by tile at declared positions (which is what lets the format
+# express the beginner layout). Both are gated to v2.
 POOL_MODES = ('shuffled',)
+POOL_MODES_V2 = ('shuffled', 'hidden', 'fixed')
+
+# How many docks one Council-of-Catan-style sea hex may carry, one per side.
+MAX_DOCKS = 6
 
 HARBOUR_TYPES = ('generic',) + RESOURCE_TERRAINS
 
@@ -87,11 +105,13 @@ AUTO = 'auto'
 def takes_a_token(terrain: str) -> bool:
     """Whether a hex of this terrain carries a number token.
 
-    An allowlist by what a terrain produces rather than "everything but the
-    desert", so a pool holding sea — or any other terrain that produces nothing
-    — cannot quietly pop a token out of the box and leave a number floating on
-    open water. Answers for the map file's `sea` and the engine's `ocean` alike,
-    since neither is a resource.
+    An allowlist rather than "everything but the desert", so a pool holding sea
+    — or a fish-shoal, a spice hex, or any other terrain that produces nothing
+    on a roll — cannot quietly pop a token out of the box and leave a number
+    floating where production would pay nobody. Read live from the registry, where
+    a producer (and gold, by its token flag) carries a token and sea, desert,
+    fish and spice do not. Answers for the map file's `sea` and the engine's
+    `ocean` alike, since neither is a resource.
     """
     return tiles.takes_token(terrain)
 
@@ -191,11 +211,23 @@ class Pool:
     equal the number of token-taking tiles — which is knowable before anything
     is shuffled, and is what makes that a validation rule instead of a runtime
     surprise.
+
+    `mode` decides how the tiles reach the board:
+
+    - `shuffled` (v1) — dealt face-up in a random order, tokens shuffled onto
+      the producing tiles as they land.
+    - `hidden` (v2) — the same shuffle, but each tile is placed face-down and
+      carries no number: exploration reveals it later and draws its token then.
+    - `fixed` (v2) — a printed layout. `placements` names the tile and token for
+      each hex by key, so the deal is deterministic and ignores the generator.
+      `terrain`/`numbers` are derived from `placements`, so the size and token
+      rules validate the same way they do for a shuffled pool.
     """
 
     mode: str
     terrain: tuple
     numbers: tuple
+    placements: tuple = ()
 
     @property
     def size(self) -> int:
@@ -205,6 +237,10 @@ class Pool:
     def tokens_needed(self) -> int:
         return sum(count for terrain, count in self.terrain if takes_a_token(terrain))
 
+    @property
+    def is_hidden(self) -> bool:
+        return self.mode == 'hidden'
+
     def has(self, terrain: str) -> bool:
         return any(name == terrain and count for name, count in self.terrain)
 
@@ -213,11 +249,48 @@ class Pool:
         return [name for name, count in self.terrain for _ in range(count)]
 
     def to_json(self) -> dict:
+        if self.mode == 'fixed':
+            return {
+                'mode': 'fixed',
+                'placements': {
+                    key: ({'terrain': terrain, 'number': number}
+                          if number is not None else {'terrain': terrain})
+                    for key, terrain, number in self.placements
+                },
+            }
         return {
             'mode': self.mode,
             'terrain': {name: count for name, count in self.terrain},
             'numbers': list(self.numbers),
         }
+
+
+@dataclass(frozen=True)
+class HexMeta:
+    """Per-hex metadata a scenario prints onto one tile.
+
+    Schema only for now — parsed, validated and serialized so a v2 map can
+    carry it, but read by no mechanic yet:
+
+    - `docks` — the sides (0..5) of a Council-of-Catan sea hex that a settlement
+      may build a dock against; the hex itself takes no settlement.
+    - `village` — this hex holds a village (a spice-scenario advantage).
+    - `lair` — this hex holds a pirate lair token.
+    """
+
+    docks: tuple = ()
+    village: bool = False
+    lair: bool = False
+
+    def to_json(self) -> dict:
+        data = {}
+        if self.docks:
+            data['docks'] = list(self.docks)
+        if self.village:
+            data['village'] = True
+        if self.lair:
+            data['lair'] = True
+        return data
 
 
 @dataclass(frozen=True)
@@ -229,6 +302,9 @@ class Region:
     scenario calls the mainland — the only kind with a mechanical effect in v1,
     through the "start on the main land" rule. `island` is documentation and a
     colour. `sea` is water. `fog` parses and refuses to start.
+
+    `meta` is v2 per-hex metadata as sorted (hex_key, HexMeta) pairs, empty on
+    an ordinary region.
     """
 
     id: str
@@ -236,15 +312,19 @@ class Region:
     color: str
     hexes: tuple
     pool: Pool
+    meta: tuple = ()
 
     def to_json(self) -> dict:
-        return {
+        data = {
             'id': self.id,
             'kind': self.kind,
             'color': self.color,
             'hexes': list(self.hexes),
             'pool': self.pool.to_json(),
         }
+        if self.meta:
+            data['meta'] = {key: hex_meta.to_json() for key, hex_meta in self.meta}
+        return data
 
 
 @dataclass(frozen=True)
@@ -321,11 +401,19 @@ class MapInstance:
 
     Deliberately dumb. It carries no graph — `board.py` derives that, exactly as
     it does for a built-in layout.
+
+    `hidden` is the set of hex keys dealt face-down by an exploration pool: the
+    terrain in `placed` is real on the server but secret to clients until a
+    later wave reveals it, and its number is still `None` because the token is
+    drawn at reveal. `meta` maps a hex key to its `HexMeta`, empty when the map
+    prints none. Both default empty, so a v1 draw is exactly what it was.
     """
 
     placed: dict
     harbours: tuple
     robber_hex: str
+    hidden: frozenset = frozenset()
+    meta: dict = None
 
 
 # --- Parsing: shape only ------------------------------------------------
@@ -355,25 +443,115 @@ def _require_counts(raw, field: str, allowed) -> tuple:
     return tuple(sorted(counts.items()))
 
 
-def _parse_pool(raw) -> Pool:
+def _require_token(value, field: str) -> int:
+    if isinstance(value, bool) or value not in TOKEN_VALUES:
+        raise InvalidPayload('INVALID_MAP', f'{value!r} is not a number token')
+    return value
+
+
+def _parse_fixed_pool(raw, allowed_terrain) -> Pool:
+    """A printed pool: a tile, and its token, named for each hex by key.
+
+    Every producing tile must print its number here — there is no shuffle to
+    draw one from — so a fixed pool's tokens are settled at parse time, and its
+    derived `terrain`/`numbers` let the size and token-count rules validate it
+    exactly as they would a shuffled pool.
+    """
+    placements_raw = raw.get('placements')
+    if not isinstance(placements_raw, dict) or not placements_raw \
+            or len(placements_raw) > MAX_HEXES:
+        raise InvalidPayload('INVALID_MAP', 'a fixed pool places a tile on each of its hexes')
+
+    placements, counts, numbers = [], {}, []
+    for key in sort_hex_keys(placements_raw):
+        if parse_hex_key(key) is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex')
+        spec = placements_raw[key]
+        if not isinstance(spec, dict):
+            raise InvalidPayload('INVALID_MAP', f'{key} names a terrain and, if it pays, a token')
+        terrain = spec.get('terrain')
+        if terrain not in allowed_terrain:
+            raise InvalidPayload('INVALID_MAP', f'a fixed pool has no "{terrain}" tile')
+        number = spec.get('number')
+        if takes_a_token(terrain):
+            if number is None:
+                raise InvalidPayload('INVALID_MAP', f'{key} is {terrain} and must print a number')
+            number = _require_token(number, f'{key} number')
+            numbers.append(number)
+        elif number is not None:
+            raise InvalidPayload('INVALID_MAP', f'{key} is {terrain} and takes no number')
+        placements.append((key, terrain, number))
+        counts[terrain] = counts.get(terrain, 0) + 1
+
+    return Pool('fixed', tuple(sorted(counts.items())), tuple(numbers), tuple(placements))
+
+
+def _parse_pool(raw, version: int) -> Pool:
     if not isinstance(raw, dict):
         raise InvalidPayload('INVALID_MAP', 'pool must be an object')
+    modes = POOL_MODES_V2 if version >= 2 else POOL_MODES
     mode = raw.get('mode', 'shuffled')
-    if mode not in POOL_MODES:
-        raise InvalidPayload('INVALID_MAP', 'a pool is shuffled; fixed pools are not in yet')
+    if mode not in modes:
+        raise InvalidPayload(
+            'INVALID_MAP', 'a pool is shuffled; a hidden or fixed pool needs map_version 2')
+    terrains = TERRAIN_TYPES_V2 if version >= 2 else TERRAIN_TYPES
+
+    if mode == 'fixed':
+        return _parse_fixed_pool(raw, terrains)
 
     numbers = raw.get('numbers', [])
     if not isinstance(numbers, list) or len(numbers) > MAX_HEXES:
         raise InvalidPayload('INVALID_MAP', 'pool numbers must be a list of tokens')
-    for token in numbers:
-        if isinstance(token, bool) or token not in TOKEN_VALUES:
-            raise InvalidPayload('INVALID_MAP', f'{token!r} is not a number token')
+    numbers = tuple(_require_token(token, 'pool numbers') for token in numbers)
 
-    return Pool(mode, _require_counts(raw.get('terrain'), 'pool terrain', TERRAIN_TYPES),
-                tuple(numbers))
+    return Pool(mode, _require_counts(raw.get('terrain'), 'pool terrain', terrains), numbers)
 
 
-def _parse_region(raw) -> tuple:
+def _parse_meta(raw, version: int) -> tuple:
+    """A region's per-hex metadata as sorted (hex_key, HexMeta) pairs.
+
+    Refused before v2 so a v1 file means exactly what it always did. Which hex
+    each entry belongs to is checked here; that the hex is one the region owns
+    is `validate_map`'s job, once `remaining` has been expanded.
+    """
+    if raw is None:
+        return ()
+    if version < 2:
+        raise InvalidPayload('INVALID_MAP', 'per-hex metadata needs map_version 2')
+    if not isinstance(raw, dict) or len(raw) > MAX_HEXES:
+        raise InvalidPayload('INVALID_MAP', 'meta maps a hex key to its metadata')
+
+    meta = []
+    for key in sort_hex_keys(raw):
+        if parse_hex_key(key) is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex')
+        meta.append((key, _parse_hex_meta(raw[key])))
+    return tuple(meta)
+
+
+def _parse_hex_meta(spec) -> HexMeta:
+    if not isinstance(spec, dict):
+        raise InvalidPayload('INVALID_MAP', 'hex metadata must be an object')
+
+    docks_raw = spec.get('docks', [])
+    if not isinstance(docks_raw, list) or len(docks_raw) > MAX_DOCKS:
+        raise InvalidPayload('INVALID_MAP', f'docks are up to {MAX_DOCKS} hex sides')
+    docks = []
+    for side in docks_raw:
+        if isinstance(side, bool) or not isinstance(side, int) or not 0 <= side < 6:
+            raise InvalidPayload('INVALID_MAP', 'a dock sits on a hex side 0..5')
+        docks.append(side)
+    docks = tuple(sorted(dict.fromkeys(docks)))
+
+    village = spec.get('village', False)
+    lair = spec.get('lair', False)
+    if not isinstance(village, bool) or not isinstance(lair, bool):
+        raise InvalidPayload('INVALID_MAP', 'village and lair are true or false')
+
+    return HexMeta(docks, village, lair)
+
+
+def _parse_region(raw, version: int) -> tuple:
     """One region, and its hexes or the marker that it claims what is left."""
     if not isinstance(raw, dict):
         raise InvalidPayload('INVALID_MAP', 'a region must be an object')
@@ -396,7 +574,9 @@ def _parse_region(raw) -> tuple:
                 raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex')
         hexes = tuple(sort_hex_keys(dict.fromkeys(hexes)))
 
-    return Region(region_id, kind, color, (), _parse_pool(raw.get('pool'))), hexes
+    region = Region(region_id, kind, color, (), _parse_pool(raw.get('pool'), version),
+                    _parse_meta(raw.get('meta'), version))
+    return region, hexes
 
 
 def parse_map(data: dict) -> MapDefinition:
@@ -410,7 +590,7 @@ def parse_map(data: dict) -> MapDefinition:
     if not isinstance(data, dict):
         raise InvalidPayload('INVALID_MAP', 'a map must be an object')
 
-    require_int(data.get('map_version'), 'map_version', minimum=1, maximum=MAP_VERSION)
+    version = require_int(data.get('map_version'), 'map_version', minimum=1, maximum=MAP_VERSION)
     map_id = _require_slug(data.get('id'), 'map id', SLUG)
     name = require_str(data.get('name'), 'map name', max_length=MAX_NAME)
     author = data.get('author') or ''
@@ -442,7 +622,7 @@ def parse_map(data: dict) -> MapDefinition:
     if not isinstance(raw_regions, list) or not raw_regions or len(raw_regions) > MAX_REGIONS:
         raise InvalidPayload('INVALID_MAP', f'a map has 1 to {MAX_REGIONS} regions')
 
-    parsed = [_parse_region(raw) for raw in raw_regions]
+    parsed = [_parse_region(raw, version) for raw in raw_regions]
     if len({region.id for region, _ in parsed}) != len(parsed):
         raise InvalidPayload('INVALID_MAP', 'two regions share an id')
     if sum(1 for _, hexes in parsed if hexes == REMAINING) > 1:
@@ -485,7 +665,7 @@ def parse_map(data: dict) -> MapDefinition:
         raise InvalidPayload('INVALID_MAP', f'a map has at most {MAX_HARBOURS} harbours')
 
     return MapDefinition(
-        map_version=MAP_VERSION, id=map_id, name=name, author=author, notes=notes,
+        map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
         excluded_hexes=excluded_tuple,
@@ -583,6 +763,21 @@ def validate_map(defn: MapDefinition) -> tuple:
                 f'{region.pool.tokens_needed} tiles that take one',
                 region.id,
             ))
+        if region.pool.mode == 'fixed':
+            placed_keys = {key for key, _, _ in region.pool.placements}
+            if placed_keys != set(region.hexes):
+                errors.append(MapProblem(
+                    'FIXED_PLACEMENT',
+                    f'{region.id} prints tiles on hexes it does not own, or leaves some blank',
+                    region.id,
+                ))
+        for hex_key, _ in region.meta:
+            if hex_key not in set(region.hexes):
+                errors.append(MapProblem(
+                    'META_OFF_REGION',
+                    f'{region.id} has metadata for {hex_key}, which it does not own',
+                    region.id, hex_key,
+                ))
         if region.kind == 'fog':
             warnings.append(MapProblem(
                 'FOG_REGION', f'{region.id} is fog, which cannot be played yet', region.id,
@@ -679,27 +874,49 @@ def instantiate(defn: MapDefinition, rng) -> MapInstance:
     """Deal a board from this map with the game's own generator.
 
     The number of calls made on `rng` is a pure function of the definition —
-    two shuffles per region, in file order, and no retries — so a seed replays
-    a map exactly. The red-number separation and the harbour spacing are not
-    here: they belong to `board.py`, run after the graph exists, and a second
-    implementation of either would be a second answer waiting to disagree.
+    two shuffles per shuffled region, one per hidden region, none for a fixed
+    one, in file order, and no retries — so a seed replays a map exactly. The
+    red-number separation and the harbour spacing are not here: they belong to
+    `board.py`, run after the graph exists, and a second implementation of
+    either would be a second answer waiting to disagree.
     """
     placed = {}
+    hidden = set()
+    meta = {}
     for region in defn.regions:
+        for hex_key, hex_meta in region.meta:
+            meta[hex_key] = hex_meta
+
+        if region.pool.mode == 'fixed':
+            # Printed: no draw, tiles land where the author named them.
+            for hex_key, terrain, number in region.pool.placements:
+                placed[hex_key] = (terrain, number)
+            continue
+
         tiles = region.pool.tiles()
-        tokens = list(region.pool.numbers)
         rng.shuffle(tiles)
-        rng.shuffle(tokens)
         if len(tiles) != len(region.hexes):
             raise MapUnplayable(
                 f'{region.id} has {len(tiles)} tiles for {len(region.hexes)} hexes'
             )
+
+        if region.pool.is_hidden:
+            # Face-down: the terrain is real but the number is drawn per icon at
+            # reveal (a later wave), so no token is placed and none is shuffled.
+            for hex_key, terrain in zip(region.hexes, tiles, strict=True):
+                placed[hex_key] = (terrain, None)
+                hidden.add(hex_key)
+            continue
+
+        tokens = list(region.pool.numbers)
+        rng.shuffle(tokens)
         for hex_key, terrain in zip(region.hexes, tiles, strict=True):
             if takes_a_token(terrain) and not tokens:
                 raise MapUnplayable(f'{region.id} ran out of number tokens')
             placed[hex_key] = (terrain, tokens.pop() if takes_a_token(terrain) else None)
 
-    return MapInstance(placed, _harbour_bag(defn), _robber_hex(defn, placed))
+    return MapInstance(placed, _harbour_bag(defn), _robber_hex(defn, placed),
+                       frozenset(hidden), meta)
 
 
 def _harbour_bag(defn: MapDefinition) -> tuple:

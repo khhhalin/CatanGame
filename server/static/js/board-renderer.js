@@ -38,6 +38,12 @@ const PALETTE_TOKENS = {
     wheat: '--terrain-wheat',
     ore: '--terrain-ore',
     desert: '--terrain-desert',
+    // Explorers & Pirates terrains: an undiscovered tile's dark back, and the
+    // three v2 terrains a discovery can turn up.
+    hidden: '--terrain-hidden',
+    gold: '--terrain-gold',
+    fish: '--terrain-fish',
+    spice: '--terrain-spice',
     portWood: '--res-wood',
     portBrick: '--res-brick',
     portSheep: '--res-sheep',
@@ -51,6 +57,7 @@ const PALETTE_TOKENS = {
 const PALETTE_FALLBACKS = {
     wood: '#3f8f5a', brick: '#c9663a', sheep: '#8fbf4a', wheat: '#e0b64a',
     ore: '#8a9bb0', desert: '#e6d9bb',
+    hidden: '#223247', gold: '#d9a441', fish: '#3f9fb8', spice: '#b5643c',
     portWood: '#2f6b3a', portBrick: '#a4502a', portSheep: '#5c7d26',
     portWheat: '#8a6800', portOre: '#4d5b6b', onPort: '#ffffff',
     portGeneric: '#1a5fb4', onGeneric: '#ffffff'
@@ -177,6 +184,30 @@ function drawHex(ctx, centerX, centerY, radius, color, number, isLand, isHighlig
     if (isLand && number !== null && number !== undefined) {
         drawNumberToken(ctx, centerX, centerY, number, isHighlighted);
     }
+
+    // An undiscovered tile (Explorers & Pirates) shows only its back — a large,
+    // faint question mark — until a ship reaches it and it turns face up.
+    if (terrain === 'hidden') {
+        drawHiddenMark(ctx, centerX, centerY, radius);
+    }
+}
+
+/**
+ * The mark on a face-down, undiscovered tile: a big, faint question mark.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} centerX - Center x
+ * @param {number} centerY - Center y
+ * @param {number} radius - Hex radius
+ */
+function drawHiddenMark(ctx, centerX, centerY, radius) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(232, 240, 248, 0.5)';
+    ctx.font = `700 ${Math.round(radius * 0.95)}px "Space Grotesk", system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', centerX, centerY + radius * 0.05);
+    ctx.restore();
 }
 
 /**
@@ -1182,6 +1213,70 @@ function drawShip(ctx, pos, playerColor) {
     drawBoat(ctx, pos.centerX, pos.centerY + 2, color, SHIP_HALO, 1);
 }
 
+// The colour a cargo piece reads as, by type: a crew, a settler, a fish haul,
+// a spice sack. The two mission tokens borrow their terrain's colour so a haul
+// reads as fish and a sack as spice at a glance.
+const CARGO_COLORS = {
+    crew: '#e8c069',
+    settler: '#8fbf4a',
+    fish_haul: '#3f9fb8',
+    spice_sack: '#b5643c',
+};
+
+/**
+ * Draw a transport ship's hold above its boat: one pip per small piece (a crew
+ * or a spice sack), a double-wide pip for a large one (a settler or a fish haul)
+ * that fills the whole hold. Coloured by cargo type, ringed dark so they read
+ * over any water.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} pos - Edge position (carries centerX/centerY)
+ * @param {Array} cargo - The ship's cargo pieces ({type, size})
+ */
+function drawCargo(ctx, pos, cargo) {
+    const unit = 6;   // a small pip's width
+    const gap = 2;
+    const height = 5;
+    const widths = cargo.map(piece => (piece.size === 'large' ? unit * 2 + gap : unit));
+    const total = widths.reduce((sum, w) => sum + w, 0) + gap * (cargo.length - 1);
+
+    let x = pos.centerX - total / 2;
+    const y = pos.centerY - 13;
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = SHIP_OUTLINE;
+    for (let i = 0; i < cargo.length; i += 1) {
+        const w = widths[i];
+        ctx.fillStyle = CARGO_COLORS[cargo[i].type] || '#cccccc';
+        roundRect(ctx, x, y, w, height, 1.5);
+        ctx.fill();
+        ctx.stroke();
+        x += w + gap;
+    }
+    ctx.restore();
+}
+
+/**
+ * Trace a rounded rectangle as the current path.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Left
+ * @param {number} y - Top
+ * @param {number} w - Width
+ * @param {number} h - Height
+ * @param {number} r - Corner radius
+ */
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
 /**
  * Draw the pirate on its sea hex.
  *
@@ -1191,6 +1286,105 @@ function drawShip(ctx, pos, playerColor) {
  */
 function drawPirate(ctx, centerX, centerY) {
     drawBoat(ctx, centerX, centerY + 6, PIRATE_HULL, PIRATE_HULL, 1.45);
+}
+
+/* -------------------------------------------------------------------------
+ * Explorers & Pirates markers
+ *
+ * Everything that lives on `board.ep`: each player's own pirate ship, and the
+ * three missions' destinations. All are drawn from the ep state onto the hexes,
+ * coloured so a lair reads dark, a shoal reads fish, a village reads spice.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * A player's own pirate ship on its sea hex — a boat in their colour, so it
+ * reads apart from the single black Seafarers pirate.
+ */
+function drawPlayerPirate(ctx, centerX, centerY, color) {
+    drawBoat(ctx, centerX, centerY + 6, color || '#888888', SHIP_HALO, 1.4);
+}
+
+/**
+ * A small disc badge on a hex — a mission token with an optional number on it.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Centre x
+ * @param {number} y - Centre y
+ * @param {number} r - Badge radius
+ * @param {string} fill - Disc colour
+ * @param {string|number|null} text - Optional label (a count)
+ * @param {string} textColor - Label colour
+ */
+function drawHexBadge(ctx, x, y, r, fill, text = null, textColor = '#ffffff') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = SHIP_OUTLINE;
+    ctx.stroke();
+    if (text !== null && text !== '') {
+        ctx.fillStyle = textColor;
+        ctx.font = `700 ${Math.round(r * 1.15)}px "Space Grotesk", system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(text), x, y + r * 0.06);
+    }
+    ctx.restore();
+}
+
+/**
+ * Draw every Explorers & Pirates marker on `board.ep`: pirate ships, uncaptured
+ * lair tokens, fish shoals (number, and a haul token when one sits there), and
+ * spice villages (the sacks still on them). A no-op on a table without any ep
+ * state.
+ */
+function drawEpState(ctx, ep, hexPositions, playerColors, hexRadius) {
+    if (!ep) {
+        return;
+    }
+    const badge = hexRadius * 0.3;
+
+    // Each player's own pirate ship on its sea hex.
+    for (const [name, hexKey] of Object.entries(ep.pirate_hex || {})) {
+        const pos = hexKey && hexPositions[hexKey];
+        if (pos) {
+            drawPlayerPirate(ctx, pos.x, pos.y, playerColors[name]);
+        }
+    }
+
+    // Uncaptured pirate lairs: a dark token at the top of the gold field, clear
+    // of its number token in the centre.
+    for (const [hexKey, lair] of Object.entries(ep.lairs || {})) {
+        const pos = hexPositions[hexKey];
+        if (pos && !lair.captured) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.52, badge, '#6b1a1a');
+        }
+    }
+
+    // Discovered fish shoals: the placement number in the centre, and a fish
+    // token above it while a haul sits on the shoal.
+    for (const [hexKey, shoal] of Object.entries(ep.fish_shoals || {})) {
+        const pos = hexPositions[hexKey];
+        if (!pos) {
+            continue;
+        }
+        drawHexBadge(ctx, pos.x, pos.y, badge, '#0e2733', shoal.number, '#dff0f6');
+        if (shoal.haul) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.52, badge * 0.8,
+                         CARGO_COLORS.fish_haul);
+        }
+    }
+
+    // Discovered spice villages: the sacks still on the village.
+    for (const [hexKey, spice] of Object.entries(ep.spice_hexes || {})) {
+        const pos = hexPositions[hexKey];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y, badge, CARGO_COLORS.spice_sack,
+                         spice.sacks, '#ffffff');
+        }
+    }
 }
 
 /**
@@ -1884,6 +2078,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (pos && edge.ship) {
             drawShip(ctx, pos, playerColors[edge.ship.player] || null);
+            // A transport ship (Explorers & Pirates) carries a hold; show what
+            // is in it as a little row of pips above the boat.
+            if (edge.ship.kind === 'transport' && edge.ship.cargo?.length) {
+                drawCargo(ctx, pos, edge.ship.cargo);
+            }
         }
     }
 
@@ -1928,6 +2127,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
             drawKnight(ctx, pos.x, pos.y, knight, playerColor, occupied);
         }
     }
+
+    // Explorers & Pirates markers on the hexes: each player's pirate ship, and
+    // the three missions' destinations (lair tokens, fish shoals, spice
+    // villages). Over the tiles and buildings, under the choice ring and ghost.
+    drawEpState(ctx, boardData.ep, hexPositions, playerColors, hexRadius);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.

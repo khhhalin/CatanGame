@@ -1880,3 +1880,46 @@ class TestTheLogSaysWhoTheRollPaid:
             entries = [e['entry'] for e in events(client, 'event_logged')]
             seen.append([e['text'] for e in entries if 'gained' in e['details']])
         assert seen[0] == seen[1] and seen[0], seen
+
+
+class TestMovementPhaseOverTheWire:
+    """Once a ship has moved, the build handlers refuse over the wire (851-862).
+
+    The refusal lives on the engine build methods; this proves it survives the
+    trip through the real building handler to the offending client, coded so the
+    UI can act on it. The engine sets `turn_phase` to 'movement' when a transport
+    ship sails; the handler for that move lands in a later wave, so the state a
+    moved ship leaves is set on the live game directly.
+    """
+
+    def test_a_build_after_movement_is_refused_to_the_client(self, clients):
+        alice, bob = clients
+        game = state.session().game
+        game.game_phase = "playing"
+        game.rules['movement_phase'] = True
+        game.set_dice_rolled()
+        acting = game.players[game.current_player_index].name
+        game.get_player(acting).resources = {'wood': 9, 'brick': 9, 'wheat': 9, 'sheep': 9}
+        # A transport ship has already sailed this turn.
+        game.turn_phase = 'movement'
+
+        actor = seated(acting, Alice=alice, Bob=bob)
+        actor.emit('place_road', {'name': acting, 'edge': next(iter(game.edges))})
+
+        assert last_error(actor)['code'] == 'MOVEMENT_STARTED'
+
+    def test_the_wire_build_is_unaffected_with_the_rule_off(self, clients):
+        """The same moved-ship state without `movement_phase` does not lock the
+        handler: the base game turn is untouched over the wire."""
+        alice, bob = clients
+        game = state.session().game
+        game.game_phase = "playing"
+        game.set_dice_rolled()
+        acting = game.players[game.current_player_index].name
+        game.turn_phase = 'movement'  # set, but the rule that reads it is off
+
+        actor = seated(acting, Alice=alice, Bob=bob)
+        actor.emit('place_road', {'name': acting, 'edge': next(iter(game.edges))})
+
+        # It bounces on a real placement rule, never on the movement lock.
+        assert last_error(actor)['code'] != 'MOVEMENT_STARTED'

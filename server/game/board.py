@@ -295,13 +295,15 @@ class BoardBuilder:
 
         # Step 3: Generate the graph. Without ships the ocean ring is scenery
         # and only the land carries intersections and hex sides. Ships need
-        # somewhere to be built, so with the rule on the sea is generated too —
+        # somewhere to be built — Seafarers ships or E&P transport ships alike,
+        # so either rule grows the sea — so with the rule on the sea is generated too —
         # which is a bigger graph, not a different one: `is_coastal_edge` picks
         # the coastline out by counting *land* neighbours rather than by
         # counting neighbours, so the harbours land in the same places either
         # way, and `vertices` still list land hexes only, which is what keeps a
         # settlement off the open water.
-        graph_hex_keys = land_hex_keys | ocean_hex_keys if self.rules['ships'] else land_hex_keys
+        needs_sea = self.rules['ships'] or self.rules['transport_ships']
+        graph_hex_keys = land_hex_keys | ocean_hex_keys if needs_sea else land_hex_keys
         self._generate_vertices_and_edges(graph_hex_keys)
 
         # Step 4: Build all neighbor relationships
@@ -341,11 +343,17 @@ class BoardBuilder:
             'ports': instance.harbours, 'island': None, 'fixed': False,
         }
 
+        meta = instance.meta or {}
         for hex_key in maps.sort_hex_keys(instance.placed):
             terrain, number = instance.placed[hex_key]
-            self.hexes[hex_key] = Hex(
-                hex_key, tiles.hex_type_of(terrain), number
-            )
+            hex_obj = Hex(hex_key, tiles.hex_type_of(terrain), number)
+            # A hidden tile keeps its real terrain here — the board holds the
+            # truth and `get_board_data` is what redacts it — but is flagged so
+            # the renderer draws its back and discovery can reveal it later.
+            hex_obj.hidden = hex_key in instance.hidden
+            if hex_key in meta:
+                hex_obj.meta = meta[hex_key]
+            self.hexes[hex_key] = hex_obj
 
         self.robber_hex = instance.robber_hex
         # The one thing a region's `kind` decides: where a starting settlement
@@ -797,6 +805,10 @@ class BoardBuilder:
         of the published rulebook scan, so which harbour sits where on the
         beginner map is ours. Their number and 4/5 split are the rulebook's.
         """
+        # A map may declare no harbours at all — E&P has none — and then there
+        # is nothing to place and no coastline worth walking for it.
+        if not self.board_layout['ports']:
+            return
         rings = self._coastline_rings()
         coast = sum(len(ring) for ring in rings)
         port_types = list(self.board_layout['ports'])

@@ -40,6 +40,32 @@ class TurnClock:
         # Seafarers allows one ship to be moved per turn, and the allowance
         # does not accumulate.
         self.ship_moved_this_turn = False
+        # A transport ship may move once per turn; the allowance does not
+        # accumulate, so the record of which ships have moved starts empty.
+        self.transport_ships_moved = set()
+        # The gold-supply conversions are each capped per turn (game/gold.py),
+        # so the counts start fresh with the turn.
+        self.gold_conversions = {}
+        # A fresh turn is back before its movement phase, so the next player
+        # builds and trades normally (expansions.md 851-862). Only read when
+        # `movement_phase` is on; see `movement_phase_block`.
+        self.turn_phase = 'production'
+
+    def movement_phase_block(self):
+        """Refuse a build or trade once this turn's ship movement has begun.
+
+        E&P fixes the turn order production -> trade/build -> movement, and
+        moving a ship is the point of no return: nothing may be built or traded
+        afterwards (expansions.md 851-862). Founding a settlement with a settler
+        ship is the one build allowed during movement, so that path never calls
+        this. Off — or before a ship moves — it is a no-op, so the base game and
+        Seafarers turn structure are untouched.
+        """
+        if self.rules['movement_phase'] and self.turn_phase == 'movement':
+            return refused(
+                'MOVEMENT_STARTED', 'You cannot build or trade after moving a ship this turn'
+            )
+        return None
 
     def advance_turn(self, player_name: str) -> dict:
         """End the current turn at a player's request."""

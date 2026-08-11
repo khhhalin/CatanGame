@@ -17,6 +17,24 @@
         "wheat": 2,
         "ore": 3
     },
+    "harbor_settlement": {
+        "wheat": 2,
+        "ore": 2
+    },
+    "transport_ship": {
+        "wood": 1,
+        "sheep": 1
+    },
+    "settler": {
+        "wood": 1,
+        "brick": 1,
+        "wheat": 1,
+        "sheep": 1
+    },
+    "crew": {
+        "ore": 1,
+        "sheep": 1
+    },
     "build_knight": {
         "sheep": 1,
         "ore": 1

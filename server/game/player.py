@@ -38,10 +38,27 @@ class Player:
         }
         self.settlements = []
         self.cities = []
+        # Explorers & Pirates only: coastal settlements upgraded into harbor
+        # settlements, worth 2 points each and carrying a cargo basin. Held
+        # apart from `settlements` because they score double and are the sites
+        # ships, settlers and crews are built from (expansions.md 894-902).
+        self.harbor_settlements = []
+        # Explorers & Pirates only: cargo pieces built and in play — settlers
+        # carried by ship to found settlements, crews landed on mission
+        # destinations. Counts, not locations, because a piece lives in a
+        # harbor basin or a ship hold and moves between them; the piece dicts
+        # there are the placement, these the supply accounting against
+        # `max_settlers` / `max_crews` (expansions.md 903-928).
+        self.settlers = 0
+        self.crews = 0
         self.roads = []
         self.ships = []
         self.victory_points = 0
         self.knights_played = 0  # Track Knight cards played for Largest Army
+        # Explorers & Pirates only: a second currency, held apart from resources
+        # because it buys different things and — unlike a commodity — does not
+        # count toward the discard limit on a 7 (expansions.md 842, 960).
+        self.gold = 0
 
     def set_color(self, color: str):
         """Set or update the player's color."""
@@ -105,8 +122,12 @@ class Player:
             'dev_card_count': self.total_dev_cards(),
             'settlements': self.settlements,
             'cities': self.cities,
+            'harbor_settlements': self.harbor_settlements,
             'roads': self.roads,
             'ships': self.ships,
+            'gold': self.gold,
+            'settlers': self.settlers,
+            'crews': self.crews,
             'victory_points': self.get_victory_points(longest_road_holder, largest_army_holder),
             'knights_played': self.knights_played,
         }
@@ -122,8 +143,14 @@ class Player:
         """
         # Settlement: 1 point each
         # City: 2 points each (not 1+2, it replaces the settlement)
+        # Harbor settlement: 2 points each (E&P; replaces the settlement)
         # Victory Point cards: 1 point each (already played, not in hand)
-        points = len(self.settlements) + (len(self.cities) * 2) + self.victory_points
+        points = (
+            len(self.settlements)
+            + (len(self.cities) * 2)
+            + (len(self.harbor_settlements) * 2)
+            + self.victory_points
+        )
 
         # Add bonus points for longest road and largest army
         if self.name == longest_road_holder:

@@ -27,6 +27,7 @@ have to compose the same way in every process and on every run, and
 from contextlib import contextmanager
 
 from game import cities_knights as ck_module
+from game import gold as gold_module
 
 COST = 'cost'
 PRODUCTION = 'production'
@@ -196,6 +197,31 @@ def _epidemic(value, _rules, context):
     return {**value, 'resources': min(value['resources'], 1)}
 
 
+def _harbor_settlement_yield(value, _rules, context):
+    """A harbor settlement takes one card, never a city's two (901).
+
+    It is a settlement that scores double, not a city that produces double, so
+    its production stays a settlement's one. Runs after the city amount (10) and
+    before commodities (20) so nothing upstream can have handed it two.
+    """
+    if context['building_type'] != 'harbor_settlement':
+        return value
+    return {**value, 'resources': 1}
+
+
+def _gold_field(value, _rules, context):
+    """A gold field pays gold, not a resource card: 2 gold per building (998).
+
+    Runs after the city amount (10) and commodities (20), before the robber
+    (40) so a robber on the field still blocks it. A gold field has no commodity
+    and its own type is not a resource the bank stocks, so the building's
+    resource share is zeroed and the gold recorded for the roll to hand out.
+    """
+    if context['terrain'] != 'gold':
+        return value
+    return {**value, 'resources': 0, 'gold': gold_module.GOLD_PER_GOLD_FIELD_BUILDING}
+
+
 def _robber_takes_it_all(value, _rules, context):
     """The hex the robber sits on pays nobody, whatever the rest worked out.
 
@@ -208,10 +234,22 @@ def _robber_takes_it_all(value, _rules, context):
 
 
 register(Modifier('city_production', PRODUCTION, 10, _always, _city_production))
+register(Modifier('harbor_settlement_yield', PRODUCTION, 15,
+                  _rule_is_on('harbor_settlements'), _harbor_settlement_yield))
 register(Modifier('commodities', PRODUCTION, 20,
                   _rule_is_on('commodities'), _commodity_instead))
+register(Modifier('gold_field', PRODUCTION, 25, _rule_is_on('gold'), _gold_field))
 register(Modifier('epidemic', PRODUCTION, 30, _rule_is_on('epidemic'), _epidemic))
 register(Modifier('robber', PRODUCTION, 40, _always, _robber_takes_it_all))
+
+# The two Explorers & Pirates production-modifier orders, assigned up front so
+# its feature agents do not race for a number: `harbor_settlement_yield` takes
+# order 15 (a harbor settlement yields 1, not 2, so it must run after the city
+# amount at 10 and before commodities at 20) and `gold_field` takes order 25 (a
+# gold field pays 2 gold per adjacent building, 998). Both are registered above
+# now that the gold and harbor-settlement rules have landed. The slots are
+# recorded here because `register` refuses a clash.
+_EP_RESERVED_PRODUCTION_ORDERS = {'harbor_settlement_yield': 15, 'gold_field': 25}
 
 
 # --- Dice ---------------------------------------------------------------

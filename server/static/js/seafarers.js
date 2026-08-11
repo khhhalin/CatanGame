@@ -26,7 +26,7 @@ import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
 
-const SHIP_COST = { wood: 1, sheep: 1 };
+export const SHIP_COST = { wood: 1, sheep: 1 };
 
 // The board modes this section adds to the settlement/road/city set.
 const SEA_MODES = ['ship', 'ship_move'];
@@ -50,7 +50,10 @@ export function seaRule(ruleId) {
  * without them the board has no sea edges and nothing else here means anything.
  */
 export function seaEnabled() {
-    return seaRule('ships');
+    // Explorers & Pirates transport ships build and move on the sea exactly as
+    // Seafarers ships do, so they share this whole interaction — the two rules
+    // are mutually exclusive (`sea_ship_model`), so only ever one is on.
+    return seaRule('ships') || seaRule('transport_ships');
 }
 
 /**
@@ -69,7 +72,7 @@ export function isSeaMode(mode) {
  * @param {object} cost - {resource: amount}
  * @returns {string} HTML (resource tiles), so the caller must use innerHTML.
  */
-function formatCost(cost) {
+export function formatCost(cost) {
     return Object.entries(cost)
         .map(([resource, amount]) => `${amount}${resourceTile(resource, { label: resource })}`)
         .join(' ');
@@ -131,6 +134,9 @@ export function handleShipEdgeTap(edgeKey) {
     }
 
     const name = viewState.identity.name;
+    // The one difference between the two ship models: which action the tap
+    // sends. Everything else — the modes, the two-tap move, the ghosts — is one.
+    const transport = seaRule('transport_ships');
 
     if (viewState.selectedBuilding === 'ship_move') {
         const origin = viewState.shipMoveFrom;
@@ -139,14 +145,15 @@ export function handleShipEdgeTap(edgeKey) {
             return;
         }
         viewState.shipMoveFrom = null;
-        emitGame('move_ship', { name, from_edge: origin, to_edge: edgeKey });
+        emitGame(transport ? 'move_transport_ship' : 'move_ship',
+                 { name, from_edge: origin, to_edge: edgeKey });
         expectShipPlacement('ship_move', () => !myShipAt(origin));
         renderSeafarers();
         return;
     }
 
     const before = myShips().length;
-    emitGame('build_ship', { name, edge: edgeKey });
+    emitGame(transport ? 'build_transport_ship' : 'build_ship', { name, edge: edgeKey });
     expectShipPlacement('ship', () => myShips().length > before);
 }
 
@@ -213,6 +220,16 @@ function myShipAt(edgeKey) {
  *
  * @param {string} mode - One of SEA_MODES
  */
+/**
+ * Arm one of the ship board modes from outside this module — the E&P strip's
+ * Build/Move ship buttons use it, since transport ships share these modes.
+ *
+ * @param {string} mode - 'ship' or 'ship_move'
+ */
+export function armShipMode(mode) {
+    toggleSeaMode(mode);
+}
+
 function toggleSeaMode(mode) {
     if (!seaEnabled()) {
         return;
@@ -250,7 +267,7 @@ export function syncSeaModeButtons() {
  *
  * @returns {string} - Empty when the player may act
  */
-function turnBlockReason() {
+export function turnBlockReason() {
     if (!isMyTurn()) {
         return 'Not your turn';
     }
@@ -269,7 +286,12 @@ export function renderSeafarers() {
     const enabled = seaEnabled();
     const player = enabled ? findMyPlayer() : null;
 
-    seafarersPanel?.classList.toggle('hidden', !enabled || !player);
+    // The panel itself is Seafarers' own — its label, island points and ship
+    // buttons. A transport table shares the ship *interaction* (seaEnabled) but
+    // draws its ship controls in the E&P strip instead (ep.js), so the panel
+    // stays hidden there.
+    const seafarersOwn = seaRule('ships');
+    seafarersPanel?.classList.toggle('hidden', !seafarersOwn || !player);
 
     // The hint under the robber belongs to the pirate rule, not to the panel:
     // it is read by the one player who has just rolled a 7, whether or not
@@ -290,7 +312,7 @@ export function renderSeafarers() {
     // every button below is drawn from that.
     clearSettledPlacement();
 
-    if (player) {
+    if (player && seafarersOwn) {
         renderShipActions(player);
         renderIslandPoints();
     }
@@ -341,7 +363,9 @@ function renderShipActions(player) {
 
     // Move. `ship_moved_this_turn` is the rulebook's one-per-turn limit, and it
     // is stated here rather than left to a refusal after the tap.
-    let moveReason = seaRule('ship_movement')
+    // Transport ships move as part of their own rule; a Seafarers table needs
+    // `ship_movement` on top of plain ships.
+    let moveReason = (seaRule('ship_movement') || seaRule('transport_ships'))
         ? turnBlockReason()
         : 'Moving ships is not one of this table\'s rules';
     if (!moveReason && inSetup) {

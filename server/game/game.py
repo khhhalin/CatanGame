@@ -4,13 +4,23 @@ import os
 import random
 
 from game import cities_knights as ck_module
+from game import ep as ep_module
 from game import modifiers as modifiers_module
 from game import resources, tiles
 from game import rules as rules_module
 from game.bank import Bank
 from game.board import BoardBuilder
+from game.cargo import CargoRules
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
+from game.ep_pirate import EpPirateRules
+from game.exploration import ExplorationRules
+from game.gold import GoldRules
+from game.harbor_settlements import HarborSettlementRules
+from game.missions import MissionRules
+from game.missions_fish import MissionFishRules
+from game.missions_lairs import MissionLairsRules
+from game.missions_spices import MissionSpicesRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -18,12 +28,16 @@ from game.robber_rules import RobberRules
 from game.seafarers import SeafarersRules
 from game.trade import TradeManager
 from game.trade_rules import TradeRules
+from game.transport import TransportShipRules
 from game.turn_clock import TurnClock
 
 logger = logging.getLogger(__name__)
 
 class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
-           CitiesKnightsRules, PendingChoiceRules, TurnClock):
+           CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
+           CargoRules, EpPirateRules, ExplorationRules, MissionRules,
+           MissionLairsRules, MissionFishRules, MissionSpicesRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -196,6 +210,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.MAX_CITIES = self.rules['max_cities']
         self.MAX_ROADS = self.rules['max_roads']
         self.MAX_SHIPS = self.rules['max_ships']
+        self.MAX_HARBOR_SETTLEMENTS = self.rules['max_harbor_settlements']
+        self.MAX_SETTLERS = self.rules['max_settlers']
+        self.MAX_CREWS = self.rules['max_crews']
 
         # Somewhere to keep improvement tracks, knights, walls, the barbarian
         # ship and the progress decks — built when any rule needs it. Its
@@ -210,6 +227,40 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             )
             for player in self.players:
                 self.ck.register(player.name)
+
+        # The Explorers & Pirates equivalent: pirate hexes, mission tracks, the
+        # pool of undiscovered tiles and the token supplies, built only when a
+        # rule needs it. Like `self.ck`, its presence is not a rule.
+        self.ep = None
+        if rules_module.needs_ep_state(self.rules):
+            self.ep = ep_module.EP()
+            for player in self.players:
+                self.ep.register(player.name)
+            # Each active mission declares its track now the container exists.
+            self.setup_pirate_lairs()
+            self.setup_fish()
+            self.setup_spices()
+
+        # How many times each player has converted at the gold supply this turn
+        # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions
+        # are capped per turn — see game/gold.py.
+        self.gold_conversions = {}
+        # Transport ships get a per-game id so a ship is still the same ship
+        # after it sails to another edge, and the set of ids that have already
+        # moved this turn enforces one move per ship per turn. Both are E&P
+        # transport state and never touch a Seafarers ship. See game/transport.py.
+        self.transport_ship_counter = 0
+        self.transport_ships_moved = set()
+        # E&P fixes the turn order production -> trade/build -> movement, and
+        # moving a ship is the point of no return: nothing may be built or
+        # traded after it (expansions.md 851-862). The phase only matters when
+        # `movement_phase` is on; `start_turn` resets it every turn. Like the
+        # other per-turn E&P state, it is transient and not persisted.
+        self.turn_phase = 'production'
+        # What the last production roll paid in gold (player -> amount), the way
+        # `production_modifiers` records which rules changed a roll. Read once by
+        # the roll payload, cleared at the top of every distribution.
+        self.gold_gained = {}
         # What is left of the shuffled dice deck, when the table plays with
         # one. Empty means the next roll deals a fresh 36.
         self.dice_deck = []
@@ -269,6 +320,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Generate the complete board
         self._generate_board()
 
+        # Explorers & Pirates: fill the undiscovered pool and the per-area
+        # number-token stacks a discovery draws from, now the board's hidden
+        # tiles exist. A no-op without the exploration rule.
+        self._seed_exploration_pool()
+
         # Trade manager. How long an offer stays open is the table's, and the
         # server is the only clock that counts: the countdown a proposer and a
         # responder watch is drawn from this number, and every path that could
@@ -290,10 +346,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return len(player.settlements) < self.MAX_SETTLEMENTS
         if piece == 'city':
             return len(player.cities) < self.MAX_CITIES
+        if piece == 'harbor_settlement':
+            return len(player.harbor_settlements) < self.MAX_HARBOR_SETTLEMENTS
         if piece == 'road':
             return len(player.roads) < self.MAX_ROADS
         if piece == 'ship':
             return len(player.ships) < self.MAX_SHIPS
+        if piece == 'settler':
+            return player.settlers < self.MAX_SETTLERS
+        if piece == 'crew':
+            return player.crews < self.MAX_CREWS
         return False
 
     def check_invariants(self) -> list:
@@ -497,6 +559,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
@@ -523,6 +588,21 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # intersection touching none of them is out at sea.
         if not vertex.neighbors['hexes']:
             return refused('INVALID_PLACEMENT', 'A settlement must stand on the coast or inland')
+        # A settlement may not stand at an intersection beside a face-down hex
+        # (891). A no-op unless the table is exploring, since nothing else hides
+        # a hex.
+        if self.rules['ships_explore']:
+            undiscovered = self.undiscovered_build_refusal(vertex.neighbors['hexes'])
+            if undiscovered is not None:
+                return undiscovered
+        # An uncaptured pirate lair locks the corners of its gold field.
+        lair = self.pirate_lair_build_refusal(vertex.neighbors['hexes'])
+        if lair is not None:
+            return lair
+        # A spice village locks its corners for a player until they befriend it.
+        spice = self.spice_build_refusal(player_name, vertex.neighbors['hexes'])
+        if spice is not None:
+            return spice
         # The scenario setup restriction, when the table asked for it: you start
         # at home and sail to the far islands, rather than starting on one. Only
         # the *starting* settlements — nothing stops you settling there later,
@@ -600,6 +680,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if blocked is not None:
             return blocked
 
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
+
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
         if current_name != player_name:
@@ -622,6 +706,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return refused('OCCUPIED', 'This coastal side already carries a ship')
         if not self.land_hexes_of_edge(edge_key):
             return refused('INVALID_PLACEMENT', 'A road cannot be built out at sea')
+        # A road may not lie on a path beside a face-down hex (891). A no-op
+        # unless the table is exploring, since nothing else hides a hex.
+        if self.rules['ships_explore']:
+            undiscovered = self.undiscovered_build_refusal(edge.neighbors['hexes'])
+            if undiscovered is not None:
+                return undiscovered
+        # An uncaptured pirate lair locks the edges of its gold field.
+        lair = self.pirate_lair_build_refusal(edge.neighbors['hexes'])
+        if lair is not None:
+            return lair
+        # A spice village locks its edges for a player until they befriend it.
+        spice = self.spice_build_refusal(player_name, edge.neighbors['hexes'])
+        if spice is not None:
+            return spice
 
         used_free_road = False
         if in_setup:
@@ -665,6 +763,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         blocked = self.choice_block(player_name)
         if blocked is not None:
             return blocked
+
+        moved = self.movement_phase_block()
+        if moved is not None:
+            return moved
 
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')
@@ -731,8 +833,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return False
         for edge_key in vertex.neighbors.get('edges', []):
             edge = self.edges.get(edge_key)
-            if edge and edge.ship and edge.ship.get('player') == player_name:
-                return True
+            if not edge or not edge.ship or edge.ship.get('player') != player_name:
+                continue
+            # An E&P transport ship extends no network (866); it must never be
+            # read as a route extender. The `sea_ship_model` exclusion already
+            # forbids transport ships with `ships`, so this branch is only
+            # reachable in a table that has no transports — the guard is defence
+            # in depth, not a live case.
+            if edge.ship.get('kind') == 'transport':
+                continue
+            return True
         return False
 
     def victory_points_for(self, player_name: str) -> int:
@@ -766,6 +876,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # else plays a Merchant card, so this is read rather than banked.
         if self.merchant_holder == player_name:
             points += 1
+
+        # Each mission's 1-VP lead card scores for whoever is alone at the front
+        # of that track. Held state, recomputed on every advance, so it is read
+        # off `self.ep` the same way the awards above are.
+        if self.rules['missions']:
+            points += self.mission_victory_points(player_name)
 
         if self.ck is not None:
             if self.rules['metropolis']:
@@ -828,11 +944,22 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         """
         hexes = {}
         for key, hex_obj in self.hexes.items():
-            hexes[key] = {
-                'type': hex_obj.type,
-                'number': hex_obj.number,
-                'neighbors': hex_obj.neighbors,
-            }
+            if hex_obj.hidden:
+                # Face-down: its identity is secret like a dev card until
+                # discovery reveals it. No viewer sees an undiscovered tile yet,
+                # so it redacts for everyone; the per-viewer reveal set lands
+                # with the exploration wave.
+                entry = {'type': 'hidden', 'number': None, 'hidden': True,
+                         'neighbors': hex_obj.neighbors}
+            else:
+                entry = {
+                    'type': hex_obj.type,
+                    'number': hex_obj.number,
+                    'neighbors': hex_obj.neighbors,
+                }
+            if hex_obj.meta:
+                entry['meta'] = hex_obj.meta.to_json()
+            hexes[key] = entry
 
         vertices = {}
         for key, vertex_obj in self.vertices.items():
@@ -892,6 +1019,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # copy, so adding a resource is one server-side entry. Server-global.
             'resources': resources.registry(),
             'cities_knights': self.ck.to_dict(viewer) if self.ck else None,
+            # Pirate hexes, mission tracks/markers/lead cards, token supplies and
+            # the undiscovered-pool count. Mission progress is public; the pool's
+            # tile identities are the one secret, redacted inside `to_dict`.
+            'ep': self.ep.to_dict(viewer) if self.ep else None,
             'harbormaster_holder': self.harbormaster_holder,
             'harbor_points': self.harbor_points,
             # Only the total: the per-type breakdown is the deck order, and
@@ -983,6 +1114,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # One roll's worth: cleared here so the set never carries a rule over
         # from the previous turn.
         self.production_modifiers = set()
+        self.gold_gained = {}
 
         if dice_total == 7:
             return {}
@@ -990,7 +1122,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         gained_resources = {}
 
         for _vertex_key, vertex in self.vertices.items():
-            if not vertex.building or vertex.building.get('type') not in ('settlement', 'city'):
+            if not vertex.building or vertex.building.get('type') not in (
+                'settlement', 'city', 'harbor_settlement'
+            ):
                 continue
 
             player_name = vertex.building.get('player')
@@ -1006,7 +1140,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                     continue
 
                 hex_obj = self.hexes[hex_key]
-                if hex_obj.number != dice_total or tiles.produces(hex_obj.type) is None:
+                # Anything that pays out on its roll: the resource terrains and a
+                # gold field (which pays gold, not a card). Desert, sea, and the
+                # fish/spice mission tiles carry no token, so they never pay here.
+                if hex_obj.number != dice_total or not tiles.takes_token(hex_obj.type):
                     continue
 
                 produced = self.production_for(
@@ -1030,6 +1167,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                     gained_resources[player_name][commodity] = (
                         gained_resources[player_name].get(commodity, 0) + 1
                     )
+
+                # A gold field pays gold, not a resource card: the modifier put
+                # the amount on the produced value and the bank was never asked.
+                field_gold = produced.get('gold', 0)
+                if field_gold:
+                    self.gain_gold(player_name, field_gold)
+                    self.gold_gained[player_name] = (
+                        self.gold_gained.get(player_name, 0) + field_gold
+                    )
+
+        # A non-7 roll that paid a player no resource cards hands them 1 gold
+        # (854); folded in after the walk so it sees the whole roll's payout.
+        for player_name, amount in self.pay_empty_roll_gold(gained_resources).items():
+            self.gold_gained[player_name] = self.gold_gained.get(player_name, 0) + amount
 
         if gained_resources:
             logger.debug(f"Resources distributed (rolled {dice_total}):")
@@ -1230,6 +1381,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'modifiers': sorted(self.production_modifiers),
             # Who the roll paid and in what. Empty means it paid nobody.
             'gained': gained,
+            # Gold the roll paid — the empty-roll bonus and any gold field —
+            # kept apart from `gained` because gold is a currency, not a card.
+            'gold': dict(sorted(self.gold_gained.items())),
         }
 
     def next_dice(self) -> tuple:

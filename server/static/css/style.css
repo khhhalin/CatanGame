@@ -2145,6 +2145,128 @@ button:disabled {
     display: none;
 }
 
+/* Explorers & Pirates panel: the mission tracks and their lead cards, the token
+   supplies, and each player's gold and advantages — a quiet strip like the Bank
+   and Titles above it. Shown only while the table plays the expansion (ep.js
+   toggles .hidden from the board's ep state). */
+.right-ep {
+    flex: none;
+    padding: var(--space-2) 0 var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+}
+
+.ep-mission {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.ep-mission-name {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.ep-markers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    justify-content: flex-end;
+}
+
+.ep-marker {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+}
+
+.ep-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+}
+
+.ep-lead {
+    color: #e0b64a;
+}
+
+.ep-supply {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin: var(--space-2) 0;
+    color: var(--text-muted);
+}
+
+.ep-supply-item strong {
+    color: var(--text-strong, inherit);
+    font-variant-numeric: tabular-nums;
+}
+
+.ep-player {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: 2px;
+}
+
+.ep-player-name {
+    font-weight: 600;
+}
+
+.ep-player-detail {
+    margin-left: auto;
+    text-align: right;
+    color: var(--text-muted);
+}
+
+/* The action strip's buttons: a wrapping row that shares the app's button look,
+   with an armed (active) ship mode ringed like the other placement buttons. */
+.ep-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+}
+
+.ep-action-btn {
+    flex: 1 1 auto;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+    white-space: nowrap;
+}
+
+.ep-action-btn.active {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Gold trades: the two buttons on one row, the resource pick revealed beneath. */
+.ep-gold {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-bottom: var(--space-2);
+}
+
+.ep-gold-pick {
+    flex-basis: 100%;
+    display: flex;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+
+.ep-gold-res {
+    flex: 1 1 auto;
+    padding: var(--space-1);
+    min-width: 0;
+}
+
 /* Big Bank panel: a two-column grid of large tiles, a thin stock meter and a
    big count. The meter is kept (the stock-depletion signal, and what the hand
    suite reads) but slimmed so the number leads. */
@@ -4928,6 +5050,26 @@ body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.give) {
 .editor-pool-badge.bad {
     background: var(--warn-soft);
     color: var(--warn);
+}
+
+/* Hint shown in a fixed-pool region popover, where tiles are placed per hex */
+.editor-pool-hint {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+    line-height: 1.4;
+}
+
+/* The Inspect popover is pinned to the click point via a zero-size anchor that
+   never shows or takes a pointer itself. */
+.editor-inspect-anchor {
+    position: fixed;
+    width: 0;
+    height: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* Save popover */

@@ -14,7 +14,9 @@
 
 import { markDirty } from './board.js';
 import { ckEnabled, handleCkVertexTap, handleProgressTargetTap, isProgressMode, progressCardName, progressPickCompletes } from './cities-knights.js';
+import { handleMissionTap } from './ep.js';
 import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
+import { displayError } from './notices.js';
 import { emitGame } from './socket.js';
 import { handleShipEdgeTap, selectShipToMove } from './seafarers.js';
 import { getBoard, getGamePhase, isMyTurn, mustMoveRobber, viewState } from './state.js';
@@ -108,6 +110,11 @@ function currentPlacementKind() {
     if (!viewState.selectedBuilding) {
         return null;
     }
+    // The mission gesture draws no ghost and offers no ✓ — it is handled ahead
+    // of this pipeline, so it is not a placement kind here.
+    if (viewState.selectedBuilding === 'mission') {
+        return null;
+    }
     // Setup only accepts the piece the server is asking for next - except that
     // "a player who places a starting settlement on the coast may place a ship
     // instead of a road next to that settlement", so where the server asks for
@@ -146,8 +153,14 @@ function armedKindOf(kind) {
  * @returns {string} - Placement kind
  */
 function resolveKind(kind, key) {
-    if (kind === 'robber' && getBoard()?.rules?.pirate === true
-        && getBoard().hexes[key]?.type === 'ocean') {
+    // A 7 lets the roller aim the pirate at a sea hex instead of the robber, in
+    // two separate rules: Seafarers' `pirate`, and Explorers & Pirates'
+    // `pirate_ship_instead_of_robber` (which replaces the robber outright). They
+    // are mutually exclusive, so either one turns a sea-hex robber tap into a
+    // pirate; `commit` picks the matching handler.
+    const rules = getBoard()?.rules || {};
+    const pirateOnSeven = rules.pirate === true || rules.pirate_ship_instead_of_robber === true;
+    if (kind === 'robber' && pirateOnSeven && getBoard().hexes[key]?.type === 'ocean') {
         return 'pirate';
     }
     return kind;
@@ -567,6 +580,14 @@ function updateHover(kind) {
  * @returns {boolean} - Whether the tap was a placement attempt at all
  */
 export function handlePlacementTap(clientX, clientY) {
+    // The Explorers & Pirates mission gesture is a two-tap ship→hex action that
+    // does not go through the ghost/confirm pipeline (it infers the action from
+    // the target, so there is nothing to preview). Handle it first, on my turn —
+    // but never over an outstanding 7, where the tap owes the robber or pirate.
+    if (viewState.selectedBuilding === 'mission' && isMyTurn() && !mustMoveRobber()) {
+        return handleMissionTap(clientX, clientY);
+    }
+
     const kind = currentPlacementKind();
     if (!kind) {
         return false;
@@ -605,6 +626,16 @@ export function handlePlacementTap(clientX, clientY) {
 
     const aimed = resolveKind(kind, key);
 
+    // Explorers & Pirates resolves a 7 only on the sea: the pirate ship replaces
+    // the robber, so a land tap has no move to make. A sea tap became 'pirate'
+    // above; a still-'robber' tap is on land, so cue the player rather than pin a
+    // ✓ that would only draw a refusal. (Seafarers' own pirate leaves the robber
+    // in play, so its land taps are real and this never fires there.)
+    if (aimed === 'robber' && getBoard()?.rules?.pirate_ship_instead_of_robber === true) {
+        displayError('The pirate ship sails — place it on a sea hex.');
+        return true;
+    }
+
     if (yoloMode) {
         commit({ kind: aimed, key });
         return true;
@@ -629,8 +660,13 @@ function commit(target) {
         emitGame('move_robber', { name, hex: target.key });
     } else if (target.kind === 'pirate') {
         // Sent *instead of* move_robber, and answered with the same
-        // `choose_victim` the robber raises.
-        emitGame('move_pirate', { name, hex: target.key });
+        // `choose_victim` the robber raises. The Explorers & Pirates pirate is a
+        // different piece and handler from the Seafarers one, told apart by which
+        // rule armed it — the two never share a table.
+        const event = getBoard()?.rules?.pirate_ship_instead_of_robber === true
+            ? 'place_pirate_ship'
+            : 'move_pirate';
+        emitGame(event, { name, hex: target.key });
     } else if (target.kind === 'ship' || target.kind === 'ship_move') {
         handleShipEdgeTap(target.key);
     } else if (target.kind === 'settlement') {

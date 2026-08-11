@@ -319,8 +319,11 @@ export function updateGameUI(boardData) {
         // Normal play - restore button visibility and selection state.
         // A Cities & Knights mode is left armed: a knight move takes two taps
         // and someone else's trade landing between them would otherwise disarm
-        // the board halfway through it.
-        if (!isCkMode(viewState.selectedBuilding) && !isSeaMode(viewState.selectedBuilding)) {
+        // the board halfway through it. The E&P mission gesture is the same — a
+        // ship tap then a hex tap, and it may drive several actions in a row —
+        // so it survives a board update too.
+        if (!isCkMode(viewState.selectedBuilding) && !isSeaMode(viewState.selectedBuilding)
+                && viewState.selectedBuilding !== 'mission') {
             viewState.selectedBuilding = null;
             gameBoard.classList.remove('placement-mode');
         }

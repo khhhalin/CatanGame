@@ -272,6 +272,16 @@
                 <!-- Populated by map-editor.js openRegionPopover() -->
             </div>
 
+            <!-- Anchor for the per-hex Inspect popover: a zero-size element the
+                 editor pins to the click point so the shared popover placer has
+                 something to sit beside. -->
+            <button id="editor-inspect-anchor" class="editor-inspect-anchor" tabindex="-1"
+                    aria-hidden="true" aria-controls="editor-inspect-popover"></button>
+            <div id="editor-inspect-popover" class="popover hidden" role="dialog"
+                 aria-label="Hex metadata">
+                <!-- Populated by map-editor.js openInspectPopover() -->
+            </div>
+
             <div id="editor-save-popover" class="popover popover-wide hidden" role="dialog"
                  aria-label="Save map">
                 <div class="editor-save-name">
@@ -417,6 +427,37 @@
                     <div class="right-titles" id="right-titles">
                         <div class="right-eyebrow">Titles</div>
                         <div id="award-summary" class="award-summary"></div>
+                    </div>
+
+                    <!-- Explorers & Pirates: the mission tracks and their lead
+                         cards, the token supplies, and each player's gold and
+                         village advantages. Hidden until a board payload carries
+                         ep state; ep.js fills the three bodies from `board.ep`. -->
+                    <div class="right-ep hidden" id="right-ep">
+                        <div class="right-eyebrow">Explorers &amp; Pirates</div>
+                        <!-- The E&P action strip: the ship controls (which arm
+                             the board gestures — click a sea side to build, tap
+                             ship then target to move) and the non-spatial
+                             actions. ep.js fills each button's state and hides
+                             the ones whose rule is off. -->
+                        <div class="ep-actions" id="ep-actions">
+                            <button type="button" class="ep-action-btn" id="ep-build-ship">Build ship</button>
+                            <button type="button" class="ep-action-btn" id="ep-move-ship">Move ship</button>
+                            <button type="button" class="ep-action-btn" id="ep-mission">Mission action</button>
+                            <button type="button" class="ep-action-btn" id="ep-roll-fish">Roll for fish</button>
+                        </div>
+                        <!-- Gold trades: each button reveals a resource pick,
+                             then fires the sell (3 of one resource -> 1 gold) or
+                             the buy (2 gold -> 1 chosen resource). ep.js fills the
+                             pick row and hides the block when gold is off. -->
+                        <div class="ep-gold hidden" id="ep-gold">
+                            <button type="button" class="ep-action-btn" id="ep-sell-gold">Sell for gold</button>
+                            <button type="button" class="ep-action-btn" id="ep-buy-gold">Buy with gold</button>
+                            <div class="ep-gold-pick hidden" id="ep-gold-pick"></div>
+                        </div>
+                        <div class="ep-missions" id="ep-missions"></div>
+                        <div class="ep-supply" id="ep-supply"></div>
+                        <div class="ep-players" id="ep-players"></div>
                     </div>
 
                     <!-- The Details folds: the build costs and every expansion
