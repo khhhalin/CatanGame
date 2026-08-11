@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.2.0 — 2026-08-11 20:10
+
+- **New** Explorers & Pirates: build transport ships, carry cargo, and sail into fog to discover hidden parts of the map.
+- **New** The three E&P missions — hunt fish, capture pirate lairs, befriend spice villages — played by sailing a ship to the spot and acting there.
+- **New** Gold trades for the resource you need, and on a 7 the pirate ship sails out instead of the robber.
+- **New** A Pirate Cove scenario map to play it on — a home harbour, open water, and fog to explore.
+
 ## v3.1.0 — 2026-08-11 18:46
 
 - **New** Every resource now carries its own name, colour, board pattern and icon in one place, so the board draws each terrain from that definition. The base resources look exactly as before; the difference is that adding a new one — gold, say — is now a single entry rather than a code change.
