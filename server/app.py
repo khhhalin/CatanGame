@@ -19,7 +19,7 @@ from config import Config, get_config
 from extensions import socketio
 from flask import Flask, Response, render_template, request
 from flask_socketio import emit
-from game import resources
+from game import buildings, resources
 
 # Importing these registers every handler as a side effect of the decorators.
 # Without the import the events simply do not exist, with no error to say so —
@@ -88,6 +88,23 @@ def create_app(config=None):
             payload,
             mimetype='application/json',
             headers={'Content-Disposition': 'attachment; filename="resources.json"'},
+        )
+
+    @app.route('/buildings.json')
+    def buildings_export():
+        """The current building registry, as a file the player downloads.
+
+        This is the whole registry — the defaults with any `data/buildings.json`
+        overrides already merged in — so the download doubles as a template: edit
+        it, drop it back at that path, and the server prices and labels every
+        build from it. The attachment disposition makes the browser save rather
+        than display it.
+        """
+        payload = json.dumps(buildings.registry(), indent=2, ensure_ascii=False)
+        return Response(
+            payload,
+            mimetype='application/json',
+            headers={'Content-Disposition': 'attachment; filename="buildings.json"'},
         )
 
     return app

@@ -5,7 +5,7 @@
 import { isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.js';
 import { getContrastColor } from './contrast.js';
 import { renderDevCards } from './dev-cards.js';
-import { resourceTile } from './icons.js';
+import { icon, resourceTile } from './icons.js';
 import { activeRulesChipValue, buildCosts, buyDevCardBtn, colorPicker, costsChipValue, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, turnControls, upgradeCityBtn } from './dom.js';
 import { renderBank, renderDialogHands, renderResourcePanel } from './hand.js';
 import { displayError } from './notices.js';
@@ -15,7 +15,7 @@ import { renderGameSidebar, renderTurnIndicator } from './scoreboard.js';
 import { isSeaMode, syncSeaModeButtons } from './seafarers.js';
 import { offerVictimChoice, openDiscardModal, renderVictimList, resetAutoVictim } from './seven.js';
 import { emitGame } from './socket.js';
-import { getBoard, getBuildCost, getCurrentPlayer, getDiscardAmount, getGamePhase, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
+import { getBoard, getBuildCost, getBuildDef, getCurrentPlayer, getDiscardAmount, getGamePhase, getRole, hasRolledDice, isMyTurn, mustChooseVictim, mustMoveRobber, viewState } from './state.js';
 
 // Names that used to be defined here and now live in their own modules. They
 // are re-exported so this module's public surface is unchanged: net.js imports
@@ -474,18 +474,18 @@ function formatBuildCost(cost) {
 // base game's three plus the development card; the rest are switched on one at
 // a time, never as a mode, so a base game's Costs panel is exactly four rows.
 // A key with no price in `board.costs` (a build this table does not charge for)
-// drops out on its own.
+// drops out on its own. The name and glyph each row shows come from
+// `board.buildings` (see getBuildDef), not a literal here.
 const PRICED_BUILDS = [
-    { key: 'settlement', label: 'Settlement', shown: () => true },
-    { key: 'road', label: 'Road', shown: () => true },
-    { key: 'city', label: 'City', shown: () => true },
-    { key: 'ship', label: 'Ship', shown: () => getBoard()?.rules?.ships === true },
-    { key: 'build_knight', label: 'Knight', shown: () => getBoard()?.rules?.knights === true },
-    { key: 'city_wall', label: 'City Wall', shown: () => getBoard()?.rules?.city_walls === true },
+    { key: 'settlement', shown: () => true },
+    { key: 'road', shown: () => true },
+    { key: 'city', shown: () => true },
+    { key: 'ship', shown: () => getBoard()?.rules?.ships === true },
+    { key: 'build_knight', shown: () => getBoard()?.rules?.knights === true },
+    { key: 'city_wall', shown: () => getBoard()?.rules?.city_walls === true },
     // Progress cards replace the development deck outright, so a table playing
     // them cannot buy a dev card and the row would price a build it refuses.
-    { key: 'dev_card', label: 'Dev Card',
-      shown: () => getBoard()?.rules?.progress_cards !== true },
+    { key: 'dev_card', shown: () => getBoard()?.rules?.progress_cards !== true },
 ];
 
 /**
@@ -522,10 +522,15 @@ function renderCosts() {
         // row a player could pay for on their turn should not read as blocked
         // while it is someone else's.
         const afford = held ? shortfallReason(held, cost) === '' : false;
+        // Name and glyph come from the building registry in the payload, so a
+        // relabelled or retinted build moves with the server, not a literal here.
+        const def = getBuildDef(build.key);
+        const name = def?.name || build.key;
+        const glyph = def?.icon ? icon(def.icon, { label: name }) : '';
         shown += 1;
         rows.push(
             `<div class="cost-row${afford ? '' : ' cant-afford'}">`
-            + `<span class="cost-name">${build.label}</span>`
+            + `<span class="cost-name">${glyph}${name}</span>`
             + `<span class="cost-tiles">${tiles}</span></div>`,
         );
     }

@@ -78,10 +78,10 @@ MAX_CITY_WALLS = 3
 # revealed on sight and never occupy a slot.
 PROGRESS_HAND_LIMIT = 4
 
-# Every flat price this expansion charges is a line in `data/costs.json` under
-# these build types, so `Game.get_cost` decides a knight the same way it
-# decides a road and one cost modifier reaches both. An improvement track is
-# the exception below: its price is not flat.
+# Every flat price this expansion charges is an entry in the building registry
+# (game/buildings.py) under these build types, so `Game.get_cost` decides a
+# knight the same way it decides a road and one cost modifier reaches both. An
+# improvement track is the exception below: its price is not flat.
 IMPROVEMENT_PREFIX = "improvement_"
 
 
@@ -98,7 +98,7 @@ def improvement_build_type(track: str) -> str:
 def improvement_price(build_type: str, level: int) -> dict | None:
     """What reaching `level` on this track costs, or None for other builds.
 
-    Worked out rather than listed in `costs.json`: the price is the level, in
+    Worked out rather than listed in the building registry: the price is the level, in
     whatever commodity the track above declares, and copying that out as
     fifteen literals is exactly the kind of second copy that drifts from the
     table it was meant to match.

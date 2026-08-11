@@ -1,12 +1,10 @@
-import json
 import logging
-import os
 import random
 
+from game import buildings, resources, tiles
 from game import cities_knights as ck_module
 from game import ep as ep_module
 from game import modifiers as modifiers_module
-from game import resources, tiles
 from game import rules as rules_module
 from game.bank import Bank
 from game.board import BoardBuilder
@@ -304,10 +302,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.longest_road_length = {}  # player_name -> longest road length
         self.knights_played = {}  # player_name -> knight cards played
 
-        # Load building costs from JSON file
-        costs_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'costs.json')
-        with open(costs_file) as f:
-            self.building_costs = json.load(f)
+        # Flat build prices, read from the building registry (name/cost/icon in
+        # one place — see game/buildings.py). The engine prices by build id, so
+        # this is the registry's cost view, keyed the same way the old
+        # data/costs.json was.
+        self.building_costs = {
+            build_type: dict(definition['cost'])
+            for build_type, definition in buildings.registry().items()
+        }
 
         # Board data structures
         self.hexes = {}  # key -> Hex object
@@ -1018,6 +1020,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # resource. The client draws terrain from this rather than its own
             # copy, so adding a resource is one server-side entry. Server-global.
             'resources': resources.registry(),
+            # The building registry — name, cost and icon per build. The client
+            # draws each build's label and glyph from this rather than its own
+            # copy, so adding or relabelling a build is one server-side entry.
+            # `costs` above stays the per-table priced view (modifiers applied);
+            # this carries the static list price alongside the name and icon.
+            'buildings': buildings.registry(),
             'cities_knights': self.ck.to_dict(viewer) if self.ck else None,
             # Pirate hexes, mission tracks/markers/lead cards, token supplies and
             # the undiscovered-pool count. Mission progress is public; the pool's
@@ -1256,7 +1264,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
     def _base_cost(self, building_type: str, context: dict) -> dict:
         """The listed price of one build, before any modifier.
 
-        Everything with a flat price is a line in `data/costs.json`. A city
+        Everything with a flat price is an entry in the building registry (see
+        game/buildings.py), read here as `self.building_costs`. A city
         improvement is the one thing whose price depends on more than the build
         type — it is the level being bought, in the track's own commodity — so
         it is worked out from the track table instead.

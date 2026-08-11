@@ -86,6 +86,26 @@ class TestThePriceOnTheButtonIsTheServersPrice:
         assert paying_table.page.is_enabled("#buy-dev-card-btn")
 
 
+class TestTheCostsPanelDrawsBuildsFromTheRegistry:
+    """The build name and glyph on each Costs row come from `board.buildings`,
+    the server's building registry, not a literal in the client. If that wiring
+    broke a player would open Costs to nameless or iconless rows — which no
+    assertion on server state can see, since the payload would be perfect."""
+
+    def test_a_row_shows_the_registry_name_and_glyph(self, paying_table):
+        page = paying_table.page
+        # The panel is a popover behind its chip; a player opens it to read it.
+        page.click("#costs-chip")
+        page.wait_for_selector("#costs-popover:not(.hidden)", timeout=5000)
+
+        assert "Settlement" in page.inner_text("#build-costs"), \
+            "the build's registry name is not shown on its Costs row"
+        # The glyph is the sprite the registry's icon concept resolves to —
+        # i-house for a settlement. A row with no <use> drew no icon at all.
+        assert "#i-house" in page.inner_html("#build-costs"), \
+            "the build's registry glyph is not drawn on its Costs row"
+
+
 class TestAnEmptyHandIsRefusedBeforeTheRoundTrip:
     def test_the_build_buttons_are_greyed_out_with_the_shortfall(self, broke_table):
         """Without prices in the payload nothing is short of anything, and the

@@ -9,7 +9,7 @@ import { displayError } from './notices.js';
 import { renderDialogHands } from './panels.js';
 import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
-import { getBuildCost, getBoard, isMyTurn, viewState } from './state.js';
+import { getBuildCost, getBuildDef, getBoard, isMyTurn, viewState } from './state.js';
 
 /**
  * How long an offer stays open, in seconds, as the table set it. The countdown
@@ -1156,8 +1156,11 @@ function syncHandSelection() {
 // The build the tray can arm from the materials, in check order, mapped to the
 // button that arms it. Only the base builds are matched here; a house rule that
 // reprices them moves `board.costs`, which `getBuildCost` reads, so the match
-// follows the table's real price rather than a copy.
-const BUILD_LABEL = { settlement: 'Settlement', road: 'Road', city: 'City' };
+// follows the table's real price rather than a copy. Its label comes from the
+// building registry in the payload (see getBuildDef), not a literal here.
+function buildLabel(kind) {
+    return getBuildDef(kind)?.name || kind;
+}
 
 /**
  * The materials on the shelf as {card: count}, dropping any zeroed entry.
@@ -1222,7 +1225,7 @@ function refreshTrayBuilds() {
         if (freeRoad) {
             trayNote.textContent = 'Free road — click Build Road, then tap an edge';
         } else if (ready) {
-            trayNote.textContent = `These make a ${BUILD_LABEL[ready]} — click Build ${BUILD_LABEL[ready]}`;
+            trayNote.textContent = `These make a ${buildLabel(ready)} — click Build ${buildLabel(ready)}`;
         } else if (Object.keys(materials()).length > 0) {
             trayNote.textContent = 'No build fits these — trade them below';
         } else {
@@ -1310,7 +1313,7 @@ function renderTrayAction(ready) {
     let label = '';
     if (ready && isMyTurn()) {
         act = 'build';
-        label = `Build ${BUILD_LABEL[ready]}`;
+        label = `Build ${buildLabel(ready)}`;
     } else if (bank) {
         act = 'bank';
         label = `Bank · ${bank.rate} ${CARD_NAMES[bank.giveCard] || bank.giveCard}`

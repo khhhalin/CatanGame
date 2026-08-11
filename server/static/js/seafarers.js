@@ -14,10 +14,10 @@
 //     roller move either piece, and the hex they aim at is what decides which.
 //     placement.js resolves that at the moment of the tap.
 //
-// The cost below is duplicated from server/data/costs.json for the same reason
-// the Cities & Knights costs are - to grey a button out and say why before the
-// round trip. The server checks it again and the board is drawn from its
-// answer, never from this.
+// The cost below is duplicated from the server's building registry for the same
+// reason the Cities & Knights costs are - to grey a button out and say why
+// before the round trip. The server checks it again and the board is drawn from
+// its answer, never from this.
 
 import { resourceTile, statusIcon } from './icons.js';
 import { buildShipBtn, gameBoard, islandPoints, moveShipBtn, placeRoadBtn, placeSettlementBtn, robberText, seafarersChipValue, seafarersPanel, shipHint, upgradeCityBtn } from './dom.js';

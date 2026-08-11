@@ -114,11 +114,26 @@ export function getBoard() {
  * price moved the engine's number and not the client's, so the button greyed
  * itself out against a price nobody was charging.
  *
- * @param {string} kind - A build type, as `data/costs.json` names it
+ * @param {string} kind - A build type, as the building registry names it
  * @returns {object|null} - {resource: amount}
  */
 export function getBuildCost(kind) {
     return viewState.server.board?.costs?.[kind] || null;
+}
+
+/**
+ * A build's player-facing definition from the building registry, or null.
+ *
+ * Name and icon ride in the board payload (`board.buildings`) beside the price,
+ * so the label on the Costs panel and the glyph a build draws come from the one
+ * server-side registry rather than a literal in the client. See
+ * `server/game/buildings.py`.
+ *
+ * @param {string} kind - A build type, as the building registry names it
+ * @returns {{name: string, cost: object, icon: string}|null}
+ */
+export function getBuildDef(kind) {
+    return viewState.server.board?.buildings?.[kind] || null;
 }
 
 /**
