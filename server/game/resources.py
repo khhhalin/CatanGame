@@ -36,6 +36,11 @@ DEFAULT_RESOURCES = {
     "ore":    {"name": "Ore",    "color": "#8a9bb0", "symbol": "ore",    "pattern": "chevron"},
     "desert": {"name": "Desert", "color": "#e6d9bb", "symbol": "",       "pattern": "stipple"},
     "ocean":  {"name": "Sea",    "color": "#2f6288", "symbol": "",       "pattern": "solid"},
+    # A sixth resource no printed box holds, defined so a custom map can deal it
+    # (game/tiles.py). Soft cream fill, the cloth glyph, a stipple weave — a look
+    # of its own that no base terrain owns, so a cotton hex and a cotton card read
+    # as cotton wherever a map places them.
+    "cotton": {"name": "Cotton", "color": "#e8e2d0", "symbol": "cloth",  "pattern": "stipple"},
     # Explorers & Pirates map-format-v2 terrains (see game/tiles.py). They carry
     # no resource card, so no harbour glyph (symbol empty, like the desert); the
     # colours match the renderer's own --terrain-gold/fish/spice fallbacks so a

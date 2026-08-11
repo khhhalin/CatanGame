@@ -4,12 +4,12 @@
 import { COMMODITY_TYPES } from './constants.js';
 import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, incomingOffers, inventionModal, monopolyModal, myOffersDiv, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, trayNote, trayTrade, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities, upgradeCityBtn } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
-import { icon, resourceTile } from './icons.js';
+import { icon, resourceName, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { renderDialogHands } from './panels.js';
 import { findMyPlayer } from './player-view.js';
 import { emitGame } from './socket.js';
-import { getBuildCost, getBuildDef, getBoard, isMyTurn, viewState } from './state.js';
+import { getBuildCost, getBuildDef, getBoard, extraResourceTypes, isMyTurn, resourceOrder, viewState } from './state.js';
 
 /**
  * How long an offer stays open, in seconds, as the table set it. The countdown
@@ -22,20 +22,14 @@ function tradeOfferSeconds() {
     return getBoard()?.rules?.trade_offer_seconds ?? 10;
 }
 
-const TRADE_RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
-
-// Everything the trade handler accepts. Commodities trade exactly as resources
-// do - `propose_trade` runs both sides through `clean_card_counts` - so the
-// dialog offers all eight on a table that plays them, and the five resources
-// on one that does not.
-const TRADE_CARDS = [...TRADE_RESOURCES, ...COMMODITY_TYPES];
-
-// The accessible name for a card's tile, whose colour is otherwise the only
-// thing identifying it beside a bare count or rate.
-const CARD_NAMES = {
-    wood: 'Wood', brick: 'Brick', sheep: 'Sheep', wheat: 'Wheat', ore: 'Ore',
-    cloth: 'Cloth', coin: 'Coin', paper: 'Paper',
-};
+// Every card type the dialog has a field for, in-play resources then all three
+// commodities. Commodities are always in the list so a hidden commodity row is
+// still zeroed on a table that switched them off; `tradableCards` narrows to
+// what is actually offered. Driven by the board's in-play resources, so a cotton
+// map's fields are read and reset and a standard board's stay at the five.
+function allTradeFields() {
+    return [...resourceOrder(), ...COMMODITY_TYPES];
+}
 
 /**
  * Whether the running game deals cloth, coin and paper at all.
@@ -49,7 +43,7 @@ function commoditiesInPlay() {
  * are read and reset over.
  */
 function tradableCards() {
-    return commoditiesInPlay() ? TRADE_CARDS : TRADE_RESOURCES;
+    return commoditiesInPlay() ? allTradeFields() : resourceOrder();
 }
 
 // What the merchant is worth at the bank for the hex it stands on. Duplicated
@@ -148,7 +142,7 @@ function formatTradeBundle(resources) {
     return Object.entries(resources || {})
         .filter(([, count]) => count > 0)
         .map(([card, count]) =>
-            `${count} ${resourceTile(card, { label: CARD_NAMES[card] || card })}`)
+            `${count} ${resourceTile(card, { label: resourceName(card) })}`)
         .join('  ');
 }
 
@@ -503,8 +497,10 @@ function readTradeInputs() {
     const wanted = {};
 
     tradableCards().forEach(card => {
-        const giveCount = parseInt(document.getElementById(`give-${card}`).value) || 0;
-        const wantCount = parseInt(document.getElementById(`want-${card}`).value) || 0;
+        const give = document.getElementById(`give-${card}`);
+        const want = document.getElementById(`want-${card}`);
+        const giveCount = give ? (parseInt(give.value) || 0) : 0;
+        const wantCount = want ? (parseInt(want.value) || 0) : 0;
         if (giveCount > 0) offered[card] = giveCount;
         if (wantCount > 0) wanted[card] = wantCount;
     });
@@ -599,7 +595,7 @@ function buildStepButton(input, delta, card, side) {
  */
 function buildTradeSteppers() {
     for (const side of Object.keys(STEP_VERBS)) {
-        for (const card of TRADE_CARDS) {
+        for (const card of allTradeFields()) {
             const input = document.getElementById(`${side}-${card}`);
             if (!input) {
                 continue;
@@ -644,8 +640,11 @@ function refreshStepBounds() {
  * trade the table is allowed to refuse.
  */
 function applyHandLimits() {
-    for (const card of TRADE_CARDS) {
+    for (const card of allTradeFields()) {
         const input = document.getElementById(`give-${card}`);
+        if (!input) {
+            continue;
+        }
         const held = heldCount(card);
         input.max = String(held);
         if ((parseInt(input.value) || 0) > held) {
@@ -663,13 +662,53 @@ function clearTradeInputs() {
     // Every one of them, not only the ones currently shown: a number left in a
     // hidden commodity row would be sent by the next trade on a table that
     // switched them off.
-    TRADE_CARDS.forEach(card => {
-        document.getElementById(`give-${card}`).value = 0;
-        document.getElementById(`want-${card}`).value = 0;
+    allTradeFields().forEach(card => {
+        const give = document.getElementById(`give-${card}`);
+        const want = document.getElementById(`want-${card}`);
+        if (give) give.value = 0;
+        if (want) want.value = 0;
     });
     clearOverpayOffer();
     refreshStepBounds();
     renderTradeVerdict();
+}
+
+/**
+ * Grow a static resource picker with a row for each resource a map added on top
+ * of the base five — cotton on a cotton map, nothing on a standard board. The
+ * printed base-five rows are never touched, so a standard board's picker is
+ * byte-for-byte what it always was; a cotton map's grows a cotton field. Called
+ * on open and idempotent: the previous extras are cleared first, so switching
+ * games never leaves a stale one behind.
+ *
+ * @param {?Element} container - the picker to grow
+ * @param {(card: string) => string} buildRow - markup for one extra card
+ */
+function syncPickerExtras(container, buildRow) {
+    if (!container) {
+        return;
+    }
+    container.querySelectorAll('.res-extra').forEach(node => node.remove());
+    for (const card of extraResourceTypes()) {
+        container.insertAdjacentHTML('beforeend', buildRow(card));
+    }
+}
+
+/** A trade give/want field for one extra resource, matching the printed rows. */
+function tradeFieldRow(side, card) {
+    return `<label class="res-extra"><span class="picker-name">`
+        + `${resourceTile(card, { label: resourceName(card) })}`
+        + `<span class="picker-word"> ${resourceName(card)}</span></span>`
+        + `<input type="number" inputmode="numeric" id="${side}-${card}"`
+        + ' min="0" max="10" value="0"></label>';
+}
+
+/** Grow the trade give/want pickers with any resource a map added (cotton). */
+function syncTradeExtras() {
+    syncPickerExtras(tradeGiveCommodities?.previousElementSibling,
+        card => tradeFieldRow('give', card));
+    syncPickerExtras(tradeWantCommodities?.previousElementSibling,
+        card => tradeFieldRow('want', card));
 }
 
 /**
@@ -704,7 +743,7 @@ function renderBankRates() {
         // 30px tile would blow. The tile carries the accessible name, so the
         // rate reads on its own for a screen reader.
         chip.innerHTML =
-            `${resourceTile(card, { label: CARD_NAMES[card] || card, tileCls: 'tile-sm' })}`
+            `${resourceTile(card, { label: resourceName(card), tileCls: 'tile-sm' })}`
             + ` ${rate}:1`;
         fragment.appendChild(chip);
     }
@@ -809,6 +848,9 @@ function showTradeModal() {
     const commodities = commoditiesInPlay();
     tradeGiveCommodities?.classList.toggle('hidden', !commodities);
     tradeWantCommodities?.classList.toggle('hidden', !commodities);
+    // A cotton map's give/want pickers gain a cotton field here; a standard
+    // board's are untouched (there is nothing beyond the five to add).
+    syncTradeExtras();
     // This dialog covers the hand panel, and what is in hand is half of what
     // decides an offer. Board updates keep it live from here on.
     renderDialogHands();
@@ -920,9 +962,17 @@ function declineTrade(offerId) {
 export function showInventionModal() {
     inventionModal.classList.remove('hidden');
     inventionModal.classList.add('show');
-    // Reset inputs
-    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(res => {
-        document.getElementById(`invention-${res}`).value = 0;
+    // A cotton map's picker gains a cotton field; a standard board's is untouched.
+    syncPickerExtras(inventionModal.querySelector('.resource-selector'),
+        card => `<label class="res-extra">`
+            + `${resourceTile(card, { label: resourceName(card) })} ${resourceName(card)}: `
+            + `<input type="number" id="invention-${card}" min="0" max="2" value="0"></label>`);
+    // Reset inputs — over the in-play resources, so a cotton field zeroes too.
+    resourceOrder().forEach(res => {
+        const input = document.getElementById(`invention-${res}`);
+        if (input) {
+            input.value = 0;
+        }
     });
 }
 
@@ -941,8 +991,9 @@ function confirmInvention() {
     const selected = {};
     let total = 0;
     
-    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(res => {
-        const count = parseInt(document.getElementById(`invention-${res}`).value) || 0;
+    resourceOrder().forEach(res => {
+        const input = document.getElementById(`invention-${res}`);
+        const count = input ? (parseInt(input.value) || 0) : 0;
         if (count > 0) {
             selected[res] = count;
             total += count;
@@ -968,6 +1019,22 @@ function confirmInvention() {
 export function showMonopolyModal() {
     monopolyModal.classList.remove('hidden');
     monopolyModal.classList.add('show');
+    // A cotton map's picker gains a cotton button; a standard board's is
+    // untouched. Injected buttons carry their own listener — the static ones
+    // are wired once at load, and a fresh button would otherwise be inert.
+    const buttons = monopolyModal.querySelector('.resource-buttons');
+    if (buttons) {
+        buttons.querySelectorAll('.res-extra').forEach(node => node.remove());
+        for (const card of extraResourceTypes()) {
+            const button = document.createElement('button');
+            button.className = 'monopoly-res-btn res-extra';
+            button.dataset.resource = card;
+            button.innerHTML = `${resourceTile(card, { label: resourceName(card) })} `
+                + resourceName(card);
+            button.addEventListener('click', () => confirmMonopoly(card));
+            buttons.appendChild(button);
+        }
+    }
 }
 
 /**
@@ -1122,7 +1189,7 @@ function zoneMiniCard(card, count, side) {
     button.className = `trade-mini t-${card}`;
     button.dataset.card = card;
     button.dataset.side = side;
-    const name = CARD_NAMES[card] || card;
+    const name = resourceName(card);
     button.setAttribute('aria-label', `${count} ${name} — remove from ${side}`);
     button.title = `Remove ${name}`;
     button.innerHTML = icon(card, { cls: 'trade-mini-glyph' })
@@ -1316,8 +1383,8 @@ function renderTrayAction(ready) {
         label = `Build ${buildLabel(ready)}`;
     } else if (bank) {
         act = 'bank';
-        label = `Bank · ${bank.rate} ${CARD_NAMES[bank.giveCard] || bank.giveCard}`
-            + ` → 1 ${CARD_NAMES[bank.wantCard] || bank.wantCard}`;
+        label = `Bank · ${bank.rate} ${resourceName(bank.giveCard)}`
+            + ` → 1 ${resourceName(bank.wantCard)}`;
     } else if (givenCards > 0 && wantedCards > 0) {
         act = 'offer';
         label = 'Offer to players';
@@ -1449,7 +1516,7 @@ function buildZonePicker() {
         button.type = 'button';
         button.className = `trade-pick t-${card}`;
         button.dataset.card = card;
-        const name = CARD_NAMES[card] || card;
+        const name = resourceName(card);
         button.setAttribute('aria-label', `Add ${name} to want`);
         button.title = `Want ${name}`;
         button.innerHTML = icon(card, { cls: 'trade-mini-glyph' });

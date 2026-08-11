@@ -8,15 +8,23 @@
 import { COMMODITY_TYPES } from './constants.js';
 import { discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, submitDiscardBtn, victimList, victimModal } from './dom.js';
 import { renderDialogHands } from './hand.js';
+import { resourceName, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { emitGame } from './socket.js';
-import { getBoard, getDiscardAmount, getRobberVictims, viewState } from './state.js';
+import { extraResourceTypes, getBoard, getDiscardAmount, getRobberVictims, resourceOrder, viewState } from './state.js';
 
-// Everything a 7 counts, which is what a discard may name. The five resources
-// and - on a table that plays them - the three commodities: the engine takes
-// both (`clean_card_counts`), and a hand that is over the limit on commodities
-// alone must be able to pay.
-const DISCARDABLE_CARDS = ['wood', 'brick', 'sheep', 'wheat', 'ore', ...COMMODITY_TYPES];
+/**
+ * Everything a 7 counts, which is what a discard may name. The in-play resources
+ * (the five on a standard board, plus cotton where a map deals it) and — on a
+ * table that plays them — the three commodities: the engine takes both
+ * (`clean_card_counts`), and a hand over the limit on commodities alone must be
+ * able to pay.
+ *
+ * @returns {string[]}
+ */
+function discardableCards() {
+    return [...resourceOrder(), ...COMMODITY_TYPES];
+}
 
 /**
  * Open the discard dialog for a fresh discard.
@@ -27,7 +35,9 @@ const DISCARDABLE_CARDS = ['wood', 'brick', 'sheep', 'wheat', 'ore', ...COMMODIT
  */
 export function openDiscardModal(amount) {
     discardAmountSpan.textContent = amount;
-    DISCARDABLE_CARDS.forEach(card => {
+    // A cotton map's picker gains a cotton field; a standard board's is untouched.
+    syncDiscardExtras();
+    discardableCards().forEach(card => {
         const input = document.getElementById(`discard-${card}`);
         if (input) {
             input.value = 0;
@@ -63,9 +73,32 @@ function heldCount(card) {
     return (store || {})[card] || 0;
 }
 
+/**
+ * Grow the discard picker with a field for each resource a map added on top of
+ * the base five — cotton on a cotton map, nothing on a standard board. The
+ * printed base-five rows are never touched, so a standard board's dialog is
+ * byte-for-byte what it always was. Idempotent, and each injected field gets the
+ * same live-total listener the static ones were wired with at load.
+ */
+function syncDiscardExtras() {
+    const selector = discardModal?.querySelector('.resource-selector');
+    if (!selector) {
+        return;
+    }
+    selector.querySelectorAll('.res-extra').forEach(node => node.remove());
+    for (const card of extraResourceTypes()) {
+        selector.insertAdjacentHTML('beforeend',
+            `<label class="res-extra">`
+            + `${resourceTile(card, { label: resourceName(card) })} ${resourceName(card)}: `
+            + `<input type="number" id="discard-${card}" min="0" max="10" value="0"></label>`);
+        document.getElementById(`discard-${card}`)
+            ?.addEventListener('input', syncDiscardState);
+    }
+}
+
 /** The staged discard total across every card input. */
 function discardTotal() {
-    return DISCARDABLE_CARDS.reduce((sum, card) => {
+    return discardableCards().reduce((sum, card) => {
         const input = document.getElementById(`discard-${card}`);
         return sum + (input ? (parseInt(input.value) || 0) : 0);
     }, 0);
@@ -103,7 +136,9 @@ discardHandNote?.addEventListener('click', (event) => {
 });
 
 // The number inputs stay usable directly; keep the gate honest when they change.
-DISCARDABLE_CARDS.forEach(card => {
+// The base five and commodities are wired here at load; a map's own field
+// (cotton) is wired when it is injected in syncDiscardExtras.
+discardableCards().forEach(card => {
     document.getElementById(`discard-${card}`)?.addEventListener('input', syncDiscardState);
 });
 
@@ -188,7 +223,7 @@ submitDiscardBtn.addEventListener('click', () => {
     // Every card the limit counts, not the five resources: a commodity typed
     // into a row the submit ignored was the shape of the tester's report.
     const resources = {};
-    DISCARDABLE_CARDS.forEach(card => {
+    discardableCards().forEach(card => {
         const input = document.getElementById(`discard-${card}`);
         resources[card] = input ? (parseInt(input.value) || 0) : 0;
     });

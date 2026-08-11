@@ -144,6 +144,14 @@ register(Terrain("ore", "ore", produces="ore", commodity="coin"))
 register(Terrain("desert", "desert", produces=None))
 register(Terrain("sea", "ocean", produces=None, is_sea=True))
 
+# A sixth resource that is not in any printed box: it exists so a custom map can
+# deal it, and only there. Registering it here is what makes it a real terrain —
+# paintable, tokenable, and a valid v1 map word — while the built-in layouts,
+# which list their own tiles, never include it. It pays a `cotton` card like any
+# producer; it carries no Cities & Knights commodity, since no city was ever
+# printed to yield one.
+register(Terrain("cotton", "cotton", produces="cotton"))
+
 # Explorers & Pirates map-format-v2 terrains, refused in a v1 map. Gold pays out
 # on its roll (a token sits on it) but its yield is a player's choice, so
 # `produces` stays None and `token` is set explicitly. Fish shoals and spice

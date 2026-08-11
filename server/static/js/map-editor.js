@@ -59,9 +59,14 @@ const REGION_PALETTE = [
     '#6ab2a0', '#b2916a', '#8a6ab2', '#b26a6a',
 ];
 
-const TERRAIN_TYPES = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert', 'sea'];
-const LAND_TERRAINS = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'desert'];
-const RESOURCE_TERRAINS = new Set(['wood', 'brick', 'sheep', 'wheat', 'ore']);
+// `cotton` is a resource no printed box holds, defined server-side (game/tiles.py)
+// so a custom map can deal it. It is paintable like any other land tile, takes a
+// number token, and can carry a 2:1 harbour — but it is never part of the
+// standard mix (STANDARD_MIX gives it 0), so Auto-fill leaves a standard board's
+// composition untouched.
+const TERRAIN_TYPES = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'cotton', 'desert', 'sea'];
+const LAND_TERRAINS = ['wood', 'brick', 'sheep', 'wheat', 'ore', 'cotton', 'desert'];
+const RESOURCE_TERRAINS = new Set(['wood', 'brick', 'sheep', 'wheat', 'ore', 'cotton']);
 
 // Explorers & Pirates terrains (map_version 2). Gold takes a number token like a
 // resource but is not tradable; a fish shoal and a spice hex take none. Opt-in
@@ -82,11 +87,12 @@ const POOL_MODE_LABELS = { shuffled: 'Shuffled', hidden: 'Hidden (discover)', fi
 const HEX_SIDES = [0, 1, 2, 3, 4, 5];
 
 const TOKEN_VALUES = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
-const HARBOUR_TYPES = ['generic', 'wood', 'brick', 'sheep', 'wheat', 'ore'];
+const HARBOUR_TYPES = ['generic', 'wood', 'brick', 'sheep', 'wheat', 'ore', 'cotton'];
 
 // How much a pool close to the standard 19-hex mix distributes per terrain
-// per 19 hexes, used by Auto-fill.
-const STANDARD_MIX = { wood: 4, brick: 3, sheep: 4, wheat: 4, ore: 3, desert: 1, sea: 0 };
+// per 19 hexes, used by Auto-fill. `cotton` sits at 0: it is paintable, but the
+// standard board deals none, so Auto-fill never changes a base board's mix.
+const STANDARD_MIX = { wood: 4, brick: 3, sheep: 4, wheat: 4, ore: 3, cotton: 0, desert: 1, sea: 0 };
 const STANDARD_TOKENS = { 2: 1, 3: 2, 4: 2, 5: 2, 6: 2, 8: 2, 9: 2, 10: 2, 11: 2, 12: 1 };
 
 const MAX_UNDO = 30;

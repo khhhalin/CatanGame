@@ -105,6 +105,39 @@ export function getBoard() {
     return viewState.server.board;
 }
 
+// The five resources every board deals, in the order they have always shown.
+// The fallback when a payload carries no `resource_types` — an older board, or a
+// lobby preview before the field existed — so nothing ever renders an empty hand.
+const BASE_RESOURCE_ORDER = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+
+/**
+ * The resources this game actually deals, base five first then any a map adds
+ * (cotton). The hand, the bank and every resource picker render from this rather
+ * than a hardcoded five, so a standard board shows exactly the five and a cotton
+ * map shows cotton after them. The server computes it (Game.in_play_resource_types)
+ * and sends it as `resource_types`; this only reads it back, with the base five
+ * as the floor.
+ *
+ * @returns {string[]}
+ */
+export function resourceOrder() {
+    const types = viewState.server.board?.resource_types;
+    return Array.isArray(types) && types.length ? types : BASE_RESOURCE_ORDER;
+}
+
+/**
+ * The resources a map added on top of the base five — cotton on a cotton map,
+ * empty on every standard board. The static resource pickers (trade, discard,
+ * invention, monopoly) keep their printed base-five rows and grow one row per
+ * entry here, so a standard board's pickers are untouched and a cotton map's
+ * gain a cotton field.
+ *
+ * @returns {string[]}
+ */
+export function extraResourceTypes() {
+    return resourceOrder().filter(type => !BASE_RESOURCE_ORDER.includes(type));
+}
+
 /**
  * What one build costs at this table, or null when the server has not priced it.
  *

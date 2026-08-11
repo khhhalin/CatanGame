@@ -4,7 +4,7 @@ import { barbarianChipValue, barbarianDefense, barbarianLastAttack, barbarianPan
 import { findMyPlayer } from './player-view.js';
 import { syncSeaModeButtons } from './seafarers.js';
 import { emitGame } from './socket.js';
-import { getBoard, getGamePhase, isMyTurn, viewState } from './state.js';
+import { getBoard, getGamePhase, isMyTurn, resourceOrder, viewState } from './state.js';
 
 // --------------------------------------------------------- Cities & Knights
 //
@@ -832,7 +832,7 @@ function renderKnights(player) {
 // Read at render time rather than listed once, because the players at the table
 // are not a constant - and a card aimed at "another player" is three of the 54.
 const TARGET_CHOICES = {
-    resource: () => ['wood', 'brick', 'sheep', 'wheat', 'ore'],
+    resource: () => resourceOrder(),
     commodity: () => COMMODITY_TYPES,
     improvement: () => TRACK_ORDER,
     // Everyone but the player holding the card. Whether the card may actually

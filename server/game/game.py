@@ -1,7 +1,7 @@
 import logging
 import random
 
-from game import buildings, resources, tiles
+from game import buildings, resources, tiles, validation
 from game import cities_knights as ck_module
 from game import ep as ep_module
 from game import modifiers as modifiers_module
@@ -321,6 +321,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         # Generate the complete board
         self._generate_board()
+
+        # Now the terrain is dealt, open a bank pool for every resource the board
+        # can pay. A standard board produces only the base five and its bank
+        # keeps exactly those; a map that deals cotton hexes gets a cotton pile
+        # too, so a cotton roll has somewhere to draw from and a cotton trade
+        # somewhere to settle. The pile appears where the board earns it and
+        # nowhere else — a base game never shows one.
+        self.bank.stock_for_board(self.producible_resources())
 
         # Explorers & Pirates: fill the undiscovered pool and the per-area
         # number-token stacks a discovery draws from, now the board's hidden
@@ -932,6 +940,47 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             build_type: self.get_cost(build_type) for build_type in self.building_costs
         }
 
+    def producible_resources(self) -> set:
+        """Every resource this board's terrain can pay out on a roll.
+
+        The base five for a standard board; those plus cotton where a map deals
+        cotton hexes. Read off the terrain the board was actually dealt, so it is
+        the truth about this table rather than a copy of a layout's intent.
+        """
+        produced = set()
+        for hex_obj in self.hexes.values():
+            resource = tiles.produces(hex_obj.type)
+            if resource is not None:
+                produced.add(resource)
+        return produced
+
+    def in_play_resource_types(self) -> list:
+        """The resources this game uses, base five first then any a map adds.
+
+        The client renders its hand, bank and every resource picker from this
+        list, so a standard board shows exactly the five in their usual order and
+        a cotton map shows cotton after them. Ordered deterministically — the
+        base five as they have always been, extras sorted — so the payload does
+        not depend on set iteration order.
+        """
+        base = list(validation.BASE_RESOURCE_TYPES)
+        extra = sorted(self.producible_resources() - set(base))
+        return base + extra
+
+    def in_play_card_types(self) -> list:
+        """The resources and commodities this game can deal, for a picker that
+        offers a card *type* (the Merchant Fleet's 2:1 nomination).
+
+        In-play resources first, then the commodities the table plays. A board
+        without cotton never offers it, so a standard Cities & Knights table sees
+        exactly the eight it always has — the five resources and the three
+        commodities.
+        """
+        cards = self.in_play_resource_types()
+        if self.rules['commodities']:
+            cards = cards + list(validation.COMMODITY_TYPES)
+        return cards
+
     def get_board_data(self, viewer: str = None) -> dict:
         """
         Serialize board data for sending to client.
@@ -1020,6 +1069,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # resource. The client draws terrain from this rather than its own
             # copy, so adding a resource is one server-side entry. Server-global.
             'resources': resources.registry(),
+            # The resources this board actually deals, base five first then any a
+            # map adds (cotton). The client renders its hand, bank and pickers
+            # from this order rather than a hardcoded five, so a cotton map shows
+            # cotton and a standard board shows exactly the five it always has.
+            'resource_types': self.in_play_resource_types(),
             # The building registry — name, cost and icon per build. The client
             # draws each build's label and glyph from this rather than its own
             # copy, so adding or relabelling a build is one server-side entry.

@@ -25,6 +25,20 @@ class Bank:
             'victory_point': 5
         }
 
+    def stock_for_board(self, resource_types) -> None:
+        """Open a pool for every resource the board can actually pay out.
+
+        Called once, after the board is dealt. The base five are already stocked
+        by ``__init__``; this adds a full pool for any further resource a map's
+        own terrain produces — cotton on a cotton map — and nothing else. A
+        standard board produces only the five, so its bank keeps exactly those:
+        a cotton pile where no hex can ever deal one would be a pile no roll
+        fills and no trade needs. Existing pools are left at their current
+        count, so this never resets a bank mid-game.
+        """
+        for resource_type in resource_types:
+            self.resources.setdefault(resource_type, self.resource_limit)
+
     def take(self, resource_type: str, amount: int = 1) -> bool:
         """Take resources from bank. Returns True if successful, False if insufficient."""
         if self.resources.get(resource_type, 0) >= amount:

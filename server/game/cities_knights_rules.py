@@ -9,7 +9,7 @@ is a mixin on Game rather than methods on CitiesKnights.
 from game import cards, progress_cards, tiles
 from game import cities_knights as ck_module
 from game import rules as rules_module
-from game.validation import CARD_TYPES, COMMODITY_TYPES, RESOURCE_TYPES
+from game.validation import COMMODITY_TYPES, RESOURCE_TYPES
 
 
 def _cost_phrase(cost: dict) -> str:
@@ -980,11 +980,13 @@ class CitiesKnightsRules:
     def _progress_merchant_fleet(self, player_name: str, target) -> dict:
         """Ask which card type trades at 2:1 with the bank for the rest of the turn.
 
-        All eight types are offered whether or not the player holds any right
-        now: the rate lasts the turn, and the cards they are about to earn from
-        a knight or a trade are the ones a fleet is usually named for.
+        Every card type this board deals is offered whether or not the player
+        holds any right now: the rate lasts the turn, and the cards they are
+        about to earn from a knight or a trade are the ones a fleet is usually
+        named for. A standard table sees the eight it always has; a cotton map
+        offers cotton too, and no board offers a type it cannot deal.
         """
-        self.open_choice('merchant_fleet', player_name, CARD_TYPES)
+        self.open_choice('merchant_fleet', player_name, self.in_play_card_types())
         return {'success': True, 'awaiting': player_name}
 
     def _choice_merchant_fleet(self, choice: dict, option: str) -> dict:

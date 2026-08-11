@@ -16,27 +16,9 @@
 import { ckEnabled } from './cities-knights.js';
 import { COMMODITY_TYPES } from './constants.js';
 import { bankChipValue, bankDisplay, discardHandNote, resourceDisplay, tradeHandNote } from './dom.js';
-import { icon, resourceTile } from './icons.js';
+import { customTileFill, icon, resourceName, resourceTile, resourceTileClass } from './icons.js';
 import { findMyPlayer } from './player-view.js';
-import { getBoard } from './state.js';
-
-// Board order for the five base resources, shared by the hand and the bank.
-const RESOURCE_ORDER = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
-
-// The tile colour class each holdable draws its terrain fill from - the same
-// `.t-*` variants the icon set and pickers use, so a card and a picker tile for
-// the same resource are the same colour.
-const TILE_VARIANT = {
-    wood: 't-wood', brick: 't-brick', sheep: 't-sheep', wheat: 't-wheat', ore: 't-ore',
-    cloth: 't-cloth', coin: 't-coin', paper: 't-paper',
-};
-
-// The accessible name for a tile: its terrain colour is the only thing saying
-// which card the count beside it belongs to, so the tile carries the label.
-const CARD_NAMES = {
-    wood: 'Wood', brick: 'Brick', sheep: 'Sheep', wheat: 'Wheat', ore: 'Ore',
-    cloth: 'Cloth', coin: 'Coin', paper: 'Paper',
-};
+import { getBoard, resourceOrder } from './state.js';
 
 /**
  * One physical hand card: a terrain-coloured face with the resource glyph, a
@@ -55,10 +37,15 @@ const CARD_NAMES = {
  */
 function handCard(card, count, rotation) {
     const spent = count === 0 ? ' spent' : '';
-    const variant = TILE_VARIANT[card] || '';
-    const name = CARD_NAMES[card] || card;
+    const variant = resourceTileClass(card);
+    const name = resourceName(card);
+    // A card with no `.t-*` class (a map's own resource, e.g. cotton) fills its
+    // face from the registry colour inline; the base five keep their token class
+    // and take no inline colour, so their face is byte-for-byte unchanged.
+    const fill = customTileFill(card);
+    const tileVar = fill ? `; --tile: ${fill}` : '';
     return `<div class="hand-card ${variant}${spent}" data-card="${card}"`
-        + ` style="--rot: ${rotation}deg">`
+        + ` style="--rot: ${rotation}deg${tileVar}">`
         + `<span class="hand-card-count num">${count}</span>`
         + `<span class="hand-card-face">${icon(card, { cls: 'hand-card-glyph' })}</span>`
         + `<span class="hand-card-label">${name}</span>`
@@ -76,7 +63,7 @@ function handCard(card, count, rotation) {
  */
 function handFan(player, commodities) {
     const resources = player.resources || {};
-    const cards = RESOURCE_ORDER.map((type) => [type, resources[type] || 0]);
+    const cards = resourceOrder().map((type) => [type, resources[type] || 0]);
 
     // Commodities join the fan: they are spent, traded and discarded like
     // resources, and a separate row implied they were not.
@@ -111,7 +98,7 @@ function resourceCell(card, count) {
     // hand card stages into the trade tray. Harmless in the trade dialog, which
     // does not read it.
     return `<div class="res-cell${spent}" data-card="${card}">`
-        + resourceTile(card, { label: CARD_NAMES[card] || card })
+        + resourceTile(card, { label: resourceName(card) })
         + `<span class="count num">${count}</span></div>`;
 }
 
@@ -126,7 +113,7 @@ function resourceCell(card, count) {
 function handChips(player, commodities) {
     const resources = player.resources || {};
     let html = '<div class="res-row">';
-    for (const type of RESOURCE_ORDER) {
+    for (const type of resourceOrder()) {
         html += resourceCell(type, resources[type] || 0);
     }
 
@@ -202,13 +189,15 @@ export function renderBank() {
     const limit = getBoard().rules?.bank_resource_limit ?? 19;
 
     let html = '<div class="bank-row">';
-    for (const type of RESOURCE_ORDER) {
+    for (const type of resourceOrder()) {
         const count = bank[type] || 0;
         const width = Math.max(0, Math.min(100, Math.round((count / limit) * 100)));
-        // --tile drives the meter fill (see .bank-cell .meter i); the tile
-        // itself carries its own colour through resourceTile's t-* class.
-        html += `<div class="bank-cell" style="--tile: var(--terrain-${type})">`
-            + resourceTile(type, { label: CARD_NAMES[type] || type })
+        // --tile drives the meter fill (see .bank-cell .meter i); the base five
+        // take it from their `--terrain-*` token (theme-aware), a map's own
+        // resource (cotton) from its registry colour.
+        const meterFill = customTileFill(type) || `var(--terrain-${type})`;
+        html += `<div class="bank-cell" style="--tile: ${meterFill}">`
+            + resourceTile(type, { label: resourceName(type) })
             + `<span class="meter"><i style="width: ${width}%"></i></span>`
             + `<span class="pct num">${count}</span></div>`;
     }
@@ -220,7 +209,7 @@ export function renderBank() {
     if (bankChipValue) {
         const empty = Object.entries(bank)
             .filter(([, count]) => count === 0)
-            .map(([type]) => CARD_NAMES[type] || type);
+            .map(([type]) => resourceName(type));
         const total = Object.values(bank).reduce((sum, count) => sum + count, 0);
         bankChipValue.textContent = empty.length > 0
             ? `${total} cards · out: ${empty.join(', ')}`

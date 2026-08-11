@@ -42,6 +42,7 @@
 // =====================================================================
 
 import { COMMODITY_TYPES } from './constants.js';
+import { getBoard } from './state.js';
 
 /** Resource -> sprite id. The five base resources, board order. */
 export const RESOURCE_ICON = {
@@ -66,6 +67,66 @@ const TILE_CLASS = {
     wood: 't-wood', brick: 't-brick', sheep: 't-sheep', wheat: 't-wheat', ore: 't-ore',
     cloth: 't-cloth', coin: 't-coin', paper: 't-paper',
 };
+
+// The display name for each base holdable. A resource a map introduced (cotton)
+// has no entry here and takes its name from the registry the server sent.
+const CARD_NAME = {
+    wood: 'Wood', brick: 'Brick', sheep: 'Sheep', wheat: 'Wheat', ore: 'Ore',
+    cloth: 'Cloth', coin: 'Coin', paper: 'Paper',
+};
+
+// The resource registry travels with every board payload, keyed by hex_type
+// (a resource id). It is the source of truth for a resource with no built-in
+// glyph, colour or name here — the base five and the commodities keep their
+// hardcoded ids and theme-aware token classes, so their look never changes.
+function resourceDef(key) {
+    const defs = getBoard() && getBoard().resources;
+    return defs ? defs[key] : undefined;
+}
+
+/**
+ * The display name for a resource or commodity: the hardcoded name for a base
+ * card, the registry name for one a map introduced (cotton), the id as a last
+ * resort.
+ *
+ * @param {string} key
+ * @returns {string}
+ */
+export function resourceName(key) {
+    if (CARD_NAME[key]) {
+        return CARD_NAME[key];
+    }
+    const def = resourceDef(key);
+    return (def && def.name) || key;
+}
+
+/**
+ * The `.t-*` tile-colour class for a card, or '' for one with no built-in class
+ * (a map's own resource, which colours itself inline from the registry instead).
+ *
+ * @param {string} key
+ * @returns {string}
+ */
+export function resourceTileClass(key) {
+    return TILE_CLASS[key] || '';
+}
+
+/**
+ * The `--tile` fill for a resource that has no theme-aware token class — its
+ * registry colour — or null for the base five and commodities, which fill
+ * themselves through their `.t-*` class and must not be given an inline colour
+ * (that would drop their light/dark theming). Cotton returns its cream.
+ *
+ * @param {string} key
+ * @returns {?string}
+ */
+export function customTileFill(key) {
+    if (TILE_CLASS[key]) {
+        return null;
+    }
+    const def = resourceDef(key);
+    return (def && def.color) || null;
+}
 
 /**
  * Award, piece and counter concepts -> sprite id. Keyed by what the panels
@@ -131,7 +192,17 @@ function resolveSpriteId(key) {
         return key;
     }
     // A concept key: resource, then commodity, then status.
-    return RESOURCE_ICON[key] || COMMODITY_ICON[key] || STATUS_ICON[key] || key;
+    const mapped = RESOURCE_ICON[key] || COMMODITY_ICON[key] || STATUS_ICON[key];
+    if (mapped) {
+        return mapped;
+    }
+    // A resource a map introduced (cotton) has no built-in glyph: take the
+    // sprite id from its registry symbol (`cloth` -> `i-cloth`).
+    const def = resourceDef(key);
+    if (def && def.symbol) {
+        return `i-${def.symbol}`;
+    }
+    return key;
 }
 
 /**
@@ -165,7 +236,12 @@ export function resourceTile(key, opts = {}) {
     const tile = TILE_CLASS[key] || '';
     const extra = opts.tileCls ? ` ${opts.tileCls}` : '';
     const id = RESOURCE_ICON[key] || COMMODITY_ICON[key] || key;
-    return `<span class="tile ${tile}${extra}">${icon(id, opts)}</span>`;
+    // A resource with no `.t-*` token (a map's own, e.g. cotton) is filled from
+    // its registry colour inline; the base five and commodities keep their
+    // theme-aware class and take no inline style, so their look is untouched.
+    const fill = customTileFill(key);
+    const style = fill ? ` style="--tile: ${escapeAttr(fill)}"` : '';
+    return `<span class="tile ${tile}${extra}"${style}>${icon(id, opts)}</span>`;
 }
 
 /**

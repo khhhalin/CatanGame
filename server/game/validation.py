@@ -5,7 +5,16 @@ reaches game state passes through here first, using allowlists rather than
 blocklists so a field nobody thought about is rejected instead of accepted.
 """
 
-RESOURCE_TYPES = ("wood", "brick", "sheep", "wheat", "ore")
+# The five resources every printed box holds, in the order they have always been
+# shown. A game never deals fewer than these.
+BASE_RESOURCE_TYPES = ("wood", "brick", "sheep", "wheat", "ore")
+
+# Every resource the type system knows. `cotton` is the sixth: it is not in any
+# box and no built-in board deals it, but it is a real resource a custom map may
+# place (game/tiles.py), so it belongs in the allowlist that trade, discard and
+# monopoly validate against — naming it on a board that has no cotton simply
+# moves nothing, because no player holds it and the bank stocks none.
+RESOURCE_TYPES = BASE_RESOURCE_TYPES + ("cotton",)
 
 # Cities & Knights commodities. Kept here rather than imported from
 # `game.cities_knights` so this module stays free of game-state imports.

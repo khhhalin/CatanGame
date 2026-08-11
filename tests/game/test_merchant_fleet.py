@@ -21,7 +21,6 @@ import pytest
 from game import persistence
 from game import rules as rules_module
 from game.game import Game
-from game.validation import CARD_TYPES
 
 
 @pytest.fixture
@@ -46,14 +45,23 @@ def play_fleet(game, player_name, card_type):
 
 class TestTheCardAsksWhichType:
     def test_all_eight_card_types_are_offered(self, game):
-        """"one chosen resource or commodity" — the choice is the card."""
+        """"one chosen resource or commodity" — the choice is the card.
+
+        Eight on this standard board: the five resources and three commodities.
+        `cotton` is in the type system (a custom map may deal it) but this board
+        does not, so it must NOT be offered — the picker follows what the board
+        can pay, not the whole vocabulary. That absence is what proves a standard
+        table's fleet dialog is unchanged by cotton existing.
+        """
         game.ck.progress_hands['Alice'] = ['merchant_fleet']
 
         result = game.play_progress_card('Alice', 'merchant_fleet')
 
         assert result['success'], result.get('error')
-        assert game.pending_choice_for('Alice')['options'] == list(CARD_TYPES)
-        assert len(CARD_TYPES) == 8
+        offered = game.pending_choice_for('Alice')['options']
+        assert offered == ['wood', 'brick', 'sheep', 'wheat', 'ore',
+                           'cloth', 'coin', 'paper']
+        assert 'cotton' not in offered
 
     def test_a_type_that_was_never_offered_is_refused(self, game):
         game.ck.progress_hands['Alice'] = ['merchant_fleet']

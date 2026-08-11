@@ -5,12 +5,12 @@
 
 import { markDirty } from './board.js';
 import { boardCanvas, epBuildShipBtn, epBuyGoldBtn, epGold, epGoldPick, epMissionBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSellGoldBtn, epSupply, gameBoard, moveShipBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
-import { resourceTile } from './icons.js';
+import { resourceName, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
 import { armShipMode, formatCost, SHIP_COST, turnBlockReason } from './seafarers.js';
 import { emitGame } from './socket.js';
-import { getBoard, isMyTurn, viewState } from './state.js';
+import { getBoard, isMyTurn, resourceOrder, viewState } from './state.js';
 
 const MISSION_LABELS = {
     pirate_lairs: 'Pirate Lairs',
@@ -29,11 +29,6 @@ const ADVANTAGE_LABELS = {
     pirate_bonus: 'Pirate Bonus',
     fast_gold: 'Fast Gold',
 };
-
-// The resources a gold trade can name, in the hand's order. The rates live on
-// the server (gold.py): a sell is 3 of one resource for 1 gold, a buy is 2 gold
-// for 1 chosen resource — shown on the buttons so the price is not a surprise.
-const RESOURCE_ORDER = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 
 // Which gold trade the resource pick is currently choosing for, or null.
 let goldPickMode = null;
@@ -284,14 +279,14 @@ function renderGoldPick() {
     }
     const event = goldPickMode === 'sell' ? 'sell_resources_for_gold' : 'buy_resource_with_gold';
     const frag = document.createDocumentFragment();
-    for (const resource of RESOURCE_ORDER) {
+    for (const resource of resourceOrder()) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'ep-gold-res';
         button.dataset.resource = resource;
         button.dataset.event = event;
         // resourceTile is trusted markup from icons.js, not user input.
-        button.innerHTML = resourceTile(resource, { label: resource });
+        button.innerHTML = resourceTile(resource, { label: resourceName(resource) });
         frag.appendChild(button);
     }
     epGoldPick.replaceChildren(frag);
