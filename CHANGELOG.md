@@ -26,6 +26,11 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.1.0 — 2026-08-11 18:46
+
+- **New** Every resource now carries its own name, colour, board pattern and icon in one place, so the board draws each terrain from that definition. The base resources look exactly as before; the difference is that adding a new one — gold, say — is now a single entry rather than a code change.
+- **New** The map editor has a Resources button that downloads the current resource set as a file you can edit and drop back in to retint a resource or add one.
+
 ## v3.0.1 — 2026-08-11 16:22
 
 - **Fixed** [reported] Trade offers no longer vanish on their own — an offer stands until it is taken or you withdraw it.
