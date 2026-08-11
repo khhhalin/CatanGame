@@ -423,6 +423,17 @@
                         <div id="award-summary" class="award-summary"></div>
                     </div>
 
+                    <!-- Explorers & Pirates: the mission tracks and their lead
+                         cards, the token supplies, and each player's gold and
+                         village advantages. Hidden until a board payload carries
+                         ep state; ep.js fills the three bodies from `board.ep`. -->
+                    <div class="right-ep hidden" id="right-ep">
+                        <div class="right-eyebrow">Explorers &amp; Pirates</div>
+                        <div class="ep-missions" id="ep-missions"></div>
+                        <div class="ep-supply" id="ep-supply"></div>
+                        <div class="ep-players" id="ep-players"></div>
+                    </div>
+
                     <!-- The Details folds: the build costs and every expansion
                          subject, each a chip that states its headline numbers
                          and a popover that carries the detail and the actions.

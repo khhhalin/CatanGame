@@ -555,6 +555,9 @@ class TestExplorersAndPiratesStateSurvives:
         game.ep.place_pirate('Alice', sea)
         game.ep.token_supply['spice_sack'] = 20
         game.ep.markers['Alice']['fish'] = 3
+        # E&P player state: the gold currency and the crew reserve.
+        game.get_player('Alice').gold = 5
+        game.get_player('Alice').crews = 3
 
         after = round_trip(game, tmp_path)
 
@@ -566,6 +569,8 @@ class TestExplorersAndPiratesStateSurvives:
         assert after.ep.pirate_of('Alice') == sea
         assert after.ep.token_supply['spice_sack'] == 20
         assert after.ep.marker('Alice', 'fish') == 3
+        assert after.get_player('Alice').gold == 5
+        assert after.get_player('Alice').crews == 3
 
     def test_a_pre_ep_save_still_loads(self, tmp_path):
         """The `ep` key is additive; a base-game save from before it existed has

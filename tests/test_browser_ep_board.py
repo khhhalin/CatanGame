@@ -96,6 +96,13 @@ def _ep_game():
     pirate_hex = next(k for k, h in game.hexes.items()
                       if h.type == 'ocean' and any(n in land for n in h.neighbors))
     game.ep.place_pirate('Alice', pirate_hex)
+
+    # Mission progress, gold and an advantage, so the E&P panel has content.
+    game.ep.markers['Alice']['fish'] = 2
+    game.ep.markers['Bob']['fish'] = 1
+    game.ep.lead_cards['fish'] = 'Alice'
+    game.get_player('Alice').gold = 3
+    game.ep.grant_advantage('Bob', 'swift_voyage')
     return game
 
 
@@ -119,6 +126,10 @@ def test_the_ep_board_paints_its_new_hex_types(browser, tmp_path):
         next_frame(alice.page)
         os.makedirs(SHOT_DIR, exist_ok=True)
         alice.page.screenshot(path=os.path.join(SHOT_DIR, "ep-02-markers.png"))
+        # The E&P panel shows and names the mission it has progress on.
+        assert alice.page.query_selector("#right-ep:not(.hidden)") is not None, \
+            "the E&P panel did not appear"
+        assert "Fish for Catan" in alice.page.inner_text("#ep-missions")
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)

@@ -93,6 +93,10 @@ def _player_state(player) -> dict:
         'ships': player.ships,
         'victory_points': player.victory_points,
         'knights_played': player.knights_played,
+        # Explorers & Pirates: gold currency and the settler/crew reserves.
+        'gold': player.gold,
+        'settlers': player.settlers,
+        'crews': player.crews,
     }
 
 
@@ -358,6 +362,10 @@ def deserialize(data: dict, config=None) -> Game:
         ]
         player.victory_points = saved.get('victory_points', 0)
         player.knights_played = saved.get('knights_played', 0)
+        # Explorers & Pirates; absent (0) on a pre-E&P save.
+        player.gold = saved.get('gold', 0)
+        player.settlers = saved.get('settlers', 0)
+        player.crews = saved.get('crews', 0)
 
     # Turn and phase
     for field in ('current_player_index', 'game_state', 'game_phase', 'setup_turn',

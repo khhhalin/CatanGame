@@ -58,6 +58,12 @@ export const proposeTradeBtn = document.getElementById('propose-trade-btn');
 export const tradeOffersDiv = document.getElementById('trade-offers');
 export const myOffersDiv = document.getElementById('my-offers');
 export const incomingOffers = document.getElementById('incoming-offers');
+
+// Explorers & Pirates panel (right rail), hidden until the table plays it.
+export const epPanel = document.getElementById('right-ep');
+export const epMissions = document.getElementById('ep-missions');
+export const epSupply = document.getElementById('ep-supply');
+export const epPlayers = document.getElementById('ep-players');
 export const tradeModal = document.getElementById('trade-modal');
 export const closeTradeModal = document.getElementById('close-trade-modal');
 export const submitTradeBtn = document.getElementById('submit-trade-btn');

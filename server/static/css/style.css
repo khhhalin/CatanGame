@@ -2145,6 +2145,86 @@ button:disabled {
     display: none;
 }
 
+/* Explorers & Pirates panel: the mission tracks and their lead cards, the token
+   supplies, and each player's gold and advantages — a quiet strip like the Bank
+   and Titles above it. Shown only while the table plays the expansion (ep.js
+   toggles .hidden from the board's ep state). */
+.right-ep {
+    flex: none;
+    padding: var(--space-2) 0 var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+}
+
+.ep-mission {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.ep-mission-name {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.ep-markers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    justify-content: flex-end;
+}
+
+.ep-marker {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+}
+
+.ep-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+}
+
+.ep-lead {
+    color: #e0b64a;
+}
+
+.ep-supply {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin: var(--space-2) 0;
+    color: var(--text-muted);
+}
+
+.ep-supply-item strong {
+    color: var(--text-strong, inherit);
+    font-variant-numeric: tabular-nums;
+}
+
+.ep-player {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: 2px;
+}
+
+.ep-player-name {
+    font-weight: 600;
+}
+
+.ep-player-detail {
+    margin-left: auto;
+    text-align: right;
+    color: var(--text-muted);
+}
+
 /* Big Bank panel: a two-column grid of large tiles, a thin stock meter and a
    big count. The meter is kept (the stock-depletion signal, and what the hand
    suite reads) but slimmed so the number leads. */
