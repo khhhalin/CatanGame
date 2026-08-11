@@ -1183,6 +1183,70 @@ function drawShip(ctx, pos, playerColor) {
     drawBoat(ctx, pos.centerX, pos.centerY + 2, color, SHIP_HALO, 1);
 }
 
+// The colour a cargo piece reads as, by type: a crew, a settler, a fish haul,
+// a spice sack. The two mission tokens borrow their terrain's colour so a haul
+// reads as fish and a sack as spice at a glance.
+const CARGO_COLORS = {
+    crew: '#e8c069',
+    settler: '#8fbf4a',
+    fish_haul: '#3f9fb8',
+    spice_sack: '#b5643c',
+};
+
+/**
+ * Draw a transport ship's hold above its boat: one pip per small piece (a crew
+ * or a spice sack), a double-wide pip for a large one (a settler or a fish haul)
+ * that fills the whole hold. Coloured by cargo type, ringed dark so they read
+ * over any water.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} pos - Edge position (carries centerX/centerY)
+ * @param {Array} cargo - The ship's cargo pieces ({type, size})
+ */
+function drawCargo(ctx, pos, cargo) {
+    const unit = 6;   // a small pip's width
+    const gap = 2;
+    const height = 5;
+    const widths = cargo.map(piece => (piece.size === 'large' ? unit * 2 + gap : unit));
+    const total = widths.reduce((sum, w) => sum + w, 0) + gap * (cargo.length - 1);
+
+    let x = pos.centerX - total / 2;
+    const y = pos.centerY - 13;
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = SHIP_OUTLINE;
+    for (let i = 0; i < cargo.length; i += 1) {
+        const w = widths[i];
+        ctx.fillStyle = CARGO_COLORS[cargo[i].type] || '#cccccc';
+        roundRect(ctx, x, y, w, height, 1.5);
+        ctx.fill();
+        ctx.stroke();
+        x += w + gap;
+    }
+    ctx.restore();
+}
+
+/**
+ * Trace a rounded rectangle as the current path.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - Left
+ * @param {number} y - Top
+ * @param {number} w - Width
+ * @param {number} h - Height
+ * @param {number} r - Corner radius
+ */
+function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
 /**
  * Draw the pirate on its sea hex.
  *
@@ -1874,6 +1938,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (pos && edge.ship) {
             drawShip(ctx, pos, playerColors[edge.ship.player] || null);
+            // A transport ship (Explorers & Pirates) carries a hold; show what
+            // is in it as a little row of pips above the boat.
+            if (edge.ship.kind === 'transport' && edge.ship.cargo?.length) {
+                drawCargo(ctx, pos, edge.ship.cargo);
+            }
         }
     }
 

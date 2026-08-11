@@ -65,6 +65,22 @@ def _ep_game():
     game.game_phase = 'playing'
     game.current_player_index = 0
     game.set_dice_rolled()
+
+    # A transport ship with a mixed hold, on a coastal sea edge, so the cargo
+    # pips (a crew, a fish haul) render alongside the hidden tiles.
+    land = set(mainland)
+    coastal = next(
+        edge_key for edge_key, edge in game.edges.items()
+        if game.is_sea_edge(edge_key)
+        and any(hex_key in land for vertex in edge.neighbors['vertices']
+                for hex_key in game.vertices[vertex].neighbors['hexes'])
+    )
+    game.edges[coastal].ship = {
+        'player': 'Alice', 'kind': 'transport',
+        'cargo': [{'type': 'crew', 'size': 'small'},
+                  {'type': 'spice_sack', 'size': 'small'}],
+        'id': 1, 'built_turn': 0,
+    }
     return game
 
 
