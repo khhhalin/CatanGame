@@ -3,7 +3,9 @@
 // `board.ep`. Mirrors cities-knights.js — one render, called on every board
 // update, that hides the whole panel on a table not playing the expansion.
 
-import { epBuildShipBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSupply } from './dom.js';
+import { markDirty } from './board.js';
+import { boardCanvas, epBuildShipBtn, epMissionBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSupply, gameBoard, moveShipBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
+import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
 import { armShipMode, formatCost, SHIP_COST, turnBlockReason } from './seafarers.js';
 import { emitGame } from './socket.js';
@@ -100,6 +102,23 @@ function renderActions(board) {
         }
     }
 
+    if (epMissionBtn) {
+        // The mission gesture needs a transport ship to act with and at least one
+        // mission whose destinations it can reach. Its own tap infers which
+        // action from the target hex and the ship's hold.
+        const showMission = rules.transport_ships === true
+            && (rules.mission_fish === true || rules.mission_spices === true
+                || rules.mission_pirate_lairs === true);
+        epMissionBtn.classList.toggle('hidden', !showMission);
+        if (showMission) {
+            const blocked = turnBlockReason();
+            epMissionBtn.disabled = Boolean(blocked);
+            epMissionBtn.title = blocked
+                || 'Tap your transport ship, then a shoal, village, lair or Council dock';
+            epMissionBtn.classList.toggle('active', viewState.selectedBuilding === 'mission');
+        }
+    }
+
     if (epRollFishBtn) {
         const showFish = rules.mission_fish === true;
         epRollFishBtn.classList.toggle('hidden', !showFish);
@@ -109,6 +128,107 @@ function renderActions(board) {
             epRollFishBtn.title = blocked || 'Roll a die to try to place a fish haul on a matching shoal';
         }
     }
+}
+
+// ---------------------------------------------------------- mission gestures
+//
+// A mission action is one gesture: tap a transport ship, then tap the hex it
+// should act on. The target's type and the ship's hold say which action it is —
+// a shoal with a haul is a catch, a Council dock under a laden ship is a
+// delivery, a village or a lair is a crew errand — so the player learns one
+// gesture, not five buttons. The server re-checks every rule; the inference
+// here only picks which handler to call and errs toward asking (a wrong guess
+// is a refusal, and the mode stays armed to try again).
+
+/**
+ * Arm the mission gesture, disarming every other board mode the way the ship
+ * and knight buttons disarm each other. Called by the strip's Mission button.
+ */
+export function armMissionMode() {
+    const armed = viewState.selectedBuilding === 'mission';
+    viewState.selectedBuilding = armed ? null : 'mission';
+    viewState.missionShipFrom = null;
+    [placeSettlementBtn, placeRoadBtn, upgradeCityBtn, epBuildShipBtn, epMoveShipBtn]
+        .forEach(button => button?.classList.remove('active'));
+    gameBoard?.classList.toggle('placement-mode', Boolean(viewState.selectedBuilding));
+    renderExplorersAndPirates();
+}
+
+/**
+ * The mission action a ship on `shipEdge` would take against `hexKey`, or null
+ * if that target is not one this ship can act on. Reads the same board fields
+ * the server does: the mission destination maps in `board.ep` and the ship's
+ * own cargo (a Council dock is any hex carrying `meta.docks`).
+ *
+ * @param {object} board - Board payload
+ * @param {string} shipEdge - The edge the transport ship sits on
+ * @param {string} hexKey - The hex tapped as the target
+ * @returns {{event: string, payload: object}|null}
+ */
+export function inferMissionAction(board, shipEdge, hexKey) {
+    const ep = board.ep || {};
+    const cargo = board.edges?.[shipEdge]?.ship?.cargo || [];
+    const carries = type => cargo.some(piece => piece.type === type);
+
+    // A Council-of-Catan hex is any hex with docks; a laden ship delivers there.
+    if (board.hexes?.[hexKey]?.meta?.docks?.length) {
+        if (carries('fish_haul')) {
+            return { event: 'deliver_fish', payload: { ship_edge: shipEdge, council_hex: hexKey } };
+        }
+        if (carries('spice_sack')) {
+            return { event: 'deliver_spices', payload: { ship_edge: shipEdge, council_hex: hexKey } };
+        }
+        return null;
+    }
+    if (ep.fish_shoals && hexKey in ep.fish_shoals) {
+        return { event: 'catch_fish', payload: { ship_edge: shipEdge, shoal_hex: hexKey } };
+    }
+    if (ep.spice_hexes && hexKey in ep.spice_hexes) {
+        return { event: 'befriend_spice_village', payload: { ship_edge: shipEdge, spice_hex: hexKey } };
+    }
+    if (ep.lairs && hexKey in ep.lairs) {
+        return { event: 'land_crews_on_lair', payload: { ship_edge: shipEdge, lair_hex: hexKey } };
+    }
+    return null;
+}
+
+/**
+ * Handle a board tap while the mission gesture is armed. First tap picks one of
+ * this player's transport ships up; the second names the target hex and emits
+ * the inferred action. Called from placement.js before the ordinary placement
+ * pipeline, and always consumes the tap (returns true).
+ *
+ * @param {number} clientX - Pointer clientX of the tap
+ * @param {number} clientY - Pointer clientY of the tap
+ * @returns {boolean} - Always true: a mission-mode tap is never a pan
+ */
+export function handleMissionTap(clientX, clientY) {
+    const board = getBoard();
+    const name = viewState.identity.name;
+    const position = window.BoardRenderer.clientToBoard(boardCanvas, clientX, clientY);
+
+    if (!viewState.missionShipFrom) {
+        const edgeKey = window.BoardRenderer.findNearestEdge(board, position.x, position.y);
+        const ship = edgeKey ? board?.edges?.[edgeKey]?.ship : null;
+        if (!ship || ship.player !== name || ship.kind !== 'transport') {
+            displayError('Tap one of your transport ships to act with.');
+            return true;
+        }
+        viewState.missionShipFrom = edgeKey;
+        markDirty();
+        return true;
+    }
+
+    const hexKey = window.BoardRenderer.findNearestHex(board, position.x, position.y);
+    const action = hexKey ? inferMissionAction(board, viewState.missionShipFrom, hexKey) : null;
+    if (!action) {
+        displayError('Your ship cannot act on that hex — aim at a shoal, village, lair or Council dock it points at.');
+        return true;
+    }
+    emitGame(action.event, { name, ...action.payload });
+    viewState.missionShipFrom = null;
+    markDirty();
+    return true;
 }
 
 function renderMissions(ep, colors) {
@@ -210,6 +330,7 @@ function renderPlayers(board, ep, colors) {
 // then does the work); Roll for fish is a direct action.
 epBuildShipBtn?.addEventListener('click', () => armShipMode('ship'));
 epMoveShipBtn?.addEventListener('click', () => armShipMode('ship_move'));
+epMissionBtn?.addEventListener('click', () => armMissionMode());
 epRollFishBtn?.addEventListener('click', () => {
     emitGame('roll_fish_haul', { name: viewState.identity.name });
 });

@@ -66,6 +66,7 @@ export const epSupply = document.getElementById('ep-supply');
 export const epPlayers = document.getElementById('ep-players');
 export const epBuildShipBtn = document.getElementById('ep-build-ship');
 export const epMoveShipBtn = document.getElementById('ep-move-ship');
+export const epMissionBtn = document.getElementById('ep-mission');
 export const epRollFishBtn = document.getElementById('ep-roll-fish');
 export const tradeModal = document.getElementById('trade-modal');
 export const closeTradeModal = document.getElementById('close-trade-modal');

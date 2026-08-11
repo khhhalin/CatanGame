@@ -47,6 +47,11 @@ export const viewState = {
     // The same for a ship move: the side the ship was picked up from.
     shipMoveFrom: null,
 
+    // First half of an Explorers & Pirates mission action: the side of the
+    // transport ship tapped, held until the second tap names the target hex the
+    // action is inferred from (catch fish, deliver, befriend, land crews).
+    missionShipFrom: null,
+
     // The progress card whose target is being picked on the board, and the
     // targets picked for it so far. Nothing is sent until the last one is in,
     // so a card here is still in the player's hand and cancelling costs them
