@@ -712,6 +712,13 @@
             <ul id="game-players" class="user-list"></ul>
         </section>
 
+        <!-- Incoming trade offers, floated over the board so an offer reaches
+             every player the instant it is made without opening the Trade tab.
+             trade.js (renderIncomingOffers) fills it from board state; empty =
+             hidden. -->
+        <div class="incoming-offers hidden" id="incoming-offers" aria-live="polite"
+             aria-label="Trade offers"></div>
+
         <!-- The dice: their own floating glass panel, bottom-right (Deep Harbour).
              Moved out of the right panel so it stands alone as the mockup draws
              it. dice.js and panels.js drive it by the ids unchanged. -->

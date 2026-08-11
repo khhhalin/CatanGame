@@ -2,7 +2,7 @@
 // made in a dialog before the server can resolve them.
 
 import { COMMODITY_TYPES } from './constants.js';
-import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, inventionModal, monopolyModal, myOffersDiv, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, trayNote, trayTrade, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities, upgradeCityBtn } from './dom.js';
+import { closeInventionModal, closeMonopolyModal, closeTradeModal, confirmInventionBtn, incomingOffers, inventionModal, monopolyModal, myOffersDiv, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, resourceDisplay, submitTradeBtn, tradeBankRates, tradeClearBtn, tradeGiveCommodities, tradeModal, tradeOffersDiv, trayNote, trayTrade, tradeSendAnywayBtn, tradeVerdict, tradeWantCommodities, upgradeCityBtn } from './dom.js';
 import { updateTradeTabBadge } from './event-log.js';
 import { icon, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
@@ -230,109 +230,161 @@ function buildTradeActionButton(action, offerId, label) {
 }
 
 /**
- * Render trade offers panel
+ * The responder's view of other players' active offers — a card each with
+ * Accept and Deny. Returns fresh elements, so the same builder fills both the
+ * Trade tab and the floating popup independently.
+ *
+ * @param {Array} otherOffers - Active offers not proposed by this viewer
+ * @param {Array} allPlayers - Board players, for the proposer's colour
+ * @returns {HTMLElement[]}
+ */
+function responderOfferCards(otherOffers, allPlayers) {
+    return otherOffers.map(offer => {
+        const accepted = offer.accepted_by || {};
+        const hasAcceptedMe = accepted[viewState.identity.name] === true;
+
+        // For the responder the sides are mirrored: the proposer's wanted
+        // resources are what this player would hand over.
+        const proposer = allPlayers.find(p => p.name === offer.proposer);
+        const card = buildTradeOfferCard(
+            offer,
+            `You give: ${formatTradeBundle(offer.wanted_resources)}`,
+            `You get: ${formatTradeBundle(offer.offered_resources)}`,
+            offer.proposer,
+            proposer?.color || '#e74c3c'
+        );
+
+        const actions = document.createElement('div');
+        actions.className = 'trade-offer-actions';
+
+        const acceptBtn = buildTradeActionButton(
+            'accept', offer.id, hasAcceptedMe ? 'Accepted' : 'Accept'
+        );
+        acceptBtn.classList.add('accept-btn');
+        acceptBtn.classList.toggle('is-accepted', hasAcceptedMe);
+        actions.appendChild(acceptBtn);
+
+        const declineBtn = buildTradeActionButton('decline', offer.id, 'Deny');
+        declineBtn.classList.add('decline-btn');
+        actions.appendChild(declineBtn);
+
+        card.appendChild(actions);
+        return card;
+    });
+}
+
+/**
+ * The proposer's view of their own offers — a card each with one button per
+ * opponent (lit in their colour once they accept, completing the trade), plus a
+ * Withdraw: offers no longer time out on their own, so the proposer needs a way
+ * to take one back.
+ *
+ * @param {Array} myOfferList - This viewer's own active offers
+ * @param {Array} allPlayers - Board players, for the per-opponent buttons
+ * @returns {HTMLElement[]}
+ */
+function proposerOfferCards(myOfferList, allPlayers) {
+    return myOfferList.map(offer => {
+        const accepted = offer.accepted_by || {};
+        const card = buildTradeOfferCard(
+            offer,
+            formatTradeBundle(offer.offered_resources),
+            formatTradeBundle(offer.wanted_resources),
+            '',
+            ''
+        );
+
+        const actions = document.createElement('div');
+        actions.className = 'trade-offer-actions';
+
+        for (const player of allPlayers) {
+            if (player.name === viewState.identity.name) continue;
+            const hasAccepted = accepted[player.name] === true;
+            const button = buildTradeActionButton('complete', offer.id, player.name);
+            button.classList.add('accepted-player');
+            button.dataset.responder = player.name;
+            if (hasAccepted) {
+                button.classList.add('is-accepted');
+                button.style.backgroundColor = player.color || '';
+            }
+            actions.appendChild(button);
+        }
+
+        const withdraw = buildTradeActionButton('cancel', offer.id, 'Withdraw');
+        withdraw.classList.add('decline-btn');
+        actions.appendChild(withdraw);
+
+        card.appendChild(actions);
+        return card;
+    });
+}
+
+/**
+ * Render the Trade-tab offer inbox (and, through renderIncomingOffers, the
+ * floating popups that show the same offers over the board).
  */
 export function renderTradeOffers() {
     if (!getBoard() || !getBoard().trades) {
         tradeOffersDiv.replaceChildren();
         myOffersDiv.replaceChildren();
         updateTradeTabBadge(0);
+        renderIncomingOffers();
         return;
     }
 
     const activeTrades = getBoard().trades.active || [];
     const allPlayers = getBoard().players || [];
-
-    // Active offers (other players' offers - responder view)
     const otherOffers = activeTrades.filter(t => t.proposer !== viewState.identity.name);
-    const offersFragment = document.createDocumentFragment();
+    const myOfferList = getBoard().trades.my_offers?.[viewState.identity.name] || [];
 
+    const offersFragment = document.createDocumentFragment();
     if (otherOffers.length > 0) {
         const heading = document.createElement('h4');
         heading.textContent = 'Active Offers:';
         offersFragment.appendChild(heading);
-
-        for (const offer of otherOffers) {
-            const accepted = offer.accepted_by || {};
-            const hasAcceptedMe = accepted[viewState.identity.name] === true;
-
-            // For the responder the sides are mirrored: the proposer's wanted
-            // resources are what this player would hand over.
-            const proposer = allPlayers.find(p => p.name === offer.proposer);
-            const card = buildTradeOfferCard(
-                offer,
-                `You give: ${formatTradeBundle(offer.wanted_resources)}`,
-                `You get: ${formatTradeBundle(offer.offered_resources)}`,
-                offer.proposer,
-                proposer?.color || '#e74c3c'
-            );
-
-            const actions = document.createElement('div');
-            actions.className = 'trade-offer-actions';
-
-            const acceptBtn = buildTradeActionButton(
-                'accept', offer.id, hasAcceptedMe ? 'Accepted' : 'Accept'
-            );
-            acceptBtn.classList.add('accept-btn');
-            acceptBtn.classList.toggle('is-accepted', hasAcceptedMe);
-            actions.appendChild(acceptBtn);
-
-            const declineBtn = buildTradeActionButton('decline', offer.id, 'Deny');
-            declineBtn.classList.add('decline-btn');
-            actions.appendChild(declineBtn);
-
-            card.appendChild(actions);
+        for (const card of responderOfferCards(otherOffers, allPlayers)) {
             offersFragment.appendChild(card);
         }
     }
-
     tradeOffersDiv.replaceChildren(offersFragment);
 
-    // My offers (own offers - proposer view)
-    const myOfferList = getBoard().trades.my_offers?.[viewState.identity.name] || [];
     const myOffersFragment = document.createDocumentFragment();
-
     if (myOfferList.length > 0) {
         const heading = document.createElement('h4');
         heading.textContent = 'Your Offers:';
         myOffersFragment.appendChild(heading);
-
-        for (const offer of myOfferList) {
-            const accepted = offer.accepted_by || {};
-            const card = buildTradeOfferCard(
-                offer,
-                formatTradeBundle(offer.offered_resources),
-                formatTradeBundle(offer.wanted_resources),
-                '',
-                ''
-            );
-
-            // One button per opponent: grey until they accept, then their own
-            // colour, and clicking it completes the trade with them.
-            const actions = document.createElement('div');
-            actions.className = 'trade-offer-actions';
-
-            for (const player of allPlayers) {
-                if (player.name === viewState.identity.name) continue;
-                const hasAccepted = accepted[player.name] === true;
-                const button = buildTradeActionButton('complete', offer.id, player.name);
-                button.classList.add('accepted-player');
-                button.dataset.responder = player.name;
-                if (hasAccepted) {
-                    button.classList.add('is-accepted');
-                    button.style.backgroundColor = player.color || '';
-                }
-                actions.appendChild(button);
-            }
-
-            card.appendChild(actions);
+        for (const card of proposerOfferCards(myOfferList, allPlayers)) {
             myOffersFragment.appendChild(card);
         }
     }
-
     myOffersDiv.replaceChildren(myOffersFragment);
 
     updateTradeTabBadge(otherOffers.length + myOfferList.length);
+    renderIncomingOffers();
+}
+
+/**
+ * The floating offer popups over the board: the same offer cards as the Trade
+ * tab, so an offer reaches every player the instant it is made without opening
+ * the tab. Driven from board state, so a taken or withdrawn offer clears itself;
+ * the container hides when there is nothing to show.
+ */
+export function renderIncomingOffers() {
+    if (!incomingOffers) {
+        return;
+    }
+    const board = getBoard();
+    const allPlayers = board?.players || [];
+    const otherOffers = (board?.trades?.active || [])
+        .filter(t => t.proposer !== viewState.identity.name);
+    const myOfferList = board?.trades?.my_offers?.[viewState.identity.name] || [];
+
+    const cards = [
+        ...responderOfferCards(otherOffers, allPlayers),
+        ...proposerOfferCards(myOfferList, allPlayers),
+    ];
+    incomingOffers.replaceChildren(...cards);
+    incomingOffers.classList.toggle('hidden', cards.length === 0);
 }
 
 /**
@@ -365,6 +417,9 @@ function handleTradeAction(event) {
         case 'complete':
             completeTrade(offerId, button.dataset.responder);
             break;
+        case 'cancel':
+            cancelTrade(offerId);
+            break;
         default:
             break;
     }
@@ -372,6 +427,8 @@ function handleTradeAction(event) {
 
 tradeOffersDiv?.addEventListener('click', handleTradeAction);
 myOffersDiv?.addEventListener('click', handleTradeAction);
+// The floating popups carry the same offer cards, so they dispatch the same way.
+incomingOffers?.addEventListener('click', handleTradeAction);
 
 /**
  * Update trade offer timers
@@ -1407,14 +1464,21 @@ function toggleZonePicker(show) {
 }
 
 /**
- * Remove a whole card type from one side.
+ * Take one card of a type off one side of the staged offer.
  *
  * @param {string} side - 'give' or 'want'
  * @param {string} card - Resource or commodity id
  */
 function removeZoneCard(side, card) {
     const offer = side === 'give' ? zoneGive : zoneWant;
-    delete offer[card];
+    // A tap takes one off the staged pile, not the whole stack; the chip is only
+    // drawn while the count is positive, so hitting 0 drops it from the tray.
+    const next = (offer[card] || 0) - 1;
+    if (next > 0) {
+        offer[card] = next;
+    } else {
+        delete offer[card];
+    }
     renderTradeZone();
 }
 

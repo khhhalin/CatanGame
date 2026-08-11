@@ -57,6 +57,7 @@ const tradePanel = document.getElementById('trade-panel');
 export const proposeTradeBtn = document.getElementById('propose-trade-btn');
 export const tradeOffersDiv = document.getElementById('trade-offers');
 export const myOffersDiv = document.getElementById('my-offers');
+export const incomingOffers = document.getElementById('incoming-offers');
 export const tradeModal = document.getElementById('trade-modal');
 export const closeTradeModal = document.getElementById('close-trade-modal');
 export const submitTradeBtn = document.getElementById('submit-trade-btn');

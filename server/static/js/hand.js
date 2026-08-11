@@ -107,7 +107,10 @@ function handFan(player, commodities) {
  */
 function resourceCell(card, count) {
     const spent = count === 0 ? ' spent' : '';
-    return `<div class="res-cell${spent}">`
+    // `data-card` lets the discard dialog stage this card on a click, the way a
+    // hand card stages into the trade tray. Harmless in the trade dialog, which
+    // does not read it.
+    return `<div class="res-cell${spent}" data-card="${card}">`
         + resourceTile(card, { label: CARD_NAMES[card] || card })
         + `<span class="count num">${count}</span></div>`;
 }
