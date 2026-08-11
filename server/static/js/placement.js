@@ -581,8 +581,9 @@ function updateHover(kind) {
 export function handlePlacementTap(clientX, clientY) {
     // The Explorers & Pirates mission gesture is a two-tap ship→hex action that
     // does not go through the ghost/confirm pipeline (it infers the action from
-    // the target, so there is nothing to preview). Handle it first, on my turn.
-    if (viewState.selectedBuilding === 'mission' && isMyTurn()) {
+    // the target, so there is nothing to preview). Handle it first, on my turn —
+    // but never over an outstanding 7, where the tap owes the robber or pirate.
+    if (viewState.selectedBuilding === 'mission' && isMyTurn() && !mustMoveRobber()) {
         return handleMissionTap(clientX, clientY);
     }
 
