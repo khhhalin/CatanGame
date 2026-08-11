@@ -6,7 +6,7 @@
 // top for that side effect.
 
 import { COMMODITY_TYPES } from './constants.js';
-import { discardAmountSpan, discardCommodityRow, discardModal, submitDiscardBtn, victimList, victimModal } from './dom.js';
+import { discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, submitDiscardBtn, victimList, victimModal } from './dom.js';
 import { renderDialogHands } from './hand.js';
 import { displayError } from './notices.js';
 import { emitGame } from './socket.js';
@@ -41,7 +41,75 @@ export function openDiscardModal(amount) {
     discardCommodityRow?.classList.toggle('hidden', !commodities);
 
     renderDialogHands();
+    syncDiscardState();
     discardModal.classList.add('show');
+}
+
+// --- Click-to-stage, mirroring the trade tray -----------------------------
+//
+// The tester asked for the discard to work like the trade menu: click a card in
+// the hand to stage it, and let Confirm fire only once the owed count is met,
+// rather than typing numbers and being told off on submit. The number inputs
+// stay as the selection's source of truth (they survive board updates); the
+// clicks and the gate drive them.
+
+/** How many of a card the hand actually holds, so a stage cannot exceed it. */
+function heldCount(card) {
+    const me = (getBoard()?.players || []).find(p => p.name === viewState.identity.name);
+    if (!me) {
+        return 0;
+    }
+    const store = COMMODITY_TYPES.includes(card) ? me.commodities : me.resources;
+    return (store || {})[card] || 0;
+}
+
+/** The staged discard total across every card input. */
+function discardTotal() {
+    return DISCARDABLE_CARDS.reduce((sum, card) => {
+        const input = document.getElementById(`discard-${card}`);
+        return sum + (input ? (parseInt(input.value) || 0) : 0);
+    }, 0);
+}
+
+/** Mark Confirm ready when the staged pile is exactly what is owed, and lift
+ *  each staged hand chip the way the trade tray marks a card it holds.
+ *
+ *  Readiness is a cue, not a lock: the button stays clickable while the pile is
+ *  short so a click still surfaces the "you owe N" refusal the submit handler
+ *  raises (a real, tested behaviour) rather than silently doing nothing. */
+function syncDiscardState() {
+    submitDiscardBtn.classList.toggle('ready', discardTotal() === getDiscardAmount());
+    const strip = discardHandNote?.querySelector('.resource-display');
+    strip?.querySelectorAll('[data-card]').forEach(cell => {
+        const input = document.getElementById(`discard-${cell.dataset.card}`);
+        cell.classList.toggle('is-up', !!input && (parseInt(input.value) || 0) > 0);
+    });
+}
+
+// Clicking a held card stages one more of it, cycling back to none once the
+// whole held count is selected — the same gesture handleHandClick gives trade.
+discardHandNote?.addEventListener('click', (event) => {
+    const cell = event.target.closest('[data-card]');
+    if (!cell) {
+        return;
+    }
+    const input = document.getElementById(`discard-${cell.dataset.card}`);
+    if (!input) {
+        return;
+    }
+    const next = (parseInt(input.value) || 0) + 1;
+    input.value = next > heldCount(cell.dataset.card) ? 0 : next;
+    syncDiscardState();
+});
+
+// The number inputs stay usable directly; keep the gate honest when they change.
+DISCARDABLE_CARDS.forEach(card => {
+    document.getElementById(`discard-${card}`)?.addEventListener('input', syncDiscardState);
+});
+
+// The hand chips are rebuilt on every board update; re-apply the lift after.
+if (discardHandNote) {
+    new MutationObserver(syncDiscardState).observe(discardHandNote, { childList: true, subtree: true });
 }
 
 // Whether the single-candidate answer has already gone. Reset by updateGameUI

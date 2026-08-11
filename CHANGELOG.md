@@ -26,6 +26,14 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.0.1 — 2026-08-11 16:22
+
+- **Fixed** [reported] Trade offers no longer vanish on their own — an offer stands until it is taken or you withdraw it.
+- **New** [reported] A trade offer now pops up for every player the moment it is made, so you never have to open the Trade tab to see or answer one, and you can withdraw your own from the popup.
+- **Fixed** [reported] Tapping a staged resource in the build-and-trade tray takes one off the pile instead of clearing the whole stack.
+- **New** [reported] Discarding on a 7 works like the trade tray now — tap the cards in your hand to choose what to discard, and Discard lights up once you have picked enough.
+- **Fixed** [reported] The panels floating over the board no longer collide — your standings, the build/"what changed" pill, the zoom buttons, the dice and the log each keep their own space.
+
 ## v3.0.0 — 2026-08-09 20:30
 
 - **New** A whole new look — "Deep Harbour". The game is dark by default, with frosted, floating panels over a full, centred board: your standings top-left, your hand of cards along the bottom, the dice in their own corner, and the build-and-trade tray on the left.

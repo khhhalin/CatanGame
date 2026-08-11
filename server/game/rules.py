@@ -365,7 +365,7 @@ RULES += [
     # no deployment setting behind it to fall back to, and a table that never
     # wanted a trade timer is playing the physical game, where an offer stands
     # until it is taken or withdrawn.
-    _int("trade_offer_seconds", "Trade offer clock", 10, 0, 600,
+    _int("trade_offer_seconds", "Trade offer clock", 0, 0, 600,
          "No published rule: the physical game leaves an offer on the table "
          "until it is taken or withdrawn, and this is the online table's "
          "stand-in for picking the cards back up",

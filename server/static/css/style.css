@@ -132,10 +132,11 @@ body {
     position: absolute;
     top: 0;
     right: 0;
-    /* Stops short of the bottom, leaving the bottom-right corner for the dice
-       float below it — the way the mockup stacks the History panel over the
-       dice, so the two never overlap and neither reaches the centre hand. */
-    bottom: 7rem;
+    /* Stops short of the bottom, leaving the bottom-right corner clear for the
+       dice float below it (see #dice-footer). The gap is sized to clear the dice
+       at their tallest — the roll button plus the turn-timer row — so the panel
+       never covers the dice or the roll button beneath it. */
+    bottom: 9.5rem;
     width: var(--panel-aside);
     /* Above the board overlays (hand, tray) rather than level with them: the
        panel's fold popovers open leftward over the board and must sit over the
@@ -169,9 +170,19 @@ body:has(#game-screen:not(.hidden)) .settings-float {
 body:has(#game-screen:not(.hidden)) .changelog-panel {
     top: var(--space-3);
     bottom: auto;
-    left: 14rem;
+    /* Clear of the 13rem scoreboard column to its left, with a full gutter's
+       gap, so the build/"what changed" pill never sits on the players panel. */
+    left: calc(var(--space-3) + 13rem + var(--space-4));
     /* Grow the expanded panel downward off the button now it sits at the top. */
     flex-direction: column;
+}
+
+/* The zoom controls live at the board's top-right, which in game is under the
+   log panel — so in game they shift into the same gutter just left of it and
+   rise above the board overlays, where they stay reachable. */
+body:has(#game-screen:not(.hidden)) .board-controls {
+    right: calc(var(--panel-aside) + var(--space-3));
+    z-index: var(--z-sticky);
 }
 
 /* The dice: their own frosted-glass float, bottom-right of the board. Moved out
@@ -179,7 +190,9 @@ body:has(#game-screen:not(.hidden)) .changelog-panel {
    so it is positioned against #board-overlays, which is sized to the board. */
 body:has(#game-screen:not(.hidden)) #dice-footer {
     position: absolute;
-    /* Bottom-right corner, in the gap the right panel leaves below itself. */
+    /* Bottom-right corner, in the gap the log panel leaves below itself — clear
+       of the hand fan in the centre. The panel stops far enough up (its `bottom`
+       above) that the dice, timer row and all, never rise into it. */
     right: var(--space-3);
     bottom: var(--space-3);
     z-index: var(--z-sticky);
@@ -366,6 +379,35 @@ body:has(#game-screen:not(.hidden)) #dice-footer {
 .container:has(#game-screen.hidden) .players-float,
 .container:has(#game-screen.hidden) .action-tray {
     display: none;
+}
+
+/* Incoming trade-offer popups: the active offers floated over the board, top-
+   centre and below the top strip so they clear the scoreboard, the settings pill
+   and the log panel. Each card carries its own glass so it reads over the board;
+   the whole stack hides (the global .hidden) when there is nothing to show. */
+.incoming-offers {
+    position: absolute;
+    top: calc(var(--space-3) + 3rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-dropdown);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: min(24rem, 70%);
+    max-height: calc(100% - 12rem);
+    overflow-y: auto;
+    pointer-events: auto;
+}
+
+.incoming-offers .trade-offer {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    padding: var(--space-3);
 }
 
 /* Hide the titles strip until there is a game with awards to show. */
@@ -3901,6 +3943,30 @@ button:disabled {
 .res-cell.spent .count {
     color: var(--text-faint);
     font-weight: 500;
+}
+
+/* In the discard dialog the hand chips are the staging control: click one to
+   add a card to the pile. Only there — the trade dialog's chips are read-only,
+   trade stages from the fan itself. Rings a staged chip like the trade lift. */
+#discard-hand .res-cell {
+    cursor: pointer;
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+}
+
+#discard-hand .res-cell:hover {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+#discard-hand .res-cell.is-up {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Confirm reads as ready once the staged pile matches what is owed — a cue, not
+   a lock: it stays clickable while short so it can still say how many remain. */
+#submit-discard-btn.ready {
+    box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* --- the hand as a fan of physical cards (the bottom tray).

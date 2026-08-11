@@ -465,14 +465,18 @@ class TestTradeOfferClock:
     def listed(game):
         return [offer['id'] for offer in game.get_board_data('Alice')['trades']['active']]
 
-    def test_the_default_ten_seconds_outlives_nine_and_not_eleven(self):
+    def test_the_default_leaves_an_offer_standing_across_a_turn(self):
+        """Regression (player report: "trade offers disappear on turn end").
+
+        Nothing on the turn path clears an offer; the only thing that did was
+        the default 10-second clock, which came due about when a turn ended.
+        The default is now no clock at all, so an offer stands until it is taken
+        or withdrawn. Fails on the old default: winding past 10s pruned it.
+        """
         game = base_game()
         offer = self.an_offer(game)
-        self.wind_back(offer, 9)
+        self.wind_back(offer, 3600)
         assert self.listed(game) == [offer['id']]
-
-        self.wind_back(offer, 2)
-        assert self.listed(game) == []
 
     def test_a_table_that_asks_for_a_minute_keeps_the_offer_that_long(self):
         game = base_game({'trade_offer_seconds': 60})
@@ -480,11 +484,15 @@ class TestTradeOfferClock:
         self.wind_back(offer, 30)
         assert self.listed(game) == [offer['id']]
 
+        self.wind_back(offer, 31)
+        assert self.listed(game) == []
+
     def test_an_expired_offer_can_no_longer_be_completed(self):
         """The countdown was a lie: nothing on the completion path looked at
         the deadline, so an offer whose timer had reached 0 still moved cards
-        as long as no board update had pruned it first."""
-        game = base_game()
+        as long as no board update had pruned it first. Runs with an explicit
+        clock now the default is off."""
+        game = base_game({'trade_offer_seconds': 10})
         offer = self.an_offer(game)
         assert game.accept_trade(offer['id'], 'Bob')['success']
 
@@ -496,7 +504,7 @@ class TestTradeOfferClock:
         assert game.get_player('Bob').resources == {'brick': 1}
 
     def test_an_expired_offer_can_no_longer_be_accepted(self):
-        game = base_game()
+        game = base_game({'trade_offer_seconds': 10})
         offer = self.an_offer(game)
         self.wind_back(offer, 11)
 
