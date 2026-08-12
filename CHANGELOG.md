@@ -26,6 +26,12 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.5.0 — 2026-08-12 18:59
+
+- **New** Rivers of Catan, a new scenario: settle or build a road beside a river and the bank pays you a gold coin. Spend two coins for any resource, or turn four spare resources into one coin.
+- **New** Bridges cross the river paths (2 brick + 1 lumber, and 3 coins for building one); they count toward the Longest Road like any road, up to three each.
+- **New** The richest player holds a tile worth +1 point; whoever is tied for the fewest coins holds one worth −2. They move the moment the coin counts change.
+
 ## v3.4.0 — 2026-08-12 16:24
 
 - **New** Fishermen of Catan, a new scenario: fishing grounds on the frame and a lake in the middle pay out fish tokens.
