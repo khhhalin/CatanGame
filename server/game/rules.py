@@ -1079,62 +1079,18 @@ PRESETS = [
         },
     },
     {
-        "id": "ep_land_ho",
-        "name": "Explorers & Pirates: Land Ho!",
-        "source": "Catan: Explorers & Pirates rulebook, Scenario: Land Ho!; "
-                  "expansions.md 1042-1049",
-        "summary": (
-            "The introductory scenario: harbor settlements, transport ships, "
-            "settlers and discovery, with gold and the movement phase, and no "
-            "cities or development cards. Played to 8 points, without missions, "
-            "crews or the pirate."
-        ),
-        "rules": dict(EP_LAND_HO_RULES),
-    },
-    {
-        "id": "ep_pirate_lairs",
-        "name": "Explorers & Pirates: Pirate Lairs",
-        "source": "Catan: Explorers & Pirates rulebook, Scenario: Pirate Lairs; "
-                  "expansions.md 1051-1060",
-        "summary": (
-            "Land Ho! plus crews, transshipping, the player-owned pirate ship "
-            "that replaces the robber, chasing it, and the Pirate Lairs mission. "
-            "Played to 12 points."
-        ),
-        "rules": dict(EP_PIRATE_LAIRS_RULES),
-    },
-    {
-        "id": "ep_fish",
-        "name": "Explorers & Pirates: Fish for Catan",
-        "source": "Catan: Explorers & Pirates rulebook, Scenario: Fish for Catan; "
-                  "expansions.md 1062-1068",
-        "summary": (
-            "Pirate Lairs plus the Fish for Catan mission — catch fish hauls and "
-            "deliver them to the Council of Catan. Played to 15 points."
-        ),
-        "rules": dict(EP_FISH_RULES),
-    },
-    {
-        "id": "ep_spices",
-        "name": "Explorers & Pirates: Spices for Catan",
-        "source": "Catan: Explorers & Pirates rulebook, Scenario: Spices for "
-                  "Catan; expansions.md 1070-1075",
-        "summary": (
-            "Fish for Catan with the Pirate Lairs mission removed and the Spices "
-            "for Catan mission in its place. Played to 15 points."
-        ),
-        "rules": dict(EP_SPICES_RULES),
-    },
-    {
         "id": "explorers_and_pirates",
         "name": "Explorers & Pirates",
         "source": "Catan: Explorers & Pirates rulebook, Scenario: Explorers & "
                   "Pirates; expansions.md 1077-1084",
         "summary": (
-            "The full game: all three missions — Pirate Lairs, Fish for Catan "
-            "and Spices for Catan — at once, using every rule the earlier "
-            "scenarios introduce. Played to 17 points. Every switch it ticks "
-            "stays an individual rule you can untick."
+            "The whole expansion in one: harbor settlements, transport ships, "
+            "settlers, crews, discovery, gold, the pirate ship in place of the "
+            "robber, and all three missions — Pirate Lairs, Fish for Catan and "
+            "Spices for Catan. Played to 17 points. Every switch it ticks stays "
+            "an individual rule you can untick — so a shorter game (the intro "
+            "scenarios ran to 8–15 points) is a matter of turning missions or "
+            "the pirate back off."
         ),
         "rules": dict(EXPLORERS_AND_PIRATES_RULES),
     },

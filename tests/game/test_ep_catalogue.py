@@ -63,8 +63,13 @@ class TestCatalogue:
 
 
 class TestPresets:
+    # The E&P scenarios are no longer selectable presets — the lobby ships one
+    # "Explorers & Pirates" preset with every mechanic on. But the scenario
+    # rule-sets remain in the catalogue as the layers the full preset is built
+    # from, so their coherence is still worth pinning: these assert the layer
+    # constants directly (what `preset_rules` used to return for each scenario).
     def test_land_ho_ticks_exactly_the_intro_mechanics(self):
-        chosen = rules_module.preset_rules("ep_land_ho")
+        chosen = rules_module.coerce(rules_module.EP_LAND_HO_RULES)
         assert expansion_ticks(chosen) == {
             "harbor_settlements", "transport_ships", "ships_explore",
             "cargo_settlers", "movement_phase", "gold", "no_dev_cards",
@@ -78,7 +83,7 @@ class TestPresets:
         assert chosen["starting_gold"] == 2
 
     def test_pirate_lairs_adds_the_pirate_and_its_mission(self):
-        chosen = rules_module.preset_rules("ep_pirate_lairs")
+        chosen = rules_module.coerce(rules_module.EP_PIRATE_LAIRS_RULES)
         assert expansion_ticks(chosen) >= {
             "crews", "transshipping", "pirate_ship_instead_of_robber",
             "chase_pirate", "missions", "mission_pirate_lairs",
@@ -88,7 +93,7 @@ class TestPresets:
         assert chosen["victory_target"] == 12
 
     def test_fish_is_pirate_lairs_plus_the_fish_mission(self):
-        chosen = rules_module.preset_rules("ep_fish")
+        chosen = rules_module.coerce(rules_module.EP_FISH_RULES)
         assert chosen["mission_fish"] is True
         assert chosen["mission_pirate_lairs"] is True
         assert chosen["mission_spices"] is False
@@ -96,7 +101,7 @@ class TestPresets:
 
     def test_spices_removes_the_lairs_mission(self):
         """1071: the Pirate Lairs hexes and mission are taken out for Spices."""
-        chosen = rules_module.preset_rules("ep_spices")
+        chosen = rules_module.coerce(rules_module.EP_SPICES_RULES)
         assert chosen["mission_pirate_lairs"] is False
         assert chosen["mission_fish"] is True
         assert chosen["mission_spices"] is True
@@ -109,12 +114,22 @@ class TestPresets:
         assert chosen["mission_spices"] is True
         assert chosen["victory_target"] == 17
 
-    def test_no_ep_preset_ships_an_incomplete_set(self):
-        for preset_id in ("ep_land_ho", "ep_pirate_lairs", "ep_fish",
-                          "ep_spices", "explorers_and_pirates"):
-            chosen = rules_module.preset_rules(preset_id)
-            assert rules_module.dependency_problems(chosen) == [], preset_id
-            assert rules_module.exclusion_problems(chosen) == [], preset_id
+    def test_the_only_ep_preset_is_the_full_game(self):
+        """The lobby ships exactly one E&P preset now — the intro scenarios were
+        collapsed into it. Guards against a stray scenario preset creeping back."""
+        ep_presets = [p["id"] for p in rules_module.presets()
+                      if p["id"].startswith("ep_")
+                      or p["id"] == "explorers_and_pirates"]
+        assert ep_presets == ["explorers_and_pirates"], ep_presets
+
+    def test_no_ep_layer_ships_an_incomplete_set(self):
+        for chosen in (rules_module.coerce(rules_module.EP_LAND_HO_RULES),
+                       rules_module.coerce(rules_module.EP_PIRATE_LAIRS_RULES),
+                       rules_module.coerce(rules_module.EP_FISH_RULES),
+                       rules_module.coerce(rules_module.EP_SPICES_RULES),
+                       rules_module.preset_rules("explorers_and_pirates")):
+            assert rules_module.dependency_problems(chosen) == [], chosen
+            assert rules_module.exclusion_problems(chosen) == [], chosen
 
 
 class TestDependencies:
@@ -197,7 +212,7 @@ class TestEpStateContainer:
             assert game.ep.marker(name, "fish") == 0
 
     def test_the_container_round_trips_its_accessors(self):
-        game = make_game(rules_module.preset_rules("ep_pirate_lairs"))
+        game = make_game(rules_module.coerce(rules_module.EP_PIRATE_LAIRS_RULES))
         ep = game.ep
         ep.place_pirate("Alice", "hex_3_4")
         ep.advance_marker("Alice", "pirate_lairs", 2)
@@ -221,10 +236,10 @@ class TestEpStateContainer:
     def test_land_ho_needs_the_container_for_its_hidden_tiles(self):
         """Land Ho! has no missions but does explore, and the undiscovered pool
         lives on the container — so it is built even here."""
-        assert make_game(rules_module.preset_rules("ep_land_ho")).ep is not None
+        assert make_game(rules_module.coerce(rules_module.EP_LAND_HO_RULES)).ep is not None
 
     def test_start_turn_clears_the_fresh_discovery_flag(self):
-        game = make_game(rules_module.preset_rules("ep_pirate_lairs"))
+        game = make_game(rules_module.coerce(rules_module.EP_PIRATE_LAIRS_RULES))
         game.ep.reveal("t9", "Alice")
         assert game.ep.last_discovery == "t9"
         game.ep.start_turn()
