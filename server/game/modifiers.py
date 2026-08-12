@@ -233,6 +233,19 @@ def _robber_takes_it_all(value, _rules, context):
     return {'resources': 0, 'commodity': None}
 
 
+def _conquered_hex_produces_nothing(value, _rules, context):
+    """A Barbarian Attack hex holding three barbarians pays nobody (627).
+
+    Runs after the robber (40) for the same reason the robber runs last: it is
+    the absence of production, not an adjustment to it. There is no robber in the
+    scenario, so the two never fight over one hex. Whether the hex is conquered
+    is game state, not geometry, so `production_for` passes it in the context.
+    """
+    if not context.get('conquered_here'):
+        return value
+    return {'resources': 0, 'commodity': None}
+
+
 register(Modifier('city_production', PRODUCTION, 10, _always, _city_production))
 register(Modifier('harbor_settlement_yield', PRODUCTION, 15,
                   _rule_is_on('harbor_settlements'), _harbor_settlement_yield))
@@ -241,6 +254,8 @@ register(Modifier('commodities', PRODUCTION, 20,
 register(Modifier('gold_field', PRODUCTION, 25, _rule_is_on('gold'), _gold_field))
 register(Modifier('epidemic', PRODUCTION, 30, _rule_is_on('epidemic'), _epidemic))
 register(Modifier('robber', PRODUCTION, 40, _always, _robber_takes_it_all))
+register(Modifier('conquered_hex', PRODUCTION, 45,
+                  _rule_is_on('barbarian_attack'), _conquered_hex_produces_nothing))
 
 # The two Explorers & Pirates production-modifier orders, assigned up front so
 # its feature agents do not race for a number: `harbor_settlement_yield` takes

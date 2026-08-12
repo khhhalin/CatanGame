@@ -972,6 +972,55 @@ RULES += [
 ]
 
 
+# --- Traders & Barbarians: Barbarian Attack -----------------------------
+# Barbarians land on the coastal hexes and players train knights at a central
+# castle to expel them. Decomposed the way the other expansions are: the war
+# itself is one container rule (`barbarian_attack`), the scenario's 26-card deck
+# is a second switch that closes the base development deck (`barbarian_attack_deck`),
+# and the two supplies are ints. Every switch off by default, so a base game is
+# unchanged. `barbarian_attack` needs the coin economy (`gold_coins`) for its
+# compensation payouts and the scenario deck it trains knights from, so it
+# declares both in DEPENDENCIES below.
+RULES += [
+    _bool("barbarian_attack", "Barbarian Attack", False,
+          "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
+          "expansions.md 607-662",
+          "Barbarians land on the coastal hexes whenever you build: each build "
+          "resolves an attack that drops barbarians on the hexes whose numbers "
+          "come up. A hex holding three is conquered — its token turns face "
+          "down, it produces nothing, its harbour dies and the buildings walled "
+          "off by it topple. You train knights from the scenario's card deck, "
+          "place them on the six paths around the castle and move them out to "
+          "defend the coast; a coast with more knights than barbarians frees "
+          "those barbarians as your prisoners, and every two prisoners are worth "
+          "a victory point. There is no robber. Needs the castle board.",
+          group=EXPANSION, suggests_victory_target=12),
+    _bool("barbarian_attack_deck", "Barbarian Attack deck", False,
+          "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
+          "expansions.md 617, 633-642",
+          "Replaces the base development deck with the scenario's 26 cards — 14 "
+          "Knighthood, 4 Swift Knight, 4 Treason and 4 Intrigue. Each card is "
+          "revealed and resolved the moment you buy it, then discarded; when the "
+          "stack runs out the discard pile is reshuffled.",
+          group=EXPANSION),
+]
+
+RULES += [
+    _int("max_barbarian_knights", "Knights per player", 6, 1, 12,
+         "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
+         "expansions.md 615",
+         "How many knights of their own colour each player may have on the "
+         "board at once.",
+         group=EXPANSION),
+    _int("barbarian_supply", "Barbarians in the supply", 30, 0, 60,
+         "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
+         "expansions.md 610",
+         "How many barbarian figures the box holds; once the supply is empty no "
+         "further attacks take place for the rest of the game.",
+         group=EXPANSION),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -1030,6 +1079,11 @@ DEPENDENCIES = {
     "river_gold": ("gold_coins",),
     "wealthiest_settler": ("gold_coins",),
     "poor_settler": ("gold_coins",),
+    # Traders & Barbarians, Barbarian Attack. The war pays its compensation and
+    # its buy-a-resource in gold coins, and it trains its knights from the
+    # scenario's own 26-card deck; with no coin economy and no deck to draw a
+    # Knighthood from, the scenario cannot be played, so it needs both.
+    "barbarian_attack": ("gold_coins", "barbarian_attack_deck"),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -1087,6 +1141,41 @@ EXCLUSIONS = [
             "bonus. Pick one gold economy."
         ),
     },
+    # The Cities & Knights barbarian ship and the Barbarian Attack coastal war
+    # are two different knight-and-barbarian systems on one board — the C&K ship
+    # is measured against your cities on a track, the Barbarian Attack figures
+    # sit on the coast and are fought off by knight pieces at the castle. They
+    # share no state and no code path but cannot coexist coherently, so a table
+    # picks one. Only `knights` is named against `barbarian_attack`, not the
+    # whole C&K stack: C&K `barbarians` DEPENDS on `knights`, so a both-on state
+    # is unreachable without `knights`, and excluding it alone refuses every
+    # reachable clash while leaving C&K's own knights+barbarians coherent — the
+    # same shape the ships exclusion uses above.
+    {
+        "id": "knight_and_barbarian_system",
+        "rules": ("barbarian_attack", "knights"),
+        "kind": "hard",
+        "reason": (
+            "Two knight-and-barbarian systems on one board — the Cities & "
+            "Knights barbarian ship measured against your cities, and the "
+            "Barbarian Attack figures on the coast fought off by knights at the "
+            "castle. Pick one."
+        ),
+    },
+    # One development deck per board. The Barbarian Attack deck and the Cities &
+    # Knights progress decks each replace the base deck outright, so a board runs
+    # at most one of them. (The Traders & Barbarians main-scenario deck is the
+    # third member; it lands with that scenario, not here.)
+    {
+        "id": "scenario_dev_deck",
+        "rules": ("barbarian_attack_deck", "progress_cards"),
+        "kind": "hard",
+        "reason": (
+            "The Barbarian Attack deck and the Cities & Knights progress decks "
+            "each replace the base development deck outright — a board deals one "
+            "deck, not two. Pick one."
+        ),
+    },
 ]
 
 EXCLUSIONS_BY_RULE = {
@@ -1135,6 +1224,11 @@ TB_STATE_RULES = (
     # The Caravans keep the camel positions, the caravan chains and the open
     # voting round in the same container — see game/tb.py.
     "caravans",
+    # Barbarian Attack keeps the per-hex barbarian counts, the knight pieces on
+    # their paths, each player's prisoners, the conquered hexes and the scenario
+    # deck in the same container — see game/tb.py.
+    "barbarian_attack",
+    "barbarian_attack_deck",
 )
 
 # The rule set the single `cities_and_knights` toggle used to stand for. Kept
@@ -1250,6 +1344,24 @@ TB_RIVERS_RULES = {
 TB_CARAVANS_RULES = {
     "caravans": True,
     "board_map": "caravans",
+    "victory_target": 12,
+}
+
+
+# Traders & Barbarians, Barbarian Attack. Ticks the coastal war, its 26-card
+# deck and the coin economy, starts each player with a city in place of the
+# second settlement (695/620 — the existing setup_second_city rule), drops the
+# Largest Army card the scenario does not use, and points the table at the
+# built-in castle board. Played to 12 (669) — the target the rule suggests; the
+# Harbormaster variant would raise it to 13, which the lobby can still do by
+# hand.
+TB_BARBARIAN_ATTACK_RULES = {
+    "barbarian_attack": True,
+    "barbarian_attack_deck": True,
+    "gold_coins": True,
+    "setup_second_city": True,
+    "largest_army_card": False,
+    "board_map": "barbarian-attack",
     "victory_target": 12,
 }
 
@@ -1370,6 +1482,21 @@ PRESETS = [
         "rules": dict(TB_CARAVANS_RULES),
     },
     {
+        "id": "tb_barbarian_attack",
+        "name": "Barbarian Attack",
+        "source": "Catan: Traders & Barbarians rulebook, Scenario: Barbarian "
+                  "Attack; expansions.md 607-676",
+        "summary": (
+            "Barbarians land on the coast whenever you build; you train knights "
+            "at a central castle from the scenario's own 26-card deck and march "
+            "them out to free the coast, banking two prisoners for each victory "
+            "point. Each player starts with a city, there is no robber, and the "
+            "Largest Army card is set aside. Dealt on the built-in castle map "
+            "and played to 12. Every switch it ticks stays one you can untick."
+        ),
+        "rules": dict(TB_BARBARIAN_ATTACK_RULES),
+    },
+    {
         "id": "explorers_and_pirates",
         "name": "Explorers & Pirates",
         "source": "Catan: Explorers & Pirates rulebook, Scenario: Explorers & "
@@ -1409,8 +1536,13 @@ def dev_deck_in_play(chosen: dict) -> bool:
 
     Only the progress decks can close the development deck, and only when the
     table chose the published reading: two card systems at once is the house
-    rule `card_system` calls "both".
+    rule `card_system` calls "both". The Barbarian Attack deck replaces the base
+    deck outright with its own 26 cards, so it closes the base deck too — the
+    scenario's cards are bought and resolved through their own path, not through
+    `buy_dev_card`.
     """
+    if chosen.get("barbarian_attack_deck"):
+        return False
     if not chosen.get("progress_cards"):
         return True
     return card_system(chosen) != "progress"
