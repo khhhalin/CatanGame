@@ -62,6 +62,11 @@ DEFAULT_RESOURCES = {
     # centre, from which the caravans grow. It deals no card (symbol empty, like
     # the desert), and takes a warm sand colour with a stippled dune texture.
     "oasis":     {"name": "Oasis",     "color": "#d8b877", "symbol": "", "pattern": "stipple"},
+    # Traders & Barbarians (Barbarian Attack): the castle in the outer ring where
+    # knights are trained. It deals no card (symbol empty, like the desert) and
+    # can never be conquered; a cool stone grey with a solid fill sets it apart
+    # from the sandy coasts.
+    "castle":    {"name": "Castle",    "color": "#8a8f99", "symbol": "", "pattern": "solid"},
 }
 
 # The pattern styles the renderer knows how to draw; a definition's `pattern`

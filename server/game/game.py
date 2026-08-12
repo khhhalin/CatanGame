@@ -8,6 +8,7 @@ from game import modifiers as modifiers_module
 from game import rules as rules_module
 from game import tb as tb_module
 from game.bank import Bank
+from game.barbarian_attack import BarbarianAttackRules
 from game.board import BoardBuilder
 from game.caravans import CaravansRules
 from game.cargo import CargoRules
@@ -41,7 +42,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
-           PendingChoiceRules, TurnClock):
+           BarbarianAttackRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -379,6 +380,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # the dealt board. A no-op for a board that prints no oasis.
         self.setup_caravans_board()
 
+        # Traders & Barbarians (Barbarian Attack): read the castle, the coast and
+        # the un-conquerable hexes off the dealt board, seed the opening two
+        # barbarians and shuffle the scenario deck. A no-op for a board that
+        # prints no castle, so the base game is untouched.
+        self.setup_barbarian_board()
+
         # The Fishermen scenario starts the robber beside the board, not on the
         # desert: it enters only on the first 7 or a knight (expansions.md 504).
         # Board generation may have dropped it on a desert, so clear it here.
@@ -683,6 +690,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return refused('OCCUPIED', 'This location already has a building')
         if self.knight_holds(vertex_key):
             return refused('OCCUPIED', 'A knight is standing here')
+        # Barbarian Attack: no settlement may stand beside a conquered hex (628).
+        # A no-op without the rule and away from the coast.
+        conquered = self.barbarian_settlement_refusal(vertex_key)
+        if conquered is not None:
+            return conquered
         if not self._respects_distance_rule(vertex_key):
             return refused(
                 'INVALID_PLACEMENT', 'Cannot place settlement next to another settlement'
@@ -740,12 +752,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if not in_setup and self.rules['caravans']:
             self.camel_owed = True
 
+        # Barbarian Attack: every build after set-up resolves an attack at once
+        # (expansions.md 621). A no-op without the rule. A setup build earns none
+        # — the opening two barbarians are seeded at board setup instead.
+        attack = None
+        if not in_setup and self.rules['barbarian_attack']:
+            attack = self.trigger_barbarian_attack()
+
         return {
             'success': True,
             'error': '',
             'building_type': building_type,
             'island_points': island_points,
             'river_gold': river_gold,
+            'barbarian_attack': attack,
         }
 
     def build_road(self, player_name: str, edge_key: str) -> dict:
@@ -795,6 +815,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # method. A no-op off the river board, where there are no sites.
         if self.is_bridge_site(edge_key):
             return refused('INVALID_PLACEMENT', 'Only a bridge may span this river crossing')
+        # Barbarian Attack: no road may lie on a path beside a conquered hex
+        # (628). A no-op without the rule and away from the coast.
+        conquered = self.barbarian_road_refusal(edge_key)
+        if conquered is not None:
+            return conquered
         # A road may not lie on a path beside a face-down hex (891). A no-op
         # unless the table is exploring, since nothing else hides a hex.
         if self.rules['ships_explore']:
@@ -903,7 +928,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.rules['caravans']:
             self.camel_owed = True
 
-        return {'success': True, 'error': ''}
+        # Barbarian Attack: an upgrade to a city resolves an attack too (621). A
+        # no-op without the rule.
+        attack = None
+        if self.rules['barbarian_attack']:
+            attack = self.trigger_barbarian_attack()
+
+        return {'success': True, 'error': '', 'barbarian_attack': attack}
 
     def _touches_own_road(self, player_name: str, vertex_key: str) -> bool:
         vertex = self.vertices.get(vertex_key)
@@ -1006,6 +1037,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # goes as caravans grow. A no-op unless the rule is on.
         if self.rules['caravans']:
             points += self.camel_victory_points(player_name)
+
+        # Barbarian Attack: +1 for every two prisoners held, and a toppled
+        # settlement or city scores nothing. Read live off the war state, so a
+        # point appears as a coast is freed and vanishes as one is conquered. A
+        # no-op unless the rule is on.
+        if self.rules['barbarian_attack']:
+            points += self.barbarian_victory_points(player_name)
 
         return points
 
@@ -1271,6 +1309,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             terrain=hex_obj.type,
             dice_total=dice_total,
             robber_here=robber_here,
+            # A Barbarian Attack conquered hex pays nobody; game state, not
+            # geometry, so the funnel is told rather than left to work it out.
+            conquered_here=self._hex_is_conquered(hex_obj.key),
         )
         # Remembered rather than returned, so every caller of production_for
         # keeps its signature: only the roll that collects the whole table's
@@ -1544,7 +1585,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             barbarians_still_coming = (
                 self.rules['barbarians'] and not self.ck.barbarians_have_attacked
             )
-            if not barbarians_still_coming and not self.in_robber_free_opening():
+            # Barbarian Attack uses no robber at all (expansions.md 619): a 7
+            # still forces the discard but moves nothing on the board.
+            if (not barbarians_still_coming and not self.in_robber_free_opening()
+                    and not self.rules['barbarian_attack']):
                 self.must_move_robber = True
             self.check_discard_required()
 

@@ -112,7 +112,16 @@ class TurnClock:
             return {'success': True, 'error': '', 'current_player': current_name,
                     'camel_vote': True}
 
-        return {'success': True, 'error': '', 'current_player': self.force_advance_turn()}
+        # Barbarian Attack: the coast is checked for victories at the end of the
+        # turn, after the player has moved their knights (expansions.md 648). A
+        # no-op without the rule.
+        victories = None
+        if self.rules['barbarian_attack']:
+            victories = self.resolve_barbarian_victories()
+
+        return {'success': True, 'error': '',
+                'current_player': self.force_advance_turn(),
+                'barbarian_victories': victories}
 
     def _camel_vote_owed(self, player_name: str) -> bool:
         """Whether ending this turn should open a camel voting round rather than

@@ -185,3 +185,9 @@ register(Terrain("swampland", "swampland", produces=None, v2=True, token=False))
 # it. It is land, so the buildable graph forms around it and camels can be placed
 # on the paths that radiate from its corners.
 register(Terrain("oasis", "oasis", produces=None, v2=True, token=False))
+
+# Traders & Barbarians, Barbarian Attack. The castle sits in the outer ring and
+# is where knights are trained: it pays no resource card and carries no token,
+# and it can never be conquered. It is land, so the buildable graph forms around
+# it and its six adjacent paths are where knights stand to guard the coast.
+register(Terrain("castle", "castle", produces=None, v2=True, token=False))

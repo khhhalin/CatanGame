@@ -1,0 +1,143 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "barbarian-attack",
+  "map_version": 2,
+  "name": "Barbarian Attack",
+  "notes": "Traders & Barbarians scenario: barbarians land on the coastal hexes and knights are trained at the central castle to expel them. The castle and the desert sit in the outer ring and can never be conquered; the ten producing coastal hexes carry distinct numbers so a barbarian attack roll names one hex. Opening barbarians land on the '2' and the '12'. expansions.md 607-676.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-6,0,6",
+        "-6,3,3",
+        "-6,6,0",
+        "-3,-3,6",
+        "-3,0,3",
+        "-3,3,0",
+        "-3,6,-3",
+        "0,-6,6",
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "0,6,-6",
+        "3,-6,3",
+        "3,-3,0",
+        "3,0,-3",
+        "3,3,-6",
+        "6,-6,0",
+        "6,-3,-3",
+        "6,0,-6"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-6,0,6": {
+            "terrain": "desert"
+          },
+          "-6,3,3": {
+            "number": 5,
+            "terrain": "sheep"
+          },
+          "-6,6,0": {
+            "number": 4,
+            "terrain": "wood"
+          },
+          "-3,-3,6": {
+            "number": 6,
+            "terrain": "wheat"
+          },
+          "-3,0,3": {
+            "number": 8,
+            "terrain": "ore"
+          },
+          "-3,3,0": {
+            "number": 5,
+            "terrain": "wheat"
+          },
+          "-3,6,-3": {
+            "number": 3,
+            "terrain": "brick"
+          },
+          "0,-6,6": {
+            "number": 2,
+            "terrain": "sheep"
+          },
+          "0,-3,3": {
+            "number": 9,
+            "terrain": "wheat"
+          },
+          "0,0,0": {
+            "number": 6,
+            "terrain": "ore"
+          },
+          "0,3,-3": {
+            "number": 4,
+            "terrain": "sheep"
+          },
+          "0,6,-6": {
+            "number": 8,
+            "terrain": "wood"
+          },
+          "3,-6,3": {
+            "number": 9,
+            "terrain": "sheep"
+          },
+          "3,-3,0": {
+            "number": 10,
+            "terrain": "wood"
+          },
+          "3,0,-3": {
+            "number": 11,
+            "terrain": "brick"
+          },
+          "3,3,-6": {
+            "number": 10,
+            "terrain": "wheat"
+          },
+          "6,-6,0": {
+            "number": 11,
+            "terrain": "brick"
+          },
+          "6,-3,-3": {
+            "number": 12,
+            "terrain": "ore"
+          },
+          "6,0,-6": {
+            "terrain": "castle"
+          }
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 18
+        }
+      }
+    }
+  ],
+  "robber_start": "-6,0,6",
+  "suggested_victory_target": 12
+}

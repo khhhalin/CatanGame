@@ -65,6 +65,34 @@ class TB:
         self.caravans = []
         self.camel_vote = None
 
+        # Barbarian Attack (expansions.md 607-662). The board pieces read off the
+        # dealt map at setup: the castle hex, its six adjacent paths where
+        # knights stand, the hexes that can never be conquered (castle + desert),
+        # and the coastal hexes in the clockwise check order. `barbarians` maps a
+        # coastal hex to how many figures (0-3) sit on it; a hex reaching 3 joins
+        # `conquered_hexes`, and any building it walls off joins `toppled` (vertex
+        # keys turned on their side, worth no VP). `knights` maps an edge to the
+        # player whose knight stands there; `prisoners` maps a player to how many
+        # freed barbarians they hold (two are worth 1 VP). `barbarians_left` is
+        # the face-down supply beside the board.
+        self.castle_hex = None
+        self.castle_paths = []
+        self.unconquerable_hexes = set()
+        self.coastal_hexes = []
+        self.barbarians = {}
+        self.conquered_hexes = set()
+        self.toppled = set()
+        self.knights = {}
+        self.prisoners = {}
+        self.barbarians_left = 0
+        # The scenario's own 26-card development deck (game/tb_decks.py): the
+        # face-down draw pile and the face-up discard reshuffled in when it
+        # empties. `pending_card` is a bought Knighthood/Swift Knight awaiting the
+        # knight placement it grants, or None.
+        self.ba_deck = []
+        self.ba_discard = []
+        self.pending_card = None
+
         self._counts = dict(fish_token_counts) if fish_token_counts else dict(FISH_TOKEN_COUNTS)
 
     # --- Setup -------------------------------------------------------------
@@ -80,6 +108,7 @@ class TB:
 
     def register(self, player_name: str):
         self.hands.setdefault(player_name, [])
+        self.prisoners.setdefault(player_name, 0)
 
     def start_turn(self):
         """Nothing per-turn on the container itself — the boot-pass allowance and
@@ -205,21 +234,58 @@ class TB:
             "camels": {edge: dict(camel) for edge, camel in self.camels.items()},
             "caravans": [dict(c) for c in self.caravans],
             "camel_vote": dict(self.camel_vote) if self.camel_vote else None,
+            # Barbarian Attack is public: the figures on each coast, the conquered
+            # hexes and toppled buildings, the knight pieces on their paths and
+            # each player's prisoner count. Only the deck's face-down draw pile is
+            # secret — a count of what is left, never its order, the way the base
+            # deck's remaining total is public but its order is not. `pending_card`
+            # is shown so the client knows a knight placement is owed and to whom.
+            "castle_hex": self.castle_hex,
+            "castle_paths": list(self.castle_paths),
+            "coastal_hexes": list(self.coastal_hexes),
+            "barbarians": dict(self.barbarians),
+            "conquered_hexes": sorted(self.conquered_hexes),
+            "toppled": sorted(self.toppled),
+            "knights": dict(self.knights),
+            "prisoners": dict(self.prisoners),
+            "barbarians_left": self.barbarians_left,
+            "ba_deck_remaining": len(self.ba_deck),
+            "ba_discard_count": len(self.ba_discard),
+            "pending_card": dict(self.pending_card) if self.pending_card else None,
         }
 
     _SNAPSHOT_FIELDS = (
         "supply", "discard", "hands", "old_boot_holder",
         "fishing_grounds", "lake_hex",
         "camels", "caravans", "camel_vote",
+        "castle_hex", "castle_paths", "unconquerable_hexes", "coastal_hexes",
+        "barbarians", "conquered_hexes", "toppled", "knights", "prisoners",
+        "barbarians_left", "ba_deck", "ba_discard", "pending_card",
     )
+
+    # The Barbarian Attack fields kept as sets in memory but as lists on disk —
+    # a save is JSON and JSON has no set. Rebuilt into sets on load.
+    _SNAPSHOT_SET_FIELDS = ("unconquerable_hexes", "conquered_hexes", "toppled")
 
     def snapshot(self) -> dict:
         """The full state for persistence — nothing redacted: a save has to
         remember the face-down supply and every hand, or a reload would re-deal
-        a different bag and lose the private tokens."""
-        return {field: getattr(self, field) for field in self._SNAPSHOT_FIELDS}
+        a different bag and lose the private tokens. The conquered/toppled sets
+        are written as sorted lists because a save is JSON, and rebuilt into sets
+        on load."""
+        data = {}
+        for field in self._SNAPSHOT_FIELDS:
+            value = getattr(self, field)
+            if field in self._SNAPSHOT_SET_FIELDS:
+                value = sorted(value)
+            data[field] = value
+        return data
 
     def load(self, data: dict):
         for field in self._SNAPSHOT_FIELDS:
-            if field in data:
-                setattr(self, field, data[field])
+            if field not in data:
+                continue
+            value = data[field]
+            if field in self._SNAPSHOT_SET_FIELDS:
+                value = set(value)
+            setattr(self, field, value)
