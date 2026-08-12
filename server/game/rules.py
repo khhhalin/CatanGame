@@ -875,6 +875,73 @@ RULES += [
 ]
 
 
+# --- Traders & Barbarians: gold coins (shared substrate) ----------------
+# The T&B gold currency, held in `Player.gold`. Distinct from the Explorers &
+# Pirates `gold` rule: it shares the field and gold.py's buy/immunity helpers,
+# but sells at 4:1 (not 3:1) and grants no empty-roll bonus. The two are two
+# economies on one field, so EXCLUSIONS refuses them both on. Defaults off, so a
+# base game is unchanged.
+RULES += [
+    _bool("gold_coins", "Gold coins", False,
+          "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
+          "expansions.md 559-565, 664-668, 740-744",
+          "Gold coins are a second currency held apart from your resource hand: "
+          "twice a turn 2 gold buys any 1 resource from the supply, and maritime "
+          "trade buys 1 gold for 4 identical resources (3 with the matching 3:1 "
+          "harbour, never a 2:1). Coins trade with opponents like a resource "
+          "card and can never be stolen by the robber or a Monopoly.",
+          group=EXPANSION),
+]
+
+
+# --- Traders & Barbarians: The Rivers of Catan --------------------------
+# Rivers cross the island; roads and settlements along them earn gold coins, and
+# bridges span the crossings. Decomposed the way the other expansions are —
+# every switch off by default, the coin economy shared through `gold_coins`, and
+# the two scoring tiles folded into `victory_points_for` behind their own flags.
+RULES += [
+    _bool("river_gold", "River gold", False,
+          "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
+          "expansions.md 542-544",
+          "Building a settlement adjacent to a river hex, or a road on a path "
+          "adjacent to a river hex, pays you 1 gold coin immediately — during "
+          "set-up as well as later. Upgrading a settlement to a city pays "
+          "nothing.",
+          group=EXPANSION),
+    _bool("bridges", "Bridges", False,
+          "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
+          "expansions.md 546-552",
+          "Bridges (2 brick and 1 lumber) are built only on a river-crossing "
+          "bridge site and pay 3 gold coins each. A bridge counts exactly as a "
+          "road for the Longest Road and for connecting new buildings; a normal "
+          "road may never sit on a bridge site, and Road Building may not place "
+          "one. Each player may build at most three.",
+          group=EXPANSION),
+    _bool("wealthiest_settler", "Wealthiest Settler", False,
+          "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
+          "expansions.md 556-558",
+          "The one player who alone holds the most gold coins keeps the "
+          "Wealthiest Settler tile, worth +1 victory point. It is lost the "
+          "moment another player's coin total equals or passes theirs.",
+          group=EXPANSION),
+    _bool("poor_settler", "Poor Settler", False,
+          "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
+          "expansions.md 553-555",
+          "Every player tied for the fewest gold coins (a tie at zero counts) "
+          "holds a Poor Settler tile, worth -2 victory points. It is returned "
+          "the moment they no longer have the fewest.",
+          group=EXPANSION),
+]
+
+RULES += [
+    _int("max_bridges", "Bridges per player", 3, 0, 10,
+         "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
+         "expansions.md 551",
+         "How many bridges one player may build over the whole game.",
+         group=EXPANSION),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -924,6 +991,15 @@ DEPENDENCIES = {
     "fishing_grounds": ("fish_tokens",),
     "lake_hex": ("fish_tokens",),
     "old_boot": ("fish_tokens",),
+    # Traders & Barbarians, The Rivers of Catan. The river coin grants and the
+    # two scoring tiles are all worked in gold coins: with no coin currency to
+    # pay into or measure, a river settlement earns nothing and neither tile can
+    # ever be held. Bridges are the exception — they pay coins but are really a
+    # road piece for the Longest Road, so they turn on the river map's crossing
+    # sites, not on `gold_coins`.
+    "river_gold": ("gold_coins",),
+    "wealthiest_settler": ("gold_coins",),
+    "poor_settler": ("gold_coins",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -963,6 +1039,22 @@ EXCLUSIONS = [
             "form routes; Explorers & Pirates transport ships carry cargo and "
             "form none. They are one physical piece read two opposite ways on "
             "the same board — pick one sea system."
+        ),
+    },
+    # Explorers & Pirates gold and Traders & Barbarians gold coins are two
+    # economies on one `Player.gold` field: E&P gold pays a 1-gold empty-roll
+    # bonus and sells at 3:1, T&B coins pay neither bonus and sell at 4:1 (3:1
+    # only with the matching harbour). A board that ran both would apply one
+    # rule's rates to the other's coins, so a table picks one.
+    {
+        "id": "gold_economy",
+        "rules": ("gold", "gold_coins"),
+        "kind": "hard",
+        "reason": (
+            "Explorers & Pirates gold and Traders & Barbarians gold coins both "
+            "live in one purse but earn and sell at different rates — E&P pays "
+            "an empty-roll bonus and sells at 3:1, T&B sells at 4:1 and pays no "
+            "bonus. Pick one gold economy."
         ),
     },
 ]
@@ -1102,6 +1194,22 @@ TB_FISHERMEN_RULES = {
 }
 
 
+# Traders & Barbarians, The Rivers of Catan. Ticks the coin economy, the river
+# grants, bridges and the two scoring tiles, and points the table at the built-in
+# Rivers board. Played to 10 (566) — the base target — so nothing is added to
+# `victory_target`; the Harbormaster variant would raise it to 11, which the
+# lobby can still do by hand.
+TB_RIVERS_RULES = {
+    "gold_coins": True,
+    "river_gold": True,
+    "bridges": True,
+    "wealthiest_settler": True,
+    "poor_settler": True,
+    "board_map": "rivers",
+    "victory_target": 10,
+}
+
+
 PRESETS = [
     {
         "id": "base_game",
@@ -1188,6 +1296,20 @@ PRESETS = [
             "Every switch it ticks stays one you can untick."
         ),
         "rules": dict(TB_FISHERMEN_RULES),
+    },
+    {
+        "id": "tb_rivers",
+        "name": "The Rivers of Catan",
+        "source": "Catan: Traders & Barbarians rulebook, Scenario: The Rivers "
+                  "of Catan; expansions.md 527-570",
+        "summary": (
+            "Rivers cross the island: settlements and roads built along them "
+            "earn gold coins, bridges span the crossings, and the Wealthiest "
+            "and Poor Settler tiles swing a victory point on who holds the most "
+            "and fewest coins. Dealt on the built-in Rivers map and played to "
+            "10. Every switch it ticks stays one you can untick."
+        ),
+        "rules": dict(TB_RIVERS_RULES),
     },
     {
         "id": "explorers_and_pirates",
