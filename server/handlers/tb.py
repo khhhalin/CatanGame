@@ -95,3 +95,64 @@ def handle_pass_old_boot(data):
             return
         log_event('build', f"{name} passed the old boot to {target}", player=name)
         bump_and_broadcast()
+
+
+# --- The Rivers of Catan: bridges and the gold-coin economy ------------------
+
+@socketio.on('build_bridge')
+def handle_build_bridge(data):
+    got = _actor_for('bridges', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        edge_key = require_str(data.get('edge'), 'edge')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.build_bridge(name, edge_key)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} built a bridge", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('buy_resource_with_coins')
+def handle_buy_resource_with_coins(data):
+    got = _actor_for('gold_coins', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        resource = require_str(data.get('resource'), 'resource')
+    except InvalidPayload:
+        return
+    with session.lock:
+        # The 2-gold-buys-1-resource action is shared with Explorers & Pirates
+        # gold; the engine method serves either economy.
+        result = session.game.buy_resource_with_gold(name, resource)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} bought {resource} with gold coins", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('sell_resources_for_coins')
+def handle_sell_resources_for_coins(data):
+    got = _actor_for('gold_coins', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        resource = require_str(data.get('resource'), 'resource')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.sell_resources_for_gold_coins(name, resource)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} bought a gold coin with {resource}", player=name)
+        bump_and_broadcast()

@@ -24,8 +24,10 @@ from game.missions_spices import MissionSpicesRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
+from game.rivers import RiversRules
 from game.robber_rules import RobberRules
 from game.seafarers import SeafarersRules
+from game.tb_gold import TBGoldRules
 from game.trade import TradeManager
 from game.trade_rules import TradeRules
 from game.transport import TransportShipRules
@@ -37,7 +39,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
-           FishingRules, PendingChoiceRules, TurnClock):
+           FishingRules, TBGoldRules, RiversRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -331,6 +333,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # The hexes a custom map calls its main land; None means "all of it",
         # which is every built-in layout.
         self.main_hex_keys = None
+
+        # The Rivers of Catan river-crossing bridge sites: the edge keys a bridge
+        # may span and a normal road may never sit on. Read off the dealt map in
+        # `setup_rivers_board`; empty on every board that prints none, so the base
+        # game is untouched.
+        self.bridge_sites = set()
 
         # Generate the complete board
         self._generate_board()
@@ -697,11 +705,19 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             self.last_setup_settlement = vertex_key
         self.setup_action = "road" if in_setup else "settlement"
 
+        # The Rivers of Catan: a settlement adjacent to a river hex pays 1 gold
+        # coin — set-up and later both, but never for a city. A no-op without
+        # `river_gold`. Kept a distinct method, not a branch inside the build.
+        river_gold = 0
+        if building_type != 'city':
+            river_gold = self.grant_river_settlement_gold(player_name, vertex_key)
+
         return {
             'success': True,
             'error': '',
             'building_type': building_type,
             'island_points': island_points,
+            'river_gold': river_gold,
         }
 
     def build_road(self, player_name: str, edge_key: str) -> dict:
@@ -742,6 +758,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return refused('OCCUPIED', 'This coastal side already carries a ship')
         if not self.land_hexes_of_edge(edge_key):
             return refused('INVALID_PLACEMENT', 'A road cannot be built out at sea')
+        # The Rivers of Catan: a normal road may never sit on a river-crossing
+        # bridge site — only a bridge spans one (expansions.md 541). This also
+        # stops the Road Building card placing a bridge, since it drives this
+        # method. A no-op off the river board, where there are no sites.
+        if self.is_bridge_site(edge_key):
+            return refused('INVALID_PLACEMENT', 'Only a bridge may span this river crossing')
         # A road may not lie on a path beside a face-down hex (891). A no-op
         # unless the table is exploring, since nothing else hides a hex.
         if self.rules['ships_explore']:
@@ -790,7 +812,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         else:
             self.update_longest_road()
 
-        return {'success': True, 'error': '', 'used_free_road': used_free_road}
+        # The Rivers of Catan: a road on a path adjacent to a river hex pays 1
+        # gold coin — set-up and later both. A no-op without `river_gold`.
+        river_gold = self.grant_river_road_gold(player_name, edge_key)
+
+        return {'success': True, 'error': '', 'used_free_road': used_free_road,
+                'river_gold': river_gold}
 
     def upgrade_city(self, player_name: str, vertex_key: str) -> dict:
         """Turn one of the player's own settlements into a city."""
@@ -926,6 +953,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 points += 2 * self.ck.metropolis_count(player_name)
             if self.rules['barbarians']:
                 points += self.ck.defender_cards.get(player_name, 0)
+
+        # The Rivers of Catan tiles: +1 for the sole wealthiest player, -2 for
+        # every player tied for the fewest coins. Dynamic — recomputed here from
+        # the live coin totals — so the tiles move the instant gold changes. A
+        # no-op unless one of the two flags is on.
+        if self.rules['wealthiest_settler'] or self.rules['poor_settler']:
+            points += self.river_tile_points(player_name)
 
         return points
 
@@ -1118,6 +1152,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'tb': self.tb.to_dict(viewer) if self.tb else None,
             'harbormaster_holder': self.harbormaster_holder,
             'harbor_points': self.harbor_points,
+            # The Rivers of Catan bridge sites: the paths a bridge may span. The
+            # client draws a bridge affordance on these; empty off the river
+            # board, so nothing changes there. Bridges themselves ride on the
+            # edge payload as roads carrying kind='bridge'.
+            'bridge_sites': sorted(self.bridge_sites),
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),

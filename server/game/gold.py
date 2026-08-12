@@ -102,8 +102,14 @@ class GoldRules:
         return {'success': True, 'error': '', 'gold': player.gold}
 
     def buy_resource_with_gold(self, player_name: str, resource: str) -> dict:
-        """Pay 2 gold to the supply for any 1 resource, twice a turn (856)."""
-        if not self.rules['gold']:
+        """Pay 2 gold to the supply for any 1 resource, twice a turn (856).
+
+        Shared by the two gold economies: Explorers & Pirates `gold` and Traders
+        & Barbarians `gold_coins` spend at the same 2-for-1 rate with the same
+        per-turn cap (expansions.md 559), so the buy is gated on either rule.
+        The exclusion keeps them from both being on, so only one is ever live.
+        """
+        if not (self.rules['gold'] or self.rules['gold_coins']):
             return refused('RULE_OFF', 'Gold is not in play')
         player = self.get_player(player_name)
         if not player:
