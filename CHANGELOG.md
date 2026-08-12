@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.6.0 — 2026-08-12 20:34
+
+- **New** Caravans of Catan, a new scenario: each turn you build, a camel joins a caravan out of the oasis (the table bids wool and grain for who places it); roads along a caravan count double for the Longest Road, and a settlement between two caravans is worth a point.
+- **New** Barbarian Attack, a new scenario: barbarians land on the coast as you build and conquer a hex once three gather; place knights around the castle to fight them off, free their prisoners for points, and buy from a deck of their own.
+- **New** Traders & Barbarians, the main scenario: drive a wagon of goods to the castle, quarry and glassworks for gold and points, upgrade your baggage train, and get past the barbarians roaming the roads.
+- **New** Three more lobby presets — Caravans, Barbarian Attack and Traders & Barbarians — one click each, every rule still yours to change.
+
 ## v3.5.0 — 2026-08-12 18:59
 
 - **New** Rivers of Catan, a new scenario: settle or build a road beside a river and the bank pays you a gold coin. Spend two coins for any resource, or turn four spare resources into one coin.
