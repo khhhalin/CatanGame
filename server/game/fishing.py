@@ -67,7 +67,10 @@ class FishingRules:
                     'number': number,
                     'vertices': self._coastal_vertices(hex_key),
                 })
-            self.tb.fishing_grounds = grounds
+            # A table may run fewer grounds than the board prints; the extras are
+            # left off (the frame simply carries no tile there). Board order is
+            # sorted, so which grounds survive a lower count is deterministic.
+            self.tb.fishing_grounds = grounds[:self.rules['fishing_ground_count']]
 
         if self.rules['lake_hex']:
             for hex_key, hex_obj in sorted(self.hexes.items()):

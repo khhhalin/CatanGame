@@ -76,6 +76,14 @@ class TestCatalogue:
         assert chosen['max_fish_held'] == 7
         assert chosen['fishing_ground_count'] == 6
 
+    def test_fishing_ground_count_caps_how_many_the_board_carries(self):
+        """The int rule is read at board setup — a lower count leaves the extra
+        printed tiles off, so it is not a dead switch."""
+        game = fishermen_game({'fishing_ground_count': 2})
+        assert len(game.tb.fishing_grounds) == 2
+        full = fishermen_game()
+        assert len(full.tb.fishing_grounds) == 6
+
     def test_the_container_needs_the_tb_state_object(self):
         assert rules_module.needs_tb_state({'fish_tokens': True})
         assert not rules_module.needs_tb_state(rules_module.defaults())
