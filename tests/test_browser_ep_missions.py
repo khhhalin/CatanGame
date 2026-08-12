@@ -169,7 +169,15 @@ def _scenario_game():
     of the three cove-adjacent special hexes: a fish shoal carrying a haul, a
     pirate lair one crew short of capture, and a spice village. Each has one of
     Alice's transport ships on the cove edge beside it, so a single gesture drives
-    each mission. Returns the game and the keys the taps need."""
+    each mission. Returns the game and the keys the taps need.
+
+    The crews in the lair and spice ships' holds are hand-placed here because a
+    crew has no client path onto a ship (no UI for `build_crew` /
+    `load_transport_ship` / `pickup_crews`, and no handler for `build_settler` /
+    `found_settlement_from_ship`). So the crew-dependent missions — Pirate Lairs
+    and Spices — are not playable end to end through the browser; these tests
+    prove the gestures, and that gap is deferred, not faked. The Fish mission
+    needs no crew and IS fully playable (see `test_browser_ep_win.py`)."""
     document = map_store.read_map('pirate-cove')
     rules = dict(rules_module.defaults())
     for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
@@ -246,6 +254,42 @@ def _pirate_seven_game():
         key=lambda key: sum(abs(int(part)) for part in key.split(',')),
     )
     return game, cove, land_hex
+
+
+def _fish_roll_game():
+    """A started Pirate Cove game with the Fish mission on and six discovered
+    shoals, one for each die face 1-6, none yet carrying a haul. Whatever the
+    server rolls therefore matches exactly one shoal, so a single roll always
+    lands a haul from the supply — the once-per-movement gate the surface leaves
+    to the client is not exercised here, only the roll's placement. Returns the
+    game and the six shoal hex keys, nearest the middle first so their taps and
+    pixel reads land on-canvas."""
+    document = map_store.read_map('pirate-cove')
+    rules = dict(rules_module.defaults())
+    for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
+                 'missions', 'mission_fish'):
+        rules[rule] = True
+    rules['turn_order'] = 'lobby'
+    rules['board_layout'] = 'custom'
+    rules['board_map'] = document['id']
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=rules,
+                map_definition=maps.parse_map(document))
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+
+    cove = next(key for key, hex_obj in game.hexes.items()
+                if hex_obj.meta is not None and hex_obj.meta.docks)
+    central = sorted(
+        (key for key in game.hexes if key != cove),
+        key=lambda key: sum(abs(int(part)) for part in key.split(',')),
+    )
+    shoals = central[:6]
+    for number, key in enumerate(shoals, start=1):
+        game.hexes[key].hidden = False
+        game.ep.fish_shoals[key] = {'number': number, 'haul': False}
+    return game, shoals
 
 
 def _hex_ink(player, hex_key):
@@ -394,7 +438,13 @@ def test_the_gesture_catches_a_haul_then_delivers_it(browser, tmp_path):
 
 def test_the_gesture_lands_crews_and_captures_a_lair(browser, tmp_path):
     """land_crews_on_lair: two crews land on a lair that already held one, the
-    third captures it, and Alice's Pirate Lairs marker ticks up in the panel."""
+    third captures it, and Alice's Pirate Lairs marker ticks up in the panel.
+
+    Honest scope: this exercises the landing GESTURE, not the full player path.
+    The crews are hand-placed in the ship's hold by `_scenario_game` because a
+    crew has no client route onto a ship — `build_crew` / `load_transport_ship`
+    have no UI — so the Pirate Lairs mission is not playable end to end through
+    the browser. That gap is documented and deferred, never faked."""
     game, ref = _scenario_game()
     alice, proc = _open(browser, tmp_path, game)
     try:
@@ -418,7 +468,12 @@ def test_the_gesture_lands_crews_and_captures_a_lair(browser, tmp_path):
 
 def test_the_gesture_befriends_a_village_then_delivers_spices(browser, tmp_path):
     """befriend_spice_village grants a visible advantage in the players list, and
-    deliver_spices then advances the Spices marker — both through the gesture."""
+    deliver_spices then advances the Spices marker — both through the gesture.
+
+    Honest scope: as with the lair test, the crew that steps ashore to befriend
+    the village is hand-placed in the hold by `_scenario_game`; there is no client
+    path to load a crew, so the Spices mission is not playable end to end through
+    the browser. The gesture is what is proven here, not the full player path."""
     game, ref = _scenario_game()
     alice, proc = _open(browser, tmp_path, game)
     try:
@@ -477,6 +532,47 @@ def test_a_seven_places_the_pirate_on_the_sea_and_refuses_the_land(browser, tmp_
         next_frame(alice.page)
         assert _hex_ink(alice, cove) != ink_before, \
             "the pirate ship left no mark on the sea hex it was placed on"
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_the_fish_roll_lands_a_haul_on_a_matching_shoal(browser, tmp_path):
+    """roll_fish_haul through the strip's Roll button: a die is rolled server-side
+    and a haul comes off the supply onto the shoal whose number it matches. The
+    handler is fine on its own; what the unit suite cannot see is the button
+    firing it at all. The player-visible proof is twofold — the 'Fish hauls'
+    supply count in the panel ticks down from six to five, and a fish-haul token
+    draws onto the shoal that took it, a change the pixels show."""
+    game, shoals = _fish_roll_game()
+    alice, proc = _open(browser, tmp_path, game)
+    try:
+        # Six hauls in the supply, none on the board yet.
+        assert "6 Fish hauls" in alice.page.inner_text("#ep-supply"), \
+            alice.page.inner_text("#ep-supply")
+        assert alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().ep.token_supply.fish_haul") == 6
+        ink_before = {key: _hex_ink(alice, key) for key in shoals}
+
+        alice.page.click("#ep-roll-fish")
+
+        # The supply drops by one: exactly one shoal took a haul.
+        alice.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().ep.token_supply.fish_haul === 5",
+            timeout=8000,
+        )
+        assert "5 Fish hauls" in alice.page.inner_text("#ep-supply"), \
+            alice.page.inner_text("#ep-supply")
+
+        # The haul token drew onto whichever shoal matched the roll.
+        hauled = alice.page.evaluate(
+            "() => Object.entries(window.__catanDebug.getBoard().ep.fish_shoals)"
+            ".filter(([, s]) => s.haul).map(([k]) => k)"
+        )
+        assert len(hauled) == 1, hauled
+        next_frame(alice.page)
+        assert _hex_ink(alice, hauled[0]) != ink_before[hauled[0]], \
+            "the fish haul left no mark on the shoal it landed on"
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)
