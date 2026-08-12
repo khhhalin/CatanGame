@@ -51,7 +51,8 @@ const PLACEMENT_NOUNS = {
 // Which part of the board each kind snaps to. The renderer keeps the same two
 // lists for drawing; both are short and both would be wrong in the same way if
 // a kind were added to one and not the other.
-const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge'];
+const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge',
+    'barbarian_knight'];
 const HEX_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // What the announcement last said, so aiming at the same spot twice does not
@@ -443,6 +444,22 @@ function isBlocked(kind, key) {
         return !roadConnects(board, key, me);
     }
 
+    if (kind === 'barbarian_knight') {
+        // A knight goes where a pending Knighthood/Swift Knight card allows: a
+        // Knighthood on a free castle path, a Swift Knight on any free path. The
+        // server re-checks the pending card and the knight supply; the client
+        // errs permissive.
+        const tb = board.tb || {};
+        if (!board.edges[key] || (tb.knights || {})[key]) {
+            return true;
+        }
+        const card = tb.pending_card?.card;
+        if (card === 'knighthood') {
+            return !(tb.castle_paths || []).includes(key);
+        }
+        return false;
+    }
+
     const vertex = board.vertices[key];
     if (!vertex) {
         return true;
@@ -694,6 +711,8 @@ function commit(target) {
         emitGame('place_road', { name, edge: target.key });
     } else if (target.kind === 'bridge') {
         emitGame('build_bridge', { name, edge: target.key });
+    } else if (target.kind === 'barbarian_knight') {
+        emitGame('place_barbarian_knight', { name, edge: target.key });
     } else if (target.kind === 'city') {
         emitGame('upgrade_city', { name, vertex: target.key });
     } else if (isProgressMode(target.kind)) {

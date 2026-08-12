@@ -527,6 +527,22 @@
                         <div class="ep-actions hidden" id="caravans-vote"></div>
                     </div>
 
+                    <!-- Barbarian Attack: the coastal war at a glance —
+                         barbarians on the coast and in the supply, your knights,
+                         your prisoners and the cards left — plus Buy card and the
+                         knight-placement gesture. Hidden until a board payload
+                         carries the barbarian_attack rule; barbarian_attack.js
+                         fills it from `board.tb`. -->
+                    <div class="right-fish hidden" id="right-barbarian-attack">
+                        <div class="right-eyebrow">Barbarian Attack</div>
+                        <div class="ep-supply" id="barbarian-status"></div>
+                        <div class="ep-actions" id="barbarian-actions">
+                            <button type="button" class="ep-action-btn" id="barbarian-buy-card">Buy card</button>
+                            <button type="button" class="ep-action-btn hidden" id="barbarian-place-knight">Place knight</button>
+                        </div>
+                        <div class="choice-hint hidden" id="barbarian-hint"></div>
+                    </div>
+
                     <!-- The Details folds: the build costs and every expansion
                          subject, each a chip that states its headline numbers
                          and a popover that carries the detail and the actions.

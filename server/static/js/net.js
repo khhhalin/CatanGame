@@ -18,6 +18,7 @@ import { renderExplorersAndPirates } from './ep.js';
 import { renderFishermen } from './fish.js';
 import { renderRivers } from './rivers.js';
 import { renderCaravans } from './caravans.js';
+import { renderBarbarianAttack } from './barbarian_attack.js';
 import { renderSeafarers } from './seafarers.js';
 import { forgetPlacements, notePlacements, playTurnSound } from './sound.js';
 import { setConnectionStatus, socket, socketAvailable } from './socket.js';
@@ -133,6 +134,7 @@ socket.on('game_started', (data) => {
     renderFishermen();
     renderRivers();
     renderCaravans();
+    renderBarbarianAttack();
     renderPendingChoices();
 
     // Show what the table agreed to before the game began
@@ -190,6 +192,7 @@ socket.on('game_state', (data) => {
     renderFishermen();
     renderRivers();
     renderCaravans();
+    renderBarbarianAttack();
         // A reload or a reconnect in the middle of a question: the snapshot
         // carries the open choice, so the player is asked again rather than
         // returning to a table that has silently stopped.
@@ -231,6 +234,7 @@ socket.on('turn_changed', (data) => {
     renderFishermen();
     renderRivers();
     renderCaravans();
+    renderBarbarianAttack();
     console.log('Turn changed. Current player:', data.current_player);
 
     // `turn_changed` carries the fresh clocks a fraction before the board
@@ -358,6 +362,7 @@ socket.on('board_updated', (data) => {
     renderFishermen();
     renderRivers();
     renderCaravans();
+    renderBarbarianAttack();
     renderPendingChoices();
     checkLogGap(data);
 
@@ -391,6 +396,7 @@ socket.on('event_die', (data) => {
     renderFishermen();
     renderRivers();
     renderCaravans();
+    renderBarbarianAttack();
 });
 
 // The attack is resolved server-side inside `roll_dice` - there is no phase in

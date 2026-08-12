@@ -108,7 +108,8 @@ const GHOST_RING_RADIUS = 14;
 // the answer, and three separate `=== 'road'` checks is how they stop agreeing.
 // The `progress_` kinds are a progress card being aimed: a Merchant or a Bishop
 // lands on a hex, an Inventor on two number tokens, a Diplomat on a road.
-const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge'];
+const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge',
+    'barbarian_knight'];
 const HEX_GHOST_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // Cache of the last computed layout, keyed by board data identity.
@@ -1424,6 +1425,74 @@ function drawFishermenState(ctx, tb, hexPositions, hexRadius) {
     }
 }
 
+/**
+ * Draw the Barbarian Attack state on `board.tb`: the barbarian figures on each
+ * coastal hex (a dark-red badge with the count), the conquered hexes (a dim
+ * cross over the tile), and each player's knight pieces on their paths (a small
+ * disc in the owner's colour at the middle of the edge). A no-op on a table
+ * without the scenario.
+ */
+function drawBarbarianAttackState(ctx, tb, hexPositions, edgePositions,
+                                  playerColors, hexRadius) {
+    if (!tb || !tb.barbarians) {
+        return;
+    }
+    const badge = hexRadius * 0.32;
+    const conquered = new Set(tb.conquered_hexes || []);
+
+    // A cross over every conquered hex, so a face-down (dead) tile reads at a
+    // glance. Drawn under the barbarian badge below.
+    for (const hexKey of conquered) {
+        const pos = hexPositions[hexKey];
+        if (!pos) {
+            continue;
+        }
+        ctx.save();
+        ctx.strokeStyle = 'rgba(20, 10, 10, 0.75)';
+        ctx.lineWidth = 4;
+        const r = hexRadius * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(pos.x - r, pos.y - r);
+        ctx.lineTo(pos.x + r, pos.y + r);
+        ctx.moveTo(pos.x + r, pos.y - r);
+        ctx.lineTo(pos.x - r, pos.y + r);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // The barbarian figures: a blood-red badge showing the count, above the
+    // tile's number token so the two do not overlap.
+    for (const [hexKey, count] of Object.entries(tb.barbarians)) {
+        if (!count) {
+            continue;
+        }
+        const pos = hexPositions[hexKey];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.52, badge, '#7a1616',
+                         count, '#ffe0e0');
+        }
+    }
+
+    // The knight pieces: a disc in the owner's colour at the middle of the path.
+    for (const [edgeKey, owner] of Object.entries(tb.knights || {})) {
+        const pos = edgePositions[edgeKey];
+        if (!pos) {
+            continue;
+        }
+        const mx = (pos.x1 + pos.x2) / 2;
+        const my = (pos.y1 + pos.y2) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mx, my, 6, 0, Math.PI * 2);
+        ctx.fillStyle = playerColors[owner] || '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
 function drawEpState(ctx, ep, hexPositions, playerColors, hexRadius) {
     if (!ep) {
         return;
@@ -1903,6 +1972,15 @@ function drawGhost(ctx, layout, preview) {
                 // A bridge draws as a road ghost — it is a road piece that spans
                 // the river crossing, and the board already draws a built one so.
                 drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
+            } else if (preview.kind === 'barbarian_knight') {
+                // A knight ghost: a disc at the middle of the aimed path, the way
+                // a placed knight is drawn.
+                const mx = (pos.x1 + pos.x2) / 2;
+                const my = (pos.y1 + pos.y2) / 2;
+                ctx.beginPath();
+                ctx.arc(mx, my, 6, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
             } else if (preview.kind !== 'progress_road') {
                 drawShip(ctx, pos, color);
             }
@@ -2239,6 +2317,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
     // The Fishermen of Catan fishing-ground numbers on their frame tiles.
     drawFishermenState(ctx, boardData.tb, hexPositions, hexRadius);
+
+    // Barbarian Attack: the barbarian figures on the coast, the conquered hexes,
+    // and each player's knight pieces on their paths.
+    drawBarbarianAttackState(ctx, boardData.tb, hexPositions, edgePositions,
+                             playerColors, hexRadius);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.
@@ -2644,6 +2727,7 @@ function wasPanning() {
 // Export for use in client.js
 window.BoardRenderer = {
     render: renderBoard,
+    BOARD_CONFIG: BOARD_CONFIG,
     computeLayout: computeLayout,
     clientToBoard: clientToBoard,
     boardToClient: boardToClient,
