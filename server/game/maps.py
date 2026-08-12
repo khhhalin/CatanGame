@@ -276,11 +276,15 @@ class HexMeta:
       may build a dock against; the hex itself takes no settlement.
     - `village` — this hex holds a village (a spice-scenario advantage).
     - `lair` — this hex holds a pirate lair token.
+    - `fishing_ground` — a Fishermen-scenario fishing-ground tile on this frame
+      (sea) hex, carrying the production number that pays out fish to buildings
+      on the coastal intersections it touches. None when the hex carries none.
     """
 
     docks: tuple = ()
     village: bool = False
     lair: bool = False
+    fishing_ground: int | None = None
 
     def to_json(self) -> dict:
         data = {}
@@ -290,6 +294,8 @@ class HexMeta:
             data['village'] = True
         if self.lair:
             data['lair'] = True
+        if self.fishing_ground is not None:
+            data['fishing_ground'] = self.fishing_ground
         return data
 
 
@@ -548,7 +554,15 @@ def _parse_hex_meta(spec) -> HexMeta:
     if not isinstance(village, bool) or not isinstance(lair, bool):
         raise InvalidPayload('INVALID_MAP', 'village and lair are true or false')
 
-    return HexMeta(docks, village, lair)
+    fishing_ground = spec.get('fishing_ground')
+    if fishing_ground is not None:
+        if isinstance(fishing_ground, bool) or not isinstance(fishing_ground, int) \
+                or fishing_ground not in TOKEN_VALUES:
+            raise InvalidPayload(
+                'INVALID_MAP', 'a fishing ground carries a production number (2..12, not 7)'
+            )
+
+    return HexMeta(docks, village, lair, fishing_ground)
 
 
 def _parse_region(raw, version: int) -> tuple:

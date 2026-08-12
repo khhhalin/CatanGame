@@ -812,6 +812,69 @@ RULES += [
 ]
 
 
+# --- Traders & Barbarians: The Fishermen of Catan -----------------------
+# The first T&B scenario, decomposed into individual switches the way Cities &
+# Knights, Seafarers and Explorers & Pirates are. `fish_tokens` is the container
+# for the supply and the spend ladder; the sources (fishing grounds, the lake)
+# and the old boot each declare `fish_tokens` in DEPENDENCIES below. Every switch
+# defaults off, so a base game is unchanged.
+RULES += [
+    _bool("fish_tokens", "Fish tokens", False,
+          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+          "expansions.md 501-516",
+          "A face-down supply of fish tokens you draw, hold privately (cap 7) "
+          "and spend by fish total for a benefit: 2 sends the robber off the "
+          "board, 3 steals a random card, 4 takes a bank card, 5 builds a free "
+          "road, 7 draws a free development card. No change is given; fish are "
+          "never counted toward the hand limit, never discarded on a 7, never "
+          "stolen and never traded. The container for the fish sources below.",
+          group=EXPANSION),
+    _bool("fishing_grounds", "Fishing grounds", False,
+          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+          "expansions.md 495-499",
+          "Fishing-ground tiles sit on the board frame; a settlement built on "
+          "one of the three coastal intersections a tile touches draws 1 fish "
+          "token, a city 2, whenever the tile's number (4/5/6/8/9/10) is rolled.",
+          group=EXPANSION),
+    _bool("lake_hex", "The lake", False,
+          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+          "expansions.md 493, 500",
+          "A lake replaces the desert (and never sits on the coast); a "
+          "settlement adjacent to it draws 1 fish token, a city 2, whenever a "
+          "2, 3, 11 or 12 is rolled.",
+          group=EXPANSION),
+    _bool("old_boot", "The old boot", False,
+          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+          "expansions.md 517-521",
+          "The old boot (mixed into the fish supply and revealed the moment it "
+          "is drawn) raises its holder's personal winning threshold by 1. After "
+          "rolling you may pass it to any player with as many victory points as "
+          "you or more; the sole points leader must keep it.",
+          group=EXPANSION),
+    _bool("robber_starts_off_board", "Robber starts off the board", False,
+          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+          "expansions.md 496, 504",
+          "The robber begins beside the board rather than on the desert and "
+          "enters play only when the first 7 (or a knight) is rolled. Spending "
+          "2 fish can send it back off the board.",
+          group=EXPANSION),
+]
+
+RULES += [
+    _int("max_fish_held", "Fish tokens in hand", 7, 1, 15,
+         "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+         "expansions.md 510",
+         "How many fish tokens a player may hold at once. A draw that would "
+         "exceed the cap is not taken.",
+         group=EXPANSION),
+    _int("fishing_ground_count", "Fishing grounds on the board", 6, 0, 12,
+         "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
+         "expansions.md 492",
+         "How many fishing-ground tiles the board frame carries.",
+         group=EXPANSION),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -854,6 +917,13 @@ DEPENDENCIES = {
     "mission_pirate_lairs": ("missions", "crews"),
     "mission_fish": ("missions", "transport_ships"),
     "mission_spices": ("missions", "crews"),
+    # Traders & Barbarians, The Fishermen of Catan. The fish sources and the old
+    # boot are all worked in fish tokens: a fishing ground, the lake or the boot
+    # with no token supply to draw from or spend into does nothing, so each needs
+    # the container rule that owns the supply and the spend ladder.
+    "fishing_grounds": ("fish_tokens",),
+    "lake_hex": ("fish_tokens",),
+    "old_boot": ("fish_tokens",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -931,6 +1001,17 @@ EP_STATE_RULES = (
     "mission_spices",
 )
 
+# The Traders & Barbarians rules that need their own state object — the
+# face-down fish-token supply, each player's private fish hand, and who holds the
+# old boot. `robber_starts_off_board` decides only where the robber begins and
+# needs no container, exactly as gold and harbour settlements do not.
+TB_STATE_RULES = (
+    "fish_tokens",
+    "fishing_grounds",
+    "lake_hex",
+    "old_boot",
+)
+
 # The rule set the single `cities_and_knights` toggle used to stand for. Kept
 # as the preset below and as the translation for saves and clients that still
 # speak the old flag — the old engine forced 13 points and dropped Largest
@@ -1002,6 +1083,22 @@ EXPLORERS_AND_PIRATES_RULES = {
     **EP_SPICES_RULES,
     "mission_pirate_lairs": True,
     "victory_target": 17,
+}
+
+
+# Traders & Barbarians, The Fishermen of Catan. Ticks the scenario's five rules
+# and points the table at the built-in Fishermen board so one click deals a
+# playable game. The scenario plays to 10 — the base target (522) — with the old
+# boot raising its holder's own threshold to 11 in the engine, so nothing is
+# added to `victory_target` here.
+TB_FISHERMEN_RULES = {
+    "fish_tokens": True,
+    "fishing_grounds": True,
+    "lake_hex": True,
+    "old_boot": True,
+    "robber_starts_off_board": True,
+    "board_map": "fishermen",
+    "victory_target": 10,
 }
 
 
@@ -1077,6 +1174,20 @@ PRESETS = [
             "harbormaster": True,
             "victory_target": 11,
         },
+    },
+    {
+        "id": "tb_fishermen",
+        "name": "The Fishermen of Catan",
+        "source": "Catan: Traders & Barbarians rulebook, Scenario: The Fishermen "
+                  "of Catan; expansions.md 489-526",
+        "summary": (
+            "Fishing grounds on the frame, a lake in place of the desert, the "
+            "fish-token supply with its spend ladder, the old boot and the "
+            "robber that starts off the board. Dealt on the built-in Fishermen "
+            "map and played to 10 — 11 for whoever is stuck with the boot. "
+            "Every switch it ticks stays one you can untick."
+        ),
+        "rules": dict(TB_FISHERMEN_RULES),
     },
     {
         "id": "explorers_and_pirates",
@@ -1264,6 +1375,11 @@ def needs_expansion_state(chosen: dict) -> bool:
 def needs_ep_state(chosen: dict) -> bool:
     """Whether this rule set requires the Explorers & Pirates state object."""
     return any(chosen.get(rule_id) for rule_id in EP_STATE_RULES)
+
+
+def needs_tb_state(chosen: dict) -> bool:
+    """Whether this rule set requires the Traders & Barbarians state object."""
+    return any(chosen.get(rule_id) for rule_id in TB_STATE_RULES)
 
 
 def catalogue() -> list:

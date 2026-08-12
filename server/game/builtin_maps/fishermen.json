@@ -1,0 +1,164 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "fishermen",
+  "map_version": 2,
+  "name": "The Fishermen of Catan",
+  "notes": "Traders & Barbarians scenario: a lake in place of the desert, six fishing grounds on the frame. expansions.md 489-526.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "0,0,0",
+        "3,-3,0",
+        "3,0,-3",
+        "0,3,-3",
+        "-3,3,0",
+        "-3,0,3",
+        "0,-3,3",
+        "6,-6,0",
+        "6,-3,-3",
+        "6,0,-6",
+        "3,3,-6",
+        "0,6,-6",
+        "-3,6,-3",
+        "-6,6,0",
+        "-6,3,3",
+        "-6,0,6",
+        "-3,-3,6",
+        "0,-6,6",
+        "3,-6,3"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-3,-3,6": {
+            "number": 11,
+            "terrain": "wood"
+          },
+          "-3,0,3": {
+            "number": 4,
+            "terrain": "ore"
+          },
+          "-3,3,0": {
+            "number": 4,
+            "terrain": "wheat"
+          },
+          "-3,6,-3": {
+            "number": 9,
+            "terrain": "sheep"
+          },
+          "-6,0,6": {
+            "number": 10,
+            "terrain": "ore"
+          },
+          "-6,3,3": {
+            "number": 10,
+            "terrain": "brick"
+          },
+          "-6,6,0": {
+            "number": 9,
+            "terrain": "wheat"
+          },
+          "0,-3,3": {
+            "number": 5,
+            "terrain": "wood"
+          },
+          "0,-6,6": {
+            "number": 11,
+            "terrain": "sheep"
+          },
+          "0,0,0": {
+            "terrain": "lake"
+          },
+          "0,3,-3": {
+            "number": 3,
+            "terrain": "sheep"
+          },
+          "0,6,-6": {
+            "number": 8,
+            "terrain": "wood"
+          },
+          "3,-3,0": {
+            "number": 2,
+            "terrain": "wood"
+          },
+          "3,-6,3": {
+            "number": 12,
+            "terrain": "wheat"
+          },
+          "3,0,-3": {
+            "number": 3,
+            "terrain": "brick"
+          },
+          "3,3,-6": {
+            "number": 8,
+            "terrain": "ore"
+          },
+          "6,-3,-3": {
+            "number": 6,
+            "terrain": "wheat"
+          },
+          "6,-6,0": {
+            "number": 5,
+            "terrain": "sheep"
+          },
+          "6,0,-6": {
+            "number": 6,
+            "terrain": "brick"
+          }
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "meta": {
+        "-3,-6,9": {
+          "fishing_ground": 4
+        },
+        "-3,9,-6": {
+          "fishing_ground": 9
+        },
+        "-9,3,6": {
+          "fishing_ground": 10
+        },
+        "3,-9,6": {
+          "fishing_ground": 5
+        },
+        "6,3,-9": {
+          "fishing_ground": 8
+        },
+        "9,-3,-6": {
+          "fishing_ground": 6
+        }
+      },
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 18
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 10
+}

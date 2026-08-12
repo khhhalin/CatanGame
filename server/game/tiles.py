@@ -160,3 +160,12 @@ register(Terrain("cotton", "cotton", produces="cotton"))
 register(Terrain("gold", "gold", produces=None, v2=True, token=True))
 register(Terrain("fish", "fish", produces=None, v2=True))
 register(Terrain("spice", "spice", produces=None, v2=True))
+
+# Traders & Barbarians, The Fishermen of Catan: the lake replaces the desert.
+# It pays no resource card, so `produces` is None, and it carries no single
+# number token — it draws fish on any of 2/3/11/12 — so `token` is False and its
+# four trigger numbers live on the game's fishing state, not on the hex. Like
+# the desert it hosts no production walk; unlike the desert the robber never
+# starts on it (it is never coastal, and this scenario starts the robber off the
+# board anyway).
+register(Terrain("lake", "lake", produces=None, v2=True, token=False))

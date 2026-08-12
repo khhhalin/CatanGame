@@ -48,6 +48,10 @@ DEFAULT_RESOURCES = {
     "gold":   {"name": "Gold",   "color": "#d9a441", "symbol": "",       "pattern": "stipple"},
     "fish":   {"name": "Fish",   "color": "#3f9fb8", "symbol": "",       "pattern": "dots"},
     "spice":  {"name": "Spice",  "color": "#b5643c", "symbol": "",       "pattern": "stripes"},
+    # Traders & Barbarians (Fishermen): the lake that replaces the desert. It
+    # deals no resource card (symbol empty, like the desert), and takes a watery
+    # blue so it reads as open water inside the island rather than a resource hex.
+    "lake":   {"name": "Lake",   "color": "#2f6288", "symbol": "",       "pattern": "solid"},
 }
 
 # The pattern styles the renderer knows how to draw; a definition's `pattern`
