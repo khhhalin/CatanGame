@@ -94,6 +94,9 @@ MAX_FRAME_RADIUS = 8
 MAX_REGIONS = 64
 MAX_HEXES = 250
 MAX_HARBOURS = 32
+# Bridge-crossing sites a Rivers map may print. The printed scenario has 7; the
+# cap is generous room for a custom river map, and bounds the payload.
+MAX_BRIDGE_SITES = 32
 MAX_NAME = 64
 MAX_NOTES = 512
 
@@ -129,6 +132,25 @@ def parse_hex_key(key: str) -> tuple:
     except ValueError:
         return None
     if sum(coords) != 0 or any(value % 3 for value in coords):
+        return None
+    return coords
+
+
+def parse_edge_key(key: str) -> tuple:
+    """An edge key as (x, y, z), or None if it does not name a hex side.
+
+    A hex side sits one step out from a centre along an edge direction, so its
+    coordinates sum to zero and exactly one of the three is divisible by 3 — the
+    same lattice `board.py` builds edges on. Either of the side's two names
+    qualifies; the board canonicalises them to one when it reads the map.
+    """
+    if not isinstance(key, str) or key.count(',') != 2:
+        return None
+    try:
+        coords = tuple(int(part) for part in key.split(','))
+    except ValueError:
+        return None
+    if sum(coords) != 0 or sum(1 for value in coords if value % 3 == 0) != 1:
         return None
     return coords
 
@@ -348,13 +370,18 @@ class MapDefinition:
     robber_start: str
     suggested_victory_target: int = None
     excluded_hexes: tuple = ()
+    # The Rivers of Catan river-crossing bridge sites: hex-side (edge) keys a
+    # bridge may span and a normal road may never sit on. A map-level field
+    # because a path is not owned by any one hex — `HexMeta` is per-hex. Empty on
+    # every map that prints none.
+    bridge_sites: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
         frame: dict = {'radius': self.radius}
         if self.excluded_hexes:
             frame['excluded'] = list(self.excluded_hexes)
-        return {
+        data = {
             'map_version': self.map_version,
             'id': self.id,
             'name': self.name,
@@ -369,6 +396,9 @@ class MapDefinition:
                 'types': {name: count for name, count in self.harbours},
             },
         }
+        if self.bridge_sites:
+            data['bridge_sites'] = list(self.bridge_sites)
+        return data
 
     def region_of(self) -> dict:
         """Hex key -> the id of the region that claims it."""
@@ -678,11 +708,25 @@ def parse_map(data: dict) -> MapDefinition:
     if sum(count for _, count in bag) > MAX_HARBOURS:
         raise InvalidPayload('INVALID_MAP', f'a map has at most {MAX_HARBOURS} harbours')
 
+    bridge_sites_raw = data.get('bridge_sites') or []
+    if not isinstance(bridge_sites_raw, list) or len(bridge_sites_raw) > MAX_BRIDGE_SITES:
+        raise InvalidPayload('INVALID_MAP',
+                             f'bridge_sites is a list of at most {MAX_BRIDGE_SITES} hex sides')
+    bridge_sites: set[str] = set()
+    for key in bridge_sites_raw:
+        coords = parse_edge_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex side')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'bridge site {key!r} is outside the frame')
+        bridge_sites.add(key)
+    bridge_tuple = tuple(sort_hex_keys(bridge_sites))
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
-        excluded_hexes=excluded_tuple,
+        excluded_hexes=excluded_tuple, bridge_sites=bridge_tuple,
     )
 
 

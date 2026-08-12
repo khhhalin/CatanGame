@@ -38,6 +38,27 @@ POOR_SETTLER_VP = -2
 class RiversRules:
     """River coin grants, bridges, and the Wealthiest/Poor Settler tiles."""
 
+    # --- Board setup -------------------------------------------------------
+
+    def setup_rivers_board(self):
+        """Read the map's river-crossing bridge sites into `self.bridge_sites`.
+
+        A bridge site is a hex-side (edge) key the map file declares; the author
+        may name it by either of the side's two coordinates, so each is
+        canonicalised to the one key the board holds and any that names nothing
+        on this board is dropped. A no-op for a map that prints no sites, and for
+        every built-in layout, so the base game is untouched.
+        """
+        definition = self.map_definition
+        if definition is None or not getattr(definition, 'bridge_sites', ()):
+            return
+        sites = set()
+        for key in definition.bridge_sites:
+            canonical = self.canonical_edge_key(key)
+            if canonical is not None:
+                sites.add(canonical)
+        self.bridge_sites = sites
+
     # --- River adjacency ---------------------------------------------------
 
     def _is_river_hex(self, hex_key: str) -> bool:

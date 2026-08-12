@@ -1,0 +1,149 @@
+{
+  "author": "Catan",
+  "bridge_sites": [
+    "-2,-1,3",
+    "-2,-3,5",
+    "-2,0,2",
+    "-2,2,0",
+    "-2,3,-1",
+    "0,-5,5",
+    "0,4,-4"
+  ],
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "rivers",
+  "map_version": 2,
+  "name": "The Rivers of Catan",
+  "notes": "Traders & Barbarians scenario: a river crossing the island, two swamplands, and bridge sites over the river. expansions.md 527-570.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "0,0,0",
+        "3,-3,0",
+        "3,0,-3",
+        "0,3,-3",
+        "-3,3,0",
+        "-3,0,3",
+        "0,-3,3",
+        "6,-6,0",
+        "6,-3,-3",
+        "6,0,-6",
+        "3,3,-6",
+        "0,6,-6",
+        "-3,6,-3",
+        "-6,6,0",
+        "-6,3,3",
+        "-6,0,6",
+        "-3,-3,6",
+        "0,-6,6",
+        "3,-6,3"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-3,-3,6": {
+            "number": 9,
+            "terrain": "ore"
+          },
+          "-3,0,3": {
+            "number": 4,
+            "terrain": "brick"
+          },
+          "-3,3,0": {
+            "number": 3,
+            "terrain": "wood"
+          },
+          "-3,6,-3": {
+            "terrain": "swampland"
+          },
+          "-6,0,6": {
+            "number": 9,
+            "terrain": "wheat"
+          },
+          "-6,3,3": {
+            "number": 8,
+            "terrain": "wheat"
+          },
+          "-6,6,0": {
+            "number": 8,
+            "terrain": "wheat"
+          },
+          "0,-3,3": {
+            "terrain": "river"
+          },
+          "0,-6,6": {
+            "number": 10,
+            "terrain": "ore"
+          },
+          "0,0,0": {
+            "terrain": "river"
+          },
+          "0,3,-3": {
+            "terrain": "river"
+          },
+          "0,6,-6": {
+            "number": 6,
+            "terrain": "sheep"
+          },
+          "3,-3,0": {
+            "number": 2,
+            "terrain": "wood"
+          },
+          "3,-6,3": {
+            "terrain": "swampland"
+          },
+          "3,0,-3": {
+            "number": 3,
+            "terrain": "wood"
+          },
+          "3,3,-6": {
+            "number": 6,
+            "terrain": "sheep"
+          },
+          "6,-3,-3": {
+            "number": 5,
+            "terrain": "brick"
+          },
+          "6,-6,0": {
+            "number": 4,
+            "terrain": "brick"
+          },
+          "6,0,-6": {
+            "number": 5,
+            "terrain": "sheep"
+          }
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 18
+        }
+      }
+    }
+  ],
+  "robber_start": "3,-6,3",
+  "suggested_victory_target": 10
+}

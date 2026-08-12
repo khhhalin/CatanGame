@@ -360,6 +360,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # off the dealt board into TB state. A no-op without the fishing rules.
         self.setup_fishing_board()
 
+        # Traders & Barbarians (Rivers): read the map's river-crossing bridge
+        # sites into `self.bridge_sites`. A no-op for a board that prints none.
+        self.setup_rivers_board()
+
         # The Fishermen scenario starts the robber beside the board, not on the
         # desert: it enters only on the first 7 or a knight (expansions.md 504).
         # Board generation may have dropped it on a desert, so clear it here.

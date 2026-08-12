@@ -52,6 +52,12 @@ DEFAULT_RESOURCES = {
     # deals no resource card (symbol empty, like the desert), and takes a watery
     # blue so it reads as open water inside the island rather than a resource hex.
     "lake":   {"name": "Lake",   "color": "#2f6288", "symbol": "",       "pattern": "solid"},
+    # Traders & Barbarians (Rivers): the river hex you build beside for coins,
+    # and the swampland that replaces the desert and starts the robber. Neither
+    # deals a card (symbol empty, like the desert). The river takes a watery
+    # blue; the swampland a dull green-brown bog.
+    "river":     {"name": "River",     "color": "#3f7fa8", "symbol": "", "pattern": "solid"},
+    "swampland": {"name": "Swampland", "color": "#6b6f45", "symbol": "", "pattern": "stipple"},
 }
 
 # The pattern styles the renderer knows how to draw; a definition's `pattern`

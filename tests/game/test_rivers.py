@@ -393,3 +393,71 @@ class TestScoringTiles:
         game = playing_game(wealthiest_settler=False, poor_settler=False)
         game.get_player('Alice').gold = 9
         assert game.river_tile_points('Alice') == 0
+
+
+class TestRiversBoard:
+    """The built-in Rivers map: dealt, and playable end to end."""
+
+    def _rivers_game(self, players=('Alice', 'Bob')):
+        from game import map_store, maps
+        defn = maps.parse_map(map_store.read_map('rivers'))
+        chosen = dict(rules_module.TB_RIVERS_RULES)
+        return Game(list(players), [], rng=random.Random(7), rules=chosen,
+                    map_definition=defn)
+
+    def test_the_map_deals_river_swamp_and_bridge_sites(self):
+        game = self._rivers_game()
+        river_hexes = [k for k, h in game.hexes.items() if h.type == 'river']
+        swamp_hexes = [k for k, h in game.hexes.items() if h.type == 'swampland']
+        assert river_hexes and swamp_hexes
+        assert len(game.bridge_sites) == 7
+        # The robber starts on a swampland hex, not beside the board.
+        assert game.robber_hex in swamp_hexes
+
+    def test_a_swampland_carries_no_number_token(self):
+        game = self._rivers_game()
+        for key, hex_obj in game.hexes.items():
+            if hex_obj.type in ('swampland', 'river'):
+                assert hex_obj.number is None, key
+
+    def test_every_bridge_site_is_a_real_buildable_edge(self):
+        game = self._rivers_game()
+        for edge_key in game.bridge_sites:
+            assert edge_key in game.edges
+            assert len(game.edges[edge_key].neighbors['vertices']) == 2
+
+    def test_a_setup_settlement_by_the_river_earns_a_coin_on_the_real_board(self):
+        game = self._rivers_game()
+        # A vertex that borders a river hex and is otherwise buildable.
+        river_hexes = {k for k, h in game.hexes.items() if h.type == 'river'}
+        vertex = next(
+            key for key, v in sorted(game.vertices.items())
+            if v.building is None and river_hexes & set(v.neighbors['hexes'])
+            and len(v.neighbors['hexes']) >= 2
+        )
+        placer = game.current_player_name()
+        result = game.place_settlement(placer, vertex)
+        assert result['success'] and result['river_gold'] == 1
+        assert game.get_player(placer).gold == 1
+
+    def test_a_bridge_is_built_on_a_real_site_on_the_real_board(self):
+        game = self._rivers_game()
+        game.game_phase = 'playing'
+        game.has_rolled_dice = True
+        edge_key = sorted(game.bridge_sites)[0]
+        vertex = game.edges[edge_key].neighbors['vertices'][0]
+        game.vertices[vertex].building = {'type': 'settlement', 'player': 'Alice'}
+        game.get_player('Alice').settlements.append(vertex)
+        game.get_player('Alice').resources = {'brick': 2, 'wood': 1}
+        result = game.build_bridge('Alice', edge_key)
+        assert result['success'] and game.get_player('Alice').gold == 3
+        assert game.edges[edge_key].road['kind'] == 'bridge'
+
+    def test_the_bridge_sites_survive_a_save_and_load(self, tmp_path):
+        from game import persistence
+        game = self._rivers_game()
+        before = set(game.bridge_sites)
+        path = str(tmp_path / 'rivers.json')
+        persistence.save(game, path)
+        reloaded = persistence.load(path)
+        assert set(reloaded.bridge_sites) == before

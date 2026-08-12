@@ -169,3 +169,12 @@ register(Terrain("spice", "spice", produces=None, v2=True))
 # starts on it (it is never coastal, and this scenario starts the robber off the
 # board anyway).
 register(Terrain("lake", "lake", produces=None, v2=True, token=False))
+
+# Traders & Barbarians, The Rivers of Catan. A river hex pays no resource card
+# and carries no token — its role is adjacency: settlements and roads built
+# beside it earn gold coins, and the paths that cross it are bridge sites. A
+# swampland hex likewise pays nothing and takes no token; it is the desert's
+# replacement, and the robber starts on one at set-up. Both are land, not sea, so
+# the buildable graph forms around them (a sea corner has no buildable vertex).
+register(Terrain("river", "river", produces=None, v2=True, token=False))
+register(Terrain("swampland", "swampland", produces=None, v2=True, token=False))
