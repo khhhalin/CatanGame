@@ -178,3 +178,61 @@ def handle_sell_resources_for_coins(data):
             return
         log_event('build', f"{name} bought a gold coin with {resource}", player=name)
         bump_and_broadcast()
+
+
+# --- Barbarian Attack: the scenario deck and the castle knights --------------
+
+@socketio.on('buy_barbarian_card')
+def handle_buy_barbarian_card(data):
+    got = _actor_for('barbarian_attack_deck', data)
+    if got is None:
+        return
+    session, name = got
+    with session.lock:
+        result = session.game.buy_barbarian_card(name)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} revealed a {result['card']} card", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('place_barbarian_knight')
+def handle_place_barbarian_knight(data):
+    got = _actor_for('barbarian_attack', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        edge_key = require_str(data.get('edge'), 'edge')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.place_barbarian_knight(name, edge_key)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} placed a knight", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('move_barbarian_knight')
+def handle_move_barbarian_knight(data):
+    got = _actor_for('barbarian_attack', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        from_edge = require_str(data.get('from'), 'from')
+        to_edge = require_str(data.get('to'), 'to')
+    except InvalidPayload:
+        return
+    pay_grain = bool(data.get('pay_grain'))
+    with session.lock:
+        result = session.game.move_barbarian_knight(name, from_edge, to_edge,
+                                                     pay_grain=pay_grain)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} moved a knight", player=name)
+        bump_and_broadcast()
