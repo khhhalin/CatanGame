@@ -237,6 +237,10 @@ def serialize(game: Game) -> dict:
         # markers and destinations, token supplies, the undiscovered pool and its
         # number stacks. Absent (None) on a table without the expansion.
         'ep': game.ep.snapshot() if game.ep is not None else None,
+        # Traders & Barbarians (Fishermen): the fish-token supply and discard,
+        # each player's private fish hand, the old-boot holder, and the board's
+        # fishing grounds and lake. Absent (None) on a table without the scenario.
+        'tb': game.tb.snapshot() if game.tb is not None else None,
     }
 
     # The whole map definition, inlined, never its id. The file on disk can be
@@ -445,6 +449,12 @@ def deserialize(data: dict, config=None) -> Game:
     saved_ep = data.get('ep')
     if saved_ep and game.ep is not None:
         game.ep.load(saved_ep)
+
+    # Traders & Barbarians: lay the saved fish supply, hands and old boot back
+    # over the fresh container the constructor seeded. Absent on a pre-T&B save.
+    saved_tb = data.get('tb')
+    if saved_tb and game.tb is not None:
+        game.tb.load(saved_tb)
 
     return game
 

@@ -6,6 +6,7 @@ from game import cities_knights as ck_module
 from game import ep as ep_module
 from game import modifiers as modifiers_module
 from game import rules as rules_module
+from game import tb as tb_module
 from game.bank import Bank
 from game.board import BoardBuilder
 from game.cargo import CargoRules
@@ -13,6 +14,7 @@ from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
 from game.ep_pirate import EpPirateRules
 from game.exploration import ExplorationRules
+from game.fishing import FishingRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
 from game.missions import MissionRules
@@ -35,7 +37,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
-           PendingChoiceRules, TurnClock):
+           FishingRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -239,6 +241,17 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             self.setup_fish()
             self.setup_spices()
 
+        # The Traders & Barbarians (Fishermen) equivalent: the fish-token supply,
+        # each player's private fish hand, and the old boot. Built only when a
+        # rule needs it; its presence is not a rule. The fishing grounds and the
+        # lake are read off the board in `setup_fishing_board` once it is dealt.
+        self.tb = None
+        if rules_module.needs_tb_state(self.rules):
+            self.tb = tb_module.TB(rng=self.rng)
+            self.tb.seed_supply()
+            for player in self.players:
+                self.tb.register(player.name)
+
         # How many times each player has converted at the gold supply this turn
         # (player -> {'sells', 'buys'}), reset in start_turn. Both conversions
         # are capped per turn — see game/gold.py.
@@ -334,6 +347,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # number-token stacks a discovery draws from, now the board's hidden
         # tiles exist. A no-op without the exploration rule.
         self._seed_exploration_pool()
+
+        # Traders & Barbarians (Fishermen): read the fishing grounds and the lake
+        # off the dealt board into TB state. A no-op without the fishing rules.
+        self.setup_fishing_board()
+
+        # The Fishermen scenario starts the robber beside the board, not on the
+        # desert: it enters only on the first 7 or a knight (expansions.md 504).
+        # Board generation may have dropped it on a desert, so clear it here.
+        if self.rules['robber_starts_off_board']:
+            self.robber_hex = None
 
         # Trade manager. How long an offer stays open is the table's, and the
         # server is the only clock that counts: the countdown a proposer and a
@@ -501,7 +524,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         itself, which is how a new scoring rule stays in one place.
         """
         points = self.victory_points_for(player_name)
-        if points < self.victory_points_to_win:
+        # The old boot raises only its holder's threshold by 1 (expansions.md
+        # 518); everyone else wins on the table's target. Zero without the rule.
+        target = self.victory_points_to_win + self.personal_target_delta(player_name)
+        if points < target:
             return None
         self.game_state = "finished"
         return points
@@ -1085,6 +1111,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # the undiscovered-pool count. Mission progress is public; the pool's
             # tile identities are the one secret, redacted inside `to_dict`.
             'ep': self.ep.to_dict(viewer) if self.ep else None,
+            # Traders & Barbarians (Fishermen): the fish-supply count, the old
+            # boot holder, and the board's fishing grounds and lake. A viewer's
+            # own fish hand is included in full; every other hand is a count
+            # only, redacted inside `to_dict` the way a resource hand is.
+            'tb': self.tb.to_dict(viewer) if self.tb else None,
             'harbormaster_holder': self.harbormaster_holder,
             'harbor_points': self.harbor_points,
             # Only the total: the per-type breakdown is the deck order, and
@@ -1431,6 +1462,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # A 7 produces nothing; distribute_resources knows that itself.
         gained = self.distribute_resources(total)
 
+        # Fishermen: fishing grounds and the lake draw fish on their numbers,
+        # after the resource walk so the short-supply check sees the whole roll.
+        # A no-op without the fishing rules. Kept apart from `gained` because a
+        # fish token is not a resource card.
+        fish = self.distribute_fish(total)
+
         return {
             'success': True,
             'error': '',
@@ -1447,6 +1484,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Gold the roll paid — the empty-roll bonus and any gold field —
             # kept apart from `gained` because gold is a currency, not a card.
             'gold': dict(sorted(self.gold_gained.items())),
+            # Fish tokens the roll drew (player -> count). Empty when no fishing
+            # source matched or the supply was too short to pay the whole table.
+            'fish': fish,
         }
 
     def next_dice(self) -> tuple:
