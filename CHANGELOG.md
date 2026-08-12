@@ -26,6 +26,12 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.4.0 — 2026-08-12 16:24
+
+- **New** Fishermen of Catan, a new scenario: fishing grounds on the frame and a lake in the middle pay out fish tokens.
+- **New** Spend fish for a one-off boost — send the robber off the board, steal a card, take a card from the bank, a free road, or a free development card. Mind the old boot, which raises your own target to win.
+- **Fixed** [reported] Explorers & Pirates is now a single lobby preset (the whole expansion, to 17 points) instead of five separate scenario presets; every rule it ticks is still yours to turn off.
+
 ## v3.3.0 — 2026-08-11 22:41
 
 - **New** Resources and buildings are now editable data — a resource is a name, colour, symbol and pattern; a building a name, cost and icon.
