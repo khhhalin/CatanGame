@@ -236,3 +236,117 @@ def handle_move_barbarian_knight(data):
             return
         log_event('build', f"{name} moved a knight", player=name)
         bump_and_broadcast()
+
+
+# --- The main scenario: wagons, deliveries, the baggage train and the deck ----
+
+@socketio.on('move_wagon')
+def handle_move_wagon(data):
+    got = _actor_for('trade_caravans', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        to_vertex = require_str(data.get('to'), 'to')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.move_wagon(name, to_vertex)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        delivery = result.get('delivery') or {}
+        if delivery.get('delivered'):
+            log_event('build',
+                      f"{name} delivered {delivery['delivered']} for {delivery['gold']} gold",
+                      player=name)
+        else:
+            log_event('build', f"{name} moved their wagon", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('boost_wagon')
+def handle_boost_wagon(data):
+    got = _actor_for('trade_caravans', data)
+    if got is None:
+        return
+    session, name = got
+    with session.lock:
+        result = session.game.boost_wagon(name)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} paid grain for more wagon movement", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('upgrade_baggage_train')
+def handle_upgrade_baggage_train(data):
+    got = _actor_for('baggage_train', data)
+    if got is None:
+        return
+    session, name = got
+    with session.lock:
+        result = session.game.upgrade_baggage_train(name)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} upgraded their baggage train", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('buy_trade_card')
+def handle_buy_trade_card(data):
+    got = _actor_for('trade_dev_deck', data)
+    if got is None:
+        return
+    session, name = got
+    with session.lock:
+        result = session.game.buy_trade_card(name)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} revealed a {result['card']} card", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('move_path_barbarian')
+def handle_move_path_barbarian(data):
+    got = _actor_for('roaming_barbarians', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        from_edge = require_str(data.get('from'), 'from')
+        to_edge = require_str(data.get('to'), 'to')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.move_path_barbarian(name, from_edge, to_edge)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} moved a barbarian", player=name)
+        bump_and_broadcast()
+
+
+@socketio.on('drive_off_barbarian')
+def handle_drive_off_barbarian(data):
+    got = _actor_for('roaming_barbarians', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        barbarian_edge = require_str(data.get('barbarian'), 'barbarian')
+        to_edge = require_str(data.get('to'), 'to')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.drive_off_barbarian(name, barbarian_edge, to_edge)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        outcome = 'drove off' if result.get('driven_off') else 'failed to drive off'
+        log_event('build', f"{name} {outcome} a barbarian (rolled {result['die']})",
+                  player=name)
+        bump_and_broadcast()
