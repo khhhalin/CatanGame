@@ -2198,6 +2198,39 @@ button:disabled {
     font-size: var(--text-sm);
 }
 
+/* The Fishermen of Catan panel: reuses the ep-* strip and supply styling, with
+   its own row of fish-token pips for the player's private hand. */
+.right-fish {
+    flex: none;
+    padding: var(--space-2) 0 var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+}
+
+.fish-hand {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin: var(--space-2) 0;
+    min-height: 1.4em;
+}
+
+.fish-token {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 4px;
+    border-radius: var(--radius-1, 4px);
+    background: var(--surface-2, rgba(63, 159, 184, 0.15));
+    border: 1px solid var(--hairline);
+    font-size: var(--text-xs, 0.75rem);
+    line-height: 1.2;
+}
+
+.fish-empty {
+    color: var(--text-muted);
+}
+
 .ep-mission {
     display: flex;
     align-items: baseline;

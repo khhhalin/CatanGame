@@ -477,6 +477,29 @@
                         <div class="ep-players" id="ep-players"></div>
                     </div>
 
+                    <!-- The Fishermen of Catan: the fish-token supply, this
+                         player's own hand (private — others see only a count),
+                         who holds the old boot, and the spend ladder. Hidden
+                         until a board payload carries tb state; fish.js fills it
+                         from `board.tb`. -->
+                    <div class="right-fish hidden" id="right-fish">
+                        <div class="right-eyebrow">The Fishermen of Catan</div>
+                        <div class="ep-supply" id="fish-supply"></div>
+                        <div class="fish-hand" id="fish-hand"></div>
+                        <!-- The spend ladder. Each button fires the matching
+                             benefit; steal and take-a-card reveal a pick row
+                             first. fish.js enables each only when the hand can
+                             pay it and it is your turn. -->
+                        <div class="ep-actions" id="fish-actions">
+                            <button type="button" class="ep-action-btn" id="fish-robber-off" data-benefit="robber_off">Robber off (2)</button>
+                            <button type="button" class="ep-action-btn" id="fish-steal" data-benefit="steal">Steal a card (3)</button>
+                            <button type="button" class="ep-action-btn" id="fish-bank-card" data-benefit="bank_card">Bank card (4)</button>
+                            <button type="button" class="ep-action-btn" id="fish-free-road" data-benefit="free_road">Free road (5)</button>
+                            <button type="button" class="ep-action-btn" id="fish-free-dev" data-benefit="free_dev">Free dev card (7)</button>
+                        </div>
+                        <div class="ep-gold-pick hidden" id="fish-pick"></div>
+                    </div>
+
                     <!-- The Details folds: the build costs and every expansion
                          subject, each a chip that states its headline numbers
                          and a popover that carries the detail and the actions.

@@ -62,7 +62,11 @@ class FishingRules:
                 number = getattr(meta, 'fishing_ground', None) if meta else None
                 if number is None:
                     continue
-                grounds.append({'number': number, 'vertices': self._coastal_vertices(hex_key)})
+                grounds.append({
+                    'hex': hex_key,
+                    'number': number,
+                    'vertices': self._coastal_vertices(hex_key),
+                })
             self.tb.fishing_grounds = grounds
 
         if self.rules['lake_hex']:

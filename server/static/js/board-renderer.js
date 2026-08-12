@@ -1340,6 +1340,25 @@ function drawHexBadge(ctx, x, y, r, fill, text = null, textColor = '#ffffff') {
  * spice villages (the sacks still on them). A no-op on a table without any ep
  * state.
  */
+/**
+ * Draw the Fishermen-of-Catan markers on `board.tb`: the production number on
+ * each fishing-ground frame tile, so a player can see which sea hexes pay fish
+ * and to whom. The lake itself is a plain terrain tile, drawn like any hex. A
+ * no-op on a table without the scenario.
+ */
+function drawFishermenState(ctx, tb, hexPositions, hexRadius) {
+    if (!tb) {
+        return;
+    }
+    const badge = hexRadius * 0.3;
+    for (const ground of tb.fishing_grounds || []) {
+        const pos = hexPositions[ground.hex];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y, badge, '#0e3a2a', ground.number, '#dff0f6');
+        }
+    }
+}
+
 function drawEpState(ctx, ep, hexPositions, playerColors, hexRadius) {
     if (!ep) {
         return;
@@ -2132,6 +2151,9 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     // the three missions' destinations (lair tokens, fish shoals, spice
     // villages). Over the tiles and buildings, under the choice ring and ghost.
     drawEpState(ctx, boardData.ep, hexPositions, playerColors, hexRadius);
+
+    // The Fishermen of Catan fishing-ground numbers on their frame tiles.
+    drawFishermenState(ctx, boardData.tb, hexPositions, hexRadius);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.
