@@ -182,6 +182,8 @@ def serialize(game: Game) -> dict:
         'player_islands': game.player_islands,
         'island_points': game.island_points,
         'must_move_robber': game.must_move_robber,
+        # Main scenario: a barbarian move owed after a 7 survives a save.
+        'must_move_barbarian': game.must_move_barbarian,
         'must_choose_victim': game.must_choose_victim,
         'robber_victims': game.robber_victims,
         'players_needing_discard': game.players_needing_discard,
@@ -392,6 +394,7 @@ def deserialize(data: dict, config=None) -> Game:
     for field in ('current_player_index', 'game_state', 'game_phase', 'setup_turn',
                   'setup_action', 'last_setup_settlement', 'turn_count',
                   'has_rolled_dice', 'robber_hex', 'must_move_robber',
+                  'must_move_barbarian',
                   'must_choose_victim', 'robber_victims', 'players_needing_discard',
                   'free_roads_remaining', 'pending_invention', 'pending_monopoly',
                   'state_version', 'longest_road_holder', 'largest_army_holder',
