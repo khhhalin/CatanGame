@@ -500,6 +500,22 @@
                         <div class="ep-gold-pick hidden" id="fish-pick"></div>
                     </div>
 
+                    <!-- The Rivers of Catan: gold coins (own total, and who holds
+                         the Wealthiest / Poor Settler tiles), the coin buy/sell,
+                         and the Build bridge gesture. Hidden until a board payload
+                         carries a Rivers rule; rivers.js fills it from `board`. -->
+                    <div class="right-fish hidden" id="right-rivers">
+                        <div class="right-eyebrow">The Rivers of Catan</div>
+                        <div class="ep-supply" id="rivers-coins"></div>
+                        <div class="ep-actions" id="rivers-actions">
+                            <button type="button" class="ep-action-btn" id="rivers-build-bridge">Build bridge</button>
+                            <button type="button" class="ep-action-btn" id="rivers-sell-coin">Buy a coin</button>
+                            <button type="button" class="ep-action-btn" id="rivers-buy-resource">Spend coins</button>
+                        </div>
+                        <div class="ep-gold-pick hidden" id="rivers-pick"></div>
+                        <div class="ep-players" id="rivers-players"></div>
+                    </div>
+
                     <!-- The Details folds: the build costs and every expansion
                          subject, each a chip that states its headline numbers
                          and a popover that carries the detail and the actions.

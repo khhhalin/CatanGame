@@ -45,12 +45,13 @@ const PLACEMENT_NOUNS = {
     ship: 'Ship',
     ship_move: 'Ship move',
     pirate: 'Pirate',
+    bridge: 'Bridge',
 };
 
 // Which part of the board each kind snaps to. The renderer keeps the same two
 // lists for drawing; both are short and both would be wrong in the same way if
 // a kind were added to one and not the other.
-const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road'];
+const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge'];
 const HEX_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // What the announcement last said, so aiming at the same spot twice does not
@@ -415,6 +416,10 @@ function isBlocked(kind, key) {
         if (board.edges[key]?.road) {
             return true;
         }
+        // A normal road may never sit on a river-crossing bridge site.
+        if ((board.bridge_sites || []).includes(key)) {
+            return true;
+        }
         // The setup road must touch the settlement just placed, and which one
         // that was is not in the payload. Own buildings is the closest the
         // client can get without guessing.
@@ -422,6 +427,20 @@ function isBlocked(kind, key) {
             ? !(board.edges[key].neighbors.vertices || [])
                 .some(vertexKey => board.vertices[vertexKey]?.building?.player === me)
             : !roadConnects(board, key, me);
+    }
+
+    if (kind === 'bridge') {
+        const edge = board.edges[key];
+        // A bridge only spans a bridge site, only on an empty side, and only
+        // when it joins the player's own network. The server re-checks the cost
+        // and the per-player cap; the client errs permissive on both.
+        if (!edge || !(board.bridge_sites || []).includes(key)) {
+            return true;
+        }
+        if (edge.road || edge.ship) {
+            return true;
+        }
+        return !roadConnects(board, key, me);
     }
 
     const vertex = board.vertices[key];
@@ -673,6 +692,8 @@ function commit(target) {
         emitGame('place_settlement', { name, vertex: target.key });
     } else if (target.kind === 'road') {
         emitGame('place_road', { name, edge: target.key });
+    } else if (target.kind === 'bridge') {
+        emitGame('build_bridge', { name, edge: target.key });
     } else if (target.kind === 'city') {
         emitGame('upgrade_city', { name, vertex: target.key });
     } else if (isProgressMode(target.kind)) {

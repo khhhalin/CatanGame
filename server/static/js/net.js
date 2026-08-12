@@ -16,6 +16,7 @@ import { displayError, logToGameConsole, showNotice } from './notices.js';
 import { offerVictimChoice, openDiscardModal, renderBank, renderDevCards, renderGameSidebar, renderResourcePanel, updateButtonColors, updateConsoleVisibility, updateGameUI } from './panels.js';
 import { renderExplorersAndPirates } from './ep.js';
 import { renderFishermen } from './fish.js';
+import { renderRivers } from './rivers.js';
 import { renderSeafarers } from './seafarers.js';
 import { forgetPlacements, notePlacements, playTurnSound } from './sound.js';
 import { setConnectionStatus, socket, socketAvailable } from './socket.js';
@@ -129,6 +130,7 @@ socket.on('game_started', (data) => {
     renderSeafarers();
     renderExplorersAndPirates();
     renderFishermen();
+    renderRivers();
     renderPendingChoices();
 
     // Show what the table agreed to before the game began
@@ -184,6 +186,7 @@ socket.on('game_state', (data) => {
         renderSeafarers();
         renderExplorersAndPirates();
     renderFishermen();
+    renderRivers();
         // A reload or a reconnect in the middle of a question: the snapshot
         // carries the open choice, so the player is asked again rather than
         // returning to a table that has silently stopped.
@@ -223,6 +226,7 @@ socket.on('turn_changed', (data) => {
     renderSeafarers();
     renderExplorersAndPirates();
     renderFishermen();
+    renderRivers();
     console.log('Turn changed. Current player:', data.current_player);
 
     // `turn_changed` carries the fresh clocks a fraction before the board
@@ -348,6 +352,7 @@ socket.on('board_updated', (data) => {
     renderSeafarers();
     renderExplorersAndPirates();
     renderFishermen();
+    renderRivers();
     renderPendingChoices();
     checkLogGap(data);
 
@@ -379,6 +384,7 @@ socket.on('event_die', (data) => {
     renderSeafarers();
     renderExplorersAndPirates();
     renderFishermen();
+    renderRivers();
 });
 
 // The attack is resolved server-side inside `roll_dice` - there is no phase in

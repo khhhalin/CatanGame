@@ -108,7 +108,7 @@ const GHOST_RING_RADIUS = 14;
 // the answer, and three separate `=== 'road'` checks is how they stop agreeing.
 // The `progress_` kinds are a progress card being aimed: a Merchant or a Bishop
 // lands on a hex, an Inventor on two number tokens, a Diplomat on a road.
-const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move', 'progress_road'];
+const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge'];
 const HEX_GHOST_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // Cache of the last computed layout, keyed by board data identity.
@@ -1078,6 +1078,32 @@ function drawRoad(ctx, x1, y1, x2, y2, playerColor) {
     ctx.stroke();
 }
 
+/**
+ * A bridge (Rivers of Catan): a road piece spanning a river crossing. Drawn as
+ * the owner's road with pale plank slats laid across it, so it reads as a
+ * structure over the water and never as an ordinary road.
+ */
+function drawBridge(ctx, x1, y1, x2, y2, playerColor) {
+    drawRoad(ctx, x1, y1, x2, y2, playerColor);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.hypot(dx, dy) || 1;
+    // A unit vector across the road, for the plank slats.
+    const nx = -dy / length;
+    const ny = dx / length;
+    const half = 5;
+    ctx.strokeStyle = 'rgba(246, 249, 252, 0.9)';
+    ctx.lineWidth = 2;
+    for (const t of [0.3, 0.5, 0.7]) {
+        const cx = x1 + dx * t;
+        const cy = y1 + dy * t;
+        ctx.beginPath();
+        ctx.moveTo(cx - nx * half, cy - ny * half);
+        ctx.lineTo(cx + nx * half, cy + ny * half);
+        ctx.stroke();
+    }
+}
+
 /* -------------------------------------------------------------------------
  * Ships and the pirate (Seafarers)
  *
@@ -1834,7 +1860,9 @@ function drawGhost(ctx, layout, preview) {
         const pos = edgePositions[preview.key];
         if (pos) {
             ctx.setLineDash([]);
-            if (preview.kind === 'road') {
+            if (preview.kind === 'road' || preview.kind === 'bridge') {
+                // A bridge draws as a road ghost — it is a road piece that spans
+                // the river crossing, and the board already draws a built one so.
                 drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
             } else if (preview.kind !== 'progress_road') {
                 drawShip(ctx, pos, color);
@@ -2071,7 +2099,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (pos && edge.road) {
             const playerColor = playerColors[edge.road.player] || null;
-            drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, playerColor);
+            if (edge.road.kind === 'bridge') {
+                drawBridge(ctx, pos.x1, pos.y1, pos.x2, pos.y2, playerColor);
+            } else {
+                drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, playerColor);
+            }
         }
     }
 
