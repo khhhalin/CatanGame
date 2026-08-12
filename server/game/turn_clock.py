@@ -53,6 +53,14 @@ class TurnClock:
         # The Caravans camel is owed only for the turn that earned it; a fresh
         # turn starts with none due (expansions.md 578).
         self.camel_owed = False
+        # Traders & Barbarians main scenario: a fresh wagon-movement allowance
+        # (lazily set on the first move from the baggage-train card), the grain
+        # boost unspent, no barbarian driven yet, and no barbarian move owed
+        # (a 7 sets it, and it is cleared when the barbarian is moved).
+        self.wagon_points_left = None
+        self.wagon_grain_used = False
+        self.barbarians_driven = set()
+        self.must_move_barbarian = None
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.
@@ -74,6 +82,11 @@ class TurnClock:
         """End the current turn at a player's request."""
         if self.must_move_robber:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+
+        # Main scenario: a 7 makes the roller move a barbarian before ending
+        # their turn, exactly as the robber move blocks a turn's end.
+        if self.must_move_barbarian:
+            return refused('MUST_MOVE_BARBARIAN', 'You must move a barbarian first')
 
         if self.must_choose_victim:
             return refused('MUST_CHOOSE_VICTIM', 'You must choose a victim to steal from')

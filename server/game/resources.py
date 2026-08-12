@@ -67,6 +67,12 @@ DEFAULT_RESOURCES = {
     # can never be conquered; a cool stone grey with a solid fill sets it apart
     # from the sandy coasts.
     "castle":    {"name": "Castle",    "color": "#8a8f99", "symbol": "", "pattern": "solid"},
+    # Traders & Barbarians (main scenario): the quarry and the glassworks join the
+    # castle as the three trade hexes a wagon delivers to. Neither deals a card
+    # (symbol empty); the quarry a warm marble-tan, the glassworks a cool teal, so
+    # the three trade hexes read apart at a glance.
+    "quarry":     {"name": "Quarry",     "color": "#b89b74", "symbol": "", "pattern": "solid"},
+    "glassworks": {"name": "Glassworks", "color": "#5f9ea0", "symbol": "", "pattern": "solid"},
 }
 
 # The pattern styles the renderer knows how to draw; a definition's `pattern`

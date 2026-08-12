@@ -1021,6 +1021,69 @@ RULES += [
 ]
 
 
+# --- Traders & Barbarians: the main scenario ----------------------------
+# The wagon scenario: each player drives a wagon between three trade hexes,
+# delivering commodities for gold and victory points. Decomposed the way every
+# other expansion is — the delivery run (`trade_caravans`), the upgradeable
+# baggage-train card (`baggage_train`), the three path barbarians that block a
+# wagon (`roaming_barbarians`) and the scenario's own 26-card deck
+# (`trade_dev_deck`) are four separate switches, every one off by default so the
+# base game is unchanged. The delivery run needs the coin economy it is paid in
+# and the scenario deck it draws Swift Journey and Knight cards from, so it
+# declares both in DEPENDENCIES; the baggage train and the path barbarians are
+# meaningless without the wagon, so each depends on it.
+RULES += [
+    _bool("trade_caravans", "Trade wagons", False,
+          "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
+          "expansions.md 679, 696-719",
+          "Your wagon starts on your city's intersection and, after you finish "
+          "trading and building, moves intersection to intersection along paths, "
+          "spending movement points — 2 for a path with no road, 1 for one of "
+          "your own roads, and 1 plus 1 gold to the owner for a rival's road. "
+          "Reaching a trade hex (castle, quarry or glassworks) that matches the "
+          "commodity you carry delivers it for gold and 1 victory point, then you "
+          "draw the next commodity, which names your next destination. Needs the "
+          "trade-hex board.",
+          group=EXPANSION, suggests_victory_target=13),
+    _bool("baggage_train", "Baggage train", False,
+          "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
+          "expansions.md 689, 720-726",
+          "An upgradeable card of your own: upgrading it (paying the resources on "
+          "the back of the next card) raises your wagon's movement points (4 up "
+          "to 7), the gold each delivery pays (1 up to 5) and the die numbers "
+          "that drive off a barbarian. The fifth and last upgrade is worth 1 "
+          "victory point.",
+          group=EXPANSION),
+    _bool("roaming_barbarians", "Roaming barbarians", False,
+          "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
+          "expansions.md 690, 727-737, 745",
+          "Three barbarians sit on paths. Crossing a barbarian's path costs 2 "
+          "extra movement points. A rolled 7 makes you move one barbarian to a "
+          "free path, drawing a card from the owner of any road you land it on. "
+          "Once your baggage train is upgraded you may pause beside a barbarian "
+          "and roll to drive it off.",
+          group=EXPANSION),
+    _bool("trade_dev_deck", "Trade wagon deck", False,
+          "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
+          "expansions.md 691, 745-748",
+          "Replaces the base development deck with the scenario's 26 cards — 15 "
+          "Knight (move a barbarian), 3 Road Building, 3 Swift Journey (move your "
+          "wagon a second time) and 1 each Toolmaking, Glassmaking and Quarry "
+          "worth a victory point. Each card is bought and resolved through its "
+          "own path, not the base deck.",
+          group=EXPANSION),
+]
+
+RULES += [
+    _int("wagon_movement_points", "Wagon movement points", 4, 1, 12,
+         "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
+         "expansions.md 704",
+         "How many movement points a wagon has each turn from the first baggage "
+         "train card, before any upgrade.",
+         group=EXPANSION),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -1084,6 +1147,13 @@ DEPENDENCIES = {
     # scenario's own 26-card deck; with no coin economy and no deck to draw a
     # Knighthood from, the scenario cannot be played, so it needs both.
     "barbarian_attack": ("gold_coins", "barbarian_attack_deck"),
+    # Traders & Barbarians, the main scenario. The wagon run is paid in gold
+    # coins and draws its Swift Journey and Knight cards from the scenario's own
+    # 26-card deck, so it needs both. The baggage-train card and the path
+    # barbarians are meaningless without a wagon to move, so each needs the run.
+    "trade_caravans": ("gold_coins", "trade_dev_deck"),
+    "baggage_train": ("trade_caravans",),
+    "roaming_barbarians": ("trade_caravans",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -1162,18 +1232,49 @@ EXCLUSIONS = [
             "castle. Pick one."
         ),
     },
-    # One development deck per board. The Barbarian Attack deck and the Cities &
-    # Knights progress decks each replace the base deck outright, so a board runs
-    # at most one of them. (The Traders & Barbarians main-scenario deck is the
-    # third member; it lands with that scenario, not here.)
+    # One development deck per board. The Barbarian Attack deck, the Traders &
+    # Barbarians main-scenario wagon deck and the Cities & Knights progress decks
+    # each replace the base deck outright, so a board runs at most one of them.
     {
         "id": "scenario_dev_deck",
-        "rules": ("barbarian_attack_deck", "progress_cards"),
+        "rules": ("barbarian_attack_deck", "trade_dev_deck", "progress_cards"),
         "kind": "hard",
         "reason": (
-            "The Barbarian Attack deck and the Cities & Knights progress decks "
-            "each replace the base development deck outright — a board deals one "
-            "deck, not two. Pick one."
+            "The Barbarian Attack deck, the Traders & Barbarians wagon deck and "
+            "the Cities & Knights progress decks each replace the base "
+            "development deck outright — a board deals one deck, not two. Pick "
+            "one."
+        ),
+    },
+    # The main-scenario path barbarians and the Cities & Knights knights are two
+    # unrelated barbarian systems on one board — the roaming barbarians block a
+    # wagon on the paths, the C&K knights defend cities from the barbarian ship.
+    # As with `barbarian_attack` above, only `knights` is named: C&K
+    # `barbarians` DEPENDS on `knights`, so excluding `knights` alone refuses
+    # every reachable clash while leaving the C&K stack coherent.
+    {
+        "id": "roaming_barbarian_knight_system",
+        "rules": ("roaming_barbarians", "knights"),
+        "kind": "hard",
+        "reason": (
+            "Two unrelated barbarian systems on one board — the roaming "
+            "barbarians that block your wagon on the paths, and the Cities & "
+            "Knights knights that defend your cities from the barbarian ship. "
+            "Pick one."
+        ),
+    },
+    # The two Traders & Barbarians barbarian systems cannot share a board: the
+    # coastal war's figures land on hexes and are fought by castle knights, while
+    # the main scenario's roaming barbarians sit on paths and block wagons.
+    {
+        "id": "tb_barbarian_system",
+        "rules": ("roaming_barbarians", "barbarian_attack"),
+        "kind": "hard",
+        "reason": (
+            "Two Traders & Barbarians barbarian systems on one board — the "
+            "Barbarian Attack figures on the coast fought off by castle knights, "
+            "and the main-scenario barbarians that sit on the paths and block "
+            "wagons. Pick one."
         ),
     },
 ]
@@ -1229,6 +1330,13 @@ TB_STATE_RULES = (
     # deck in the same container — see game/tb.py.
     "barbarian_attack",
     "barbarian_attack_deck",
+    # The main scenario keeps each player's wagon and carried commodity, the
+    # baggage-train levels, the trade-hex commodity stacks and the path-barbarian
+    # positions in the same container — see game/tb.py.
+    "trade_caravans",
+    "baggage_train",
+    "roaming_barbarians",
+    "trade_dev_deck",
 )
 
 # The rule set the single `cities_and_knights` toggle used to stand for. Kept
@@ -1366,6 +1474,28 @@ TB_BARBARIAN_ATTACK_RULES = {
 }
 
 
+# Traders & Barbarians, the main scenario. Ticks the wagon run, the baggage
+# train, the roaming barbarians, the scenario deck and the coin economy; starts
+# each player with a city in place of the second settlement (695 — the existing
+# setup_second_city rule), drops the Longest Road card the scenario does not use
+# (693), re-rolls 2s and 12s (739 — the existing no_two_or_twelve dice set), and
+# points the table at the built-in trade-hex board. Played to 13 (749) — the
+# target the wagon rule suggests; the Harbormaster variant would raise it to 14,
+# which the lobby can still do by hand.
+TB_MAIN_RULES = {
+    "trade_caravans": True,
+    "baggage_train": True,
+    "roaming_barbarians": True,
+    "trade_dev_deck": True,
+    "gold_coins": True,
+    "setup_second_city": True,
+    "longest_road_card": False,
+    "dice_set": "no_two_or_twelve",
+    "board_map": "traders-barbarians",
+    "victory_target": 13,
+}
+
+
 PRESETS = [
     {
         "id": "base_game",
@@ -1497,6 +1627,23 @@ PRESETS = [
         "rules": dict(TB_BARBARIAN_ATTACK_RULES),
     },
     {
+        "id": "tb_main",
+        "name": "Traders & Barbarians",
+        "source": "Catan: Traders & Barbarians rulebook, Scenario: Traders & "
+                  "Barbarians; expansions.md 677-755",
+        "summary": (
+            "The main scenario: drive your wagon between the castle, quarry and "
+            "glassworks, delivering commodities for gold and a victory point "
+            "each, upgrading your baggage train as you go. Three barbarians roam "
+            "the paths and block your way, the scenario's own 26-card deck "
+            "replaces the base deck, each player starts with a city, there is no "
+            "robber and no Longest Road card, and 2s and 12s are re-rolled. Dealt "
+            "on the built-in trade-hex map and played to 13. Every switch it "
+            "ticks stays one you can untick."
+        ),
+        "rules": dict(TB_MAIN_RULES),
+    },
+    {
         "id": "explorers_and_pirates",
         "name": "Explorers & Pirates",
         "source": "Catan: Explorers & Pirates rulebook, Scenario: Explorers & "
@@ -1542,6 +1689,9 @@ def dev_deck_in_play(chosen: dict) -> bool:
     `buy_dev_card`.
     """
     if chosen.get("barbarian_attack_deck"):
+        return False
+    # The Traders & Barbarians wagon deck replaces the base deck the same way.
+    if chosen.get("trade_dev_deck"):
         return False
     if not chosen.get("progress_cards"):
         return True

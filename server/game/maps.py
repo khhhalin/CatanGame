@@ -100,6 +100,9 @@ MAX_BRIDGE_SITES = 32
 # Caravan-start arrows a Caravans map may print. The printed scenario has 3 (one
 # per caravan); the cap is generous room for a variant and bounds the payload.
 MAX_OASIS_ARROWS = 12
+# Roaming barbarians a main-scenario map may print. The printed scenario has 3;
+# the cap is generous room for a variant and bounds the payload.
+MAX_BARBARIAN_PATHS = 12
 MAX_NAME = 64
 MAX_NOTES = 512
 
@@ -385,6 +388,12 @@ class MapDefinition:
     # is just the starting edge. A map-level field like `bridge_sites`, because a
     # path is not owned by a hex. Empty on every map that prints none.
     oasis_arrows: tuple = ()
+    # The Traders & Barbarians main-scenario barbarian paths: the hex-side (edge)
+    # keys the three roaming barbarians start on (expansions.md 690). A map-level
+    # field like `bridge_sites`, because a path is not owned by a hex. Empty on
+    # every map that prints none. The trade hexes themselves are read off the
+    # dealt board by terrain (castle/quarry/glassworks), so they need no field.
+    barbarian_paths: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -410,6 +419,8 @@ class MapDefinition:
             data['bridge_sites'] = list(self.bridge_sites)
         if self.oasis_arrows:
             data['oasis_arrows'] = list(self.oasis_arrows)
+        if self.barbarian_paths:
+            data['barbarian_paths'] = list(self.barbarian_paths)
         return data
 
     def region_of(self) -> dict:
@@ -748,12 +759,29 @@ def parse_map(data: dict) -> MapDefinition:
         oasis_arrows.add(key)
     oasis_tuple = tuple(sort_hex_keys(oasis_arrows))
 
+    barbarian_paths_raw = data.get('barbarian_paths') or []
+    if not isinstance(barbarian_paths_raw, list) \
+            or len(barbarian_paths_raw) > MAX_BARBARIAN_PATHS:
+        raise InvalidPayload(
+            'INVALID_MAP',
+            f'barbarian_paths is a list of at most {MAX_BARBARIAN_PATHS} hex sides')
+    barbarian_paths: set[str] = set()
+    for key in barbarian_paths_raw:
+        coords = parse_edge_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex side')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP',
+                                 f'barbarian path {key!r} is outside the frame')
+        barbarian_paths.add(key)
+    barbarian_tuple = tuple(sort_hex_keys(barbarian_paths))
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
         excluded_hexes=excluded_tuple, bridge_sites=bridge_tuple,
-        oasis_arrows=oasis_tuple,
+        oasis_arrows=oasis_tuple, barbarian_paths=barbarian_tuple,
     )
 
 

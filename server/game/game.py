@@ -23,6 +23,7 @@ from game.missions import MissionRules
 from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
 from game.missions_spices import MissionSpicesRules
+from game.path_barbarians import PathBarbarianRules
 from game.pending_choice import PendingChoiceRules
 from game.player import Player
 from game.results import refused
@@ -34,6 +35,7 @@ from game.trade import TradeManager
 from game.trade_rules import TradeRules
 from game.transport import TransportShipRules
 from game.turn_clock import TurnClock
+from game.wagons import WagonRules
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
-           BarbarianAttackRules, PendingChoiceRules, TurnClock):
+           BarbarianAttackRules, WagonRules, PathBarbarianRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -352,6 +355,23 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.oasis_arrows = []
         self.camel_owed = False
 
+        # The Traders & Barbarians main scenario. The trade-hex plazas (where a
+        # wagon delivers, and where no building may stand) and their sea-border
+        # paths (where no road may sit) are derived off the dealt board in
+        # `setup_wagons_board`; both empty for a board that prints no trade hex,
+        # so the base game is untouched. `must_move_barbarian` names the player
+        # who owes a roaming-barbarian move after rolling a 7, or None.
+        self.trade_plazas = set()
+        self.trade_sea_paths = set()
+        self.must_move_barbarian = None
+        # Per-turn wagon state, reset in `start_turn` beside the other per-turn
+        # counters: the movement points left this turn (lazily set on first move),
+        # whether the grain boost has been bought, and which barbarians a
+        # drive-off has already been tried on.
+        self.wagon_points_left = None
+        self.wagon_grain_used = False
+        self.barbarians_driven = set()
+
         # Generate the complete board
         self._generate_board()
 
@@ -385,6 +405,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # barbarians and shuffle the scenario deck. A no-op for a board that
         # prints no castle, so the base game is untouched.
         self.setup_barbarian_board()
+
+        # Traders & Barbarians (main scenario): read the three trade hexes and
+        # the roaming-barbarian paths off the dealt board, build the commodity
+        # stacks and deal the scenario deck. A no-op for a board that prints no
+        # trade hex, so the base game is untouched.
+        self.setup_wagons_board()
 
         # The Fishermen scenario starts the robber beside the board, not on the
         # desert: it enters only on the first 7 or a knight (expansions.md 504).
@@ -538,6 +564,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
             self.game_phase = "playing"
             self.current_player_index = 0
+            # The wagon sits on its owner's starting city once set-up finishes
+            # (expansions.md 701). A no-op without the wagon rule.
+            self.place_starting_wagons()
             logger.debug("=== Setup complete! Starting normal play. ===")
             return True
         return False
@@ -695,6 +724,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         conquered = self.barbarian_settlement_refusal(vertex_key)
         if conquered is not None:
             return conquered
+        # Main scenario: no building on a trade hex plaza (699). A no-op without
+        # the wagon rule and away from a trade hex.
+        plaza = self.trade_hex_settlement_refusal(vertex_key)
+        if plaza is not None:
+            return plaza
         if not self._respects_distance_rule(vertex_key):
             return refused(
                 'INVALID_PLACEMENT', 'Cannot place settlement next to another settlement'
@@ -820,6 +854,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         conquered = self.barbarian_road_refusal(edge_key)
         if conquered is not None:
             return conquered
+        # Main scenario: no road on a trade hex's sea-border path (700). A no-op
+        # without the wagon rule and away from a trade hex.
+        trade_sea = self.trade_hex_road_refusal(edge_key)
+        if trade_sea is not None:
+            return trade_sea
         # A road may not lie on a path beside a face-down hex (891). A no-op
         # unless the table is exploring, since nothing else hides a hex.
         if self.rules['ships_explore']:
@@ -1044,6 +1083,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # no-op unless the rule is on.
         if self.rules['barbarian_attack']:
             points += self.barbarian_victory_points(player_name)
+
+        # Traders & Barbarians (main scenario): +1 for each delivered commodity
+        # token, the fifth baggage-train card and each held Toolmaking/
+        # Glassmaking/Quarry card. Read live off the wagon state. A no-op without
+        # the rule.
+        if self.rules['trade_caravans']:
+            points += self.trade_victory_points(player_name)
 
         return points
 
@@ -1274,6 +1320,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'ship_moved_this_turn': self.ship_moved_this_turn,
             'island_points': self.island_points,
             'must_move_robber': self.must_move_robber,
+            # Main scenario: who owes a roaming-barbarian move after a 7, or None.
+            'must_move_barbarian': self.must_move_barbarian,
+            # This turn's remaining wagon movement points, for the mover's client.
+            'wagon_points_left': self.wagon_points_left,
             'must_choose_victim': self.must_choose_victim,
             'robber_victims': self.robber_victims,
             'players_needing_discard': self.players_needing_discard,
@@ -1585,11 +1635,19 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             barbarians_still_coming = (
                 self.rules['barbarians'] and not self.ck.barbarians_have_attacked
             )
-            # Barbarian Attack uses no robber at all (expansions.md 619): a 7
-            # still forces the discard but moves nothing on the board.
+            # Barbarian Attack uses no robber at all (expansions.md 619), and the
+            # main scenario moves a roaming barbarian instead of the robber
+            # (expansions.md 736): a 7 still forces the discard but moves the
+            # robber only in a game that has one.
             if (not barbarians_still_coming and not self.in_robber_free_opening()
-                    and not self.rules['barbarian_attack']):
+                    and not self.rules['barbarian_attack']
+                    and not self.rules['roaming_barbarians']):
                 self.must_move_robber = True
+            # The main scenario: the roller must move one of the three barbarians
+            # to a free path (expansions.md 736), gated the way the robber move is.
+            if self.rules['roaming_barbarians'] and self.tb is not None \
+                    and self.tb.path_barbarians:
+                self.must_move_barbarian = player_name
             self.check_discard_required()
 
         # A 7 produces nothing; distribute_resources knows that itself.

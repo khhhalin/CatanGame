@@ -191,3 +191,11 @@ register(Terrain("oasis", "oasis", produces=None, v2=True, token=False))
 # and it can never be conquered. It is land, so the buildable graph forms around
 # it and its six adjacent paths are where knights stand to guard the coast.
 register(Terrain("castle", "castle", produces=None, v2=True, token=False))
+
+# Traders & Barbarians, the main scenario. The quarry and the glassworks join the
+# castle as the three trade hexes: a wagon delivers commodity tokens to them for
+# gold and victory points (game/wagons.py). Like the castle they pay no resource
+# card and carry no number token; they are land, so the buildable graph forms
+# around their four land corners while their three sea-border paths carry no road.
+register(Terrain("quarry", "quarry", produces=None, v2=True, token=False))
+register(Terrain("glassworks", "glassworks", produces=None, v2=True, token=False))

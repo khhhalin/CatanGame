@@ -1,0 +1,147 @@
+{
+  "author": "Catan",
+  "barbarian_paths": [
+    "-2,-1,3",
+    "0,1,-1",
+    "4,0,-4"
+  ],
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "traders-barbarians",
+  "map_version": 2,
+  "name": "Traders & Barbarians",
+  "notes": "Traders & Barbarians main scenario: drive wagons between the castle, quarry and glassworks trade hexes to deliver commodities for gold and victory points. The desert, one pasture and one fields hex are removed, as are the 2 and 12 tokens; three barbarians roam the central paths. expansions.md 677-755.",
+  "regions": [
+    {
+      "color": "#c9a24b",
+      "hexes": [
+        "0,0,0",
+        "-3,0,3",
+        "0,-3,3",
+        "3,-3,0",
+        "3,0,-3",
+        "0,3,-3",
+        "-3,3,0",
+        "-6,0,6",
+        "-6,3,3",
+        "-6,6,0",
+        "-3,6,-3",
+        "0,6,-6",
+        "3,3,-6",
+        "6,0,-6",
+        "6,-3,-3",
+        "6,-6,0",
+        "3,-6,3",
+        "0,-6,6",
+        "-3,-3,6"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-3,-3,6": {
+            "number": 3,
+            "terrain": "wheat"
+          },
+          "-3,0,3": {
+            "number": 5,
+            "terrain": "wood"
+          },
+          "-3,3,0": {
+            "number": 3,
+            "terrain": "wood"
+          },
+          "-3,6,-3": {
+            "number": 8,
+            "terrain": "wheat"
+          },
+          "-6,0,6": {
+            "number": 11,
+            "terrain": "sheep"
+          },
+          "-6,3,3": {
+            "terrain": "quarry"
+          },
+          "-6,6,0": {
+            "number": 6,
+            "terrain": "brick"
+          },
+          "0,-3,3": {
+            "number": 6,
+            "terrain": "sheep"
+          },
+          "0,-6,6": {
+            "number": 11,
+            "terrain": "brick"
+          },
+          "0,0,0": {
+            "number": 8,
+            "terrain": "ore"
+          },
+          "0,3,-3": {
+            "number": 10,
+            "terrain": "ore"
+          },
+          "0,6,-6": {
+            "number": 5,
+            "terrain": "wood"
+          },
+          "3,-3,0": {
+            "number": 9,
+            "terrain": "wheat"
+          },
+          "3,-6,3": {
+            "terrain": "glassworks"
+          },
+          "3,0,-3": {
+            "number": 4,
+            "terrain": "brick"
+          },
+          "3,3,-6": {
+            "terrain": "castle"
+          },
+          "6,-3,-3": {
+            "number": 4,
+            "terrain": "sheep"
+          },
+          "6,-6,0": {
+            "number": 10,
+            "terrain": "wood"
+          },
+          "6,0,-6": {
+            "number": 9,
+            "terrain": "ore"
+          }
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 18
+        }
+      }
+    }
+  ],
+  "robber_start": "3,3,-6",
+  "suggested_victory_target": 13
+}

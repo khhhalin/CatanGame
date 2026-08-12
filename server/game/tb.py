@@ -93,6 +93,34 @@ class TB:
         self.ba_discard = []
         self.pending_card = None
 
+        # The main scenario (expansions.md 677-755). The three trade hexes read
+        # off the dealt map: `trade_hexes` maps a hex key to
+        # {'type': castle/quarry/glassworks, 'plaza': the vertex a wagon delivers
+        # on, 'sea_paths': the three border paths no road may sit on}.
+        # `trade_hex_stacks` maps a trade-hex key to its face-down commodity stack
+        # (a list of commodity strings). `wagons` maps a player to the vertex their
+        # wagon stands on (or None before it is placed); `carried_commodity` to the
+        # face-up token they carry (or None); `delivered` to the list of tokens they
+        # have delivered face down (its length is their delivery victory points);
+        # `wagon_destination` to the trade-hex key their wagon is heading for.
+        # `baggage_level` is each player's active baggage-train card (1-5).
+        # `path_barbarians` is the set of edge keys the three roaming barbarians
+        # occupy. The scenario's own 26/24-card deck lives in `td_deck`/`td_discard`
+        # with `td_pending` a bought Knight card awaiting the barbarian it moves,
+        # and `td_vp_cards` each player's held victory-point cards.
+        self.trade_hexes = {}
+        self.trade_hex_stacks = {}
+        self.wagons = {}
+        self.carried_commodity = {}
+        self.delivered = {}
+        self.wagon_destination = {}
+        self.baggage_level = {}
+        self.path_barbarians = set()
+        self.td_deck = []
+        self.td_discard = []
+        self.td_pending = None
+        self.td_vp_cards = {}
+
         self._counts = dict(fish_token_counts) if fish_token_counts else dict(FISH_TOKEN_COUNTS)
 
     # --- Setup -------------------------------------------------------------
@@ -109,6 +137,15 @@ class TB:
     def register(self, player_name: str):
         self.hands.setdefault(player_name, [])
         self.prisoners.setdefault(player_name, 0)
+        # Main scenario per-player state. The wagon is placed on the starting
+        # city later (once the board is built), so it begins unplaced; the
+        # baggage train begins on its first card (level 1).
+        self.wagons.setdefault(player_name, None)
+        self.carried_commodity.setdefault(player_name, None)
+        self.delivered.setdefault(player_name, [])
+        self.wagon_destination.setdefault(player_name, None)
+        self.baggage_level.setdefault(player_name, 1)
+        self.td_vp_cards.setdefault(player_name, [])
 
     def start_turn(self):
         """Nothing per-turn on the container itself — the boot-pass allowance and
@@ -252,6 +289,28 @@ class TB:
             "ba_deck_remaining": len(self.ba_deck),
             "ba_discard_count": len(self.ba_discard),
             "pending_card": dict(self.pending_card) if self.pending_card else None,
+            # The main scenario is public but for the held victory-point cards,
+            # which are secret like a base VP card — a viewer sees only their own
+            # and a count of anyone else's. Wagons, the commodity a player carries
+            # (face up in front of them), delivered counts, the barbarians on the
+            # paths and the trade hexes are all open.
+            "trade_hexes": {key: dict(meta) for key, meta in self.trade_hexes.items()},
+            "trade_hex_stacks": {key: len(stack)
+                                 for key, stack in self.trade_hex_stacks.items()},
+            "wagons": dict(self.wagons),
+            "carried_commodity": dict(self.carried_commodity),
+            "delivered_counts": {name: len(tokens)
+                                 for name, tokens in self.delivered.items()},
+            "wagon_destination": dict(self.wagon_destination),
+            "baggage_level": dict(self.baggage_level),
+            "path_barbarians": sorted(self.path_barbarians),
+            "td_deck_remaining": len(self.td_deck),
+            "td_discard_count": len(self.td_discard),
+            "td_pending": dict(self.td_pending) if self.td_pending else None,
+            "td_vp_counts": {name: len(cards)
+                             for name, cards in self.td_vp_cards.items()},
+            "td_vp_cards": list(self.td_vp_cards.get(viewer, []))
+            if viewer is not None else None,
         }
 
     _SNAPSHOT_FIELDS = (
@@ -261,11 +320,15 @@ class TB:
         "castle_hex", "castle_paths", "unconquerable_hexes", "coastal_hexes",
         "barbarians", "conquered_hexes", "toppled", "knights", "prisoners",
         "barbarians_left", "ba_deck", "ba_discard", "pending_card",
+        "trade_hexes", "trade_hex_stacks", "wagons", "carried_commodity",
+        "delivered", "wagon_destination", "baggage_level", "path_barbarians",
+        "td_deck", "td_discard", "td_pending", "td_vp_cards",
     )
 
-    # The Barbarian Attack fields kept as sets in memory but as lists on disk —
-    # a save is JSON and JSON has no set. Rebuilt into sets on load.
-    _SNAPSHOT_SET_FIELDS = ("unconquerable_hexes", "conquered_hexes", "toppled")
+    # Fields kept as sets in memory but as lists on disk — a save is JSON and
+    # JSON has no set. Rebuilt into sets on load.
+    _SNAPSHOT_SET_FIELDS = ("unconquerable_hexes", "conquered_hexes", "toppled",
+                            "path_barbarians")
 
     def snapshot(self) -> dict:
         """The full state for persistence — nothing redacted: a save has to
