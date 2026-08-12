@@ -516,6 +516,17 @@
                         <div class="ep-players" id="rivers-players"></div>
                     </div>
 
+                    <!-- The Caravans: how many camels are on the board and the
+                         voting round when one is open (bid wool and grain, or
+                         pass). The camel's path is chosen through the ordinary
+                         pending-choice panel. Hidden until a board payload
+                         carries the caravans rule; caravans.js fills it. -->
+                    <div class="right-fish hidden" id="right-caravans">
+                        <div class="right-eyebrow">The Caravans</div>
+                        <div class="ep-supply" id="caravans-status"></div>
+                        <div class="ep-actions hidden" id="caravans-vote"></div>
+                    </div>
+
                     <!-- The Details folds: the build costs and every expansion
                          subject, each a chip that states its headline numbers
                          and a popover that carries the detail and the actions.

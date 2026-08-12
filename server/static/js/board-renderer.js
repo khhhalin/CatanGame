@@ -1104,6 +1104,45 @@ function drawBridge(ctx, x1, y1, x2, y2, playerColor) {
     }
 }
 
+/**
+ * A camel (The Caravans): a neutral piece on a path, sitting beside any road on
+ * the same path. Drawn as a sand-coloured lozenge offset to one side of the edge
+ * so a road and a camel never obscure each other, with a small darker dot at the
+ * `head` end pointing the way the caravan continues.
+ */
+function drawCamel(ctx, x1, y1, x2, y2, headX, headY) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.hypot(dx, dy) || 1;
+    // Across the path, to set the camel beside a road rather than over it.
+    const nx = -dy / length;
+    const ny = dx / length;
+    const off = 7;
+    const cx = (x1 + x2) / 2 + nx * off;
+    const cy = (y1 + y2) / 2 + ny * off;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, length * 0.28, 5, Math.atan2(dy, dx), 0, Math.PI * 2);
+    ctx.fillStyle = '#c9a24b';
+    ctx.fill();
+    ctx.strokeStyle = '#6b4f1d';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // The head: a darker dot at the end nearer the front vertex.
+    if (typeof headX === 'number' && typeof headY === 'number') {
+        const toward = Math.hypot(headX - cx, headY - cy) || 1;
+        const hx = cx + ((headX - cx) / toward) * length * 0.22;
+        const hy = cy + ((headY - cy) / toward) * length * 0.22;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#4a3410';
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
 /* -------------------------------------------------------------------------
  * Ships and the pirate (Seafarers)
  *
@@ -2105,6 +2144,20 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
                 drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, playerColor);
             }
         }
+    }
+
+    // Camels (The Caravans): neutral pieces on their paths, drawn beside any
+    // road on the same path. They live on the `tb` payload, keyed by edge, each
+    // carrying the `front` vertex its head points at.
+    const camels = (boardData.tb && boardData.tb.camels) || {};
+    for (const key in camels) {
+        const pos = edgePositions[key];
+        if (!pos) {
+            continue;
+        }
+        const head = vertexPositions[camels[key].front];
+        drawCamel(ctx, pos.x1, pos.y1, pos.x2, pos.y2,
+            head ? head.x : undefined, head ? head.y : undefined);
     }
 
     // Harbours belong to coastal edges. `vertex.port` mirrors the same harbour

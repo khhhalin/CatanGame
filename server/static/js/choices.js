@@ -43,6 +43,7 @@ const CHOICE_TITLES = {
     wedding: 'Wedding',
     deserter: 'Deserter',
     deserter_placement: 'Your new knight',
+    camel_placement: 'Place the camel',
 };
 
 // The line icon that leads each heading, keyed by what the choice is about, not
@@ -252,7 +253,27 @@ function optionLabel(choice, option) {
         const card = getBoard()?.cities_knights?.progress_cards?.[option];
         return card?.name || option;
     }
+    if (choice.kind === 'camel_placement') {
+        return describeEdge(option);
+    }
     return '';
+}
+
+/**
+ * Describe a path (edge) by the hexes it runs between, so a camel-placement
+ * option reads as a place rather than a coordinate.
+ *
+ * @param {string} key - Edge key
+ * @returns {string}
+ */
+function describeEdge(key) {
+    const board = getBoard();
+    const hexes = board?.edges?.[key]?.neighbors?.hexes || [];
+    const land = hexes
+        .map(hexKey => board.hexes?.[hexKey])
+        .filter(hex => hex && hex.type !== 'ocean')
+        .map(hex => (hex.number ? `${hex.type} ${hex.number}` : hex.type));
+    return land.length > 0 ? `Path by ${land.join(', ')}` : `Path at ${key}`;
 }
 
 /**
