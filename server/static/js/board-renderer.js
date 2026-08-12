@@ -1493,6 +1493,72 @@ function drawBarbarianAttackState(ctx, tb, hexPositions, edgePositions,
     }
 }
 
+/**
+ * Draw the Traders & Barbarians main-scenario pieces on `board.tb`: each
+ * player's wagon at its intersection (a small covered-wagon glyph in the owner's
+ * colour) and the three roaming barbarians on their paths (a dark badge across
+ * the path, the way a conquered-hex cross reads at a glance).
+ */
+function drawWagonState(ctx, tb, vertexPositions, edgePositions, playerColors) {
+    if (!tb || !tb.wagons) {
+        return;
+    }
+    // The wagons: a rounded box in the owner's colour, offset a touch so two
+    // wagons sharing a vertex do not sit exactly on top of one another.
+    let spread = 0;
+    for (const [owner, vertexKey] of Object.entries(tb.wagons)) {
+        if (!vertexKey) {
+            continue;
+        }
+        const pos = vertexPositions[vertexKey];
+        if (!pos) {
+            continue;
+        }
+        const dx = (spread % 2 === 0 ? -1 : 1) * 5 * Math.ceil(spread / 2);
+        spread += 1;
+        ctx.save();
+        ctx.translate(pos.x + dx, pos.y - 12);
+        ctx.fillStyle = playerColors[owner] || '#ffffff';
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(-7, -5, 14, 10, 2);
+        ctx.fill();
+        ctx.stroke();
+        // Two wheels, so the box reads as a wagon.
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath();
+        ctx.arc(-4, 6, 2, 0, Math.PI * 2);
+        ctx.arc(4, 6, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // The roaming barbarians: a dark badge at the middle of each barbarian path.
+    for (const edgeKey of tb.path_barbarians || []) {
+        const pos = edgePositions[edgeKey];
+        if (!pos) {
+            continue;
+        }
+        const mx = (pos.x1 + pos.x2) / 2;
+        const my = (pos.y1 + pos.y2) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mx, my, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#2b2b2b';
+        ctx.fill();
+        ctx.strokeStyle = '#7a1616';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#ffd27a';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('⚔', mx, my);
+        ctx.restore();
+    }
+}
+
 function drawEpState(ctx, ep, hexPositions, playerColors, hexRadius) {
     if (!ep) {
         return;
@@ -2322,6 +2388,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     // and each player's knight pieces on their paths.
     drawBarbarianAttackState(ctx, boardData.tb, hexPositions, edgePositions,
                              playerColors, hexRadius);
+
+    // Traders & Barbarians main scenario: each player's wagon on its
+    // intersection and the three barbarians roaming the paths.
+    drawWagonState(ctx, boardData.tb, vertexPositions, edgePositions,
+                   playerColors);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.
