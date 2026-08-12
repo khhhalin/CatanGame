@@ -1,0 +1,149 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "caravans",
+  "map_version": 2,
+  "name": "The Caravans",
+  "notes": "Traders & Barbarians scenario: an oasis at the centre from which three caravans of camels grow. expansions.md 571-606.",
+  "oasis_arrows": [
+    "-2,-1,3",
+    "-3,1,2",
+    "1,2,-3"
+  ],
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-6,0,6",
+        "-6,3,3",
+        "-6,6,0",
+        "-3,-3,6",
+        "-3,0,3",
+        "-3,3,0",
+        "-3,6,-3",
+        "0,-6,6",
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "0,6,-6",
+        "3,-6,3",
+        "3,-3,0",
+        "3,0,-3",
+        "3,3,-6",
+        "6,-6,0",
+        "6,-3,-3",
+        "6,0,-6"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-3,-3,6": {
+            "number": 5,
+            "terrain": "sheep"
+          },
+          "-3,0,3": {
+            "number": 8,
+            "terrain": "wheat"
+          },
+          "-3,3,0": {
+            "number": 9,
+            "terrain": "brick"
+          },
+          "-3,6,-3": {
+            "number": 3,
+            "terrain": "wood"
+          },
+          "-6,0,6": {
+            "number": 10,
+            "terrain": "brick"
+          },
+          "-6,3,3": {
+            "number": 6,
+            "terrain": "wheat"
+          },
+          "-6,6,0": {
+            "number": 4,
+            "terrain": "sheep"
+          },
+          "0,-3,3": {
+            "number": 9,
+            "terrain": "wheat"
+          },
+          "0,-6,6": {
+            "number": 10,
+            "terrain": "brick"
+          },
+          "0,0,0": {
+            "terrain": "oasis"
+          },
+          "0,3,-3": {
+            "number": 4,
+            "terrain": "wood"
+          },
+          "0,6,-6": {
+            "number": 11,
+            "terrain": "ore"
+          },
+          "3,-3,0": {
+            "number": 2,
+            "terrain": "wood"
+          },
+          "3,-6,3": {
+            "number": 12,
+            "terrain": "ore"
+          },
+          "3,0,-3": {
+            "number": 6,
+            "terrain": "sheep"
+          },
+          "3,3,-6": {
+            "number": 11,
+            "terrain": "ore"
+          },
+          "6,-3,-3": {
+            "number": 5,
+            "terrain": "sheep"
+          },
+          "6,-6,0": {
+            "number": 8,
+            "terrain": "wheat"
+          },
+          "6,0,-6": {
+            "number": 3,
+            "terrain": "wood"
+          }
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 18
+        }
+      }
+    }
+  ],
+  "robber_start": "3,-6,3",
+  "suggested_victory_target": 12
+}

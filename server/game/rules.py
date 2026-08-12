@@ -942,6 +942,36 @@ RULES += [
 ]
 
 
+# --- Traders & Barbarians: The Caravans ---------------------------------
+# Camels grow out of the central oasis in up to three non-branching caravans.
+# One container rule: the camel piece, the oasis-arrow geometry, the voting round
+# and the two scoring effects are inseparable — a camel with no caravan and no
+# vote is meaningless. Depends on the oasis map (refused at start without it), so
+# it needs no other rule; defaults off, so a base game is unchanged.
+RULES += [
+    _bool("caravans", "The Caravans", False,
+          "Catan: Traders & Barbarians rulebook, 'The Caravans'; "
+          "expansions.md 573-601",
+          "Camels grow out of the central oasis in up to three non-branching "
+          "caravans. Whenever you build or upgrade at least one settlement in a "
+          "turn, exactly one camel is placed at the end of it, its position "
+          "decided by a voting round in which players bid wool and grain cards. "
+          "A road sharing a camel's path counts as two roads for the Longest "
+          "Road, and a settlement or city standing between two camels is worth "
+          "one extra victory point. Needs the oasis board.",
+          group=EXPANSION, suggests_victory_target=12),
+]
+
+RULES += [
+    _int("max_camels", "Camels in the supply", 22, 0, 40,
+         "Catan: Traders & Barbarians rulebook, 'The Caravans'; "
+         "expansions.md 574",
+         "How many camels the box holds; all three caravans end the moment the "
+         "supply is exhausted.",
+         group=EXPANSION),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -1102,6 +1132,9 @@ TB_STATE_RULES = (
     "fishing_grounds",
     "lake_hex",
     "old_boot",
+    # The Caravans keep the camel positions, the caravan chains and the open
+    # voting round in the same container — see game/tb.py.
+    "caravans",
 )
 
 # The rule set the single `cities_and_knights` toggle used to stand for. Kept
@@ -1210,6 +1243,17 @@ TB_RIVERS_RULES = {
 }
 
 
+# Traders & Barbarians, The Caravans. Ticks the one container rule and points the
+# table at the built-in Caravans board (an oasis at the centre with three arrows).
+# Played to 12 (602) — the target the rule suggests; the Harbormaster variant
+# would raise it to 13, which the lobby can still do by hand.
+TB_CARAVANS_RULES = {
+    "caravans": True,
+    "board_map": "caravans",
+    "victory_target": 12,
+}
+
+
 PRESETS = [
     {
         "id": "base_game",
@@ -1310,6 +1354,20 @@ PRESETS = [
             "10. Every switch it ticks stays one you can untick."
         ),
         "rules": dict(TB_RIVERS_RULES),
+    },
+    {
+        "id": "tb_caravans",
+        "name": "The Caravans",
+        "source": "Catan: Traders & Barbarians rulebook, Scenario: The Caravans; "
+                  "expansions.md 571-606",
+        "summary": (
+            "Three caravans of camels grow out of a central oasis, decided by a "
+            "voting round each time you build. A road on a camel's path counts "
+            "double for the Longest Road, and a building between two camels is "
+            "worth an extra point. Dealt on the built-in Caravans map and played "
+            "to 12. The one switch it ticks stays one you can untick."
+        ),
+        "rules": dict(TB_CARAVANS_RULES),
     },
     {
         "id": "explorers_and_pirates",

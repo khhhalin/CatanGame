@@ -9,6 +9,7 @@ from game import rules as rules_module
 from game import tb as tb_module
 from game.bank import Bank
 from game.board import BoardBuilder
+from game.caravans import CaravansRules
 from game.cargo import CargoRules
 from game.cities_knights_rules import CitiesKnightsRules
 from game.dev_card_rules import DevCardRules
@@ -39,7 +40,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CitiesKnightsRules, GoldRules, HarborSettlementRules, TransportShipRules,
            CargoRules, EpPirateRules, ExplorationRules, MissionRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
-           FishingRules, TBGoldRules, RiversRules, PendingChoiceRules, TurnClock):
+           FishingRules, TBGoldRules, RiversRules, CaravansRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -340,6 +342,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # game is untouched.
         self.bridge_sites = set()
 
+        # The Caravans oasis and its three arrow paths — the hex the camels grow
+        # out of and the edges each caravan starts on. Read off the dealt map in
+        # `setup_caravans_board`; empty on every board that prints no oasis, so
+        # the base game is untouched. `camel_owed` is the per-turn flag that a
+        # settlement was built or upgraded and a camel is due at turn's end.
+        self.oasis_hex = None
+        self.oasis_arrows = []
+        self.camel_owed = False
+
         # Generate the complete board
         self._generate_board()
 
@@ -363,6 +374,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Traders & Barbarians (Rivers): read the map's river-crossing bridge
         # sites into `self.bridge_sites`. A no-op for a board that prints none.
         self.setup_rivers_board()
+
+        # Traders & Barbarians (Caravans): read the oasis and its arrow paths off
+        # the dealt board. A no-op for a board that prints no oasis.
+        self.setup_caravans_board()
 
         # The Fishermen scenario starts the robber beside the board, not on the
         # desert: it enters only on the first 7 or a knight (expansions.md 504).
@@ -610,6 +625,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         moved = self.movement_phase_block()
         if moved is not None:
             return moved
+        voting = self.camel_vote_block(player_name)
+        if voting is not None:
+            return voting
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
@@ -716,6 +734,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if building_type != 'city':
             river_gold = self.grant_river_settlement_gold(player_name, vertex_key)
 
+        # The Caravans: a settlement built after set-up earns a camel, placed by
+        # a voting round when the turn ends (expansions.md 578). A no-op without
+        # the rule. A setup settlement earns nothing.
+        if not in_setup and self.rules['caravans']:
+            self.camel_owed = True
+
         return {
             'success': True,
             'error': '',
@@ -739,6 +763,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         moved = self.movement_phase_block()
         if moved is not None:
             return moved
+        voting = self.camel_vote_block(player_name)
+        if voting is not None:
+            return voting
 
         in_setup = self.game_phase == "setup"
         current_name = self.current_player_name()
@@ -834,6 +861,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         moved = self.movement_phase_block()
         if moved is not None:
             return moved
+        voting = self.camel_vote_block(player_name)
+        if voting is not None:
+            return voting
 
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')
@@ -867,6 +897,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             player.cities.append(vertex_key)
 
         self.update_harbormaster()
+
+        # The Caravans: upgrading a settlement to a city earns a camel too,
+        # placed when the turn ends (expansions.md 578). A no-op without the rule.
+        if self.rules['caravans']:
+            self.camel_owed = True
+
         return {'success': True, 'error': ''}
 
     def _touches_own_road(self, player_name: str, vertex_key: str) -> bool:
@@ -964,6 +1000,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # no-op unless one of the two flags is on.
         if self.rules['wealthiest_settler'] or self.rules['poor_settler']:
             points += self.river_tile_points(player_name)
+
+        # The Caravans: +1 for each of this player's buildings standing between
+        # two camels. Read live off the camel positions, so a point appears and
+        # goes as caravans grow. A no-op unless the rule is on.
+        if self.rules['caravans']:
+            points += self.camel_victory_points(player_name)
 
         return points
 
@@ -1161,6 +1203,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # board, so nothing changes there. Bridges themselves ride on the
             # edge payload as roads carrying kind='bridge'.
             'bridge_sites': sorted(self.bridge_sites),
+            # The Caravans oasis arrows: the paths each caravan starts from. The
+            # client draws the arrows on these; empty off the Caravans board. The
+            # camels themselves and the caravan chains ride on the `tb` payload.
+            'oasis_arrows': sorted(self.oasis_arrows),
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),
@@ -1669,7 +1715,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             the intersection where the two meet", so changing kind here needs
             a building of the player's own.
             """
-            max_length = len(visited_edges)
+            max_length = self._route_weight(visited_edges)
 
             # Get all connected edges
             vertex = self.vertices.get(vertex_key)
@@ -1702,8 +1748,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 # Check if blocked by other player's building at the next vertex
                 if has_other_player_building(next_vertex):
                     # Blocked - can't pass through another player's building
-                    # But can count the road leading TO it
-                    max_length = max(max_length, len(visited_edges) + 1)
+                    # But can count the road leading TO it (a camel on that path
+                    # counts it double, like any other segment).
+                    max_length = max(
+                        max_length,
+                        self._route_weight(visited_edges) + self._camel_road_weight(edge_key),
+                    )
                     continue
 
                 # Continue through empty vertices or player's own buildings

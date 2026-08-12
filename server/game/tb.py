@@ -54,6 +54,17 @@ class TB:
         self.fishing_grounds = []
         self.lake_hex = None
 
+        # The Caravans (expansions.md 573-601). Camels are neutral pieces sitting
+        # on paths, each with a `front` — the vertex its head points toward, where
+        # its caravan continues. `camels` maps an edge key to {'front': vertex}.
+        # `caravans` is the up-to-three non-branching chains: each is
+        # {'arrow': starting-edge, 'edges': [edge keys in order], 'frontier':
+        # the vertex the last camel's head points at}. `camel_vote` is the open
+        # voting round, or None — see game/caravans.py for its shape.
+        self.camels = {}
+        self.caravans = []
+        self.camel_vote = None
+
         self._counts = dict(fish_token_counts) if fish_token_counts else dict(FISH_TOKEN_COUNTS)
 
     # --- Setup -------------------------------------------------------------
@@ -188,11 +199,18 @@ class TB:
             "fish_hand": hands.get(viewer) if viewer is not None else None,
             "fishing_grounds": [dict(g) for g in self.fishing_grounds],
             "lake_hex": self.lake_hex,
+            # The Caravans are public: the camels on their paths, the chains, and
+            # the open voting round with each player's bid count (the cards
+            # themselves are already face up in front of their bidder).
+            "camels": {edge: dict(camel) for edge, camel in self.camels.items()},
+            "caravans": [dict(c) for c in self.caravans],
+            "camel_vote": dict(self.camel_vote) if self.camel_vote else None,
         }
 
     _SNAPSHOT_FIELDS = (
         "supply", "discard", "hands", "old_boot_holder",
         "fishing_grounds", "lake_hex",
+        "camels", "caravans", "camel_vote",
     )
 
     def snapshot(self) -> dict:

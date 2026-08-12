@@ -58,6 +58,10 @@ DEFAULT_RESOURCES = {
     # blue; the swampland a dull green-brown bog.
     "river":     {"name": "River",     "color": "#3f7fa8", "symbol": "", "pattern": "solid"},
     "swampland": {"name": "Swampland", "color": "#6b6f45", "symbol": "", "pattern": "stipple"},
+    # Traders & Barbarians (Caravans): the oasis that replaces the desert at the
+    # centre, from which the caravans grow. It deals no card (symbol empty, like
+    # the desert), and takes a warm sand colour with a stippled dune texture.
+    "oasis":     {"name": "Oasis",     "color": "#d8b877", "symbol": "", "pattern": "stipple"},
 }
 
 # The pattern styles the renderer knows how to draw; a definition's `pattern`

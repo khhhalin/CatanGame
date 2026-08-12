@@ -118,6 +118,28 @@ def handle_build_bridge(data):
         bump_and_broadcast()
 
 
+# --- The Caravans: bidding in the camel voting round -------------------------
+
+@socketio.on('bid_camel')
+def handle_bid_camel(data):
+    got = _actor_for('caravans', data)
+    if got is None:
+        return
+    session, name = got
+    cards = data.get('cards')
+    if not isinstance(cards, list) \
+            or any(not isinstance(card, str) for card in cards):
+        reject('INVALID_PAYLOAD', 'A bid is a list of wool and grain cards')
+        return
+    with session.lock:
+        result = session.game.bid_camel(name, cards)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} bid {len(cards)} card(s) for the camel", player=name)
+        bump_and_broadcast()
+
+
 @socketio.on('buy_resource_with_coins')
 def handle_buy_resource_with_coins(data):
     got = _actor_for('gold_coins', data)

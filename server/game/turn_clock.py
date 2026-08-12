@@ -50,6 +50,9 @@ class TurnClock:
         # builds and trades normally (expansions.md 851-862). Only read when
         # `movement_phase` is on; see `movement_phase_block`.
         self.turn_phase = 'production'
+        # The Caravans camel is owed only for the turn that earned it; a fresh
+        # turn starts with none due (expansions.md 578).
+        self.camel_owed = False
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.
@@ -100,7 +103,30 @@ class TurnClock:
         if player_name != current_name and not self.is_round_expired():
             return refused('NOT_YOUR_TURN', f'Only {current_name} can advance the turn')
 
+        # The Caravans: a turn in which a settlement was built or upgraded earns a
+        # camel, placed at the turn's end by a voting round (expansions.md 578).
+        # Open the round and hold the turn open rather than advancing — it passes
+        # to the next player once the camel is placed (`_finish_camel_vote`).
+        if self._camel_vote_owed(current_name):
+            self.open_camel_vote(current_name)
+            return {'success': True, 'error': '', 'current_player': current_name,
+                    'camel_vote': True}
+
         return {'success': True, 'error': '', 'current_player': self.force_advance_turn()}
+
+    def _camel_vote_owed(self, player_name: str) -> bool:
+        """Whether ending this turn should open a camel voting round rather than
+        advancing: the Caravans are on, a settlement was built or upgraded this
+        turn, no vote is already open, the supply has camels left, and there is a
+        legal path to place one on."""
+        return bool(
+            self.rules['caravans']
+            and self.tb is not None
+            and self.camel_owed
+            and self.tb.camel_vote is None
+            and len(self.tb.camels) < self.rules['max_camels']
+            and self.legal_camel_placements()
+        )
 
     def force_advance_turn(self) -> str:
         """Move to the next player and reset the per-turn state, unconditionally.

@@ -97,6 +97,9 @@ MAX_HARBOURS = 32
 # Bridge-crossing sites a Rivers map may print. The printed scenario has 7; the
 # cap is generous room for a custom river map, and bounds the payload.
 MAX_BRIDGE_SITES = 32
+# Caravan-start arrows a Caravans map may print. The printed scenario has 3 (one
+# per caravan); the cap is generous room for a variant and bounds the payload.
+MAX_OASIS_ARROWS = 12
 MAX_NAME = 64
 MAX_NOTES = 512
 
@@ -375,6 +378,13 @@ class MapDefinition:
     # because a path is not owned by any one hex — `HexMeta` is per-hex. Empty on
     # every map that prints none.
     bridge_sites: tuple = ()
+    # The Caravans oasis arrows: the hex-side (edge) keys each of the three
+    # caravans starts from. Edge-direction data — the first camel of a caravan
+    # sits on this path with its head pointing away from the oasis — but the
+    # direction is derived from the oasis geometry rather than stored, so an arrow
+    # is just the starting edge. A map-level field like `bridge_sites`, because a
+    # path is not owned by a hex. Empty on every map that prints none.
+    oasis_arrows: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -398,6 +408,8 @@ class MapDefinition:
         }
         if self.bridge_sites:
             data['bridge_sites'] = list(self.bridge_sites)
+        if self.oasis_arrows:
+            data['oasis_arrows'] = list(self.oasis_arrows)
         return data
 
     def region_of(self) -> dict:
@@ -722,11 +734,26 @@ def parse_map(data: dict) -> MapDefinition:
         bridge_sites.add(key)
     bridge_tuple = tuple(sort_hex_keys(bridge_sites))
 
+    oasis_arrows_raw = data.get('oasis_arrows') or []
+    if not isinstance(oasis_arrows_raw, list) or len(oasis_arrows_raw) > MAX_OASIS_ARROWS:
+        raise InvalidPayload('INVALID_MAP',
+                             f'oasis_arrows is a list of at most {MAX_OASIS_ARROWS} hex sides')
+    oasis_arrows: set[str] = set()
+    for key in oasis_arrows_raw:
+        coords = parse_edge_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex side')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'oasis arrow {key!r} is outside the frame')
+        oasis_arrows.add(key)
+    oasis_tuple = tuple(sort_hex_keys(oasis_arrows))
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
         excluded_hexes=excluded_tuple, bridge_sites=bridge_tuple,
+        oasis_arrows=oasis_tuple,
     )
 
 
@@ -923,6 +950,12 @@ def start_problems(defn: MapDefinition, chosen: dict) -> list:
     components = land_components(defn)
     if len(components) > 1 and not chosen.get('ships'):
         problems.append(f'{defn.name} has {len(components)} islands and needs Ships')
+    # The Caravans grow out of a central oasis; with no oasis the camels have
+    # nowhere to start, so the rule is refused rather than played to nothing.
+    if chosen.get('caravans') and not any(
+        region.pool.has('oasis') for region in defn.regions
+    ):
+        problems.append(f'{defn.name} has no oasis for the caravans to grow from')
     return problems
 
 

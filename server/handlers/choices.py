@@ -94,4 +94,6 @@ def _story(name: str, result: dict) -> str:
         return f"{name} took a progress card as Spy"
     if kind == 'deserter':
         return f"one of {name}'s knights deserted"
+    if kind == 'camel_placement':
+        return f"{name} placed the caravan's camel"
     return f"{name} placed the deserting knight"

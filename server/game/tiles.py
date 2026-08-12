@@ -178,3 +178,10 @@ register(Terrain("lake", "lake", produces=None, v2=True, token=False))
 # the buildable graph forms around them (a sea corner has no buildable vertex).
 register(Terrain("river", "river", produces=None, v2=True, token=False))
 register(Terrain("swampland", "swampland", produces=None, v2=True, token=False))
+
+# Traders & Barbarians, The Caravans. The oasis replaces the desert at the very
+# centre of the island and pays no resource card and carries no token — like the
+# desert, but the caravans of camels grow out from the three arrows printed on
+# it. It is land, so the buildable graph forms around it and camels can be placed
+# on the paths that radiate from its corners.
+register(Terrain("oasis", "oasis", produces=None, v2=True, token=False))
