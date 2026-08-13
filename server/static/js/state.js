@@ -52,6 +52,11 @@ export const viewState = {
     // action is inferred from (catch fish, deliver, befriend, land crews).
     missionShipFrom: null,
 
+    // First half of founding a settlement from a settler ship: the side of the
+    // ship carrying the settler, held until the second tap names the coastal
+    // corner to found at.
+    foundShipFrom: null,
+
     // The progress card whose target is being picked on the board, and the
     // targets picked for it so far. Nothing is sent until the last one is in,
     // so a card here is still in the player's hand and cancelling costs them

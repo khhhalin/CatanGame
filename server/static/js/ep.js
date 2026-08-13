@@ -4,7 +4,7 @@
 // update, that hides the whole panel on a table not playing the expansion.
 
 import { markDirty } from './board.js';
-import { boardCanvas, epBuildShipBtn, epBuyGoldBtn, epGold, epGoldPick, epMissionBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSellGoldBtn, epSupply, gameBoard, moveShipBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
+import { boardCanvas, epBuildCrewBtn, epBuildSettlerBtn, epBuildShipBtn, epBuyGoldBtn, epFoundSettlementBtn, epGold, epGoldPick, epLoadCargoBtn, epMissionBtn, epMissions, epMoveShipBtn, epPanel, epPlayers, epRollFishBtn, epSellGoldBtn, epSupply, epUnloadCargoBtn, gameBoard, moveShipBtn, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
 import { resourceName, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
@@ -107,6 +107,8 @@ function renderActions(board) {
         }
     }
 
+    renderCargoActions(board, me);
+
     if (epMissionBtn) {
         // The mission gesture needs a transport ship to act with and at least one
         // mission whose destinations it can reach. Its own tap infers which
@@ -131,6 +133,75 @@ function renderActions(board) {
             const blocked = !isMyTurn() ? 'Not your turn' : turnBlockReason();
             epRollFishBtn.disabled = Boolean(blocked);
             epRollFishBtn.title = blocked || 'Roll a die to try to place a fish haul on a matching shoal';
+        }
+    }
+}
+
+/**
+ * The cargo controls: build a crew or settler, shuttle pieces to/from a hold,
+ * and found a settlement from a settler ship. Each is hidden when its rule is
+ * off and disabled off-turn; the crew and settler buttons show their price the
+ * way the ship button does. The load/unload/found gestures ride on the same
+ * transport-ship rule the ship controls do.
+ *
+ * @param {object} board - Board payload
+ * @param {object|null} me - Own player entry, or null
+ */
+function renderCargoActions(board, me) {
+    const rules = board.rules || {};
+    const costs = board.costs || {};
+    const blocked = turnBlockReason();
+    const sel = viewState.selectedBuilding;
+
+    const priceButton = (button, ruleOn, mode, cost, hint) => {
+        if (!button) {
+            return;
+        }
+        button.classList.toggle('hidden', !ruleOn);
+        if (!ruleOn || !me) {
+            return;
+        }
+        const label = button.dataset.label || button.textContent;
+        button.dataset.label = label;
+        // innerHTML because the cost is resource tiles; the label is trusted.
+        button.innerHTML = cost ? `${label} · ${formatCost(cost)}` : label;
+        button.disabled = Boolean(blocked);
+        button.title = blocked || hint;
+        button.classList.toggle('active', sel === mode);
+    };
+
+    // Crews and settlers each answer to their own rule; both ride on transport
+    // ships (their dependency), so the shuttle and found controls follow the
+    // ship rule.
+    priceButton(epBuildCrewBtn, rules.crews === true, 'build_crew', costs.crew,
+        'Then tap your transport ship at a harbour, or a harbour settlement');
+    priceButton(epBuildSettlerBtn, rules.cargo_settlers === true, 'build_settler', costs.settler,
+        'Then tap your transport ship at a harbour, or a harbour settlement');
+
+    const showShuttle = rules.transport_ships === true;
+    for (const [button, mode, hint] of [
+        [epLoadCargoBtn, 'load_cargo', 'Tap your transport ship beside a harbour to load a basin piece'],
+        [epUnloadCargoBtn, 'unload_cargo', 'Tap your transport ship beside a harbour to unload a hold piece'],
+    ]) {
+        if (!button) {
+            continue;
+        }
+        button.classList.toggle('hidden', !showShuttle);
+        if (showShuttle && me) {
+            button.disabled = Boolean(blocked);
+            button.title = blocked || hint;
+            button.classList.toggle('active', sel === mode);
+        }
+    }
+
+    if (epFoundSettlementBtn) {
+        const showFound = rules.cargo_settlers === true;
+        epFoundSettlementBtn.classList.toggle('hidden', !showFound);
+        if (showFound && me) {
+            epFoundSettlementBtn.disabled = Boolean(blocked);
+            epFoundSettlementBtn.title = blocked
+                || 'Tap your settler ship, then the coastal corner to found at';
+            epFoundSettlementBtn.classList.toggle('active', sel === 'found_settlement');
         }
     }
 }
@@ -192,7 +263,10 @@ export function inferMissionAction(board, shipEdge, hexKey) {
         return { event: 'befriend_spice_village', payload: { ship_edge: shipEdge, spice_hex: hexKey } };
     }
     if (ep.lairs && hexKey in ep.lairs) {
-        return { event: 'land_crews_on_lair', payload: { ship_edge: shipEdge, lair_hex: hexKey } };
+        // A captured lair is where surviving crews are picked back up; an
+        // uncaptured one is where crews are landed to fight for it.
+        const event = ep.lairs[hexKey].captured ? 'pickup_crews_from_lair' : 'land_crews_on_lair';
+        return { event, payload: { ship_edge: shipEdge, lair_hex: hexKey } };
     }
     return null;
 }
@@ -232,6 +306,186 @@ export function handleMissionTap(clientX, clientY) {
     }
     emitGame(action.event, { name, ...action.payload });
     viewState.missionShipFrom = null;
+    markDirty();
+    return true;
+}
+
+// ------------------------------------------------------------ cargo gestures
+//
+// The crew→ship→mission chain, made reachable through the strip. A crew or
+// settler is built onto a transport ship's hold (or a harbour settlement's
+// basin); pieces are shuttled between the two; and a settler ship founds a free
+// settlement at a coastal corner. Each is a board mode armed like the mission
+// gesture and handled ahead of the placement pipeline — none draws a ghost, so
+// none is a placement kind. The server re-checks every rule; the client only
+// picks the target and errs toward asking.
+
+const EP_CARGO_MODES = ['build_crew', 'build_settler', 'load_cargo', 'unload_cargo',
+    'found_settlement'];
+
+/** Whether a mode is one of this strip's own board gestures (cargo or mission). */
+export function isEpBoardMode(mode) {
+    return mode === 'mission' || EP_CARGO_MODES.includes(mode);
+}
+
+/**
+ * Arm one of the strip's cargo board modes, disarming every other board mode
+ * the way the mission and ship buttons do.
+ *
+ * @param {string} mode - One of EP_CARGO_MODES
+ */
+export function armEpCargoMode(mode) {
+    const armed = viewState.selectedBuilding === mode;
+    viewState.selectedBuilding = armed ? null : mode;
+    viewState.missionShipFrom = null;
+    viewState.foundShipFrom = null;
+    [placeSettlementBtn, placeRoadBtn, upgradeCityBtn, epBuildShipBtn, epMoveShipBtn]
+        .forEach(button => button?.classList.remove('active'));
+    gameBoard?.classList.toggle('placement-mode', Boolean(viewState.selectedBuilding));
+    renderExplorersAndPirates();
+}
+
+/**
+ * Dispatch a board tap while one of the strip's board gestures is armed.
+ * Returns true (the tap is always consumed) or false when no EP mode is armed.
+ *
+ * @param {number} clientX - Pointer clientX of the tap
+ * @param {number} clientY - Pointer clientY of the tap
+ * @returns {boolean}
+ */
+export function handleEpBoardTap(clientX, clientY) {
+    const mode = viewState.selectedBuilding;
+    if (mode === 'mission') {
+        return handleMissionTap(clientX, clientY);
+    }
+    if (mode === 'build_crew' || mode === 'build_settler') {
+        return handleBuildCargoTap(clientX, clientY, mode);
+    }
+    if (mode === 'load_cargo' || mode === 'unload_cargo') {
+        return handleShuttleTap(clientX, clientY, mode);
+    }
+    if (mode === 'found_settlement') {
+        return handleFoundSettlementTap(clientX, clientY);
+    }
+    return false;
+}
+
+/** My own harbour settlement at one end of this edge, or null. */
+function adjacentHarbor(board, edgeKey, name) {
+    const ends = board.edges?.[edgeKey]?.neighbors?.vertices || [];
+    for (const vertexKey of ends) {
+        const building = board.vertices?.[vertexKey]?.building;
+        if (building?.type === 'harbor_settlement' && building.player === name) {
+            return vertexKey;
+        }
+    }
+    return null;
+}
+
+/**
+ * Build a crew or settler: onto the tapped transport ship's hold, or — when the
+ * tap lands on one of my harbour settlements and not a ship — into its basin.
+ * The ship path is checked first because it is the mission-critical one; a
+ * player aiming a piece into a basin taps the settlement itself.
+ */
+function handleBuildCargoTap(clientX, clientY, mode) {
+    const board = getBoard();
+    const name = viewState.identity.name;
+    const position = window.BoardRenderer.clientToBoard(boardCanvas, clientX, clientY);
+    const event = mode === 'build_crew' ? 'build_crew' : 'build_settler';
+    const noun = mode === 'build_crew' ? 'crew' : 'settler';
+
+    const edgeKey = window.BoardRenderer.findNearestEdge(board, position.x, position.y);
+    const ship = edgeKey ? board?.edges?.[edgeKey]?.ship : null;
+    if (ship && ship.player === name && ship.kind === 'transport'
+        && adjacentHarbor(board, edgeKey, name)) {
+        emitGame(event, { name, into: 'hold', key: edgeKey });
+        return true;
+    }
+
+    const vertexKey = window.BoardRenderer.findNearestVertex(board, position.x, position.y);
+    const building = vertexKey ? board?.vertices?.[vertexKey]?.building : null;
+    if (building?.type === 'harbor_settlement' && building.player === name) {
+        emitGame(event, { name, into: 'basin', key: vertexKey });
+        return true;
+    }
+
+    displayError(`Build a ${noun} onto your transport ship at a harbour, or into a harbour settlement.`);
+    return true;
+}
+
+/**
+ * Shuttle a piece between a harbour basin and an adjacent ship's hold: load
+ * moves the first basin piece aboard, unload returns the last hold piece to the
+ * basin. Tap the ship; its adjacent harbour is where the piece comes from or
+ * goes to.
+ */
+function handleShuttleTap(clientX, clientY, mode) {
+    const board = getBoard();
+    const name = viewState.identity.name;
+    const position = window.BoardRenderer.clientToBoard(boardCanvas, clientX, clientY);
+    const edgeKey = window.BoardRenderer.findNearestEdge(board, position.x, position.y);
+    const ship = edgeKey ? board?.edges?.[edgeKey]?.ship : null;
+    if (!ship || ship.player !== name || ship.kind !== 'transport') {
+        displayError('Tap one of your transport ships beside a harbour settlement.');
+        return true;
+    }
+    const harborKey = adjacentHarbor(board, edgeKey, name);
+    if (!harborKey) {
+        displayError('That ship is not beside one of your harbour settlements.');
+        return true;
+    }
+
+    if (mode === 'load_cargo') {
+        const basin = board.vertices[harborKey].building.basin || [];
+        if (basin.length === 0) {
+            displayError('That harbour settlement has no cargo in its basin to load.');
+            return true;
+        }
+        emitGame('load_transport_ship', { name, edge: edgeKey, basin_index: 0 });
+    } else {
+        const cargo = ship.cargo || [];
+        if (cargo.length === 0) {
+            displayError('That ship has nothing in its hold to unload.');
+            return true;
+        }
+        emitGame('unload_transport_ship', { name, edge: edgeKey, cargo_index: cargo.length - 1 });
+    }
+    return true;
+}
+
+/**
+ * Found a settlement from a settler ship: two taps. The first picks up one of my
+ * transport ships carrying a settler; the second names the coastal corner it
+ * founds at. The server checks the ship points at the corner and the distance
+ * rule; the client only carries the ship between the taps.
+ */
+function handleFoundSettlementTap(clientX, clientY) {
+    const board = getBoard();
+    const name = viewState.identity.name;
+    const position = window.BoardRenderer.clientToBoard(boardCanvas, clientX, clientY);
+
+    if (!viewState.foundShipFrom) {
+        const edgeKey = window.BoardRenderer.findNearestEdge(board, position.x, position.y);
+        const ship = edgeKey ? board?.edges?.[edgeKey]?.ship : null;
+        const carriesSettler = (ship?.cargo || []).some(piece => piece.type === 'settler');
+        if (!ship || ship.player !== name || ship.kind !== 'transport' || !carriesSettler) {
+            displayError('Tap one of your transport ships carrying a settler.');
+            return true;
+        }
+        viewState.foundShipFrom = edgeKey;
+        markDirty();
+        return true;
+    }
+
+    const vertexKey = window.BoardRenderer.findNearestVertex(board, position.x, position.y);
+    if (!vertexKey) {
+        displayError('Tap the coastal corner to found the settlement at.');
+        return true;
+    }
+    emitGame('found_settlement_from_ship',
+             { name, edge: viewState.foundShipFrom, vertex: vertexKey });
+    viewState.foundShipFrom = null;
     markDirty();
     return true;
 }
@@ -396,6 +650,11 @@ function renderPlayers(board, ep, colors) {
 // then does the work); Roll for fish is a direct action.
 epBuildShipBtn?.addEventListener('click', () => armShipMode('ship'));
 epMoveShipBtn?.addEventListener('click', () => armShipMode('ship_move'));
+epBuildCrewBtn?.addEventListener('click', () => armEpCargoMode('build_crew'));
+epBuildSettlerBtn?.addEventListener('click', () => armEpCargoMode('build_settler'));
+epLoadCargoBtn?.addEventListener('click', () => armEpCargoMode('load_cargo'));
+epUnloadCargoBtn?.addEventListener('click', () => armEpCargoMode('unload_cargo'));
+epFoundSettlementBtn?.addEventListener('click', () => armEpCargoMode('found_settlement'));
 epMissionBtn?.addEventListener('click', () => armMissionMode());
 epRollFishBtn?.addEventListener('click', () => {
     emitGame('roll_fish_haul', { name: viewState.identity.name });

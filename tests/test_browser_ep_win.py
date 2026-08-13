@@ -96,14 +96,13 @@ def _click_key(player, kind, key):
 
 # --- The natural Fish-mission playthrough -----------------------------------
 #
-# The Fish mission is the ONE mission fully playable through the real UI: a catch
-# needs only an empty ship at a shoal, and a delivery only a laden ship at a dock
-# — no crew, and a crew has no client path to a ship's hold (build_crew /
-# load_transport_ship / pickup_crews have no UI; build_settler /
-# found_settlement_from_ship have no handler at all). So the Pirate Lairs and
-# Spices missions cannot be won end to end by a player, and this natural-win proof
-# is deliberately built on Fish alone. `transshipping` is likewise a declared rule
-# with no engine implementation. None of those deferred paths is faked here.
+# This natural-win proof is built on the Fish mission because it is the simplest:
+# a catch needs only an empty ship at a shoal and a delivery only a laden ship at
+# a dock — no crew, so the whole cycle is the fewest gestures. The crew-dependent
+# missions (Pirate Lairs, Spices) are now playable end to end through the real UI
+# too — a crew is built into a ship's hold with the strip's Build crew button —
+# and their from-scratch playthroughs live in `test_browser_ep_missions.py`; Fish
+# is simply the leanest cycle to hang the deciding-point win on here.
 #
 # How natural this is: every fish MECHANIC is driven for real through the real
 # handlers — the player builds a transport ship, sails one to discover a

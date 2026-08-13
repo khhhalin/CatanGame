@@ -165,19 +165,11 @@ def _edge_between(game, cove, hex_key):
 
 
 def _scenario_game():
-    """A started Pirate Cove game with Alice mid-turn and a mission set-up on each
-    of the three cove-adjacent special hexes: a fish shoal carrying a haul, a
-    pirate lair one crew short of capture, and a spice village. Each has one of
-    Alice's transport ships on the cove edge beside it, so a single gesture drives
-    each mission. Returns the game and the keys the taps need.
-
-    The crews in the lair and spice ships' holds are hand-placed here because a
-    crew has no client path onto a ship (no UI for `build_crew` /
-    `load_transport_ship` / `pickup_crews`, and no handler for `build_settler` /
-    `found_settlement_from_ship`). So the crew-dependent missions — Pirate Lairs
-    and Spices — are not playable end to end through the browser; these tests
-    prove the gestures, and that gap is deferred, not faked. The Fish mission
-    needs no crew and IS fully playable (see `test_browser_ep_win.py`)."""
+    """A started Pirate Cove game with Alice mid-turn and a fish shoal carrying a
+    haul on a cove-adjacent hex, with one of Alice's empty transport ships on the
+    cove edge beside it — so a single gesture catches, and the next delivers at
+    the dock next door. Returns the game and the keys the taps need. The Fish
+    mission needs no crew, so this whole cycle is real UI, no injected cargo."""
     document = map_store.read_map('pirate-cove')
     rules = dict(rules_module.defaults())
     for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
@@ -205,26 +197,98 @@ def _scenario_game():
     game.edges[fish_edge].ship = {'player': 'Alice', 'kind': 'transport', 'id': 1,
                                   'built_turn': -1, 'cargo': []}
     game.ep.fish_shoals[specials['fish']] = {'number': 4, 'haul': True}
+    return game, {'cove': cove, 'fish': specials['fish'], 'fish_edge': fish_edge}
 
-    gold_edge = _edge_between(game, cove, specials['gold'])
-    game.edges[gold_edge].ship = {'player': 'Alice', 'kind': 'transport', 'id': 2,
-                                  'built_turn': -1,
-                                  'cargo': [{'type': 'crew', 'size': 'small'},
-                                            {'type': 'crew', 'size': 'small'}]}
-    # One crew already on the lair, so Alice's two land to 3 and capture it.
-    game.ep.lairs[specials['gold']] = {'captured': False, 'crews': {'Alice': 1}}
 
-    spice_edge = _edge_between(game, cove, specials['spice'])
-    game.edges[spice_edge].ship = {'player': 'Alice', 'kind': 'transport', 'id': 3,
-                                   'built_turn': -1,
-                                   'cargo': [{'type': 'crew', 'size': 'small'}]}
-    game.ep.spice_hexes[specials['spice']] = {'sacks': 2, 'advantage': 'swift_voyage',
-                                              'crews': []}
-    return game, {
-        'cove': cove, 'fish': specials['fish'], 'gold': specials['gold'],
-        'spice': specials['spice'], 'fish_edge': fish_edge, 'gold_edge': gold_edge,
-        'spice_edge': spice_edge,
-    }
+def _harbor_and_ship_edge(game, cove, special):
+    """A coastal corner shared by the cove and `special`, plus an empty sea edge
+    at it. A ship built there points at both the special hex and the cove dock,
+    so one ship works the mission and then delivers next door without sailing —
+    and, sitting beside the harbour settlement, is where a crew is built into the
+    hold. Returns (harbor_vertex, ship_edge)."""
+    shared = set(game._hex_corner_vertices(cove)) & set(game._hex_corner_vertices(special))
+    for vertex in sorted(shared):
+        if not game.is_coastal_settlement_site(vertex):
+            continue
+        edge = next((e for e in game.vertices[vertex].neighbors['edges']
+                     if game.is_sea_edge(e) and game.edges[e].ship is None), None)
+        if edge is not None:
+            return vertex, edge
+    raise AssertionError('no shared coastal corner with a sea edge')
+
+
+def _crew_mission_game(special_type):
+    """A started Pirate Cove game staged so a crew mission can be played end to
+    end through the real UI with NO injected cargo: Alice has a harbour settlement
+    on a corner shared by the Council cove and the mission hex, funded to build a
+    transport ship there and the crews the mission needs. The ship she builds
+    points at both the mission hex and the dock, so the whole crew→ship→mission
+    chain runs from one spot. Returns the game and the keys the taps need."""
+    document = map_store.read_map('pirate-cove')
+    rules = dict(rules_module.defaults())
+    for rule in ('transport_ships', 'harbor_settlements', 'ships_explore', 'gold',
+                 'missions', 'crews', 'cargo_settlers',
+                 'mission_pirate_lairs', 'mission_spices'):
+        rules[rule] = True
+    rules['turn_order'] = 'lobby'
+    rules['board_layout'] = 'custom'
+    rules['board_map'] = document['id']
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=rules,
+                map_definition=maps.parse_map(document))
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+
+    cove = next(key for key, hex_obj in game.hexes.items()
+                if hex_obj.meta is not None and hex_obj.meta.docks)
+    specials = {}
+    for key, hex_obj in game.hexes.items():
+        if getattr(hex_obj, 'hidden', False):
+            hex_obj.hidden = False
+            specials[hex_obj.type] = key
+    special = specials[special_type]
+
+    harbor, edge = _harbor_and_ship_edge(game, cove, special)
+    game.vertices[harbor].building = {'type': 'harbor_settlement', 'player': 'Alice',
+                                      'basin': []}
+    game.get_player('Alice').harbor_settlements.append(harbor)
+    # Enough to build the ship (1 wood, 1 sheep) and three crews (1 ore, 1 sheep
+    # each) — every crew reaches the hold through the UI, none is injected.
+    game.get_player('Alice').resources = {'wood': 1, 'sheep': 5, 'ore': 3}
+
+    # The mission destination itself (a lair token, a stocked village) is board
+    # state, not cargo — set up as the fish shoal is in the sibling fixtures.
+    if special_type == 'gold':
+        game.ep.lairs[special] = {'captured': False, 'crews': {}}
+    elif special_type == 'spice':
+        game.ep.spice_hexes[special] = {'sacks': 3, 'advantage': 'swift_voyage',
+                                        'crews': []}
+    return game, {'cove': cove, 'special': special, 'harbor': harbor, 'edge': edge}
+
+
+def _build_ship_through_ui(alice, edge):
+    """Arm the strip's Build ship, tap the sea side, confirm, and wait for it."""
+    alice.page.click("#ep-build-ship")
+    _click_key(alice, 'edge', edge)
+    alice.page.click("#placement-confirm-yes")
+    alice.page.wait_for_function(
+        "e => { const s = window.__catanDebug.getBoard().edges[e]?.ship;"
+        " return s && s.player === 'Alice' && s.kind === 'transport'; }",
+        arg=edge, timeout=8000,
+    )
+
+
+def _build_crew_through_ui(alice, edge, expected_in_hold):
+    """Arm the strip's Build crew, tap the ship, and wait for the hold to hold
+    `expected_in_hold` crews."""
+    alice.page.click("#ep-build-crew")
+    _click_key(alice, 'edge', edge)
+    alice.page.wait_for_function(
+        "([e, n]) => ((window.__catanDebug.getBoard().edges[e].ship.cargo || [])"
+        ".filter(p => p.type === 'crew').length) === n",
+        arg=[edge, expected_in_hold], timeout=8000,
+    )
 
 
 def _pirate_seven_game():
@@ -436,51 +500,67 @@ def test_the_gesture_catches_a_haul_then_delivers_it(browser, tmp_path):
         stop_server(proc)
 
 
-def test_the_gesture_lands_crews_and_captures_a_lair(browser, tmp_path):
-    """land_crews_on_lair: two crews land on a lair that already held one, the
-    third captures it, and Alice's Pirate Lairs marker ticks up in the panel.
-
-    Honest scope: this exercises the landing GESTURE, not the full player path.
-    The crews are hand-placed in the ship's hold by `_scenario_game` because a
-    crew has no client route onto a ship — `build_crew` / `load_transport_ship`
-    have no UI — so the Pirate Lairs mission is not playable end to end through
-    the browser. That gap is documented and deferred, never faked."""
-    game, ref = _scenario_game()
+def test_a_player_builds_crews_and_captures_a_lair_end_to_end(browser, tmp_path):
+    """Pirate Lairs, from scratch through the real UI with no injected cargo: the
+    player builds a transport ship at her harbour, builds a crew into its hold and
+    another beside it, lands both on the lair, builds a third crew and lands it —
+    the capturing crew — and her Pirate Lairs marker ticks up in the panel while
+    the lair flips captured. Every crew reaches the ship through the strip's Build
+    crew button; the lair starts empty."""
+    game, ref = _crew_mission_game('gold')
     alice, proc = _open(browser, tmp_path, game)
     try:
         assert alice.page.evaluate(
             "() => window.__catanDebug.getBoard().ep.markers.Alice.pirate_lairs") == 0
+
+        _build_ship_through_ui(alice, ref['edge'])
+        # Two crews fill the hold; land them on the lair.
+        _build_crew_through_ui(alice, ref['edge'], 1)
+        _build_crew_through_ui(alice, ref['edge'], 2)
         alice.page.click("#ep-mission")
-        _click_key(alice, 'edge', ref['gold_edge'])
-        _click_key(alice, 'hex', ref['gold'])
+        _click_key(alice, 'edge', ref['edge'])
+        _click_key(alice, 'hex', ref['special'])
+        alice.page.wait_for_function(
+            "g => window.__catanDebug.getBoard().ep.lairs[g].crews.Alice === 2",
+            arg=ref['special'], timeout=8000,
+        )
+        # A third crew, built and landed, is the capture.
+        _build_crew_through_ui(alice, ref['edge'], 1)
+        alice.page.click("#ep-mission")
+        _click_key(alice, 'edge', ref['edge'])
+        _click_key(alice, 'hex', ref['special'])
         alice.page.wait_for_function(
             "() => window.__catanDebug.getBoard().ep.markers.Alice.pirate_lairs > 0",
             timeout=8000,
         )
-        # The lair is captured and the panel shows Alice's advance on the track.
         assert alice.page.evaluate(
-            "g => window.__catanDebug.getBoard().ep.lairs[g].captured", ref['gold']) is True
+            "g => window.__catanDebug.getBoard().ep.lairs[g].captured", ref['special']) is True
         assert "Pirate Lairs" in alice.page.inner_text("#ep-missions")
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)
 
 
-def test_the_gesture_befriends_a_village_then_delivers_spices(browser, tmp_path):
-    """befriend_spice_village grants a visible advantage in the players list, and
-    deliver_spices then advances the Spices marker — both through the gesture.
-
-    Honest scope: as with the lair test, the crew that steps ashore to befriend
-    the village is hand-placed in the hold by `_scenario_game`; there is no client
-    path to load a crew, so the Spices mission is not playable end to end through
-    the browser. The gesture is what is proven here, not the full player path."""
-    game, ref = _scenario_game()
+def test_a_player_builds_a_crew_and_plays_spices_end_to_end(browser, tmp_path):
+    """Spices, from scratch through the real UI with no injected cargo: the player
+    builds a transport ship at her harbour, builds a crew into its hold, befriends
+    the spice village next door (the crew steps ashore, a sack comes aboard and
+    the advantage is earned), and delivers the sack at the Council dock to advance
+    her Spices marker. The crew reaches the ship through the strip's Build crew
+    button."""
+    game, ref = _crew_mission_game('spice')
     alice, proc = _open(browser, tmp_path, game)
     try:
+        assert alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().ep.markers.Alice.spices") == 0
+
+        _build_ship_through_ui(alice, ref['edge'])
+        _build_crew_through_ui(alice, ref['edge'], 1)
+
+        # Befriend: the crew steps ashore, the village's advantage is earned.
         alice.page.click("#ep-mission")
-        # Befriend: a crew steps ashore, the village's advantage is earned.
-        _click_key(alice, 'edge', ref['spice_edge'])
-        _click_key(alice, 'hex', ref['spice'])
+        _click_key(alice, 'edge', ref['edge'])
+        _click_key(alice, 'hex', ref['special'])
         alice.page.wait_for_function(
             "() => (window.__catanDebug.getBoard().ep.village_advantages.Alice || [])"
             ".includes('swift_voyage')",
@@ -490,7 +570,7 @@ def test_the_gesture_befriends_a_village_then_delivers_spices(browser, tmp_path)
         assert "swift voyage" in alice.page.inner_text("#ep-players").lower(), \
             alice.page.inner_text("#ep-players")
         # Deliver: the sack that came aboard advances the Spices track.
-        _click_key(alice, 'edge', ref['spice_edge'])
+        _click_key(alice, 'edge', ref['edge'])
         _click_key(alice, 'hex', ref['cove'])
         alice.page.wait_for_function(
             "() => window.__catanDebug.getBoard().ep.markers.Alice.spices === 1",

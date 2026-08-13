@@ -14,7 +14,7 @@
 
 import { markDirty } from './board.js';
 import { ckEnabled, handleCkVertexTap, handleProgressTargetTap, isProgressMode, progressCardName, progressPickCompletes } from './cities-knights.js';
-import { handleMissionTap } from './ep.js';
+import { handleEpBoardTap, isEpBoardMode } from './ep.js';
 import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
 import { displayError } from './notices.js';
 import { emitGame } from './socket.js';
@@ -112,9 +112,10 @@ function currentPlacementKind() {
     if (!viewState.selectedBuilding) {
         return null;
     }
-    // The mission gesture draws no ghost and offers no ✓ — it is handled ahead
-    // of this pipeline, so it is not a placement kind here.
-    if (viewState.selectedBuilding === 'mission') {
+    // The Explorers & Pirates board gestures (mission and cargo) draw no ghost
+    // and offer no ✓ — each is handled ahead of this pipeline, inferring its
+    // action from the target, so none is a placement kind here.
+    if (isEpBoardMode(viewState.selectedBuilding)) {
         return null;
     }
     // Setup only accepts the piece the server is asking for next - except that
@@ -616,12 +617,12 @@ function updateHover(kind) {
  * @returns {boolean} - Whether the tap was a placement attempt at all
  */
 export function handlePlacementTap(clientX, clientY) {
-    // The Explorers & Pirates mission gesture is a two-tap ship→hex action that
-    // does not go through the ghost/confirm pipeline (it infers the action from
-    // the target, so there is nothing to preview). Handle it first, on my turn —
+    // The Explorers & Pirates board gestures (mission and cargo) do not go
+    // through the ghost/confirm pipeline — each infers its action from the
+    // target, so there is nothing to preview. Handle them first, on my turn —
     // but never over an outstanding 7, where the tap owes the robber or pirate.
-    if (viewState.selectedBuilding === 'mission' && isMyTurn() && !mustMoveRobber()) {
-        return handleMissionTap(clientX, clientY);
+    if (isEpBoardMode(viewState.selectedBuilding) && isMyTurn() && !mustMoveRobber()) {
+        return handleEpBoardTap(clientX, clientY);
     }
 
     const kind = currentPlacementKind();
