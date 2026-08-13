@@ -284,6 +284,28 @@ class TestCargoBuildsReachTheEngine:
         # The settler ship and its settler are both returned to supply.
         assert game.edges[found_edge].ship is None
 
+    def test_load_and_unload_shuttle_a_piece_between_basin_and_hold(self, cargo_clients):
+        # The load/unload handlers were only ever driven to rejection before; this
+        # drives a real round trip — a crew from the basin into the hold and back.
+        alice, _bob, game, harbor, edge = cargo_clients
+        game.vertices[harbor].building['basin'] = [{'type': 'crew', 'size': 'small'}]
+
+        alice.emit('load_transport_ship',
+                   {'name': 'Alice', 'edge': edge, 'basin_index': 0})
+        error, broadcast = _outcome(alice)
+        assert error is None, error
+        assert broadcast, 'loading did not broadcast the board'
+        assert game.edges[edge].ship['cargo'] == [{'type': 'crew', 'size': 'small'}]
+        assert game.vertices[harbor].building['basin'] == []
+
+        alice.emit('unload_transport_ship',
+                   {'name': 'Alice', 'edge': edge, 'cargo_index': 0})
+        error, broadcast = _outcome(alice)
+        assert error is None, error
+        assert broadcast, 'unloading did not broadcast the board'
+        assert game.edges[edge].ship['cargo'] == []
+        assert game.vertices[harbor].building['basin'] == [{'type': 'crew', 'size': 'small'}]
+
     def test_only_the_seated_player_may_build_a_crew(self, cargo_clients):
         alice, bob, game, _harbor, edge = cargo_clients
         game.get_player('Alice').resources = {'ore': 1, 'sheep': 1}
