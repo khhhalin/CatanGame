@@ -578,3 +578,104 @@ class TestTrading:
         result = playing_game.complete_trade(offer['id'], name)
 
         assert result['code'] == 'TRADE_FAILED'
+
+
+class TestGoldInTrades:
+    """Gold (E&P `gold` / T&B `gold_coins`) is tradeable between players by both
+    rulebooks, but it is a scalar on `Player.gold`, not a card in the hand, so the
+    resource-only trade path could not move it. Gold on either side of an offer
+    must cross on completion, gated on a gold rule, over-offers refused and the
+    move atomic."""
+
+    @pytest.fixture
+    def gold_game(self, rng):
+        from game.game import Game
+
+        game = Game(["Alice", "Bob"], [], rng=rng, rules={'gold': True})
+        game.start()
+        game.game_phase = "playing"
+        game.start_turn()
+        return game
+
+    def test_offered_gold_crosses_on_completion(self, gold_game):
+        name = acting(gold_game)
+        opponent = other_player(gold_game, name)
+        gold_game.get_player(name).gold = 5
+        gold_game.get_player(name).resources = {}
+        gold_game.get_player(opponent).resources = {'ore': 1}
+
+        offer = gold_game.propose_trade(
+            name, {}, {'ore': 1}, offered_gold=3
+        )['offer']
+        assert gold_game.accept_trade(offer['id'], opponent)['success']
+        assert gold_game.complete_trade(offer['id'], name, opponent)['success']
+
+        assert gold_game.get_player(name).gold == 2
+        assert gold_game.get_player(opponent).gold == 3
+        assert gold_game.get_player(name).resources.get('ore', 0) == 1
+        assert gold_game.get_player(opponent).resources.get('ore', 0) == 0
+
+    def test_wanted_gold_crosses_from_the_accepter(self, gold_game):
+        name = acting(gold_game)
+        opponent = other_player(gold_game, name)
+        gold_game.get_player(name).resources = {'wood': 1}
+        gold_game.get_player(opponent).gold = 4
+
+        offer = gold_game.propose_trade(
+            name, {'wood': 1}, {}, wanted_gold=2
+        )['offer']
+        assert gold_game.accept_trade(offer['id'], opponent)['success']
+        assert gold_game.complete_trade(offer['id'], name, opponent)['success']
+
+        assert gold_game.get_player(name).gold == 2
+        assert gold_game.get_player(opponent).gold == 2
+
+    def test_offering_more_gold_than_held_is_refused(self, gold_game):
+        name = acting(gold_game)
+        gold_game.get_player(name).gold = 1
+
+        result = gold_game.propose_trade(name, {}, {'ore': 1}, offered_gold=3)
+
+        assert result['code'] == 'INSUFFICIENT_GOLD'
+
+    def test_accepting_when_you_lack_the_wanted_gold_is_refused(self, gold_game):
+        name = acting(gold_game)
+        opponent = other_player(gold_game, name)
+        gold_game.get_player(name).resources = {'wood': 1}
+        gold_game.get_player(opponent).gold = 1
+
+        offer = gold_game.propose_trade(
+            name, {'wood': 1}, {}, wanted_gold=2
+        )['offer']
+
+        assert gold_game.accept_trade(offer['id'], opponent)['code'] == 'INSUFFICIENT_GOLD'
+
+    def test_completion_is_atomic_when_the_gold_has_since_gone(self, gold_game):
+        """A proposer whose gold drains between accept and complete pays nothing
+        and the resources stay put — no half-completed trade."""
+        name = acting(gold_game)
+        opponent = other_player(gold_game, name)
+        gold_game.get_player(name).gold = 2
+        gold_game.get_player(name).resources = {}
+        gold_game.get_player(opponent).resources = {'ore': 1}
+
+        offer = gold_game.propose_trade(name, {}, {'ore': 1}, offered_gold=2)['offer']
+        assert gold_game.accept_trade(offer['id'], opponent)['success']
+        # The gold is gone before the completion lands.
+        gold_game.get_player(name).gold = 0
+
+        result = gold_game.complete_trade(offer['id'], name, opponent)
+
+        assert result['code'] == 'INSUFFICIENT_GOLD'
+        assert gold_game.get_player(name).gold == 0
+        assert gold_game.get_player(opponent).gold == 0
+        assert gold_game.get_player(opponent).resources.get('ore', 0) == 1
+        assert gold_game.get_player(name).resources.get('ore', 0) == 0
+
+    def test_gold_in_a_trade_is_refused_without_a_gold_rule(self, playing_game):
+        name = acting(playing_game)
+        playing_game.get_player(name).resources = {'wood': 1}
+
+        result = playing_game.propose_trade(name, {'wood': 1}, {'ore': 1}, offered_gold=1)
+
+        assert result['code'] == 'GOLD_RULE_OFF'

@@ -17,11 +17,21 @@ class TradeManager:
         self.offer_counter = 0
 
     def propose(
-        self, proposer: str, offered_resources: dict, wanted_resources: dict
+        self,
+        proposer: str,
+        offered_resources: dict,
+        wanted_resources: dict,
+        offered_gold: int = 0,
+        wanted_gold: int = 0,
     ) -> dict | None:
         """Create a new trade offer.
 
         Returns offer dict if successful, None if max offers reached.
+
+        Gold rides on its own scalar keys rather than inside the resource dicts:
+        gold lives on `Player.gold`, not in the hand, so the resource-moving path
+        never touches it. The keys are always present so every offer on the wire
+        has the same shape; they are 0 unless a gold rule put gold on a side.
         """
         if len(self._get_player_offers(proposer)) >= self.max_offers_per_player:
             return None
@@ -34,6 +44,8 @@ class TradeManager:
             'proposer': proposer,
             'offered_resources': offered_resources,
             'wanted_resources': wanted_resources,
+            'offered_gold': offered_gold,
+            'wanted_gold': wanted_gold,
             'created_at': time.time(),
             'accepted_by': {},  # player_name -> True
             'status': 'active',
@@ -159,6 +171,11 @@ class TradeManager:
 
     def _is_bank_trade_offer(self, offer: dict) -> bool:
         """Check if offer can be traded with bank (4:1 ratio or better)."""
+        # Gold is only ever traded player-to-player — the bank has no gold desk,
+        # and the resource ratio must not drag an offer carrying gold onto the
+        # bank path, which would settle the resources and drop the gold.
+        if offer.get('offered_gold') or offer.get('wanted_gold'):
+            return False
         offered_total = sum(offer['offered_resources'].values())
         wanted_total = sum(offer['wanted_resources'].values())
 

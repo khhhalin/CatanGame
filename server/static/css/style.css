@@ -2467,6 +2467,14 @@ button:disabled {
     color: var(--good);
 }
 
+/* Gold in a trade is a currency, not a card, so it reads as a small labelled
+   chip beside the card tiles rather than a terrain tile. The give/want colour
+   carries the direction, as it does for the cards. */
+.trade-gold {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .trade-offer-actions {
     display: flex;
     gap: 0.25rem;
@@ -4448,6 +4456,38 @@ body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.give) {
     flex: none;
     font-size: var(--text-lg);
     color: var(--text-faint);
+}
+
+/* The gold stage-and-unstage for the tray: gold is a currency, not a hand card,
+   so it gets a small − N + control rather than a tappable mini-card. Shown only
+   on a gold table. */
+.trade-gold-stepper {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+}
+
+.trade-gold-step {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font-size: var(--text-md);
+    line-height: 1;
+}
+
+.trade-gold-count {
+    min-width: 3.5em;
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 /* A mini physical card: the terrain fill through --tile (.t-*), the glyph and a

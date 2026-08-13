@@ -70,6 +70,16 @@ def _buy_gold_game():
     return game
 
 
+def _gold_trade_game():
+    """Alice holds five gold and an empty hand, so a gold-for-wood offer is an
+    isolated change: the gold she stages is all she could be offering."""
+    game = _started_gold_game()
+    alice = game.get_player('Alice')
+    alice.resources = {'wood': 0, 'brick': 0, 'sheep': 0, 'wheat': 0, 'ore': 0}
+    alice.gold = 5
+    return game
+
+
 @pytest.fixture(scope="module")
 def browser():
     with browser_session() as engine:
@@ -159,6 +169,52 @@ def test_buying_a_resource_with_gold_spends_two_and_fills_the_hand(browser, tmp_
         ) == 2
         assert "2 gold" in alice.page.inner_text("#ep-players"), \
             alice.page.inner_text("#ep-players")
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_gold_can_be_staged_into_a_trade_and_shows_in_the_offer(browser, tmp_path):
+    """Gold is tradeable player-to-player under `gold`, but it is a scalar on
+    `Player.gold`, not a hand card, so the tray gives it a − N + stepper rather
+    than a tappable mini-card. The player-visible proof: two gold staged onto the
+    give side and offered for wood reaches the offer card the proposer sees, with
+    the gold on it — which cannot happen unless the whole path, stepper to
+    payload to broadcast, carries the gold."""
+    persistence.save(_gold_trade_game(), os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = Player(browser, url, "Alice", viewport=VIEWPORT)
+        alice.page.check("#role-player")
+        alice.page.fill("#username", "Alice")
+        alice.page.click("#join-btn")
+        alice.page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
+        wait_for_board_painted(alice)
+        next_frame(alice.page)
+
+        # The gold stepper is up on the give side — an affordance a base game
+        # never grows.
+        give_plus = ('.trade-gold-stepper[data-side="give"] '
+                     'button[data-gold-step="1"]')
+        alice.page.wait_for_selector(give_plus, timeout=4000)
+
+        # Stage two gold to give, and ask for one wood.
+        alice.page.click(give_plus)
+        alice.page.click(give_plus)
+        alice.page.click(".trade-add")
+        alice.page.click('.trade-pick[data-card="wood"]')
+        alice.page.click(".tray-action.is-offer")
+
+        # The offer reached the table carrying the gold, and the card the proposer
+        # sees reads it back.
+        alice.page.wait_for_function(
+            "() => (window.__catanDebug.getBoard().trades.my_offers.Alice || [])"
+            ".some(o => o.offered_gold === 2)",
+            timeout=8000,
+        )
+        alice.page.wait_for_selector("#incoming-offers:not(.hidden)", timeout=4000)
+        assert "2 gold" in alice.page.inner_text("#incoming-offers"), \
+            alice.page.inner_text("#incoming-offers")
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)

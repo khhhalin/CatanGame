@@ -1834,6 +1834,109 @@ class TestCommoditiesReachTheTradeHandler:
         assert last_error(actor)['code'] == 'INSUFFICIENT_RESOURCES'
 
 
+class TestGoldIsTradeableBetweenPlayers:
+    """The gap: both gold economies (E&P `gold`, T&B `gold_coins`) make gold
+    tradeable player-to-player, but gold is a scalar on `Player.gold`, not a card
+    in the hand, and the trade payload only moved resources. So a player could
+    not put gold on either side of an offer — it had no way to be expressed, and
+    nothing crossed."""
+
+    def _gold_turn(self, clients, rule='gold'):
+        alice, bob = clients
+        game = state.session().game
+        game.rules['gold'] = False
+        game.rules['gold_coins'] = False
+        game.rules[rule] = True
+        game.game_phase = "playing"
+        game.start_turn()
+        acting = game.players[game.current_player_index].name
+        other_name = 'Bob' if acting == 'Alice' else 'Alice'
+        game.set_dice_rolled()
+        actor = seated(acting, Alice=alice, Bob=bob)
+        other = seated(other_name, Alice=alice, Bob=bob)
+        actor.get_received()
+        other.get_received()
+        return game, acting, other_name, actor, other
+
+    def _offer_id(self, actor):
+        proposed = events(actor, 'trade_proposed')
+        assert proposed, "the offer never reached the table"
+        return proposed[-1]['offer']['id']
+
+    def test_offered_gold_crosses_to_the_accepter(self, clients):
+        game, acting, other, actor, taker = self._gold_turn(clients)
+        game.get_player(acting).gold = 5
+        game.get_player(acting).resources = {}
+        game.get_player(other).gold = 1
+        game.get_player(other).resources = {'wood': 2}
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {},
+                                     'offered_gold': 3, 'wanted': {'wood': 1}})
+        offer_id = self._offer_id(actor)
+        taker.emit('accept_trade', {'name': other, 'offer_id': offer_id})
+        actor.emit('complete_trade', {'name': acting, 'offer_id': offer_id,
+                                      'selected_responder': other})
+
+        # Against the live players, never a copied literal: exactly 3 gold left
+        # the proposer and reached the taker, and the wood came back the other way.
+        assert game.get_player(acting).gold == 2
+        assert game.get_player(other).gold == 4
+        assert game.get_player(acting).resources.get('wood', 0) == 1
+        assert game.get_player(other).resources.get('wood', 0) == 1
+
+    def test_wanted_gold_crosses_from_the_accepter(self, clients):
+        game, acting, other, actor, taker = self._gold_turn(clients, rule='gold_coins')
+        game.get_player(acting).gold = 0
+        game.get_player(acting).resources = {'ore': 2}
+        game.get_player(other).gold = 4
+        game.get_player(other).resources = {}
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {'ore': 1},
+                                     'wanted': {}, 'wanted_gold': 2})
+        offer_id = self._offer_id(actor)
+        taker.emit('accept_trade', {'name': other, 'offer_id': offer_id})
+        actor.emit('complete_trade', {'name': acting, 'offer_id': offer_id,
+                                      'selected_responder': other})
+
+        assert game.get_player(acting).gold == 2
+        assert game.get_player(other).gold == 2
+        assert game.get_player(acting).resources.get('ore', 0) == 1
+        assert game.get_player(other).resources.get('ore', 0) == 1
+
+    def test_offering_more_gold_than_held_is_refused(self, clients):
+        game, acting, other, actor, _taker = self._gold_turn(clients)
+        game.get_player(acting).gold = 1
+        game.get_player(acting).resources = {}
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {},
+                                     'offered_gold': 3, 'wanted': {'wood': 1}})
+
+        assert last_error(actor)['code'] == 'INSUFFICIENT_GOLD'
+        assert game.get_player(acting).gold == 1
+
+    def test_a_base_game_refuses_gold_in_the_payload(self, clients):
+        alice, bob = clients
+        game = state.session().game
+        game.rules['gold'] = False
+        game.rules['gold_coins'] = False
+        game.game_phase = "playing"
+        game.start_turn()
+        acting = game.players[game.current_player_index].name
+        game.set_dice_rolled()
+        actor = seated(acting, Alice=alice, Bob=bob)
+        game.get_player(acting).gold = 5
+        game.get_player(acting).resources = {'wood': 1}
+        actor.get_received()
+
+        actor.emit('propose_trade', {'name': acting, 'offered': {'wood': 1},
+                                     'offered_gold': 2, 'wanted': {'ore': 1}})
+
+        # No gold rule in play, so gold in the payload is refused rather than
+        # moved: nothing left the proposer's purse.
+        assert last_error(actor)['code'] == 'GOLD_RULE_OFF'
+        assert game.get_player(acting).gold == 5
+
+
 class TestTheLogSaysWhoTheRollPaid:
     """The bug: a roll logged "Alice rolled 3 + 3 = 6" and nothing else, so no
     player could tell what it had paid them — which is also how a production

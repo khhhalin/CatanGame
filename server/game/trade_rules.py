@@ -79,12 +79,25 @@ class TradeRules:
                 rate = min(rate, MERCHANT_TRADE_RATE)
         return rate
 
-    def propose_trade(self, player_name: str, offered: dict, wanted: dict) -> dict:
+    def propose_trade(
+        self,
+        player_name: str,
+        offered: dict,
+        wanted: dict,
+        offered_gold: int = 0,
+        wanted_gold: int = 0,
+    ) -> dict:
         """Offer a trade to the table, or settle it against the bank.
 
         A request at or better than the player's harbour rate is not really an
         offer — it is a bank trade, so it completes immediately rather than
         waiting for a response nobody would withhold.
+
+        Gold on either side (a scalar, not a card) is tradeable between players
+        under either gold economy — E&P `gold` or T&B `gold_coins`, which share
+        `Player.gold`. It rides its own arguments so the resource path is
+        untouched, and its presence forces a player offer: the bank has no gold
+        desk, so a gold offer never settles against the bank.
         """
         if self.must_move_robber:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
@@ -92,8 +105,16 @@ class TradeRules:
         if moved is not None:
             return moved
 
-        if not offered or not wanted:
-            return refused('INVALID_PAYLOAD', 'A trade needs resources on both sides')
+        has_gold = bool(offered_gold or wanted_gold)
+        if has_gold and not (self.rules['gold'] or self.rules['gold_coins']):
+            return refused('GOLD_RULE_OFF', 'Gold is not in play')
+
+        # A side is real if it carries a resource or gold; only gold lets a side
+        # stand without a card on it.
+        give_empty = not offered and not offered_gold
+        want_empty = not wanted and not wanted_gold
+        if give_empty or want_empty:
+            return refused('INVALID_PAYLOAD', 'A trade needs something on both sides')
 
         current_name = self.players[self.current_player_index].name
         if current_name != player_name:
@@ -112,6 +133,22 @@ class TradeRules:
                     'INSUFFICIENT_RESOURCES',
                     f'Not enough {card_type}: have {available}, offering {count}',
                 )
+
+        if offered_gold > player.gold:
+            return refused(
+                'INSUFFICIENT_GOLD',
+                f'Not enough gold: have {player.gold}, offering {offered_gold}',
+            )
+
+        # Gold is only ever a player offer — skip the bank check, which the
+        # sum-based ratio cannot express for a gold side anyway.
+        if has_gold:
+            offer = self.trade_manager.propose(
+                player_name, offered, wanted, offered_gold, wanted_gold
+            )
+            if not offer:
+                return refused('TRADE_LIMIT', 'Maximum number of trade offers reached')
+            return {'success': True, 'error': '', 'kind': 'offer', 'offer': offer}
 
         rate = self.best_trade_rate(player_name, offered)
         if sum(offered.values()) / sum(wanted.values()) < rate:
@@ -177,6 +214,12 @@ class TradeRules:
                     'INSUFFICIENT_RESOURCES', f'Not enough {card_type} to accept this trade'
                 )
 
+        # The accepter pays the wanted side, so a wanted-gold offer is theirs to
+        # cover — checked here where the player's purse is in reach, alongside
+        # the resource check, and re-checked at completion for atomicity.
+        if offer.get('wanted_gold', 0) > player.gold:
+            return refused('INSUFFICIENT_GOLD', 'Not enough gold to accept this trade')
+
         if not self.trade_manager.accept(offer_id, player_name, hand):
             return refused('TRADE_FAILED', 'Could not accept trade')
         return {'success': True, 'error': ''}
@@ -191,6 +234,21 @@ class TradeRules:
 
     def complete_trade(self, offer_id: int, proposer: str, selected_responder: str = None) -> dict:
         """Settle an accepted offer and move the cards."""
+        # Gold pre-flight before the offer is consumed: a purse can change between
+        # accept and complete (a barbarian or pirate on the proposer's turn), so
+        # a completion that cannot pay its gold is refused here rather than
+        # leaving the offer spent with nothing moved.
+        pending = self.trade_manager.offers.get(offer_id)
+        if pending and pending['status'] == 'active':
+            proposer_player = self.get_player(proposer)
+            responder_player = (
+                self.get_player(selected_responder) if selected_responder else None
+            )
+            if proposer_player and pending.get('offered_gold', 0) > proposer_player.gold:
+                return refused('INSUFFICIENT_GOLD', 'The proposer no longer has that gold')
+            if responder_player and pending.get('wanted_gold', 0) > responder_player.gold:
+                return refused('INSUFFICIENT_GOLD', 'The accepter no longer has that gold')
+
         settlement = self.trade_manager.complete(offer_id, proposer, selected_responder)
         if not settlement:
             return refused('TRADE_FAILED', 'Could not complete trade')
@@ -222,6 +280,14 @@ class TradeRules:
         # Transfer wanted cards FROM responder TO proposer
         for card_type, count in offer['wanted_resources'].items():
             _move_cards(responder_player, proposer_player, card_type, count)
+
+        # Gold moves alongside the cards — a scalar on `Player.gold`, not a card,
+        # so it is handed across directly. `complete_trade` has already checked
+        # both purses cover it, so the two sides settle together.
+        offered_gold = offer.get('offered_gold', 0)
+        wanted_gold = offer.get('wanted_gold', 0)
+        proposer_player.gold += wanted_gold - offered_gold
+        responder_player.gold += offered_gold - wanted_gold
 
         return True
 

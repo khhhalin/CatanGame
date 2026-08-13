@@ -38,6 +38,141 @@ function commoditiesInPlay() {
     return getBoard()?.rules?.commodities === true;
 }
 
+// --------------------------------------------------------------------- gold
+//
+// Both gold economies — Explorers & Pirates `gold` and Traders & Barbarians
+// `gold_coins` — make gold tradeable player-to-player, and both keep it on the
+// same `Player.gold` purse. The trade UI grows a gold row (give and want) only
+// when one of those rules is on; a base or non-gold table never sees it.
+
+/**
+ * Whether gold can be put in a trade at this table.
+ */
+function goldInPlay() {
+    const rules = getBoard()?.rules || {};
+    return rules.gold === true || rules.gold_coins === true;
+}
+
+// The most gold a want field lets a player ask for — a ceiling for the stepper,
+// not a rule; the server settles what actually changes hands.
+const GOLD_WANT_MAX = 20;
+
+/**
+ * This player's gold purse, the give side's real ceiling.
+ */
+function myGold() {
+    return findMyPlayer()?.gold || 0;
+}
+
+/**
+ * The two base give/want pickers (the printed five sit here); the gold row and a
+ * cotton extra both attach to these.
+ */
+function tradeGiveSelector() {
+    return tradeGiveCommodities?.previousElementSibling;
+}
+
+function tradeWantSelector() {
+    return tradeWantCommodities?.previousElementSibling;
+}
+
+/**
+ * A gold give/want field, wrapped in the same stepper the card fields carry.
+ *
+ * @param {string} side - 'give' or 'want'
+ * @returns {HTMLLabelElement}
+ */
+function goldRow(side) {
+    const label = document.createElement('label');
+    label.className = 'res-gold';
+    const name = document.createElement('span');
+    name.className = 'picker-name';
+    const word = document.createElement('span');
+    word.className = 'picker-word';
+    word.textContent = 'Gold';
+    name.appendChild(word);
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.inputMode = 'numeric';
+    input.id = `${side}-gold`;
+    input.min = '0';
+    // The give side is bounded to the purse in applyHandLimits; the want side
+    // takes a plain ceiling.
+    input.max = side === 'give' ? '0' : String(GOLD_WANT_MAX);
+    input.value = '0';
+    label.append(name, input);
+
+    const stepper = document.createElement('div');
+    stepper.className = 'trade-stepper';
+    stepper.append(
+        buildStepButton(input, -1, 'gold', side),
+        input,
+        buildStepButton(input, 1, 'gold', side),
+    );
+    label.appendChild(stepper);
+    return label;
+}
+
+/**
+ * Grow (or remove) the gold give/want rows to match the table. Idempotent: the
+ * previous rows are cleared first, so switching games never leaves one behind,
+ * and a non-gold table is left with exactly the rows it always had.
+ */
+function syncGoldRow() {
+    for (const [side, selector] of [['give', tradeGiveSelector()],
+                                    ['want', tradeWantSelector()]]) {
+        if (!selector) {
+            continue;
+        }
+        selector.querySelectorAll('.res-gold').forEach(node => node.remove());
+        if (goldInPlay()) {
+            selector.appendChild(goldRow(side));
+        }
+    }
+}
+
+/**
+ * Read the gold give/want fields, or zeros where gold is not in play.
+ *
+ * @returns {object} - {offered_gold, wanted_gold}
+ */
+function readGoldInputs() {
+    if (!goldInPlay()) {
+        return { offered_gold: 0, wanted_gold: 0 };
+    }
+    const give = document.getElementById('give-gold');
+    const want = document.getElementById('want-gold');
+    return {
+        offered_gold: give ? (parseInt(give.value) || 0) : 0,
+        wanted_gold: want ? (parseInt(want.value) || 0) : 0,
+    };
+}
+
+/**
+ * A gold amount as a labelled chip, for an offer side. Integer count and a fixed
+ * word, so a caller may set it with innerHTML alongside the card tiles.
+ *
+ * @param {number} gold - Amount of gold on this side
+ * @returns {string}
+ */
+function formatGold(gold) {
+    return gold > 0 ? `<span class="trade-gold num">${gold} gold</span>` : '';
+}
+
+/**
+ * One offer side as its card tiles plus any gold, for a trade card.
+ *
+ * @param {object} resources - {card: count}
+ * @param {number} gold - Gold on this side
+ * @returns {string}
+ */
+function formatOfferSide(resources, gold) {
+    return [formatTradeBundle(resources), formatGold(gold)]
+        .filter(Boolean)
+        .join('  ');
+}
+
 /**
  * The card types the dialog is currently offering, which is what its inputs
  * are read and reset over.
@@ -242,8 +377,8 @@ function responderOfferCards(otherOffers, allPlayers) {
         const proposer = allPlayers.find(p => p.name === offer.proposer);
         const card = buildTradeOfferCard(
             offer,
-            `You give: ${formatTradeBundle(offer.wanted_resources)}`,
-            `You get: ${formatTradeBundle(offer.offered_resources)}`,
+            `You give: ${formatOfferSide(offer.wanted_resources, offer.wanted_gold || 0)}`,
+            `You get: ${formatOfferSide(offer.offered_resources, offer.offered_gold || 0)}`,
             offer.proposer,
             proposer?.color || '#e74c3c'
         );
@@ -282,8 +417,8 @@ function proposerOfferCards(myOfferList, allPlayers) {
         const accepted = offer.accepted_by || {};
         const card = buildTradeOfferCard(
             offer,
-            formatTradeBundle(offer.offered_resources),
-            formatTradeBundle(offer.wanted_resources),
+            formatOfferSide(offer.offered_resources, offer.offered_gold || 0),
+            formatOfferSide(offer.wanted_resources, offer.wanted_gold || 0),
             '',
             ''
         );
@@ -651,6 +786,16 @@ function applyHandLimits() {
             input.value = String(held);
         }
     }
+    // Gold on the give side is bounded by the purse, the same as a card is by
+    // the hand.
+    const goldGive = document.getElementById('give-gold');
+    if (goldGive) {
+        const held = myGold();
+        goldGive.max = String(held);
+        if ((parseInt(goldGive.value) || 0) > held) {
+            goldGive.value = String(held);
+        }
+    }
 }
 
 /**
@@ -667,6 +812,11 @@ function clearTradeInputs() {
         const want = document.getElementById(`want-${card}`);
         if (give) give.value = 0;
         if (want) want.value = 0;
+    });
+    // The gold rows too, where the table has them.
+    ['give-gold', 'want-gold'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.value = 0;
     });
     clearOverpayOffer();
     refreshStepBounds();
@@ -783,8 +933,20 @@ function renderTradeVerdict() {
     if (!tradeVerdict) {
         return;
     }
-    const verdict = describeTrade();
     tradeVerdict.classList.remove('is-warning', 'is-bank');
+
+    // Any gold on a side makes this a player offer (never a bank trade), so say
+    // so plainly rather than running it through the resource-ratio verdict.
+    const gold = readGoldInputs();
+    if (gold.offered_gold || gold.wanted_gold) {
+        const { offered, wanted } = readTradeInputs();
+        tradeVerdict.innerHTML =
+            `Goes to the table: ${formatOfferSide(offered, gold.offered_gold)} `
+            + `→ ${formatOfferSide(wanted, gold.wanted_gold)}.`;
+        return;
+    }
+
+    const verdict = describeTrade();
 
     if (verdict.kind === 'empty') {
         tradeVerdict.textContent = 'Put cards on both sides.';
@@ -851,6 +1013,9 @@ function showTradeModal() {
     // A cotton map's give/want pickers gain a cotton field here; a standard
     // board's are untouched (there is nothing beyond the five to add).
     syncTradeExtras();
+    // A gold table gains a gold give/want row; a base or non-gold table gains
+    // nothing.
+    syncGoldRow();
     // This dialog covers the hand panel, and what is in hand is half of what
     // decides an offer. Board updates keep it live from here on.
     renderDialogHands();
@@ -883,19 +1048,24 @@ function clearOverpayOffer() {
  * modal and the tray's trade zone both settle through the same protocol rather
  * than each carrying its own copy of the payload shape.
  */
-function emitProposeTrade(offered, wanted) {
-    emitGame('propose_trade', {
+function emitProposeTrade(offered, wanted, offeredGold = 0, wantedGold = 0) {
+    const payload = {
         name: viewState.identity.name,
         offered: offered,
-        wanted: wanted
-    });
+        wanted: wanted,
+    };
+    // Gold rides its own scalar keys and only when a side carries it, so a
+    // base-game or non-gold offer is byte-for-byte the payload it always was.
+    if (offeredGold > 0) payload.offered_gold = offeredGold;
+    if (wantedGold > 0) payload.wanted_gold = wantedGold;
+    emitGame('propose_trade', payload);
 }
 
 /**
  * Send a trade from the modal and close the dialog.
  */
-function sendTrade(offered, wanted) {
-    emitProposeTrade(offered, wanted);
+function sendTrade(offered, wanted, offeredGold = 0, wantedGold = 0) {
+    emitProposeTrade(offered, wanted, offeredGold, wantedGold);
     hideTradeModal();
 }
 
@@ -909,31 +1079,38 @@ function sendTrade(offered, wanted) {
  */
 function submitTrade() {
     const { offered, wanted } = readTradeInputs();
+    const { offered_gold, wanted_gold } = readGoldInputs();
 
-    if (Object.keys(offered).length === 0 || Object.keys(wanted).length === 0) {
-        displayError('Please specify resources to give and want');
+    const giveEmpty = Object.keys(offered).length === 0 && !offered_gold;
+    const wantEmpty = Object.keys(wanted).length === 0 && !wanted_gold;
+    if (giveEmpty || wantEmpty) {
+        displayError('Please specify what to give and want');
         return;
     }
 
-    const verdict = describeTrade();
-    if (verdict.kind === 'bank' && verdict.overpay > 0 && applyBestRate(verdict)) {
-        overpayOffer = { offered, wanted };
-        tradeSendAnywayBtn.textContent =
-            `Give the bank ${verdict.given} anyway`;
-        tradeSendAnywayBtn.classList.remove('hidden');
-        refreshStepBounds();
-        renderTradeVerdict();
-        if (tradeVerdict) {
-            tradeVerdict.classList.add('is-warning');
-            tradeVerdict.textContent =
-                `Lowered to ${verdict.rate}, your rate for this trade — `
-                + `${verdict.overpay} card${verdict.overpay === 1 ? '' : 's'} `
-                + 'kept. Press Propose to send it.';
+    // Gold on either side is always a player offer — the bank has no gold desk —
+    // so the bank-rate overpay guard, a resource-ratio check, does not apply.
+    if (!offered_gold && !wanted_gold) {
+        const verdict = describeTrade();
+        if (verdict.kind === 'bank' && verdict.overpay > 0 && applyBestRate(verdict)) {
+            overpayOffer = { offered, wanted };
+            tradeSendAnywayBtn.textContent =
+                `Give the bank ${verdict.given} anyway`;
+            tradeSendAnywayBtn.classList.remove('hidden');
+            refreshStepBounds();
+            renderTradeVerdict();
+            if (tradeVerdict) {
+                tradeVerdict.classList.add('is-warning');
+                tradeVerdict.textContent =
+                    `Lowered to ${verdict.rate}, your rate for this trade — `
+                    + `${verdict.overpay} card${verdict.overpay === 1 ? '' : 's'} `
+                    + 'kept. Press Propose to send it.';
+            }
+            return;
         }
-        return;
     }
 
-    sendTrade(offered, wanted);
+    sendTrade(offered, wanted, offered_gold, wanted_gold);
 }
 
 /**
@@ -1152,6 +1329,12 @@ document.querySelectorAll('.monopoly-res-btn').forEach(btn => {
 const zoneGive = {};
 const zoneWant = {};
 const ZONE_WANT_MAX = 19;
+
+// Gold staged on each side, a scalar apart from the card piles because gold is a
+// currency on `Player.gold`, not a card in the hand. Both stay 0 and unshown on
+// a table with no gold rule.
+let zoneGiveGold = 0;
+let zoneWantGold = 0;
 
 // Filled in by buildTradeZone once, at load.
 let zoneEl = null;
@@ -1372,20 +1555,25 @@ function renderTrayAction(ready) {
     if (!zoneActionBtn) {
         return;
     }
-    const bank = isMyTurn() ? bankTradeIntent() : null;
+    // Gold on either side is a player offer and nothing else — never a build or a
+    // bank trade — so it suppresses both and the staged materials read as a give.
+    const anyGold = zoneGiveGold > 0 || zoneWantGold > 0;
+    const bank = (isMyTurn() && !anyGold) ? bankTradeIntent() : null;
     const givenCards = Object.keys(materials()).length;
     const wantedCards = Object.keys(zoneWant).filter(card => zoneWant[card] > 0).length;
+    const givenAny = givenCards > 0 || zoneGiveGold > 0;
+    const wantedAny = wantedCards > 0 || zoneWantGold > 0;
 
     let act = null;
     let label = '';
-    if (ready && isMyTurn()) {
+    if (ready && isMyTurn() && !anyGold) {
         act = 'build';
         label = `Build ${buildLabel(ready)}`;
     } else if (bank) {
         act = 'bank';
         label = `Bank · ${bank.rate} ${resourceName(bank.giveCard)}`
             + ` → 1 ${resourceName(bank.wantCard)}`;
-    } else if (givenCards > 0 && wantedCards > 0) {
+    } else if (givenAny && wantedAny) {
         act = 'offer';
         label = 'Offer to players';
     }
@@ -1416,11 +1604,16 @@ function renderTradeZone() {
             givenCards += 1;
         }
     }
-    if (givenCards === 0) {
+    if (givenCards === 0 && !goldInPlay()) {
         const hint = document.createElement('span');
         hint.className = 'trade-slot-hint';
         hint.textContent = 'Tap a card below';
         giveFragment.appendChild(hint);
+    }
+    // A gold table gains a give-side gold stepper — gold cannot be tapped in from
+    // the hand, so this is how it reaches an offer.
+    if (goldInPlay()) {
+        giveFragment.appendChild(zoneGoldStepper('give', zoneGiveGold, myGold()));
     }
     zoneGiveSlots.replaceChildren(giveFragment);
 
@@ -1433,10 +1626,17 @@ function renderTradeZone() {
         }
     }
     wantFragment.appendChild(zoneAddBtn);
+    if (goldInPlay()) {
+        wantFragment.appendChild(zoneGoldStepper('want', zoneWantGold, GOLD_WANT_MAX));
+    }
     zoneWantSlots.replaceChildren(wantFragment);
 
-    // Quiet until something is chosen: an idle zone is a hint, not a demand.
-    zoneEl.classList.toggle('is-quiet', givenCards === 0 && wantedCards === 0);
+    // Quiet until something is chosen: an idle zone is a hint, not a demand. Gold
+    // staged on either side counts as chosen.
+    zoneEl.classList.toggle(
+        'is-quiet',
+        givenCards === 0 && wantedCards === 0 && !zoneGiveGold && !zoneWantGold,
+    );
 
     // The staged pile reads three ways — the build it makes, a bank trade at this
     // player's rate, or an offer to the table — and one morph button becomes
@@ -1446,6 +1646,63 @@ function renderTradeZone() {
     renderTrayAction(ready);
 
     syncHandSelection();
+}
+
+/**
+ * A gold give/want stepper for the tray, shown only on a gold table. Gold is a
+ * currency, not a hand card, so it cannot be tapped in from the fan the way the
+ * materials are — a small − N + control is its stage-and-unstage instead.
+ *
+ * @param {string} side - 'give' or 'want'
+ * @param {number} count - Gold currently staged on this side
+ * @param {number} max - The side's ceiling (the purse for give, a cap for want)
+ * @returns {HTMLElement}
+ */
+function zoneGoldStepper(side, count, max) {
+    const wrap = document.createElement('div');
+    wrap.className = 'trade-gold-stepper';
+    wrap.dataset.side = side;
+
+    const minus = document.createElement('button');
+    minus.type = 'button';
+    minus.className = 'trade-gold-step';
+    minus.dataset.goldStep = '-1';
+    minus.dataset.side = side;
+    minus.textContent = '−';
+    minus.disabled = count <= 0;
+    minus.setAttribute('aria-label', `One less gold to ${side === 'give' ? 'give' : 'want'}`);
+
+    const label = document.createElement('span');
+    label.className = 'trade-gold-count num';
+    label.textContent = `${count} gold`;
+
+    const plus = document.createElement('button');
+    plus.type = 'button';
+    plus.className = 'trade-gold-step';
+    plus.dataset.goldStep = '1';
+    plus.dataset.side = side;
+    plus.textContent = '+';
+    plus.disabled = count >= max;
+    plus.setAttribute('aria-label', `One more gold to ${side === 'give' ? 'give' : 'want'}`);
+
+    wrap.append(minus, label, plus);
+    return wrap;
+}
+
+/**
+ * Move one side's staged gold, inside its bounds: the purse on the give side, a
+ * plain ceiling on the want side.
+ *
+ * @param {string} side - 'give' or 'want'
+ * @param {number} delta - +1 or -1
+ */
+function stepZoneGold(side, delta) {
+    if (side === 'give') {
+        zoneGiveGold = Math.min(myGold(), Math.max(0, zoneGiveGold + delta));
+    } else {
+        zoneWantGold = Math.min(GOLD_WANT_MAX, Math.max(0, zoneWantGold + delta));
+    }
+    renderTradeZone();
 }
 
 /**
@@ -1461,6 +1718,10 @@ function reconcileZoneGive() {
         } else if (zoneGive[card] > held) {
             zoneGive[card] = held;
         }
+    }
+    // Gold spent elsewhere this turn shrinks the staged give the same way.
+    if (zoneGiveGold > myGold()) {
+        zoneGiveGold = myGold();
     }
     renderTradeZone();
 }
@@ -1562,6 +1823,8 @@ function clearTradeZone() {
     for (const card of Object.keys(zoneWant)) {
         delete zoneWant[card];
     }
+    zoneGiveGold = 0;
+    zoneWantGold = 0;
     toggleZonePicker(false);
     renderTradeZone();
 }
@@ -1582,11 +1845,13 @@ function proposeZoneTrade() {
     for (const [card, count] of Object.entries(zoneWant)) {
         if (count > 0) wanted[card] = count;
     }
-    if (Object.keys(offered).length === 0 || Object.keys(wanted).length === 0) {
-        displayError('Put cards on both sides of the trade');
+    const giveEmpty = Object.keys(offered).length === 0 && !zoneGiveGold;
+    const wantEmpty = Object.keys(wanted).length === 0 && !zoneWantGold;
+    if (giveEmpty || wantEmpty) {
+        displayError('Put something on both sides of the trade');
         return;
     }
-    emitProposeTrade(offered, wanted);
+    emitProposeTrade(offered, wanted, zoneGiveGold, zoneWantGold);
     clearTradeZone();
 }
 
@@ -1597,6 +1862,11 @@ function proposeZoneTrade() {
  * @param {Event} event - Click from the zone container
  */
 function handleZoneClick(event) {
+    const goldStep = event.target.closest('[data-gold-step]');
+    if (goldStep) {
+        stepZoneGold(goldStep.dataset.side, Number(goldStep.dataset.goldStep));
+        return;
+    }
     const mini = event.target.closest('.trade-mini');
     if (mini) {
         removeZoneCard(mini.dataset.side, mini.dataset.card);

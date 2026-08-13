@@ -7,6 +7,7 @@ from extensions import socketio
 from game.validation import (
     InvalidPayload,
     clean_card_counts,
+    require_int,
 )
 from state import (
     bump_and_broadcast,
@@ -49,6 +50,12 @@ def handle_propose_trade(data):
         # legal input. Anything outside those eight names still bounces.
         offered = clean_card_counts(data.get('offered'), 'offered')
         wanted = clean_card_counts(data.get('wanted'), 'wanted')
+        # Gold rides its own scalars, not the resource dicts (a gold key inside
+        # `offered` is still rejected by `clean_card_counts`). Absent on a
+        # base-game payload, defaulting to 0; the engine gates any non-zero gold
+        # on a gold rule being in play.
+        offered_gold = require_int(data.get('offered_gold', 0), 'offered_gold')
+        wanted_gold = require_int(data.get('wanted_gold', 0), 'wanted_gold')
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
         return
@@ -69,7 +76,7 @@ def handle_propose_trade(data):
 
     logger.info("trade proposed by=%s offered=%s wanted=%s", name, offered, wanted)
 
-    result = session.game.propose_trade(name, offered, wanted)
+    result = session.game.propose_trade(name, offered, wanted, offered_gold, wanted_gold)
     if not result['success']:
         reject(result['code'], result['error'])
         return
