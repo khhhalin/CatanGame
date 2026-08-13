@@ -638,6 +638,40 @@ class TestLobbyRules:
         assert selected['commodities'] is True
         assert 'cities_and_knights' not in selected
 
+    @pytest.mark.parametrize('preset_id, marker', [
+        ('tb_fishermen', 'lake'),
+        ('tb_rivers', 'river'),
+        ('tb_caravans', 'oasis'),
+        ('tb_barbarian_attack', 'castle'),
+        ('tb_main', 'castle'),
+        ('explorers_and_pirates', None),
+    ])
+    def test_a_scenario_preset_deals_its_own_board(self, socket_app, preset_id, marker):
+        """A scenario preset must deal its scenario map, not a random island.
+
+        The presets set `board_map` but the lobby loads a custom map only when
+        `board_layout` is 'custom' — so a table that picked "The Fishermen of
+        Catan" got a random board with no fishing grounds, no lake, no oasis, no
+        castle, and the scenario was inert. Reproduced against the *generated*
+        board: without the fix `map_definition` is None and the marker terrain
+        the scenario map guarantees is absent.
+        """
+        a = socketio.test_client(socket_app)
+        b = socketio.test_client(socket_app)
+        a.emit('join', {'name': 'Alice', 'role': 'player'})
+        b.emit('join', {'name': 'Bob', 'role': 'player'})
+        a.emit('set_rules', {'preset': preset_id})
+        a.emit('start_game')
+
+        game = state.session().game
+        assert game is not None, f"{preset_id} did not start a game"
+        assert game.map_definition is not None, \
+            f"{preset_id} dealt a random board, not its scenario map"
+        if marker is not None:
+            terrains = {hex_obj.type for hex_obj in game.hexes.values()}
+            assert marker in terrains, \
+                f"{preset_id} board has no {marker!r} hex — scenario map not dealt"
+
     def test_the_presets_are_offered_alongside_the_catalogue(self, socket_app):
         client = socketio.test_client(socket_app)
         client.emit('join', {'name': 'A', 'role': 'player'})

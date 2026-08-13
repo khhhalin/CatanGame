@@ -1409,6 +1409,12 @@ EP_SPICES_RULES = {
 EXPLORERS_AND_PIRATES_RULES = {
     **EP_SPICES_RULES,
     "mission_pirate_lairs": True,
+    # Deal the built-in Pirate Cove scenario board — a home harbour, open water
+    # and fog to explore. Without a scenario map E&P's harbour settlements,
+    # discovery and missions have nothing to act on. board_layout must be
+    # 'custom' or the lobby ignores board_map entirely.
+    "board_layout": "custom",
+    "board_map": "pirate-cove",
     "victory_target": 17,
 }
 
@@ -1424,6 +1430,7 @@ TB_FISHERMEN_RULES = {
     "lake_hex": True,
     "old_boot": True,
     "robber_starts_off_board": True,
+    "board_layout": "custom",
     "board_map": "fishermen",
     "victory_target": 10,
 }
@@ -1440,6 +1447,7 @@ TB_RIVERS_RULES = {
     "bridges": True,
     "wealthiest_settler": True,
     "poor_settler": True,
+    "board_layout": "custom",
     "board_map": "rivers",
     "victory_target": 10,
 }
@@ -1451,6 +1459,7 @@ TB_RIVERS_RULES = {
 # would raise it to 13, which the lobby can still do by hand.
 TB_CARAVANS_RULES = {
     "caravans": True,
+    "board_layout": "custom",
     "board_map": "caravans",
     "victory_target": 12,
 }
@@ -1469,6 +1478,7 @@ TB_BARBARIAN_ATTACK_RULES = {
     "gold_coins": True,
     "setup_second_city": True,
     "largest_army_card": False,
+    "board_layout": "custom",
     "board_map": "barbarian-attack",
     "victory_target": 12,
 }
@@ -1491,6 +1501,7 @@ TB_MAIN_RULES = {
     "setup_second_city": True,
     "longest_road_card": False,
     "dice_set": "no_two_or_twelve",
+    "board_layout": "custom",
     "board_map": "traders-barbarians",
     "victory_target": 13,
 }
