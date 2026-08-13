@@ -64,6 +64,16 @@ export function renderRivers() {
     if (!show) {
         return;
     }
+    // `gold_coins` is a shared T&B substrate (Barbarian Attack and the main
+    // scenario use it too), so this panel carries the coin buy/sell there as
+    // well — but it must not claim to be Rivers unless a river rule is on.
+    const rules = board.rules || {};
+    const riverRules = rules.river_gold || rules.bridges
+        || rules.wealthiest_settler || rules.poor_settler;
+    const title = el('rivers-title');
+    if (title) {
+        title.textContent = riverRules ? 'The Rivers of Catan' : 'Gold coins';
+    }
     renderCoins(board);
     renderPlayers(board);
     renderActions(board);

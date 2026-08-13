@@ -51,8 +51,12 @@ export function renderFishermen() {
     }
     const board = getBoard();
     const tb = board?.tb;
-    panel.classList.toggle('hidden', !tb);
-    if (!tb) {
+    // Caravans, Barbarian Attack and the main scenario all build tb-state too,
+    // so `tb` alone is not the Fishermen table — gate on a fish rule, or the
+    // panel leaks (disabled, tokenless) into every other T&B scenario.
+    const show = Boolean(tb) && board?.rules?.fish_tokens === true;
+    panel.classList.toggle('hidden', !show);
+    if (!show) {
         return;
     }
 
