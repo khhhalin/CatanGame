@@ -47,6 +47,10 @@ export const viewState = {
     // The same for a ship move: the side the ship was picked up from.
     shipMoveFrom: null,
 
+    // First half of a Barbarian Attack knight move: the castle path the knight
+    // was picked up from, held until the second tap names its destination.
+    barbarianKnightMoveFrom: null,
+
     // First half of an Explorers & Pirates mission action: the side of the
     // transport ship tapped, held until the second tap names the target hex the
     // action is inferred from (catch fish, deliver, befriend, land crews).

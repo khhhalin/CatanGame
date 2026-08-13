@@ -109,7 +109,7 @@ const GHOST_RING_RADIUS = 14;
 // The `progress_` kinds are a progress card being aimed: a Merchant or a Bishop
 // lands on a hex, an Inventor on two number tokens, a Diplomat on a road.
 const EDGE_GHOST_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge',
-    'barbarian_knight'];
+    'barbarian_knight', 'barbarian_knight_move'];
 const HEX_GHOST_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // Cache of the last computed layout, keyed by board data identity.
@@ -2038,7 +2038,8 @@ function drawGhost(ctx, layout, preview) {
                 // A bridge draws as a road ghost — it is a road piece that spans
                 // the river crossing, and the board already draws a built one so.
                 drawRoad(ctx, pos.x1, pos.y1, pos.x2, pos.y2, color);
-            } else if (preview.kind === 'barbarian_knight') {
+            } else if (preview.kind === 'barbarian_knight'
+                       || preview.kind === 'barbarian_knight_move') {
                 // A knight ghost: a disc at the middle of the aimed path, the way
                 // a placed knight is drawn.
                 const mx = (pos.x1 + pos.x2) / 2;

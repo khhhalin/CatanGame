@@ -13,6 +13,7 @@
 
 import { gameBoard, placeRoadBtn, placeSettlementBtn, upgradeCityBtn } from './dom.js';
 import { markDirty } from './board.js';
+import { displayError } from './notices.js';
 import { emitGame } from './socket.js';
 import { getBoard, isMyTurn, viewState } from './state.js';
 
@@ -105,6 +106,94 @@ function renderActions(board) {
         viewState.selectedBuilding = null;
         gameBoard?.classList.remove('placement-mode');
     }
+
+    // Move knight: shown whenever you have a knight out, disabled off-turn or
+    // while a placement is still owed (the engine refuses a move until then).
+    const myKnights = Object.values(tb.knights || {})
+        .filter(owner => owner === me.name).length;
+    const moveBtn = el('barbarian-move-knight');
+    if (moveBtn) {
+        moveBtn.classList.toggle('hidden', myKnights === 0);
+        moveBtn.disabled = !mine || Boolean(tb.pending_card);
+        moveBtn.classList.toggle(
+            'active', viewState.selectedBuilding === 'barbarian_knight_move');
+        moveBtn.title = mine ? 'Move one of your knights' : 'Not your turn';
+    }
+    settleKnightMove(tb, me.name);
+    // A mode left armed when it can no longer run — the turn passed, or a card
+    // now owes a placement — is disarmed so a stray tap does nothing.
+    if (viewState.selectedBuilding === 'barbarian_knight_move'
+        && (!mine || tb.pending_card)) {
+        clearKnightMoveMode();
+    }
+}
+
+// The move just sent, so the mode can retire once the board confirms it — the
+// same survives-a-refusal pattern the ship move uses: a refused move never
+// broadcasts a board, so the mode simply stays armed to aim again.
+let pendingKnightMove = null;
+
+/**
+ * Drop the move mode once the board shows the knight reached its destination.
+ *
+ * @param {object} tb - The Barbarian Attack state from the board
+ * @param {string} myName - This player's name
+ */
+function settleKnightMove(tb, myName) {
+    if (!pendingKnightMove) {
+        return;
+    }
+    const knights = tb.knights || {};
+    if (knights[pendingKnightMove.to] === myName
+        && knights[pendingKnightMove.from] !== myName) {
+        pendingKnightMove = null;
+        clearKnightMoveMode();
+    }
+}
+
+/**
+ * Disarm the knight-move mode and forget any half-made selection.
+ */
+function clearKnightMoveMode() {
+    if (viewState.selectedBuilding === 'barbarian_knight_move') {
+        viewState.selectedBuilding = null;
+    }
+    viewState.barbarianKnightMoveFrom = null;
+    gameBoard?.classList.remove('placement-mode');
+}
+
+/**
+ * First tap of a knight move: pick one of your own knights up. Refused rather
+ * than recorded when the path holds no knight of yours, the way a ship move is.
+ *
+ * @param {string} edgeKey - The path tapped
+ */
+export function selectBarbarianKnightToMove(edgeKey) {
+    const owner = (getBoard()?.tb?.knights || {})[edgeKey];
+    if (owner !== viewState.identity.name) {
+        displayError('Tap one of your own knights to move it.');
+        return;
+    }
+    viewState.barbarianKnightMoveFrom = edgeKey;
+    markDirty();
+}
+
+/**
+ * Second tap: send the move from the held knight to this path. The server
+ * checks the reach and refuses an illegal move, leaving the mode armed to retry.
+ *
+ * @param {string} toEdge - The destination path tapped
+ */
+export function moveBarbarianKnight(toEdge) {
+    const from = viewState.barbarianKnightMoveFrom;
+    if (!from) {
+        return;
+    }
+    emitGame('move_barbarian_knight',
+             { name: viewState.identity.name, from, to: toEdge });
+    pendingKnightMove = { from, to: toEdge };
+    viewState.barbarianKnightMoveFrom = null;
+    markDirty();
 }
 
 /** Arm (or disarm) the knight-placement gesture, clearing the other board build
@@ -119,7 +208,23 @@ function armKnightMode() {
     renderBarbarianAttack();
 }
 
+/** Arm (or disarm) the knight-move gesture, clearing the other board build
+ * modes so exactly one is ever selected. First tap picks a knight up, the
+ * second sends it. */
+function armKnightMoveMode() {
+    viewState.selectedBuilding =
+        viewState.selectedBuilding === 'barbarian_knight_move'
+            ? null : 'barbarian_knight_move';
+    viewState.barbarianKnightMoveFrom = null;
+    [placeSettlementBtn, placeRoadBtn, upgradeCityBtn]
+        .forEach(button => button?.classList.remove('active'));
+    gameBoard?.classList.toggle('placement-mode', Boolean(viewState.selectedBuilding));
+    markDirty();
+    renderBarbarianAttack();
+}
+
 el('barbarian-buy-card')?.addEventListener('click', () => {
     emitGame('buy_barbarian_card', {});
 });
 el('barbarian-place-knight')?.addEventListener('click', armKnightMode);
+el('barbarian-move-knight')?.addEventListener('click', armKnightMoveMode);

@@ -13,6 +13,7 @@
 // cannot reach it.
 
 import { markDirty } from './board.js';
+import { moveBarbarianKnight, selectBarbarianKnightToMove } from './barbarian_attack.js';
 import { ckEnabled, handleCkVertexTap, handleProgressTargetTap, isProgressMode, progressCardName, progressPickCompletes } from './cities-knights.js';
 import { handleEpBoardTap, isEpBoardMode } from './ep.js';
 import { boardCanvas, gameBoard, placementAnnounce, placementConfirm, placementConfirmNo, placementConfirmYes, yoloToggle } from './dom.js';
@@ -44,6 +45,7 @@ const PLACEMENT_NOUNS = {
     knight_move: 'Knight move',
     ship: 'Ship',
     ship_move: 'Ship move',
+    barbarian_knight_move: 'Knight move',
     pirate: 'Pirate',
     bridge: 'Bridge',
 };
@@ -52,7 +54,7 @@ const PLACEMENT_NOUNS = {
 // lists for drawing; both are short and both would be wrong in the same way if
 // a kind were added to one and not the other.
 const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge',
-    'barbarian_knight'];
+    'barbarian_knight', 'barbarian_knight_move'];
 const HEX_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
 
 // What the announcement last said, so aiming at the same spot twice does not
@@ -461,6 +463,18 @@ function isBlocked(kind, key) {
         return false;
     }
 
+    if (kind === 'barbarian_knight_move') {
+        // First tap picks one of your own knights up, second lays it down, so
+        // which one is being previewed depends on whether an origin is held. The
+        // server re-checks the reach and the pending card; the client errs
+        // permissive on the distance, refusing only a landing it can see is taken.
+        const knights = (board.tb || {}).knights || {};
+        if (!viewState.barbarianKnightMoveFrom) {
+            return knights[key] !== me;
+        }
+        return !board.edges[key] || Boolean(knights[key]);
+    }
+
     const vertex = board.vertices[key];
     if (!vertex) {
         return true;
@@ -650,6 +664,13 @@ export function handlePlacementTap(clientX, clientY) {
         return true;
     }
 
+    // And picking a barbarian knight up: the second tap sends the move.
+    if (kind === 'barbarian_knight_move' && !viewState.barbarianKnightMoveFrom) {
+        selectBarbarianKnightToMove(key);
+        markDirty();
+        return true;
+    }
+
     // And so is every pick of a progress card's target but the last: an
     // Inventor's first number token is recorded and nothing is sent, so there
     // is nothing to confirm. Tapping a pick again takes it back the same way.
@@ -714,6 +735,8 @@ function commit(target) {
         emitGame('build_bridge', { name, edge: target.key });
     } else if (target.kind === 'barbarian_knight') {
         emitGame('place_barbarian_knight', { name, edge: target.key });
+    } else if (target.kind === 'barbarian_knight_move') {
+        moveBarbarianKnight(target.key);
     } else if (target.kind === 'city') {
         emitGame('upgrade_city', { name, vertex: target.key });
     } else if (isProgressMode(target.kind)) {
