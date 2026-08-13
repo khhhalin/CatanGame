@@ -780,6 +780,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if building_type != 'city':
             river_gold = self.grant_river_settlement_gold(player_name, vertex_key)
 
+        # The Fishermen of Catan: a second setup settlement beside a fishing
+        # ground draws 1 fish at set-up (497). Only the second — the first draws
+        # nothing — and only a settlement, so a starting city (setup_second_city)
+        # takes none. A no-op without the fish rules, handled inside the method.
+        if in_setup and building_type != 'city' \
+                and len(self.player_settlements.get(player_name, [])) == 2:
+            self.draw_setup_fish(player_name, vertex_key)
+
         # The Caravans: a settlement built after set-up earns a camel, placed by
         # a voting round when the turn ends (expansions.md 578). A no-op without
         # the rule. A setup settlement earns nothing.

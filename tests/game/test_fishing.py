@@ -399,6 +399,44 @@ class TestRobberStartsOffBoard:
         assert game.must_move_robber is True
 
 
+class TestSetupSettlementFish:
+    """A second setup settlement placed adjacent to a fishing ground draws 1 fish
+    at set-up (497). The first settlement draws nothing."""
+
+    def _in_setup(self):
+        game = fishermen_game()
+        game.game_phase = 'setup'
+        game.setup_action = 'settlement'
+        game.current_player_index = 0
+        return game
+
+    def test_a_second_setup_settlement_beside_a_ground_draws_one_fish(self):
+        game = self._in_setup()
+        ground = a_fishing_ground(game)
+        vertex = ground['vertices'][0]
+        # Alice's first setup settlement stands elsewhere already, so this is her
+        # second placement.
+        game.track_settlement('Alice', next(
+            k for k in game.vertices if k not in set(ground['vertices'])
+        ))
+        before = game.tb.held_fish('Alice')
+
+        result = game.place_settlement('Alice', vertex)
+
+        assert result['success'], result
+        assert game.tb.held_fish('Alice') == before + 1
+
+    def test_the_first_setup_settlement_draws_no_fish(self):
+        game = self._in_setup()
+        ground = a_fishing_ground(game)
+        vertex = ground['vertices'][0]
+
+        result = game.place_settlement('Alice', vertex)
+
+        assert result['success'], result
+        assert game.tb.held_fish('Alice') == 0
+
+
 class TestBaseGameUnchanged:
     def test_a_base_game_has_no_fish_state(self):
         game = Game(['Alice', 'Bob'], [], rng=random.Random(1))

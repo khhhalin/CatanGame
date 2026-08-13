@@ -89,6 +89,25 @@ class FishingRules:
                 found.append(vertex_key)
         return found
 
+    def draw_setup_fish(self, player_name: str, vertex_key: str) -> int:
+        """Draw the 1 fish a second setup settlement beside a fishing ground takes
+        (497). Returns the number actually drawn (0 or 1).
+
+        A no-op without both the token supply and the grounds, and off a coastal
+        vertex a ground pays. The caller gates on this being the player's second
+        setup placement; the lake and the boot have no set-up draw of their own.
+        """
+        if self.tb is None:
+            return 0
+        if not (self.rules['fish_tokens'] and self.rules['fishing_grounds']):
+            return 0
+        borders = any(vertex_key in ground['vertices']
+                      for ground in self.tb.fishing_grounds)
+        if not borders:
+            return 0
+        token = self.tb.draw_to_hand(player_name, self.rules['max_fish_held'])
+        return 1 if isinstance(token, int) else 0
+
     # --- Production --------------------------------------------------------
 
     def _fish_demand(self, dice_total: int) -> list:
