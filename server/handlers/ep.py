@@ -121,6 +121,58 @@ def handle_unload_transport_ship(data):
                'build', 'unloaded a transport ship')
 
 
+# --- Cargo: crews, settlers, and founding from a settler ship ----------------
+
+@socketio.on('build_crew')
+def handle_build_crew(data):
+    got = _actor_for('crews', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        into = require_str(data.get('into'), 'into')
+        key = require_str(data.get('key'), 'key')
+    except InvalidPayload:
+        return
+    with session.lock:
+        _apply(name, session.game.build_crew(name, into, key),
+               'build', 'built a crew')
+
+
+@socketio.on('build_settler')
+def handle_build_settler(data):
+    got = _actor_for('cargo_settlers', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        into = require_str(data.get('into'), 'into')
+        key = require_str(data.get('key'), 'key')
+    except InvalidPayload:
+        return
+    with session.lock:
+        _apply(name, session.game.build_settler(name, into, key),
+               'build', 'built a settler')
+
+
+@socketio.on('found_settlement_from_ship')
+def handle_found_settlement_from_ship(data):
+    got = _actor_for('cargo_settlers', data)
+    if got is None:
+        return
+    session, name = got
+    try:
+        edge = require_str(data.get('edge'), 'edge')
+        vertex = require_str(data.get('vertex'), 'vertex')
+    except InvalidPayload:
+        return
+    with session.lock:
+        # A founded settlement is a real settlement — it can take an island
+        # point and so cross the line, exactly as `place_settlement` can.
+        _apply(name, session.game.found_settlement_from_ship(name, edge, vertex),
+               'build', 'founded a settlement from a ship', victory=True)
+
+
 # --- The pirate ship (on a roll of seven) ------------------------------------
 
 @socketio.on('place_pirate_ship')

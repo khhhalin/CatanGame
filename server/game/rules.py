@@ -710,11 +710,6 @@ RULES += [
           "Crews (1 ore and 1 wool) ride ships and are landed on mission "
           "destinations only.",
           group=EXPANSION),
-    _bool("transshipping", "Transshipping", False,
-          "Catan: Explorers & Pirates rulebook, 'Transshipping'; expansions.md 929-932",
-          "A loaded ship pointing at a loaded harbor settlement may swap the "
-          "pieces between its hold and the basin.",
-          group=EXPANSION),
     _bool("pirate_ship_instead_of_robber", "Pirate ship instead of the robber", False,
           "Catan: Explorers & Pirates rulebook, 'The Pirate Ship'; "
           "expansions.md 841, 843, 934-949",
@@ -1120,7 +1115,6 @@ DEPENDENCIES = {
     "ships_explore": ("transport_ships",),
     "cargo_settlers": ("transport_ships", "harbor_settlements"),
     "crews": ("transport_ships", "harbor_settlements"),
-    "transshipping": ("transport_ships", "harbor_settlements"),
     "pirate_ship_instead_of_robber": ("gold",),
     "chase_pirate": ("pirate_ship_instead_of_robber", "transport_ships"),
     "mission_pirate_lairs": ("missions", "crews"),
@@ -1384,7 +1378,6 @@ EP_LAND_HO_RULES = {
 EP_PIRATE_LAIRS_RULES = {
     **EP_LAND_HO_RULES,
     "crews": True,
-    "transshipping": True,
     "pirate_ship_instead_of_robber": True,
     "chase_pirate": True,
     "missions": True,

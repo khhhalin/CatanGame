@@ -56,7 +56,7 @@ class TestCatalogue:
         for rule_id in ("movement_phase", "gold", "no_dev_cards",
                         "no_city_upgrades", "transport_ships",
                         "harbor_settlements", "ships_explore", "cargo_settlers",
-                        "crews", "transshipping", "pirate_ship_instead_of_robber",
+                        "crews", "pirate_ship_instead_of_robber",
                         "chase_pirate", "missions", "mission_pirate_lairs",
                         "mission_fish", "mission_spices"):
             assert chosen[rule_id] is False, rule_id
@@ -85,7 +85,7 @@ class TestPresets:
     def test_pirate_lairs_adds_the_pirate_and_its_mission(self):
         chosen = rules_module.coerce(rules_module.EP_PIRATE_LAIRS_RULES)
         assert expansion_ticks(chosen) >= {
-            "crews", "transshipping", "pirate_ship_instead_of_robber",
+            "crews", "pirate_ship_instead_of_robber",
             "chase_pirate", "missions", "mission_pirate_lairs",
         }
         assert chosen["mission_fish"] is False
