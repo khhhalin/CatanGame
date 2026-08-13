@@ -508,6 +508,14 @@
                             <button type="button" class="ep-action-btn" id="fish-free-dev" data-benefit="free_dev">Free dev card (7)</button>
                         </div>
                         <div class="ep-gold-pick hidden" id="fish-pick"></div>
+                        <!-- The old boot: its holder passes it, after rolling, to
+                             a player on as many points as them or more (519).
+                             fish.js shows this only to the holder and lists only
+                             the eligible takers; a sole leader keeps it. -->
+                        <div class="ep-actions hidden" id="fish-boot-actions">
+                            <button type="button" class="ep-action-btn" id="fish-pass-boot">Pass old boot</button>
+                        </div>
+                        <div class="ep-gold-pick hidden" id="fish-boot-pick"></div>
                     </div>
 
                     <!-- The Rivers of Catan: gold coins (own total, and who holds

@@ -19,6 +19,9 @@ const BENEFITS = {
 // Which benefit's pick row is open, or null.
 let pickFor = null;
 
+// Whether the old-boot taker picker is open.
+let bootPickOpen = false;
+
 /** The smallest set of held tokens whose total reaches `price`, or null if the
  * hand cannot pay it. Greedy from the smallest token keeps the overspend low
  * for the 1/2/3 tokens the box holds. */
@@ -63,6 +66,7 @@ export function renderFishermen() {
     renderSupply(tb);
     renderHand(tb);
     renderActions(board, tb);
+    renderBoot(board, tb);
 }
 
 function renderSupply(tb) {
@@ -162,6 +166,76 @@ function closePick() {
     }
 }
 
+/** The players the boot may be passed to: everyone on as many victory points as
+ * the holder or more, the holder aside (519). Empty when the holder leads
+ * alone, which is when the boot must stay put (520). */
+function eligibleBootTakers(board, tb) {
+    const me = board.players?.find(p => p.is_you);
+    if (!me || tb.old_boot_holder !== me.name) {
+        return [];
+    }
+    const myPoints = me.victory_points ?? 0;
+    return (board.players || []).filter(
+        player => player.name !== me.name && (player.victory_points ?? 0) >= myPoints,
+    );
+}
+
+function renderBoot(board, tb) {
+    const actions = el('fish-boot-actions');
+    const button = el('fish-pass-boot');
+    if (!actions || !button) {
+        return;
+    }
+    const me = board.players?.find(p => p.is_you);
+    const holds = Boolean(me) && tb.old_boot_holder === me.name;
+    // Only the holder, on their own turn, once they have rolled, may pass it (519).
+    const canAct = holds && isMyTurn() && board?.has_rolled_dice === true;
+    actions.classList.toggle('hidden', !canAct);
+    if (!canAct) {
+        closeBootPick();
+        return;
+    }
+    const takers = eligibleBootTakers(board, tb);
+    button.disabled = takers.length === 0;
+    if (takers.length === 0) {
+        closeBootPick();
+    }
+    renderBootPick(takers);
+}
+
+function renderBootPick(takers) {
+    const pick = el('fish-boot-pick');
+    if (!pick) {
+        return;
+    }
+    pick.textContent = '';
+    pick.classList.toggle('hidden', !bootPickOpen);
+    if (!bootPickOpen) {
+        return;
+    }
+    for (const player of takers) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'ep-action-btn fish-pick-opt';
+        chip.dataset.target = player.name;
+        chip.textContent = player.name;
+        chip.addEventListener('click', () => {
+            emitGame('pass_old_boot', { target: player.name });
+            closeBootPick();
+        });
+        pick.appendChild(chip);
+    }
+}
+
+function closeBootPick() {
+    bootPickOpen = false;
+    const pick = el('fish-boot-pick');
+    if (pick) {
+        pick.classList.add('hidden');
+        pick.textContent = '';
+    }
+}
+
 function fire(benefit, extra) {
     const board = getBoard();
     const tokens = tokensFor(board?.tb?.fish_hand || [], BENEFITS[benefit].price);
@@ -189,4 +263,12 @@ function onBenefit(benefit) {
 
 for (const button of document.querySelectorAll('#fish-actions [data-benefit]')) {
     button.addEventListener('click', () => onBenefit(button.dataset.benefit));
+}
+
+const passBootButton = document.getElementById('fish-pass-boot');
+if (passBootButton) {
+    passBootButton.addEventListener('click', () => {
+        bootPickOpen = !bootPickOpen;
+        renderFishermen();
+    });
 }

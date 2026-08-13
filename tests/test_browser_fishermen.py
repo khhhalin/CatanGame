@@ -50,6 +50,25 @@ def _fishermen_game():
     return game
 
 
+def _boot_game():
+    """A started Fishermen game, Alice mid-turn holding the old boot, with Bob on
+    as many victory points as her — so Bob is an eligible taker and the pass is
+    allowed (a sole leader would have to keep it)."""
+    chosen = dict(rules_module.TB_FISHERMEN_RULES)
+    chosen['turn_order'] = 'lobby'
+    defn = maps.parse_map(map_store.read_map('fishermen'))
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=chosen,
+                map_definition=defn)
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+    game.tb.old_boot_holder = 'Alice'
+    game.get_player('Alice').victory_points = 3
+    game.get_player('Bob').victory_points = 3
+    return game
+
+
 def _base_game():
     game = Game(['Alice', 'Bob'], [], rng=random.Random(5))
     game.start()
@@ -102,6 +121,33 @@ def test_the_fish_panel_shows_a_hand_and_spends_for_a_free_road(browser, tmp_pat
         # The spent fish leave the hand.
         alice.page.wait_for_function(
             "() => (window.__catanDebug.getBoard().tb.fish_hand || []).length === 0",
+            timeout=5000,
+        )
+    finally:
+        stop_server(proc)
+
+
+def test_the_boot_holder_can_pass_the_old_boot(browser, tmp_path):
+    persistence.save(_boot_game(), os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = _join(browser, url)
+
+        # Alice holds the boot; the supply row names her as the holder.
+        assert alice.page.query_selector("#right-fish:not(.hidden)") is not None, \
+            "the Fishermen panel did not appear"
+        alice.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().tb.old_boot_holder === 'Alice'",
+            timeout=5000,
+        )
+
+        # Open the pass affordance and hand the boot to Bob (an eligible taker).
+        alice.page.click("#fish-pass-boot")
+        alice.page.click("#fish-boot-pick [data-target='Bob']")
+
+        # The boot is Bob's now — a change every player sees.
+        alice.page.wait_for_function(
+            "() => window.__catanDebug.getBoard().tb.old_boot_holder === 'Bob'",
             timeout=5000,
         )
     finally:
