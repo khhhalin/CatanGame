@@ -4028,6 +4028,33 @@ button:disabled {
     .game-rail > .panel {
         max-height: 14rem;
     }
+
+    /* TEST 6 floating-overlay layout: in a running game the aside is
+       position:absolute and the hand, dice and trays are fixed overlays, so the
+       board is the only in-flow content and must fill the window. The
+       single-column stack above was written for the old docked rail; under the
+       float layout its `height: auto` let the height chain fall through to the
+       board's `min-height` — a dead 14rem strip with the rest of a tall window
+       empty, and the map frozen. Restore the full-height board for the game
+       screen (the lobby, which really does stack docked panels, keeps it). */
+    body:has(#game-screen:not(.hidden)) {
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    .container:has(#game-screen:not(.hidden)) {
+        height: 100%;
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .container:has(#game-screen:not(.hidden)) .table {
+        flex-direction: row;
+        height: 100%;
+    }
+
+    .container:has(#game-screen:not(.hidden)) .game-board {
+        min-height: 0;
+    }
 }
 
 @media (max-width: 600px) {
