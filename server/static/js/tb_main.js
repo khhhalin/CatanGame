@@ -19,8 +19,9 @@ import { markDirty } from './board.js';
 import { emitGame } from './socket.js';
 import { getBoard, isMyTurn } from './state.js';
 
-// The armed board gesture: 'wagon', 'barbarian', or null. `barbFrom` holds the
-// barbarian path a two-tap move has picked up, awaiting its destination.
+// The armed board gesture: 'wagon', 'barbarian', 'drive', or null. `barbFrom`
+// holds the barbarian path a two-tap gesture has picked up, awaiting the free
+// path to move (or drive) it to.
 let mode = null;
 let barbFrom = null;
 
@@ -106,6 +107,17 @@ function renderActions(board) {
         barbBtn.classList.toggle('active', mode === 'barbarian');
     }
 
+    // The voluntary drive-off: offered whenever the roaming barbarians are in
+    // play, enabled on the driver's own turn. The server decides eligibility —
+    // the baggage level, the wagon's adjacency and the once-per-turn limit — and
+    // refuses when it is not met, surfaced like any other rejected gesture.
+    const driveBtn = el('tb-drive-barbarian');
+    if (driveBtn) {
+        driveBtn.classList.toggle('hidden', !board.rules.roaming_barbarians);
+        driveBtn.disabled = !mine;
+        driveBtn.classList.toggle('active', mode === 'drive');
+    }
+
     const hint = el('tb-main-hint');
     if (hint) {
         let text = '';
@@ -115,6 +127,10 @@ function renderActions(board) {
             text = barbFrom
                 ? 'Tap a free path to move the barbarian to.'
                 : 'Tap the barbarian to move, then a free path.';
+        } else if (mode === 'drive') {
+            text = barbFrom
+                ? 'Tap a free path to drive the barbarian to.'
+                : 'Tap the barbarian beside your wagon, then a free path.';
         } else if (owesBarbarian) {
             text = 'You rolled a 7 — move a barbarian.';
         }
@@ -159,7 +175,7 @@ function onBoardTap(event) {
         }
         return;
     }
-    if (mode === 'barbarian') {
+    if (mode === 'barbarian' || mode === 'drive') {
         const edge = window.BoardRenderer.findNearestEdge(board, point.x, point.y);
         if (!edge) {
             return;
@@ -172,7 +188,11 @@ function onBoardTap(event) {
             }
             return;
         }
-        emitGame('move_path_barbarian', { from: barbFrom, to: edge });
+        if (mode === 'drive') {
+            emitGame('drive_off_barbarian', { barbarian: barbFrom, to: edge });
+        } else {
+            emitGame('move_path_barbarian', { from: barbFrom, to: edge });
+        }
         barbFrom = null;
         mode = null;
     }
@@ -180,6 +200,7 @@ function onBoardTap(event) {
 
 el('tb-move-wagon')?.addEventListener('click', () => armMode('wagon'));
 el('tb-move-barbarian')?.addEventListener('click', () => armMode('barbarian'));
+el('tb-drive-barbarian')?.addEventListener('click', () => armMode('drive'));
 el('tb-boost-wagon')?.addEventListener('click', () => emitGame('boost_wagon', {}));
 el('tb-upgrade-baggage')?.addEventListener('click', () => emitGame('upgrade_baggage_train', {}));
 el('tb-buy-card')?.addEventListener('click', () => emitGame('buy_trade_card', {}));
