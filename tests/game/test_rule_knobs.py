@@ -523,3 +523,49 @@ class TestTradeOfferClock:
         assert game.accept_trade(offer['id'], 'Bob')['success']
         assert game.complete_trade(offer['id'], 'Alice', 'Bob')['success']
         assert game.get_player('Bob').resources == {'brick': 0, 'wood': 1}
+
+
+class TestNoDevCards:
+    """`no_dev_cards`. An Explorers & Pirates catalogue rule that no engine code
+    read, so an E&P table could still buy from the development deck — which the
+    expansion does away with entirely (839)."""
+
+    def test_a_table_without_dev_cards_refuses_the_purchase(self):
+        game = base_game({'no_dev_cards': True})
+        game.get_player('Alice').resources = {'ore': 1, 'wheat': 1, 'sheep': 1}
+
+        result = game.buy_dev_card('Alice')
+
+        assert not result['success']
+        assert result['code'] == 'NO_DEV_CARDS'
+
+    def test_the_default_table_still_buys_one(self):
+        game = base_game()
+        game.get_player('Alice').resources = {'ore': 1, 'wheat': 1, 'sheep': 1}
+
+        assert game.buy_dev_card('Alice')['success']
+
+
+class TestNoCityUpgrades:
+    """`no_city_upgrades`. An Explorers & Pirates catalogue rule no engine code
+    read, so a settlement could still be upgraded to a city — which E&P never
+    does, the game being scored on settlements instead (838)."""
+
+    def test_a_table_without_city_upgrades_refuses_the_upgrade(self):
+        game = base_game({'no_city_upgrades': True})
+        vertex_key = a_vertex(game)
+        give_building(game, 'Alice', vertex_key)
+        game.get_player('Alice').resources = {'ore': 3, 'wheat': 2}
+
+        result = game.upgrade_city('Alice', vertex_key)
+
+        assert not result['success']
+        assert result['code'] == 'NO_CITY_UPGRADES'
+
+    def test_the_default_table_still_upgrades(self):
+        game = base_game()
+        vertex_key = a_vertex(game)
+        give_building(game, 'Alice', vertex_key)
+        game.get_player('Alice').resources = {'ore': 3, 'wheat': 2}
+
+        assert game.upgrade_city('Alice', vertex_key)['success']

@@ -940,6 +940,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot upgrade to city during setup phase')
 
+        # Explorers & Pirates never upgrades a settlement to a city (838): the
+        # game is scored on settlements instead. Gated on the rule, not the
+        # expansion name.
+        if self.rules['no_city_upgrades']:
+            return refused('NO_CITY_UPGRADES', 'This table plays without city upgrades')
+
         current_name = self.current_player_name()
         if current_name != player_name:
             return refused('NOT_YOUR_TURN', f'Only {current_name} can upgrade buildings')

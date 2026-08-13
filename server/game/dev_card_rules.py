@@ -28,6 +28,11 @@ class DevCardRules:
         if not self.dev_deck_in_play():
             return refused('DEV_CARDS_NOT_IN_PLAY', NOT_IN_PLAY)
 
+        # Explorers & Pirates has no development cards at all (839): the deck
+        # cannot be bought from. Gated on the rule, never on the expansion name.
+        if self.rules['no_dev_cards']:
+            return refused('NO_DEV_CARDS', 'This table plays without development cards')
+
         if self.game_phase == "setup":
             return refused('WRONG_PHASE', 'Cannot buy development cards during setup')
 
