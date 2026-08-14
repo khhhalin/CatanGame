@@ -526,7 +526,11 @@ function renderCosts() {
         // relabelled or retinted build moves with the server, not a literal here.
         const def = getBuildDef(build.key);
         const name = def?.name || build.key;
-        const glyph = def?.icon ? icon(def.icon, { label: name }) : '';
+        // Decorative: the build's name sits right beside the glyph, so the icon
+        // is not the only carrier of meaning. A label here would add an
+        // aria-label and a <title>, and the <title> lands in the row's
+        // textContent as a second copy of the name ("SettlementSettlement").
+        const glyph = def?.icon ? icon(def.icon) : '';
         shown += 1;
         rows.push(
             `<div class="cost-row${afford ? '' : ' cant-afford'}">`

@@ -139,7 +139,7 @@ body {
     top: 3.5rem;
     left: 0;
     right: auto;
-    bottom: 18rem;
+    bottom: 20rem;
     width: var(--log-rail);
     /* Above the board overlays (hand, tray) rather than level with them: the
        panel's fold popovers open leftward over the board and must sit over the
@@ -407,11 +407,13 @@ body:has(#game-screen:not(.hidden)) #dice-footer {
     left: var(--space-3);
     bottom: var(--space-3);
     max-width: 28rem;
-    /* TEST 6: capped so a tall trade tray can never rise into the log rail
-       stacked above it (the rail's bottom is 18rem); it scrolls past the cap. */
-    max-height: 15rem;
+    /* Capped so a tall trade tray can never rise into the log rail stacked above
+       it (the rail's bottom is 20rem, so the tray tops out just below it); it
+       scrolls past the cap. Sized to hold the always-on Deep Harbour trade tray
+       (two wells + the turn row) in full on a four-player expansion table. */
+    max-height: 18rem;
     overflow-y: auto;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-3);
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
@@ -1331,7 +1333,7 @@ button:disabled {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: var(--space-2);
+    gap: var(--space-1);
     min-width: 0;
 }
 
@@ -1649,7 +1651,7 @@ button:disabled {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding-top: var(--space-2);
+    padding-top: var(--space-1);
     border-top: 1px solid var(--hairline);
 }
 
@@ -2097,6 +2099,21 @@ button:disabled {
     flex: 1 1 auto;
     min-height: 0;
     padding-top: 0;
+}
+
+/* In a running game the rail carries the fixed sections (bank, titles, folds)
+   AND the log/chat. On a four-player table with an expansion on, those add up to
+   more than the column is tall. The panel keeps its content's full height rather
+   than being squeezed until the log collapses to nothing and the fixed sections
+   spill and clip (the #side-tabs overflow bug); its bottom is held inside the
+   viewport so the off-screen sweep still passes, and the aside — which sits
+   outside the swept region — scrolls to reach whatever falls below the fold. The
+   log itself yields first (its own list scrolls), so the always-visible sections
+   stay whole. */
+.container:has(#game-screen:not(.hidden)) #side-tabs {
+    flex-grow: 1;
+    flex-shrink: 0;
+    max-height: calc(100dvh - 9rem);
 }
 
 .tab-bar {
@@ -4395,7 +4412,7 @@ body:has(#game-screen:not(.hidden)) .trade-zone {
     background: transparent;
     border: none;
     padding: 0;
-    gap: var(--space-3);
+    gap: var(--space-2);
 }
 
 body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap {
@@ -4441,8 +4458,12 @@ body:has(#game-screen:not(.hidden)) .trade-zone .trade-slotwrap:has(.give) {
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-2);
-    min-height: 60px;
-    padding: var(--space-2);
+    /* Holds a 50px mini-card with room to spare; the well grows past this when a
+       card is staged. Kept just above the card height rather than generous, so
+       the two always-on Deep Harbour wells plus the turn row leave the floating
+       tray inside the bottom-left column at 1920x1080 with an expansion on. */
+    min-height: 52px;
+    padding: var(--space-1) var(--space-2);
     border: 1px dashed var(--border);
     border-radius: var(--radius-md);
 }
