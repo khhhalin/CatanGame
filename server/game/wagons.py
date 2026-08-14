@@ -338,6 +338,12 @@ class WagonRules:
             self.wagon_points_left = 0
             delivery = self._wagon_reached_plaza(player_name, to_vertex)
 
+        # A swift journey is its own phase and ends the moment its points are
+        # spent (or a plaza is reached), so the client stops showing a second
+        # movement underway for the rest of the turn.
+        if self.wagon_swift_journey and self.wagon_points_left == 0:
+            self.wagon_swift_journey = False
+
         return {'success': True, 'error': '', 'to': to_vertex,
                 'points_left': self.wagon_points_left,
                 'toll_paid_to': toll_owner, 'delivery': delivery}
@@ -463,11 +469,16 @@ class WagonRules:
                     'free_roads': self.free_roads_remaining}
 
         if card == tb_decks.SWIFT_JOURNEY:
-            # A second wagon movement: a fresh allocation of points this turn.
-            self.wagon_points_left = self._wagon_points_left(player_name) \
-                + self.wagon_movement_value(player_name)
+            # A distinct second wagon movement (expansions.md 747): a fresh
+            # allocation that replaces any base-movement remainder rather than
+            # topping it up, so leftover base points never spill into the swift
+            # journey. The flag marks the separate phase for the client and lets
+            # `move_wagon` end it when its points run out.
+            self.wagon_swift_journey = True
+            self.wagon_points_left = self.wagon_movement_value(player_name)
             self.tb.td_discard.append(card)
             return {'success': True, 'error': '', 'card': card,
+                    'swift_journey': True,
                     'points_left': self.wagon_points_left}
 
         # A victory-point card (Toolmaking, Glassmaking, Quarry): kept, not

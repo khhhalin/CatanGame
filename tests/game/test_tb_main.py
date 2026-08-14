@@ -485,12 +485,42 @@ class TestCardResolution:
         assert result['free_roads'] == 2
         assert game.free_roads_remaining == 2
 
-    def test_swift_journey_grants_a_second_movement(self):
+    def test_swift_journey_starts_a_fresh_second_movement_not_a_topped_up_first(self):
+        """Swift Journey is a *second* movement (expansions.md 747), not the base
+        remainder topped up. A player who stops the regular movement with points
+        to spare must not carry them into the swift journey — the second movement
+        starts clean, with its own fresh allocation and its own flagged phase, so
+        leftover base points and swift points are never indistinguishable."""
         game = playing(board_game())
         mover = game.current_player_name()
-        game.wagon_points_left = 0  # first movement spent
+        # The regular movement left points unspent (the player stopped early).
+        game.wagon_points_left = 3
+        assert game.wagon_swift_journey is False
         result = self._buy(game, mover, tb_decks.SWIFT_JOURNEY)
+        # The second movement gets a full fresh allocation — not 3 + the value.
         assert result['points_left'] == game.wagon_movement_value(mover)
+        assert game.wagon_points_left == game.wagon_movement_value(mover)
+        assert result['swift_journey'] is True
+        assert game.wagon_swift_journey is True
+
+    def test_the_swift_journey_phase_ends_when_its_points_run_out(self):
+        """The swift-journey phase has its own end: once the second movement
+        spends its last point (or reaches a plaza) the flag clears, so the client
+        does not show a swift journey underway into the rest of the turn."""
+        game = playing(board_game())
+        mover = game.current_player_name()
+        start = next(v for v, vx in game.vertices.items()
+                     if len(vx.neighbors['hexes']) == 3 and v not in game.trade_plazas)
+        place_wagon(game, mover, start)
+        self._buy(game, mover, tb_decks.SWIFT_JOURNEY)
+        assert game.wagon_swift_journey is True
+        # Spend the last of the swift allocation on one bare step.
+        dest, _ = an_adjacent_bare_path(game, start)
+        game.wagon_points_left = wagons.BARE_PATH_COST
+        result = game.move_wagon(mover, dest)
+        assert result['success'], result
+        assert result['points_left'] == 0
+        assert game.wagon_swift_journey is False
 
     def test_a_knight_card_is_pending_until_a_barbarian_moves(self):
         game = playing(board_game())

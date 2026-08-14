@@ -375,6 +375,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.wagon_points_left = None
         self.wagon_grain_used = False
         self.barbarians_driven = set()
+        # Whether a Swift Journey card has opened its distinct second wagon
+        # movement this turn (expansions.md 747). Kept apart from the base
+        # movement so its fresh point allocation never merges with a base
+        # remainder; reset in `start_turn` like the rest of the per-turn state.
+        self.wagon_swift_journey = False
 
         # Generate the complete board
         self._generate_board()
@@ -1342,6 +1347,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'must_move_barbarian': self.must_move_barbarian,
             # This turn's remaining wagon movement points, for the mover's client.
             'wagon_points_left': self.wagon_points_left,
+            # Whether those points belong to a Swift Journey second movement,
+            # so the mover's client can show the distinct phase.
+            'wagon_swift_journey': self.wagon_swift_journey,
             'must_choose_victim': self.must_choose_victim,
             'robber_victims': self.robber_victims,
             'players_needing_discard': self.players_needing_discard,

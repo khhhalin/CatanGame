@@ -59,6 +59,7 @@ class TurnClock:
         # (a 7 sets it, and it is cleared when the barbarian is moved).
         self.wagon_points_left = None
         self.wagon_grain_used = False
+        self.wagon_swift_journey = False
         self.barbarians_driven = set()
         self.must_move_barbarian = None
 

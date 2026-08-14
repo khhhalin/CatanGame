@@ -71,11 +71,14 @@ function renderStatus(board) {
     const delivered = (tb.delivered_counts || {})[name] || 0;
     const vpCards = (tb.td_vp_counts || {})[name] || 0;
 
+    // A Swift Journey opens a distinct second movement; label the points so the
+    // mover can tell the second run from the regular one (expansions.md 747).
+    const pointsLabel = board.wagon_swift_journey ? 'Swift points' : 'Points left';
     const items = [
         ['Carrying', carried || '—'],
         ['Delivered', delivered],
         ['Baggage card', level],
-        ['Points left', board.wagon_points_left ?? '—'],
+        [pointsLabel, board.wagon_points_left ?? '—'],
         ['VP cards', vpCards],
         ['Cards left', tb.td_deck_remaining ?? 0],
     ];
