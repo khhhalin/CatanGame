@@ -350,6 +350,43 @@ class TestVotingRound:
         assert game.current_player_index == 1  # the turn has advanced
 
 
+class TestCaravanMerging:
+    """Two caravans whose heads reach the same intersection fuse into one
+    (expansions.md 590). Camels are neutral, so the meet is unconditional — no
+    ownership to reconcile."""
+
+    def _vertex_with_three_edges(self, game):
+        for key, vertex in sorted(game.vertices.items()):
+            if len(vertex.neighbors['edges']) == 3:
+                return key
+        raise AssertionError('no three-edge vertex on this board')
+
+    def test_two_caravans_merge_when_their_heads_meet(self):
+        game = playing_game()
+        meeting = self._vertex_with_three_edges(game)
+        e1, e2, e3 = game.vertices[meeting].neighbors['edges']
+        # `far` is the far end of e2; caravan B stands one path from the meeting
+        # vertex and extends along e2 to bring its head home.
+        far = game._edge_other_vertex(e2, meeting)
+        seed_b = next(edge for edge in game.vertices[far].neighbors['edges']
+                      if edge != e2)
+        # Caravan A already has its head at the meeting vertex, via e1.
+        game.tb.camels[e1] = {'front': meeting}
+        game.tb.caravans.append({'arrow': e1, 'edges': [e1], 'frontier': meeting})
+        # Caravan B sits one path away, its head at `far`.
+        game.tb.camels[seed_b] = {'front': far}
+        game.tb.caravans.append({'arrow': seed_b, 'edges': [seed_b], 'frontier': far})
+
+        result = game.place_camel(e2)
+        assert result['success']
+        # The two chains are now one — the panel's "Caravans N / 3" tally drops.
+        assert len(game.tb.caravans) == 1
+        merged = game.tb.caravans[0]
+        assert set(merged['edges']) == {e1, e2, seed_b}
+        # The fused caravan keeps growing from the shared head.
+        assert merged['frontier'] == far
+
+
 class TestCaravansBoard:
     """The built-in Caravans map: dealt, played through a cycle, and saved."""
 

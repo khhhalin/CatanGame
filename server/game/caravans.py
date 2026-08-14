@@ -167,11 +167,38 @@ class CaravansRules:
             caravan['edges'].append(edge_key)
             caravan['frontier'] = option['front']
 
+        self._merge_caravans_at(option['front'])
+
         # A road already on this path now counts double for the Longest Road, so
         # recompute it in case the new camel lengthened somebody's route.
         self.update_longest_road()
         return {'success': True, 'error': '', 'edge': edge_key,
                 'front': option['front']}
+
+    def _merge_caravans_at(self, vertex: str) -> None:
+        """Fuse every caravan whose head has reached `vertex` into one.
+
+        Two caravans meet at an intersection when both their heads point at it,
+        and the rulebook fuses them into a single caravan as the next camel lands
+        (expansions.md 590). Camels are neutral pieces, so the meet is
+        unconditional — there is no ownership to reconcile, whoever's builds grew
+        either chain. The survivor keeps the shared head as its frontier and, at
+        a three-path vertex, may still extend down the one path left open.
+
+        Only a frontier-to-frontier meeting is fused: a caravan record carries a
+        single growing head, so a head driven into another caravan's flank (which
+        would leave two live heads on one chain) is left as two records rather
+        than silently drop one chain's remaining moves.
+        """
+        meeting = [c for c in self.tb.caravans if c['frontier'] == vertex]
+        if len(meeting) < 2:
+            return
+        survivor = meeting[0]
+        for other in meeting[1:]:
+            for edge_key in other['edges']:
+                if edge_key not in survivor['edges']:
+                    survivor['edges'].append(edge_key)
+            self.tb.caravans.remove(other)
 
     # --- The Longest Road and the scoring tiles ----------------------------
 
