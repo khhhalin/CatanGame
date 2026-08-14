@@ -133,7 +133,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 self.PLAYER_COLORS[i] if i < len(self.PLAYER_COLORS) else '#ffffff'
             )
             player = Player(name, color)
-            # No starting resources - players get resources from dice rolls
+            # No starting resources - players get resources from dice rolls.
+            # Gold is the exception: every Explorers & Pirates scenario seeds
+            # each purse (rules['starting_gold'], set to 2 by the E&P preset). A
+            # base game leaves it at 0, so this is a no-op there.
+            player.gold = self.rules['starting_gold']
             self.players.append(player)
 
         self.observers = observers
