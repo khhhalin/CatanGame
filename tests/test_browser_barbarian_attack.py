@@ -77,6 +77,28 @@ def _barbarian_game_with_knight():
     return game, from_edge, dest
 
 
+def _barbarian_game_intrigue():
+    """A started Barbarian Attack game with an Intrigue card already resolved to
+    the point of asking Alice which coast to raid — two opening coasts hold a
+    barbarian, so the card must prompt (expansions.md 642)."""
+    chosen = dict(rules_module.TB_BARBARIAN_ATTACK_RULES)
+    chosen['turn_order'] = 'lobby'
+    defn = maps.parse_map(map_store.read_map('barbarian-attack'))
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=chosen,
+                map_definition=defn)
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+    game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+    game.tb.ba_deck.append(tb_decks.INTRIGUE)
+    result = game.buy_barbarian_card('Alice')
+    assert result['card'] == 'intrigue', result
+    choice = game.pending_choice_for('Alice')
+    assert choice and choice['kind'] == 'intrigue_coast' and len(choice['options']) >= 2
+    return game, choice['options']
+
+
 def _base_game():
     game = Game(['Alice', 'Bob'], [], rng=random.Random(5))
     game.start()
@@ -245,6 +267,33 @@ def test_a_knight_is_moved_across_the_board(browser, tmp_path):
             f"the knight did not leave the source path (paint {source_before} -> {source_after})"
         assert dest_after > dest_before + 15, \
             f"the knight did not reach the destination (paint {dest_before} -> {dest_after})"
+    finally:
+        stop_server(proc)
+
+
+def test_intrigue_asks_which_coast_to_raid(browser, tmp_path):
+    """Intrigue over more than one coast opens a pending choice, and each coast
+    option is named by the terrain it stands on rather than a raw hex key —
+    "0,-3,3" is no answer to "which coast?". Fails before the client wired the
+    `intrigue_coast` kind: the option buttons rendered empty.
+    """
+    game, options = _barbarian_game_intrigue()
+    persistence.save(game, os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = _join(browser, url)
+        alice.page.wait_for_selector("#choice-panel:not(.hidden)", timeout=8000)
+
+        assert "Intrigue" in alice.page.inner_text("#choice-prompt")
+        labels = alice.page.eval_on_selector_all(
+            "#choice-options .choice-option", "els => els.map(e => e.textContent.trim())"
+        )
+        # One button per coast the server offered, each reading as a place.
+        assert len(labels) == len(options), (labels, options)
+        for label in labels:
+            assert label.startswith("Coast on "), label
+            assert any(ch.isdigit() for ch in label), f"{label} names no number token"
+        assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)
 

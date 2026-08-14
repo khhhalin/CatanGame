@@ -14,6 +14,7 @@ from extensions import socketio
 from game.fishing import FISH_BENEFITS
 from game.validation import InvalidPayload, require_str
 from state import (
+    announce_choices,
     bump_and_broadcast,
     log_event,
     rate_limited,
@@ -194,6 +195,9 @@ def handle_buy_barbarian_card(data):
             reject(result['code'], result['error'])
             return
         log_event('build', f"{name} revealed a {result['card']} card", player=name)
+        # An Intrigue over more than one coast opens a pending choice; tell
+        # whoever now owes it before the board goes out.
+        announce_choices()
         bump_and_broadcast()
 
 

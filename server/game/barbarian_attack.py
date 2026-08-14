@@ -24,9 +24,11 @@ The mechanics (expansions.md 607-662):
 
 Some interactions the printed rules resolve at the table are resolved
 deterministically here (they are noted where they occur): the coastal check runs
-in sorted hex order rather than clockwise-from-the-castle, and Treason/Intrigue
-pick their barbarian targets by rule rather than asking the player. The scored
-effects — conquest, defence, prisoners, knight losses — are faithful.
+in sorted hex order rather than clockwise-from-the-castle, and Treason still
+picks its barbarian sources and destinations by rule rather than asking. Intrigue
+asks the player which coast to raid (expansions.md 642) through the pending-choice
+phase, resolving without a prompt when only one coast holds a barbarian. The
+scored effects — conquest, defence, prisoners, knight losses — are faithful.
 """
 
 from game import tb_decks
@@ -217,6 +219,17 @@ class BarbarianAttackRules:
             and hex_key in self.tb.conquered_hexes
         )
 
+    def building_is_conquered(self, vertex_key: str) -> bool:
+        """Whether a toppled (conquered) building stands on this vertex — read by
+        the trade-rate funnel so a conquered building's harbour may not be used
+        (expansions.md 631). Un-toppling a building restores it live, so its
+        harbour returns the moment a walling coast is freed."""
+        return (
+            self.rules['barbarian_attack']
+            and self.tb is not None
+            and vertex_key in self.tb.toppled
+        )
+
     # --- Build guards ------------------------------------------------------
 
     def barbarian_settlement_refusal(self, vertex_key: str):
@@ -348,16 +361,21 @@ class BarbarianAttackRules:
                 'gold': self.get_player(player_name).gold, 'moved': moved}
 
     def _resolve_intrigue(self, player_name: str) -> dict:
-        """Take 1 barbarian off a coast into your own prisoners (expansions.md
-        640). With no barbarian on any coast the card is discarded and a fresh
-        one drawn (641). The coast relieved is the fullest, chosen by rule."""
-        source = max(
-            (key for key in self.tb.coastal_hexes
-             if self.tb.barbarians.get(key, 0) > 0),
-            key=lambda key: self.tb.barbarians.get(key, 0),
-            default=None,
+        """Take 1 barbarian off a coast of the player's choice into their own
+        prisoners (expansions.md 640, 642). With no barbarian on any coast the
+        card is discarded and a fresh one drawn (641).
+
+        The player names the coast (642): every coast still holding a barbarian
+        is offered as a pending choice and the pick is applied to that coast. A
+        single candidate is applied at once — there is nothing to choose, and
+        the codebase does not ask a player to click the only option (see
+        `open_choice`).
+        """
+        candidates = sorted(
+            key for key in self.tb.coastal_hexes
+            if self.tb.barbarians.get(key, 0) > 0
         )
-        if source is None:
+        if not candidates:
             # No barbarian anywhere: discard and draw again (641).
             self.tb.ba_discard.append(tb_decks.INTRIGUE)
             replacement = self._draw_barbarian_card()
@@ -366,6 +384,16 @@ class BarbarianAttackRules:
                         'redrawn': None}
             return self._resolve_barbarian_card(player_name, replacement)
 
+        if len(candidates) == 1:
+            return self._take_intrigue_prisoner(player_name, candidates[0])
+
+        self.open_choice('intrigue_coast', player_name, candidates)
+        return {'success': True, 'error': '', 'card': tb_decks.INTRIGUE,
+                'awaiting': player_name}
+
+    def _take_intrigue_prisoner(self, player_name: str, source: str) -> dict:
+        """Move one barbarian off `source` into the player's prisoners, freeing
+        the coast if that empties a conquered hex (643)."""
         self.tb.barbarians[source] -= 1
         if source in self.tb.conquered_hexes:
             self.tb.conquered_hexes.discard(source)
@@ -373,6 +401,10 @@ class BarbarianAttackRules:
         self.tb.prisoners[player_name] = self.tb.prisoners.get(player_name, 0) + 1
         return {'success': True, 'error': '', 'card': tb_decks.INTRIGUE,
                 'prisoners': self.tb.prisoners[player_name], 'from': source}
+
+    def _choice_intrigue_coast(self, choice: dict, option: str) -> dict:
+        """Apply the coast the player named for an Intrigue card (642)."""
+        return self._take_intrigue_prisoner(choice['player'], option)
 
     # --- Knights: placement and movement -----------------------------------
 

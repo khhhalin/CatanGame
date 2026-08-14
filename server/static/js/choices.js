@@ -44,6 +44,7 @@ const CHOICE_TITLES = {
     deserter: 'Deserter',
     deserter_placement: 'Your new knight',
     camel_placement: 'Place the camel',
+    intrigue_coast: 'Intrigue',
 };
 
 // The line icon that leads each heading, keyed by what the choice is about, not
@@ -61,7 +62,12 @@ const CHOICE_ICONS = {
     wedding: 'hand',
     deserter: 'knight',
     deserter_placement: 'knight',
+    intrigue_coast: 'harbormaster',
 };
+
+// The kinds whose options are a coastal hex key. Like the camel's path, a raw
+// "0,-3,3" means nothing, so these are described by the terrain they name.
+const HEX_KINDS = ['intrigue_coast'];
 
 // What a vertex option is, so "City on wheat 6, ore 9" reads as the thing being
 // chosen rather than as a coordinate.
@@ -256,7 +262,25 @@ function optionLabel(choice, option) {
     if (choice.kind === 'camel_placement') {
         return describeEdge(option);
     }
+    if (HEX_KINDS.includes(choice.kind)) {
+        return describeHex(option);
+    }
     return '';
+}
+
+/**
+ * Describe a coastal hex by its terrain and number, so an Intrigue coast option
+ * reads as "Coast on wheat 5" rather than a bare coordinate.
+ *
+ * @param {string} key - Hex key
+ * @returns {string}
+ */
+function describeHex(key) {
+    const hex = getBoard()?.hexes?.[key];
+    if (!hex) {
+        return `Coast at ${key}`;
+    }
+    return hex.number ? `Coast on ${hex.type} ${hex.number}` : `Coast on ${hex.type}`;
 }
 
 /**

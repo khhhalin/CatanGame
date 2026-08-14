@@ -319,6 +319,10 @@ class TradeRules:
 
         ports = {}
         for vertex_key in player.settlements + player.cities:
+            # A barbarian-conquered building's harbour may not be used
+            # (expansions.md 631); it returns when the coast is freed.
+            if self.building_is_conquered(vertex_key):
+                continue
             vertex = self.vertices.get(vertex_key)
             if vertex and vertex.port:
                 port_type = vertex.port.get("type")

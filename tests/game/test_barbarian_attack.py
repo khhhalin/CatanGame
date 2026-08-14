@@ -258,6 +258,41 @@ class TestAttackAndConquest:
         # The toppled settlement's point is taken back.
         assert game.victory_points_for('Alice') == base_points - 1
 
+    def test_a_conquered_buildings_harbour_may_not_be_used(self):
+        """expansions.md 631: the harbour of a conquered settlement or city may
+        not be used. The trade rate it granted is withdrawn while the building
+        is toppled, and returns when the coast is freed (643)."""
+        game = playing(board_game())
+        target_vertex = None
+        for v, vx in sorted(game.vertices.items()):
+            land = vx.neighbors['hexes']
+            if (land
+                    and all(k in game.tb.barbarians for k in land)
+                    and not any(k in game.tb.unconquerable_hexes for k in land)):
+                target_vertex = v
+                break
+        assert target_vertex is not None, 'no fully-conquerable coastal vertex on this board'
+        # Alice's settlement here stands on a generic (3:1) harbour.
+        game.vertices[target_vertex].building = {'type': 'settlement', 'player': 'Alice'}
+        game.vertices[target_vertex].port = {'type': 'generic'}
+        game.get_player('Alice').settlements.append(target_vertex)
+        assert 'generic' in game.get_player_ports('Alice')  # it works while standing
+
+        land_hexes = list(game.vertices[target_vertex].neighbors['hexes'])
+        for hex_key in land_hexes:
+            game.tb.conquered_hexes.add(hex_key)
+        game._recompute_toppled()
+        assert target_vertex in game.tb.toppled
+        assert 'generic' not in game.get_player_ports('Alice'), \
+            "a conquered building's harbour still granted its trade rate"
+
+        # Free one of the walling hexes: the building rights itself and its
+        # harbour is usable again.
+        game.tb.conquered_hexes.discard(land_hexes[0])
+        game._recompute_toppled()
+        assert target_vertex not in game.tb.toppled
+        assert 'generic' in game.get_player_ports('Alice')
+
     def test_no_settlement_or_road_may_be_built_beside_a_conquered_hex(self):
         game = playing(board_game())
         target = a_coastal_hex(game, number=5)
@@ -372,16 +407,50 @@ class TestTheDeck:
         assert game.get_player('Alice').gold == gold_before + 2
         assert tb_decks.TREASON in game.tb.ba_discard
 
-    def test_intrigue_takes_a_barbarian_as_a_prisoner(self):
+    def test_intrigue_asks_which_coast_and_honours_the_pick(self):
+        """expansions.md 642: Intrigue removes a barbarian from a coast *of the
+        player's choice*. With more than one coast holding a barbarian the card
+        must ask rather than pick the fullest itself, and the prisoner comes off
+        the coast the player named."""
         game = playing(board_game())
         game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        for key in game.tb.coastal_hexes:
+            game.tb.barbarians[key] = 0
+        fuller = a_coastal_hex(game, number=5)
+        emptier = a_coastal_hex(game, number=6)
+        game.tb.barbarians[fuller] = 2
+        game.tb.barbarians[emptier] = 1
         game.tb.ba_deck.append(tb_decks.INTRIGUE)
-        prisoners_before = game.tb.prisoners.get('Alice', 0)
-        total_before = sum(game.tb.barbarians.values())
+
         result = game.buy_barbarian_card('Alice')
         assert result['card'] == 'intrigue'
+        choice = game.pending_choice_for('Alice')
+        assert choice is not None and choice['kind'] == 'intrigue_coast'
+        assert set(choice['options']) == {fuller, emptier}
+        assert game.tb.prisoners.get('Alice', 0) == 0  # nothing taken until she picks
+
+        game.resolve_choice('Alice', 'intrigue_coast', emptier)
+        assert game.tb.barbarians[emptier] == 0  # her pick, not the fuller coast
+        assert game.tb.barbarians[fuller] == 2   # left untouched
+        assert game.tb.prisoners['Alice'] == 1
+
+    def test_intrigue_with_one_coast_needs_no_prompt(self):
+        """A single legal target is resolved without asking — the rulebook lets
+        the player choose the coast, but there is nothing to choose here."""
+        game = playing(board_game())
+        game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        for key in game.tb.coastal_hexes:
+            game.tb.barbarians[key] = 0
+        only = a_coastal_hex(game, number=5)
+        game.tb.barbarians[only] = 1
+        game.tb.ba_deck.append(tb_decks.INTRIGUE)
+        prisoners_before = game.tb.prisoners.get('Alice', 0)
+
+        result = game.buy_barbarian_card('Alice')
+        assert result['card'] == 'intrigue'
+        assert game.pending_choice_for('Alice') is None  # nothing to choose
         assert game.tb.prisoners['Alice'] == prisoners_before + 1
-        assert sum(game.tb.barbarians.values()) == total_before - 1
+        assert game.tb.barbarians[only] == 0
 
     def test_the_discard_reshuffles_when_the_draw_pile_empties(self):
         game = playing(board_game())

@@ -43,6 +43,7 @@ KINDS = {
     'deserter': 'choose which of your knights deserts',
     'deserter_placement': 'choose where your new knight stands',
     'camel_placement': 'choose which path the camel is placed on',
+    'intrigue_coast': 'choose which coast to raid for a prisoner',
 }
 
 # The safety net on draining the queue: a resolver may open a follow-up choice
