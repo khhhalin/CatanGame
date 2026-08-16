@@ -53,6 +53,15 @@ def hex_paths(game, hex_key):
     )
 
 
+def reset_coast(game):
+    """Clear every coastal barbarian and un-conquer the coast, for a controlled
+    Treason setup with only the hexes the test seeds."""
+    for key in game.tb.coastal_hexes:
+        game.tb.barbarians[key] = 0
+    game.tb.conquered_hexes.clear()
+    game._recompute_toppled()
+
+
 # --- Catalogue ----------------------------------------------------------
 
 class TestCatalogue:
@@ -397,15 +406,171 @@ class TestTheDeck:
         }
         assert sum(tb_decks.deck_counts().values()) == 26
 
-    def test_treason_grants_gold_and_moves_barbarians(self):
+    def test_treason_asks_for_two_sources_then_two_destinations_and_moves_them(self):
+        """expansions.md 639: Treason grants 2 gold, then the *player* removes 2
+        barbarians from 2 different coasts and redeploys them to 2 other
+        unconquered coasts. Each pick is a dependent step — the second source
+        excludes the first, and neither source is offered as a destination."""
         game = playing(board_game())
         game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        reset_coast(game)
+        src_a = a_coastal_hex(game, number=3)
+        src_b = a_coastal_hex(game, number=4)
+        src_c = a_coastal_hex(game, number=5)  # a third, so each source pick is real
+        for key in (src_a, src_b, src_c):
+            game.tb.barbarians[key] = 1
+        dest_a = a_coastal_hex(game, number=9)
+        dest_b = a_coastal_hex(game, number=10)
         game.tb.ba_deck.append(tb_decks.TREASON)
         gold_before = game.get_player('Alice').gold
+
         result = game.buy_barbarian_card('Alice')
         assert result['card'] == 'treason'
-        assert game.get_player('Alice').gold == gold_before + 2
+        assert game.get_player('Alice').gold == gold_before + 2  # 2 gold at once (638)
         assert tb_decks.TREASON in game.tb.ba_discard
+
+        choice = game.pending_choice_for('Alice')
+        assert choice is not None and choice['kind'] == 'treason_source'
+        assert set(choice['options']) == {src_a, src_b, src_c}
+        game.resolve_choice('Alice', 'treason_source', src_a)
+
+        choice = game.pending_choice_for('Alice')
+        assert choice['kind'] == 'treason_source'
+        assert set(choice['options']) == {src_b, src_c}  # the first is gone
+        game.resolve_choice('Alice', 'treason_source', src_b)
+
+        # Nothing has moved yet — removals are held until the redeploy is chosen.
+        assert game.tb.barbarians[src_a] == 1
+
+        choice = game.pending_choice_for('Alice')
+        assert choice['kind'] == 'treason_destination'
+        assert src_a not in choice['options'] and src_b not in choice['options']
+        game.resolve_choice('Alice', 'treason_destination', dest_a)
+        game.resolve_choice('Alice', 'treason_destination', dest_b)
+
+        assert game.tb.barbarians[src_a] == 0  # her two chosen coasts emptied
+        assert game.tb.barbarians[src_b] == 0
+        assert game.tb.barbarians[src_c] == 1  # the coast she left alone
+        assert game.tb.barbarians[dest_a] == 1  # her two chosen coasts filled
+        assert game.tb.barbarians[dest_b] == 1
+        assert game.pending_choice_for('Alice') is None
+
+    def test_treason_draws_from_the_supply_when_the_board_is_short(self):
+        """639: 'if there are not enough barbarians in play, take one or both from
+        the supply'. One lone coast can supply only one barbarian, so the second
+        redeployed barbarian is drawn from the supply."""
+        game = playing(board_game())
+        game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        reset_coast(game)
+        only = a_coastal_hex(game, number=5)
+        game.tb.barbarians[only] = 1  # a single coast, a single barbarian
+        game.tb.barbarians_left = 10
+        dest_a = a_coastal_hex(game, number=9)
+        dest_b = a_coastal_hex(game, number=10)
+        game.tb.ba_deck.append(tb_decks.TREASON)
+        supply_before = game.tb.barbarians_left
+
+        result = game.buy_barbarian_card('Alice')
+        assert result['card'] == 'treason'
+        choice = game.pending_choice_for('Alice')
+        assert choice['kind'] == 'treason_destination'  # the lone source is auto
+        game.resolve_choice('Alice', 'treason_destination', dest_a)
+        game.resolve_choice('Alice', 'treason_destination', dest_b)
+
+        assert game.tb.barbarians[only] == 0  # the one board barbarian removed
+        assert game.tb.barbarians[dest_a] == 1
+        assert game.tb.barbarians[dest_b] == 1
+        # Two placed, one taken off the board: the shortfall came from the supply.
+        assert game.tb.barbarians_left == supply_before - 1
+
+    def test_treason_exhausted_supply_places_only_what_it_can(self):
+        """The supply is finite (639 draws from it). With one board barbarian and
+        an empty supply, Treason can only redeploy that one — it does not conjure
+        a second from an empty supply."""
+        game = playing(board_game())
+        game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        reset_coast(game)
+        only = a_coastal_hex(game, number=5)
+        game.tb.barbarians[only] = 1
+        game.tb.barbarians_left = 0  # the supply is empty
+        dest = a_coastal_hex(game, number=9)
+        game.tb.ba_deck.append(tb_decks.TREASON)
+
+        game.buy_barbarian_card('Alice')
+        game.resolve_choice('Alice', 'treason_destination', dest)
+
+        assert game.tb.barbarians[only] == 0
+        assert game.tb.barbarians[dest] == 1  # exactly one moved, none conjured
+        assert game.tb.barbarians_left == 0
+        assert game.pending_choice_for('Alice') is None
+
+    def test_a_treason_source_is_never_offered_as_a_destination(self):
+        """639: the 2 barbarians go on '2 OTHER unconquered coastal hexes'. A
+        coast just pulled from is refused as a redeploy target."""
+        game = playing(board_game())
+        game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        reset_coast(game)
+        src_a = a_coastal_hex(game, number=3)
+        src_b = a_coastal_hex(game, number=4)
+        game.tb.barbarians[src_a] = 1
+        game.tb.barbarians[src_b] = 1
+        game.tb.ba_deck.append(tb_decks.TREASON)
+
+        game.buy_barbarian_card('Alice')
+        game.resolve_choice('Alice', 'treason_source', src_a)  # src_b auto-follows
+
+        choice = game.pending_choice_for('Alice')
+        assert choice['kind'] == 'treason_destination'
+        assert src_a not in choice['options']
+        assert src_b not in choice['options']
+        refusal = game.resolve_choice('Alice', 'treason_destination', src_a)
+        assert refusal['success'] is False and refusal['code'] == 'INVALID_CHOICE'
+
+    def test_a_single_source_coast_is_applied_without_a_prompt(self):
+        """A lone coast holding barbarians is the only source there is: Treason
+        does not ask Alice to click the only coast she could, exactly as Intrigue
+        does not for a single target."""
+        game = playing(board_game())
+        game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        reset_coast(game)
+        only = a_coastal_hex(game, number=5)
+        game.tb.barbarians[only] = 2  # one coast, but two different hexes are needed
+        game.tb.barbarians_left = 10
+        game.tb.ba_deck.append(tb_decks.TREASON)
+
+        game.buy_barbarian_card('Alice')
+        # Never a one-option source prompt: the lone coast is taken and she is
+        # asked straight away where to redeploy.
+        choice = game.pending_choice_for('Alice')
+        assert choice is not None and choice['kind'] == 'treason_destination'
+
+    def test_treason_may_pull_a_barbarian_off_a_conquered_hex_and_free_it(self):
+        """639: 'if a Treason card removes a barbarian from a conquered hex, that
+        hex's token is turned face up again'. The old auto-resolver refused
+        conquered coasts as sources; the faithful card offers them and frees the
+        coast on removal."""
+        game = playing(board_game())
+        game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+        reset_coast(game)
+        conquered = a_coastal_hex(game, number=5)
+        game.tb.barbarians[conquered] = 3
+        game.tb.conquered_hexes.add(conquered)
+        other = a_coastal_hex(game, number=6)
+        game.tb.barbarians[other] = 1
+        dest_a = a_coastal_hex(game, number=9)
+        dest_b = a_coastal_hex(game, number=10)
+        game.tb.ba_deck.append(tb_decks.TREASON)
+
+        game.buy_barbarian_card('Alice')
+        choice = game.pending_choice_for('Alice')
+        assert choice['kind'] == 'treason_source'
+        assert conquered in choice['options']  # the conquered coast is a legal source
+        game.resolve_choice('Alice', 'treason_source', conquered)  # other auto-follows
+        game.resolve_choice('Alice', 'treason_destination', dest_a)
+        game.resolve_choice('Alice', 'treason_destination', dest_b)
+
+        assert game.tb.barbarians[conquered] == 2  # one pulled off
+        assert conquered not in game.tb.conquered_hexes  # and the hex is freed
 
     def test_intrigue_asks_which_coast_and_honours_the_pick(self):
         """expansions.md 642: Intrigue removes a barbarian from a coast *of the

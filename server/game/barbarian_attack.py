@@ -24,10 +24,12 @@ The mechanics (expansions.md 607-662):
 
 Some interactions the printed rules resolve at the table are resolved
 deterministically here (they are noted where they occur): the coastal check runs
-in sorted hex order rather than clockwise-from-the-castle, and Treason still
-picks its barbarian sources and destinations by rule rather than asking. Intrigue
-asks the player which coast to raid (expansions.md 642) through the pending-choice
-phase, resolving without a prompt when only one coast holds a barbarian. The
+in sorted hex order rather than clockwise-from-the-castle. Treason and Intrigue
+both ask the player: Intrigue for the one coast to raid (expansions.md 642),
+Treason for the two coasts to pull from and the two to redeploy to as a
+sequenced pending choice (639), drawing from the supply for any barbarian the
+board is short of, and resolving each step without a prompt when it has a single
+legal option. The
 scored effects — conquest, defence, prisoners, knight losses — are faithful.
 """
 
@@ -42,6 +44,8 @@ GOLD_PER_LOST_KNIGHT = 3
 GOLD_FOR_MISSED_PRISONER = 3
 # Treason hands its resolver 2 gold (expansions.md 638).
 TREASON_GOLD = 2
+# Treason removes and redeploys exactly 2 barbarians (expansions.md 639).
+TREASON_MOVES = 2
 # The most barbarians one coastal hex can hold before it is conquered (623).
 MAX_BARBARIANS_PER_HEX = 3
 # A barbarian attack is three placement rolls (621).
@@ -323,42 +327,140 @@ class BarbarianAttackRules:
         return result
 
     def _resolve_treason(self, player_name: str) -> dict:
-        """2 gold, then move 2 barbarians from 2 hexes to 2 other unconquered
-        coasts (expansions.md 638-639).
+        """2 gold, then the player removes 2 barbarians from 2 different coasts
+        and redeploys them onto 2 other unconquered coasts, drawing from the
+        supply for any barbarian the board is short of (expansions.md 638-639).
 
-        The two source and two destination hexes are chosen deterministically —
-        the fullest unconquered coasts are relieved and the emptiest are
-        reinforced — rather than asked for, since the effect is scored the same
-        either way. A barbarian is never moved onto a hex already holding three.
+        Modelled as a sequenced pending choice: each barbarian to remove, then
+        each coast to redeploy to, is a step whose options are computed from the
+        picks before it — the second source excludes the first, and a coast just
+        pulled from is never offered as a destination ('2 OTHER coasts', 639). A
+        conquered coast is a legal source: removing a barbarian from it frees it,
+        which the older auto-resolver could not do because it refused conquered
+        coasts as sources. A step with a single legal option is applied without
+        asking, as Intrigue's single-coast path is. Removals are held and
+        applied together only once the redeploy is chosen, so a source stays on
+        the board — and excluded from the destinations — until the card resolves.
+
+        The supply-fallback: with fewer than two coasts holding a barbarian, the
+        shortfall is taken from the finite supply. If the supply is empty too,
+        Treason redeploys only what it can rather than conjuring a barbarian.
         """
         self.gain_gold(player_name, TREASON_GOLD)
-        moved = 0
-        for _ in range(2):
-            source = max(
-                (key for key in self.tb.coastal_hexes
-                 if self.tb.barbarians.get(key, 0) > 0
-                 and key not in self.tb.conquered_hexes),
-                key=lambda key: self.tb.barbarians.get(key, 0),
-                default=None,
+        available = [key for key in self.tb.coastal_hexes
+                     if self.tb.barbarians.get(key, 0) > 0]
+        board_target = min(TREASON_MOVES, len(available))
+        supply = min(TREASON_MOVES - board_target, self.tb.barbarians_left)
+        ctx = {
+            'sources': [], 'destinations': [],
+            'board_target': board_target, 'supply': supply,
+            'total': board_target + supply,
+        }
+        return self._treason_next(player_name, ctx)
+
+    def _treason_next(self, player_name: str, ctx: dict) -> dict:
+        """Open the next Treason step, auto-applying a step with one legal
+        option, or apply the redeploy once every source and destination is set."""
+        sources = ctx['sources']
+        destinations = ctx['destinations']
+
+        if len(sources) < ctx['board_target']:
+            candidates = sorted(
+                key for key in self.tb.coastal_hexes
+                if self.tb.barbarians.get(key, 0) > 0 and key not in sources
             )
-            target = min(
-                (key for key in self.tb.coastal_hexes
-                 if key not in self.tb.conquered_hexes
-                 and self.tb.barbarians.get(key, 0) < MAX_BARBARIANS_PER_HEX
-                 and key != source),
-                key=lambda key: self.tb.barbarians.get(key, 0),
-                default=None,
+            if len(candidates) == 1:
+                return self._treason_next(
+                    player_name, {**ctx, 'sources': sources + [candidates[0]]})
+            self.open_choice('treason_source', player_name, candidates,
+                             **self._treason_step_context(ctx, 'remove'))
+            return {'card': tb_decks.TREASON, 'awaiting': player_name}
+
+        if len(destinations) < ctx['total']:
+            candidates = sorted(
+                key for key in self.tb.coastal_hexes
+                if key not in self.tb.conquered_hexes
+                and self.tb.barbarians.get(key, 0) < MAX_BARBARIANS_PER_HEX
+                and key not in sources
+                and key not in destinations
             )
-            if source is None or target is None:
-                break
+            if not candidates:
+                return self._apply_treason(player_name, ctx)
+            if len(candidates) == 1:
+                return self._treason_next(
+                    player_name,
+                    {**ctx, 'destinations': destinations + [candidates[0]]})
+            self.open_choice('treason_destination', player_name, candidates,
+                             **self._treason_step_context(ctx, 'place'))
+            return {'card': tb_decks.TREASON, 'awaiting': player_name}
+
+        return self._apply_treason(player_name, ctx)
+
+    def _treason_step_context(self, ctx: dict, phase: str) -> dict:
+        """Carry the running Treason plan on the choice, plus the fields the
+        client reads to caption the step (which phase, how many are still owed)."""
+        remaining = (ctx['board_target'] - len(ctx['sources'])) if phase == 'remove' \
+            else (ctx['total'] - len(ctx['destinations']))
+        return {
+            'sources': list(ctx['sources']),
+            'destinations': list(ctx['destinations']),
+            'board_target': ctx['board_target'],
+            'supply': ctx['supply'],
+            'total': ctx['total'],
+            'phase': phase,
+            'left': remaining,
+        }
+
+    def _treason_ctx(self, context: dict) -> dict:
+        """Reconstruct the running plan from a choice's recorded context."""
+        return {
+            'sources': list(context.get('sources', [])),
+            'destinations': list(context.get('destinations', [])),
+            'board_target': context['board_target'],
+            'supply': context['supply'],
+            'total': context['total'],
+        }
+
+    def _choice_treason_source(self, choice: dict, option: str) -> dict:
+        """Record the coast a Treason card pulls a barbarian from (639)."""
+        ctx = self._treason_ctx(choice['context'])
+        ctx['sources'] = ctx['sources'] + [option]
+        return self._treason_next(choice['player'], ctx)
+
+    def _choice_treason_destination(self, choice: dict, option: str) -> dict:
+        """Record the coast a Treason card redeploys a barbarian to (639)."""
+        ctx = self._treason_ctx(choice['context'])
+        ctx['destinations'] = ctx['destinations'] + [option]
+        return self._treason_next(choice['player'], ctx)
+
+    def _apply_treason(self, player_name: str, ctx: dict) -> dict:
+        """Redeploy the chosen barbarians: empty each chosen source, draw the
+        supply shortfall, and drop one on each chosen destination — freeing a
+        conquered source and conquering a destination that reaches three."""
+        sources = ctx['sources']
+        destinations = ctx['destinations']
+        place = len(destinations)
+        board_remove = min(len(sources), place)
+        supply_take = min(place - board_remove, self.tb.barbarians_left)
+
+        for source in sources[:board_remove]:
             self.tb.barbarians[source] -= 1
+            if source in self.tb.conquered_hexes \
+                    and self.tb.barbarians[source] < MAX_BARBARIANS_PER_HEX:
+                self.tb.conquered_hexes.discard(source)
+        self.tb.barbarians_left -= supply_take
+
+        moved = board_remove + supply_take
+        for target in destinations[:moved]:
             self.tb.barbarians[target] = self.tb.barbarians.get(target, 0) + 1
             if self.tb.barbarians[target] >= MAX_BARBARIANS_PER_HEX:
                 self.tb.conquered_hexes.add(target)
-            moved += 1
+
         self._recompute_toppled()
         return {'success': True, 'error': '', 'card': tb_decks.TREASON,
-                'gold': self.get_player(player_name).gold, 'moved': moved}
+                'gold': self.get_player(player_name).gold, 'moved': moved,
+                'from': list(sources[:board_remove]),
+                'to': list(destinations[:moved]), 'from_supply': supply_take}
 
     def _resolve_intrigue(self, player_name: str) -> dict:
         """Take 1 barbarian off a coast of the player's choice into their own

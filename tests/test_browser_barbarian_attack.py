@@ -99,6 +99,34 @@ def _barbarian_game_intrigue():
     return game, choice['options']
 
 
+def _barbarian_game_treason():
+    """A started Barbarian Attack game with a Treason card resolved to the point
+    of asking Alice which coast to pull a barbarian from — three coasts hold a
+    barbarian, so both source picks are real choices (expansions.md 639)."""
+    chosen = dict(rules_module.TB_BARBARIAN_ATTACK_RULES)
+    chosen['turn_order'] = 'lobby'
+    defn = maps.parse_map(map_store.read_map('barbarian-attack'))
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=chosen,
+                map_definition=defn)
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+    game.get_player('Alice').resources = {'ore': 1, 'sheep': 1, 'wheat': 1}
+    for key in game.tb.coastal_hexes:
+        game.tb.barbarians[key] = 0
+    game.tb.conquered_hexes.clear()
+    game._recompute_toppled()
+    for key in game.tb.coastal_hexes[:3]:
+        game.tb.barbarians[key] = 1
+    game.tb.ba_deck.append(tb_decks.TREASON)
+    result = game.buy_barbarian_card('Alice')
+    assert result['card'] == 'treason', result
+    choice = game.pending_choice_for('Alice')
+    assert choice and choice['kind'] == 'treason_source' and len(choice['options']) >= 2
+    return game, choice['options']
+
+
 def _base_game():
     game = Game(['Alice', 'Bob'], [], rng=random.Random(5))
     game.start()
@@ -293,6 +321,60 @@ def test_intrigue_asks_which_coast_to_raid(browser, tmp_path):
         for label in labels:
             assert label.startswith("Coast on "), label
             assert any(ch.isdigit() for ch in label), f"{label} names no number token"
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
+def test_treason_asks_which_coasts_to_move_and_completes_the_pick(browser, tmp_path):
+    """Treason opens a sequenced pending choice — two coasts to pull a barbarian
+    from, then two to redeploy to — each option named by its terrain, and the
+    player clicks through all four steps to resolve the card. Fails before the
+    client wired the treason kinds: the panel rendered empty buttons and the
+    sequence could not be completed through the UI.
+    """
+    game, options = _barbarian_game_treason()
+    persistence.save(game, os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = _join(browser, url)
+        alice.page.wait_for_selector("#choice-panel:not(.hidden)", timeout=8000)
+
+        assert "Treason" in alice.page.inner_text("#choice-prompt")
+        labels = alice.page.eval_on_selector_all(
+            "#choice-options .choice-option", "els => els.map(e => e.textContent.trim())"
+        )
+        assert len(labels) == len(options), (labels, options)
+        for label in labels:
+            assert label.startswith("Coast on "), label
+            assert any(ch.isdigit() for ch in label), f"{label} names no number token"
+
+        # Click the first offered option at each step — two sources, then two
+        # destinations — waiting for the question to advance between clicks.
+        for _ in range(6):
+            if alice.page.query_selector("#choice-panel.hidden") is not None:
+                break
+            button = alice.page.query_selector("#choice-options .choice-option")
+            if button is None:
+                break
+            before = alice.page.evaluate(
+                "() => JSON.stringify((window.__catanDebug.getBoard()"
+                ".pending_choices || []).map(c => c.options || c.option_count))"
+            )
+            button.click()
+            alice.page.wait_for_function(
+                "prev => JSON.stringify((window.__catanDebug.getBoard()"
+                ".pending_choices || []).map(c => c.options || c.option_count)) !== prev",
+                arg=before, timeout=8000,
+            )
+
+        # The sequence closed: every step was answered and no choice is left open.
+        alice.page.wait_for_function(
+            "() => (window.__catanDebug.getBoard().pending_choices || []).length === 0",
+            timeout=8000,
+        )
+        assert alice.page.query_selector("#choice-panel.hidden") is not None, \
+            "the choice panel did not close after the pick"
         assert alice.noisy_errors() == [], alice.noisy_errors()
     finally:
         stop_server(proc)

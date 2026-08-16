@@ -45,6 +45,8 @@ const CHOICE_TITLES = {
     deserter_placement: 'Your new knight',
     camel_placement: 'Place the camel',
     intrigue_coast: 'Intrigue',
+    treason_source: 'Treason',
+    treason_destination: 'Treason',
     gold_field_choice: 'Gold field',
     gift_harbor: 'Place your gift harbour',
 };
@@ -65,13 +67,15 @@ const CHOICE_ICONS = {
     deserter: 'knight',
     deserter_placement: 'knight',
     intrigue_coast: 'harbormaster',
+    treason_source: 'harbormaster',
+    treason_destination: 'harbormaster',
     gold_field_choice: 'hand',
     gift_harbor: 'harbormaster',
 };
 
 // The kinds whose options are a coastal hex key. Like the camel's path, a raw
 // "0,-3,3" means nothing, so these are described by the terrain they name.
-const HEX_KINDS = ['intrigue_coast'];
+const HEX_KINDS = ['intrigue_coast', 'treason_source', 'treason_destination'];
 
 // What a vertex option is, so "City on wheat 6, ore 9" reads as the thing being
 // chosen rather than as a coordinate.
@@ -346,6 +350,14 @@ function describeContext(choice) {
     }
     if (choice.kind === 'progress_deck' && context.reason === 'defence') {
         return 'Your share of the joint defence against the barbarians.';
+    }
+    if (choice.kind === 'treason_source') {
+        const more = context.left > 1 ? ` (${context.left} to remove)` : '';
+        return `Remove a barbarian to redeploy${more}.`;
+    }
+    if (choice.kind === 'treason_destination') {
+        const more = context.left > 1 ? ` (${context.left} to place)` : '';
+        return `Redeploy a barbarian onto another coast${more}.`;
     }
     if (choice.kind === 'gift_harbor') {
         const port = context.port || {};
