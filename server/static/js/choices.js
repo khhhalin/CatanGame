@@ -46,6 +46,7 @@ const CHOICE_TITLES = {
     camel_placement: 'Place the camel',
     intrigue_coast: 'Intrigue',
     gold_field_choice: 'Gold field',
+    gift_harbor: 'Place your gift harbour',
 };
 
 // The line icon that leads each heading, keyed by what the choice is about, not
@@ -65,6 +66,7 @@ const CHOICE_ICONS = {
     deserter_placement: 'knight',
     intrigue_coast: 'harbormaster',
     gold_field_choice: 'hand',
+    gift_harbor: 'harbormaster',
 };
 
 // The kinds whose options are a coastal hex key. Like the camel's path, a raw
@@ -262,7 +264,7 @@ function optionLabel(choice, option) {
         const card = getBoard()?.cities_knights?.progress_cards?.[option];
         return card?.name || option;
     }
-    if (choice.kind === 'camel_placement') {
+    if (choice.kind === 'camel_placement' || choice.kind === 'gift_harbor') {
         return describeEdge(option);
     }
     if (HEX_KINDS.includes(choice.kind)) {
@@ -344,6 +346,13 @@ function describeContext(choice) {
     }
     if (choice.kind === 'progress_deck' && context.reason === 'defence') {
         return 'Your share of the joint defence against the barbarians.';
+    }
+    if (choice.kind === 'gift_harbor') {
+        const port = context.port || {};
+        const harbour = port.type === 'resource'
+            ? `a 2:1 ${describeCard(port.resource)} harbour`
+            : 'a 3:1 harbour';
+        return `Choose a coastal side of one of your settlements for ${harbour}.`;
     }
     return '';
 }

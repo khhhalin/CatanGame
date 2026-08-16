@@ -764,6 +764,67 @@ function drawHarbour(ctx, pos, port, outward) {
 // the coastal edge free for a road, close enough to still read as attached.
 const HARBOUR_REACH = 24;
 
+// How far off the marked coast edge a Forgotten Tribe gift star floats, in
+// pixels. Nearer than a harbour badge so a gift on the same island coast never
+// sits under one.
+const GIFT_REACH = 14;
+
+/**
+ * Draw the unclaimed-gift marker on one marked coast edge (Forgotten Tribe).
+ *
+ * A small gold star floating just off the coast the gift sits on. The same
+ * marker whatever the gift is: in the scenario a gift is face-down until a ship
+ * reaches it, so drawing a chit apart from a harbour apart from a card here
+ * would give the reward away before it is claimed. The claim clears it — the
+ * caller draws this only for an edge the payload has not listed as claimed.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} pos - Edge geometry {x1, y1, x2, y2, centerX, centerY}
+ * @param {object} outward - Unit vector {x, y} pointing from the land to the sea
+ */
+function drawGiftMarker(ctx, pos, outward) {
+    const colors = readPalette();
+    const x = pos.centerX + outward.x * GIFT_REACH;
+    const y = pos.centerY + outward.y * GIFT_REACH;
+
+    ctx.save();
+    starPath(ctx, x, y, 8, 3.6, 5);
+    ctx.fillStyle = colors.gold;
+    ctx.fill();
+    // The star floats on the open sea, so it carries its own outline rather than
+    // relying on the fill contrasting with whatever is behind it.
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(10, 16, 24, 0.8)';
+    ctx.stroke();
+    ctx.restore();
+}
+
+/**
+ * Trace a many-pointed star centred on a point, leaving it as the current path.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} cx - Centre x
+ * @param {number} cy - Centre y
+ * @param {number} outer - Outer-point radius
+ * @param {number} inner - Inner-point radius
+ * @param {number} points - Number of points
+ */
+function starPath(ctx, cx, cy, outer, inner, points) {
+    ctx.beginPath();
+    for (let step = 0; step < points * 2; step += 1) {
+        const radius = step % 2 === 0 ? outer : inner;
+        const angle = (Math.PI * step) / points - Math.PI / 2;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy + Math.sin(angle) * radius;
+        if (step === 0) {
+            ctx.moveTo(px, py);
+        } else {
+            ctx.lineTo(px, py);
+        }
+    }
+    ctx.closePath();
+}
+
 /**
  * Trace a rounded rectangle, leaving it as the current path.
  *
@@ -2314,6 +2375,23 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (pos && edge.port) {
             drawHarbour(ctx, pos, edge.port, seawardFrom(edge, pos, hexPositions));
+        }
+    }
+
+    // The Forgotten Tribe gift markers: a gold star on each marked coast edge a
+    // ship can still sail to and claim. `gift_edges` is empty off the scenario
+    // board, so nothing changes there; a claimed edge is listed in
+    // `claimed_gift_edges` and its star is dropped, so the claim clears it.
+    const giftEdges = boardData.gift_edges || {};
+    const claimedGifts = new Set(boardData.claimed_gift_edges || []);
+    for (const key in giftEdges) {
+        if (claimedGifts.has(key)) {
+            continue;
+        }
+        const edge = edges[key];
+        const pos = edgePositions[key];
+        if (edge && pos) {
+            drawGiftMarker(ctx, pos, seawardFrom(edge, pos, hexPositions));
         }
     }
 
