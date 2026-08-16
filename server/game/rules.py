@@ -640,6 +640,15 @@ RULES += [
           "land the sea cuts off from the rest is one — so the same rule fits "
           "any map.",
           group=EXPANSION),
+    _bool("fog_reveal", "Fog hexes revealed by ships", False,
+          "Seafarers rulebook, Scenario: The Fog Islands; expansions.md 119 "
+          "(research §2.1)",
+          "The fog hexes lie face-down until one of your ships or roads reaches "
+          "them. Revealing a producing land hex hands you 1 resource of its "
+          "type on the spot; a revealed sea hex is just open water and pays "
+          "nothing. There are no special victory points for a discovery — the "
+          "fog only hides resources. Play it on the Fog Islands map.",
+          group=EXPANSION),
 ]
 
 
@@ -1106,6 +1115,10 @@ DEPENDENCIES = {
     "pirate": ("ships",),
     "longest_trade_route": ("ships",),
     "island_victory_points": ("ships",),
+    # The Fog Islands' fog hexes lie out in the sea and are reached across water,
+    # so without ships there is no way to sail to one and reveal it — the board
+    # is islands separated by ocean.
+    "fog_reveal": ("ships",),
     # Explorers & Pirates. Transport ships are built and moved from harbor
     # settlements, so nothing in the transport system means anything without
     # them; the pirate charges its tribute in gold; missions need their tracks
@@ -1299,6 +1312,10 @@ EXPANSION_STATE_RULES = (
 # commodities, they need no container.
 EP_STATE_RULES = (
     "ships_explore",
+    # Seafarers' The Fog Islands reuses the hidden-tile pool, the per-region
+    # number-token stacks and the reveal record that live on this container, so a
+    # fog table needs it exactly as an exploring Explorers & Pirates one does.
+    "fog_reveal",
     "pirate_ship_instead_of_robber",
     "chase_pirate",
     "missions",
@@ -1581,6 +1598,33 @@ PRESETS = [
             "longest_trade_route": True,
             "island_victory_points": True,
             "victory_target": 13,
+        },
+    },
+    {
+        "id": "fog_islands",
+        "name": "Seafarers: The Fog Islands",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 3 'The Fog Islands', p. 14; "
+            "expansions.md 119 (research §2.1)"
+        ),
+        "summary": (
+            "The Seafarers scenario built around exploration: two islands start "
+            "face-up and a band of fog hexes between them is dealt face-down. A "
+            "ship or road reaching a fog hex reveals it — a producing land hex "
+            "pays 1 resource of its type, a sea hex nothing. Discovery is the "
+            "only twist: there are no special victory points for it, so unlike "
+            "the other new-shore scenarios the island bonus is left off. The "
+            "rulebook ends the race at 12, so the target is suggested at 12; the "
+            "lobby can still change it. Pick the Fog Islands map."
+        ),
+        "rules": {
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            "longest_road_card": False,
+            "longest_trade_route": True,
+            "fog_reveal": True,
+            "victory_target": 12,
         },
     },
     {

@@ -1,0 +1,146 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 5
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 3,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "fog-islands",
+  "map_version": 2,
+  "name": "The Fog Islands",
+  "notes": "Seafarers 'The Fog Islands' (2021 rulebook, 3-player set-up, p.14). Two islands start face-up; 12 fog hexes between them are dealt face-down and revealed when a ship or road reaches one - a land hex pays 1 resource of its type, a sea hex nothing. No special VP chits: win at 12. The printed stack's 2 gold fields are dealt as 1 extra sheep and 1 wood, as this engine has no Seafarers gold-field production; the 12 fog hexes and 10 tokens are otherwise faithful. Needs Ships and fog reveal.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "0,9,-9",
+        "3,6,-9",
+        "3,9,-12",
+        "6,3,-9",
+        "6,6,-12",
+        "9,0,-9",
+        "9,3,-12"
+      ],
+      "id": "upper-island",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          3,
+          5,
+          6,
+          8,
+          9,
+          11,
+          12
+        ],
+        "terrain": {
+          "brick": 1,
+          "ore": 1,
+          "sheep": 2,
+          "wheat": 1,
+          "wood": 2
+        }
+      }
+    },
+    {
+      "color": "#6ea36a",
+      "hexes": [
+        "-6,-6,12",
+        "-6,-3,9",
+        "-3,-9,12",
+        "-3,-6,9",
+        "0,-12,12",
+        "0,-9,9",
+        "3,-12,9"
+      ],
+      "id": "lower-island",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+          11
+        ],
+        "terrain": {
+          "brick": 1,
+          "ore": 1,
+          "sheep": 2,
+          "wheat": 1,
+          "wood": 2
+        }
+      }
+    },
+    {
+      "color": "#c9d4dc",
+      "hexes": [
+        "-6,3,3",
+        "-6,6,0",
+        "-6,9,-3",
+        "-3,0,3",
+        "-3,3,0",
+        "-3,6,-3",
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "3,-6,3",
+        "3,-3,0",
+        "3,0,-3"
+      ],
+      "id": "fog",
+      "kind": "main",
+      "pool": {
+        "mode": "hidden",
+        "numbers": [
+          3,
+          3,
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "terrain": {
+          "brick": 2,
+          "ore": 2,
+          "sea": 2,
+          "sheep": 2,
+          "wheat": 2,
+          "wood": 2
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 65
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 12
+}

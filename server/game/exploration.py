@@ -1,10 +1,20 @@
 """Exploration: turning face-down tiles face up when a ship reaches them.
 
 Split out of `game.py` alongside the other rules mixins; see `board.py` for the
-pattern. Every method here is gated on `self.rules['ships_explore']`, never on an
-expansion name, so a base-game or Seafarers table is untouched: no hex is ever
-hidden without a v2 hidden pool, and the discovery hook, the reveal and the two
-build guards all fall through to no-ops when the rule is off.
+pattern. Every method here is gated on a specific reveal rule, never on an
+expansion name, so a base-game or plain-Seafarers table is untouched: no hex is
+ever hidden without a v2 hidden pool, and the discovery hooks, the reveal and
+the build guards all fall through to no-ops when their rule is off.
+
+Two scenarios share the reveal machinery through one seam. Explorers & Pirates
+(`ships_explore`) discovers a tile by *moving* a transport ship so an end points
+at it, forbids building next to a face-down hex, and pays 2 gold for a hex that
+is not a plain resource terrain. Seafarers' The Fog Islands (`fog_reveal`)
+discovers by *building* a ship or road that reaches a fog hex, allows exactly
+that, and pays only resources — a producing land hex hands its own card and a
+sea hex pays nothing (Seafarers 2021, Scenario 3, p.14). `_reveal_hex` and the
+pool seeding are common to both; only the trigger and the reward branch differ,
+each keyed on its own rule.
 
 The board holds the truth about a hidden tile — its real terrain sits on the
 `Hex` with `hidden=True`, redacted from `get_board_data` — so discovery is only
@@ -38,7 +48,7 @@ class ExplorationRules:
         """
         if self.ep is None or self.map_definition is None:
             return
-        if not self.rules['ships_explore']:
+        if not (self.rules['ships_explore'] or self.rules['fog_reveal']):
             return
 
         hidden_keys = [key for key, hex_obj in self.hexes.items() if hex_obj.hidden]
@@ -81,6 +91,27 @@ class ExplorationRules:
                     revealed.append(hex_key)
         return revealed
 
+    def discover_from_build(self, player_name: str, hex_keys) -> list:
+        """Reveal every face-down hex a freshly built ship or road now borders.
+
+        The Fog Islands reveal (Seafarers 2021, Scenario 3, p.14): "When you
+        connect a ship (or a road) to an unexplored area, you discover a new
+        hex." Wired into `build_ship` and `build_road`, so a ship or road laid
+        beside a fog hex flips it. Gated on `fog_reveal`, so a table not playing
+        the fog board is unaffected, and it shares `_reveal_hex` with the
+        Explorers & Pirates discovery — only the trigger and the reward differ.
+        Returns the hex keys revealed, in a stable order.
+        """
+        if not self.rules['fog_reveal']:
+            return []
+        revealed = []
+        for hex_key in maps.sort_hex_keys(hex_keys):
+            hex_obj = self.hexes.get(hex_key)
+            if hex_obj is not None and hex_obj.hidden and hex_key not in revealed:
+                self._reveal_hex(hex_key, player_name)
+                revealed.append(hex_key)
+        return revealed
+
     def _reveal_hex(self, hex_key: str, player_name: str):
         """Turn one tile face up: draw its token, record it, pay the reward."""
         hex_obj = self.hexes[hex_key]
@@ -106,13 +137,20 @@ class ExplorationRules:
         self.place_spice_village(hex_key)
 
     def _grant_discovery_reward(self, terrain: str, player_name: str):
-        """Pay the discoverer: 1 resource of the terrain's type, or 2 gold (887).
+        """Pay the discoverer, by the reward rule the table is exploring under.
 
-        A plain resource terrain hands its own card; anything else — a gold
-        field, a fish-shoal, a spice hex, a desert or sea — pays 2 gold instead.
+        A plain resource terrain hands its own card either way. The difference
+        is what a non-producing tile pays: Explorers & Pirates pays 2 gold for a
+        gold field, fish-shoal, spice hex, desert or sea (887); The Fog Islands
+        pays nothing for a revealed sea hex, the only non-resource its board can
+        deal, and never touches the gold currency (Seafarers 2021, Scenario 3,
+        p.14). This is the shared seam: the trigger and the pool are common, the
+        reward forks here on the rule.
         """
         if terrain in maps.RESOURCE_TERRAINS:
             self.give_resource(player_name, terrain)
+        elif self.rules['fog_reveal']:
+            return
         else:
             self.gain_gold(player_name, DISCOVERY_GOLD)
 

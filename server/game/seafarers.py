@@ -161,7 +161,13 @@ class SeafarersRules:
         else:
             self.update_longest_road()
 
-        return {'success': True, 'error': '', 'used_free_road': used_free_road}
+        # The Fog Islands: a ship reaching a fog hex reveals it for a resource
+        # (Seafarers 2021, Scenario 3). A no-op without `fog_reveal` and away
+        # from a face-down hex, so a plain Seafarers table is unaffected.
+        revealed = self.discover_from_build(player_name, edge.neighbors['hexes'])
+
+        return {'success': True, 'error': '', 'used_free_road': used_free_road,
+                'revealed': revealed}
 
     # --- Moving --------------------------------------------------------
 

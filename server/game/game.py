@@ -928,8 +928,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # gold coin — set-up and later both. A no-op without `river_gold`.
         river_gold = self.grant_river_road_gold(player_name, edge_key)
 
+        # The Fog Islands: a road reaching a fog hex reveals it for a resource
+        # (Seafarers 2021, Scenario 3). A no-op without `fog_reveal` and away
+        # from a face-down hex.
+        revealed = self.discover_from_build(player_name, edge.neighbors['hexes'])
+
         return {'success': True, 'error': '', 'used_free_road': used_free_road,
-                'river_gold': river_gold}
+                'river_gold': river_gold, 'revealed': revealed}
 
     def upgrade_city(self, player_name: str, vertex_key: str) -> dict:
         """Turn one of the player's own settlements into a city."""
