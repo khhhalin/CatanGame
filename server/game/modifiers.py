@@ -222,6 +222,28 @@ def _gold_field(value, _rules, context):
     return {**value, 'resources': 0, 'gold': gold_module.GOLD_PER_GOLD_FIELD_BUILDING}
 
 
+def _gold_field_choice(value, _rules, context):
+    """A Seafarers gold field pays resources of the owner's CHOICE, not a card.
+
+    Section 9 'Gold Fields' (base Seafarers rulebook): when a gold field's
+    number is rolled, each adjacent building's owner takes resources of their
+    choice from the bank — one per settlement, two per city, any mix of the
+    five. The choice cannot be resolved inside the production fold, so this only
+    records how many resources are owed under `gold_choice`; `distribute_resources`
+    opens one pending choice per owed resource once the whole roll is walked.
+
+    Zeroes the card share for the reason the E&P gold field does: gold terrain is
+    not a resource the bank stocks. Runs after the currency `gold_field` (25) but
+    the two are mutually exclusive (EXCLUSIONS), so only one is ever live. The
+    robber (40) returns a fresh value without `gold_choice`, so a robber on the
+    field still blocks it, exactly as it blocks a resource hex.
+    """
+    if context['terrain'] != 'gold':
+        return value
+    owed = 2 if context['building_type'] == 'city' else 1
+    return {**value, 'resources': 0, 'commodity': None, 'gold_choice': owed}
+
+
 def _robber_takes_it_all(value, _rules, context):
     """The hex the robber sits on pays nobody, whatever the rest worked out.
 
@@ -252,6 +274,8 @@ register(Modifier('harbor_settlement_yield', PRODUCTION, 15,
 register(Modifier('commodities', PRODUCTION, 20,
                   _rule_is_on('commodities'), _commodity_instead))
 register(Modifier('gold_field', PRODUCTION, 25, _rule_is_on('gold'), _gold_field))
+register(Modifier('gold_field_choice', PRODUCTION, 26,
+                  _rule_is_on('gold_field_choice'), _gold_field_choice))
 register(Modifier('epidemic', PRODUCTION, 30, _rule_is_on('epidemic'), _epidemic))
 register(Modifier('robber', PRODUCTION, 40, _always, _robber_takes_it_all))
 register(Modifier('conquered_hex', PRODUCTION, 45,

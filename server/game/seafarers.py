@@ -15,6 +15,7 @@ import logging
 
 from game import tiles
 from game.results import refused
+from game.validation import BASE_RESOURCE_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -472,3 +473,43 @@ class SeafarersRules:
         logger.debug("%s reached island %s for %d special victory points",
                      player_name, island_id, points)
         return points
+
+    # --- Gold fields that pay resources of choice --------------------------
+
+    def open_gold_field_choices(self, owed: dict):
+        """Open one resource-of-choice per resource a rolled gold field owes.
+
+        Seafarers gold fields (base rulebook, Section 9 'Gold Fields'): when a
+        gold field's number is rolled, each adjacent building's owner takes
+        resources of their choice from the bank — one per settlement, two per
+        city, "any mix of the five". Modelled by reusing the pending-choice
+        phase: one choice per owed resource, so a city picks its two in any mix
+        and the table is frozen until every owed player has answered.
+
+        `owed` is {player: how many resources they may pick}, gathered by
+        `distribute_resources` from the `gold_choice` the production modifier
+        marked. Only the resources the bank can still cover are offered, so a
+        pick the supply cannot honour is never presented — bank scarcity, the
+        same limit normal production respects. Players are taken in sorted order
+        so a seeded game opens the choices identically every run.
+        """
+        for player_name in sorted(owed):
+            options = [r for r in BASE_RESOURCE_TYPES if self.bank.resources.get(r, 0) > 0]
+            for _ in range(owed[player_name]):
+                self.open_choice('gold_field_choice', player_name, options)
+
+    def _choice_gold_field_choice(self, choice: dict, option: str) -> dict:
+        """Pay one chosen resource from the bank for a gold field (Section 9).
+
+        Respects bank scarcity exactly as normal production does: if the supply
+        has run dry of the chosen resource since the choice was offered — a rival
+        gold-field pick this same roll may have taken the last card — the pick
+        pays nothing, the way a resource hex with an empty bank stack does.
+        """
+        player = self.get_player(choice['player'])
+        if player is None:
+            return {'paid': False}
+        paid = self.bank.take(option)
+        if paid:
+            player.resources[option] = player.resources.get(option, 0) + 1
+        return {'paid': paid}

@@ -701,6 +701,16 @@ RULES += [
           "everyone places a third one, and it is the third settlement — not the "
           "second — that pays out its adjacent hexes as your opening hand.",
           group=EXPANSION),
+    _bool("gold_field_choice", "Gold fields (resources of choice)", False,
+          "Seafarers rulebook, Section 9 'Gold Fields' (\"each settlement is "
+          "entitled to one resource, while each city is entitled to two ... may "
+          "select ANY of the five resources ... any mix\")",
+          "A gold field pays resources of your choice, not a fixed card. When "
+          "its number is rolled, every adjacent building's owner takes resources "
+          "from the bank — one per settlement, two per city — in any mix of the "
+          "five. Each owed player picks their own, and the roll waits on them. "
+          "Distinct from the Explorers & Pirates gold currency, which pays coins.",
+          group=EXPANSION),
 ]
 
 
@@ -1283,6 +1293,22 @@ EXCLUSIONS = [
             "bonus. Pick one gold economy."
         ),
     },
+    # A gold hex pays one thing on its roll. The Explorers & Pirates `gold`
+    # field pays 2 gold coins per building (a currency); the Seafarers
+    # `gold_field_choice` field pays resources of the owner's choice from the
+    # bank. Both read `context['terrain'] == 'gold'` in the production fold, so
+    # with both on a hex would try to pay a coin and a card of choice at once.
+    # A table picks one gold field, not both.
+    {
+        "id": "gold_field_yield",
+        "rules": ("gold", "gold_field_choice"),
+        "kind": "hard",
+        "reason": (
+            "The Explorers & Pirates gold field pays 2 gold coins per building "
+            "and the Seafarers gold field pays resources of your choice from the "
+            "bank — a hex pays one or the other on its roll, not both. Pick one."
+        ),
+    },
     # The Cities & Knights barbarian ship and the Barbarian Attack coastal war
     # are two different knight-and-barbarian systems on one board — the C&K ship
     # is measured against your cities on a track, the Barbarian Attack figures
@@ -1689,6 +1715,7 @@ PRESETS = [
             "longest_road_card": False,
             "longest_trade_route": True,
             "fog_reveal": True,
+            "gold_field_choice": True,
             "victory_target": 12,
         },
     },
@@ -1716,6 +1743,7 @@ PRESETS = [
             "longest_trade_route": True,
             "island_victory_points": True,
             "desert_regions": True,
+            "gold_field_choice": True,
             "victory_target": 14,
         },
     },

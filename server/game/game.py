@@ -1505,6 +1505,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             return {}
 
         gained_resources = {}
+        # Seafarers gold fields owe resources of the owner's choice rather than a
+        # card: the production modifier marks how many each building is owed, and
+        # they are gathered here and turned into pending choices once the whole
+        # roll is walked. {player: resources owed}.
+        gold_field_choices_owed = {}
 
         for _vertex_key, vertex in self.vertices.items():
             if not vertex.building or vertex.building.get('type') not in (
@@ -1562,10 +1567,23 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                         self.gold_gained.get(player_name, 0) + field_gold
                     )
 
+                # A gold-of-choice field pays no card here: it only records how
+                # many resources the owner may pick, opened as choices below.
+                owed = produced.get('gold_choice', 0)
+                if owed:
+                    gold_field_choices_owed[player_name] = (
+                        gold_field_choices_owed.get(player_name, 0) + owed
+                    )
+
         # A non-7 roll that paid a player no resource cards hands them 1 gold
         # (854); folded in after the walk so it sees the whole roll's payout.
         for player_name, amount in self.pay_empty_roll_gold(gained_resources).items():
             self.gold_gained[player_name] = self.gold_gained.get(player_name, 0) + amount
+
+        # Gold fields that pay resources of choice open one pending choice per
+        # owed resource, after the walk so every owed player is known and the
+        # bank supply the choices are gated on reflects the whole roll's payout.
+        self.open_gold_field_choices(gold_field_choices_owed)
 
         if gained_resources:
             logger.debug(f"Resources distributed (rolled {dice_total}):")

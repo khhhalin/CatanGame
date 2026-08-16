@@ -27,15 +27,18 @@ class TestTheOrderIsExplicit:
         `city_production` decides a city's share, `harbor_settlement_yield`
         holds a harbor settlement to one card, `commodities` replaces half of it
         with a commodity, `gold_field` turns a gold field's share into gold,
-        `epidemic` caps whatever came out, the robber takes the lot, and a
-        Barbarian Attack conquered hex pays nothing after even the robber. Any
-        other sequence pays a different number.
+        `gold_field_choice` turns it into resources of choice instead (the two
+        gold fields are mutually exclusive, so only one is ever live), `epidemic`
+        caps whatever came out, the robber takes the lot, and a Barbarian Attack
+        conquered hex pays nothing after even the robber. Any other sequence pays
+        a different number.
         """
         assert [
             modifier.rule_id
             for modifier in modifiers_module.registered(modifiers_module.PRODUCTION)
         ] == ['city_production', 'harbor_settlement_yield', 'commodities',
-              'gold_field', 'epidemic', 'robber', 'conquered_hex']
+              'gold_field', 'gold_field_choice', 'epidemic', 'robber',
+              'conquered_hex']
 
     def test_two_modifiers_may_not_claim_one_place_in_the_line(self):
         """A tie would be broken by import order, which is not an order."""

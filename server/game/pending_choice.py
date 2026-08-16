@@ -45,6 +45,7 @@ KINDS = {
     'camel_placement': 'choose which path the camel is placed on',
     'intrigue_coast': 'choose which coast to raid for a prisoner',
     'gift_harbor': 'choose which coastal side to place your gift harbor on',
+    'gold_field_choice': 'choose a resource to take from the gold field',
 }
 
 # The safety net on draining the queue: a resolver may open a follow-up choice

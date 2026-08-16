@@ -45,6 +45,7 @@ const CHOICE_TITLES = {
     deserter_placement: 'Your new knight',
     camel_placement: 'Place the camel',
     intrigue_coast: 'Intrigue',
+    gold_field_choice: 'Gold field',
 };
 
 // The line icon that leads each heading, keyed by what the choice is about, not
@@ -63,6 +64,7 @@ const CHOICE_ICONS = {
     deserter: 'knight',
     deserter_placement: 'knight',
     intrigue_coast: 'harbormaster',
+    gold_field_choice: 'hand',
 };
 
 // The kinds whose options are a coastal hex key. Like the camel's path, a raw
@@ -87,7 +89,8 @@ const VERTEX_ICONS = {
 
 // The kinds whose options are a held card - a resource or a commodity. Their
 // buttons are a filled coloured tile that names itself, with no text beside it.
-const CARD_KINDS = ['commercial_harbor', 'merchant_fleet', 'master_merchant', 'wedding'];
+const CARD_KINDS = ['commercial_harbor', 'merchant_fleet', 'master_merchant', 'wedding',
+    'gold_field_choice'];
 
 const DECK_LABELS = { science: 'Science', trade: 'Trade', politics: 'Politics' };
 
