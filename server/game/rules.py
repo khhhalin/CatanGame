@@ -640,6 +640,16 @@ RULES += [
           "land the sea cuts off from the rest is one — so the same rule fits "
           "any map.",
           group=EXPANSION),
+    _bool("desert_regions", "Desert splits regions like the sea", False,
+          "Seafarers rulebook, Scenario: Through the Desert; expansions.md 125-127 "
+          "(research §2.1)",
+          "A belt of desert counts as a barrier between regions, exactly as open "
+          "sea does. Your first settlement in each area the desert cuts off — the "
+          "land strip beyond it — scores the same special victory points a new "
+          "island does, so 'Through the Desert' is played by reaching four "
+          "foreign areas rather than four islands. Needs the island bonus, which "
+          "does the scoring. On a board with no desert belt it changes nothing.",
+          group=EXPANSION),
     _bool("fog_reveal", "Fog hexes revealed by ships", False,
           "Seafarers rulebook, Scenario: The Fog Islands; expansions.md 119 "
           "(research §2.1)",
@@ -1115,6 +1125,10 @@ DEPENDENCIES = {
     "pirate": ("ships",),
     "longest_trade_route": ("ships",),
     "island_victory_points": ("ships",),
+    # The desert belt only matters as a barrier because reaching the region it
+    # cuts off is worth special points; without the island bonus there is
+    # nothing to score, so the two are ticked together or not at all.
+    "desert_regions": ("island_victory_points",),
     # The Fog Islands' fog hexes lie out in the sea and are reached across water,
     # so without ships there is no way to sail to one and reveal it — the board
     # is islands separated by ocean.
@@ -1625,6 +1639,33 @@ PRESETS = [
             "longest_trade_route": True,
             "fog_reveal": True,
             "victory_target": 12,
+        },
+    },
+    {
+        "id": "through_the_desert",
+        "name": "Seafarers: Through the Desert",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 4 'Through the Desert', p. 17; "
+            "expansions.md 125-127 (research §2.1)"
+        ),
+        "summary": (
+            "The Seafarers scenario whose island is split by a belt of desert: "
+            "the same island bonus that rewards a new shore rewards the first "
+            "settlement in each foreign area, and the desert-regions rule makes "
+            "the land strip beyond the desert one such area alongside the outer "
+            "islands. The rulebook ends the race at 14, so the target is "
+            "suggested at 14; the lobby can still change it. Pick the Through "
+            "the Desert map."
+        ),
+        "rules": {
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            "longest_road_card": False,
+            "longest_trade_route": True,
+            "island_victory_points": True,
+            "desert_regions": True,
+            "victory_target": 14,
         },
     },
     {

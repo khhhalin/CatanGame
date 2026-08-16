@@ -1,0 +1,155 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 5
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 3,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "through-the-desert",
+  "map_version": 2,
+  "name": "Through the Desert",
+  "notes": "Seafarers 'Through the Desert' (2021 rulebook, Scenario 4, 3-player, p.17). A belt of 3 deserts splits the island into the main land (14 hexes) and a strip beyond it (3 hexes); 3 islands lie at sea. Strip + 3 islands are the four foreign areas: first settlement in each pays 2 points, up to 8; win at 14. The strip is reached via the desert-regions rule, which treats desert like sea when deciding a settlement's region. The 2 printed gold fields deal as ore (no gold-of-choice production here).",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-6,6,0",
+        "-3,3,0",
+        "0,0,0",
+        "3,-3,0",
+        "6,-6,0",
+        "-6,3,3",
+        "-3,0,3",
+        "0,-3,3",
+        "3,-6,3",
+        "-3,6,-3",
+        "0,3,-3",
+        "3,0,-3",
+        "-3,-3,6",
+        "0,-6,6"
+      ],
+      "id": "main-island",
+      "kind": "main",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [2, 3, 4, 4, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11],
+        "terrain": {
+          "brick": 3,
+          "ore": 2,
+          "sheep": 3,
+          "wheat": 2,
+          "wood": 4
+        }
+      }
+    },
+    {
+      "color": "#e2c48d",
+      "hexes": [
+        "6,-3,-3",
+        "9,-6,-3",
+        "6,0,-6"
+      ],
+      "id": "desert-belt",
+      "kind": "main",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "desert": 3
+        }
+      }
+    },
+    {
+      "color": "#6ea36a",
+      "hexes": [
+        "9,-3,-6",
+        "12,-6,-6",
+        "12,-9,-3"
+      ],
+      "id": "land-strip",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [3, 4, 6],
+        "terrain": {
+          "ore": 1,
+          "wheat": 1,
+          "wood": 1
+        }
+      }
+    },
+    {
+      "color": "#5f9e6a",
+      "hexes": [
+        "-12,12,0",
+        "-12,9,3"
+      ],
+      "id": "island-west",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [5, 8],
+        "terrain": {
+          "ore": 1,
+          "wheat": 1
+        }
+      }
+    },
+    {
+      "color": "#4f9e7a",
+      "hexes": [
+        "-3,-9,12",
+        "0,-12,12"
+      ],
+      "id": "island-south",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [9, 11],
+        "terrain": {
+          "ore": 1,
+          "sheep": 1
+        }
+      }
+    },
+    {
+      "color": "#4f8e9e",
+      "hexes": [
+        "9,-12,3"
+      ],
+      "id": "island-east",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [5],
+        "terrain": {
+          "ore": 1
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 66
+        }
+      }
+    }
+  ],
+  "robber_start": "6,-3,-3",
+  "suggested_victory_target": 14
+}

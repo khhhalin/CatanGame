@@ -649,19 +649,32 @@ class BoardBuilder:
                         vertex_obj.neighbors["vertices"].append(connected_vertex_key)
 
     def islands(self) -> dict:
-        """Land hex key -> the id of the island it belongs to.
+        """Land hex key -> the id of the region it belongs to.
 
-        An island is derived, never authored: a stretch of land the sea cuts
-        off from the rest of the board, found by flood fill over neighbouring
-        land hexes. A map file can group hexes into regions for its own
-        purposes, but which of them a player has landed on has to come from the
-        board as it was actually dealt — a region whose pool dealt it some sea
-        may end up as two islands, or none.
+        A region is derived, never authored: a stretch of buildable land some
+        barrier cuts off from the rest of the board, found by flood fill over
+        neighbouring land hexes. The sea is always a barrier; under the
+        `desert_regions` rule the desert belt is one too, because "Through the
+        Desert" splits one island into scoring regions with a band of desert
+        exactly as other Seafarers boards split it with water. With the rule
+        off the only barrier is ocean, so the result is byte-for-byte the
+        island fill it has always been. A map file can group hexes into regions
+        for its own purposes, but which of them a player has landed on has to
+        come from the board as it was actually dealt — a region whose pool
+        dealt it some sea may end up as two islands, or none.
+
+        A barrier hex belongs to no region and is left out of the mapping; a
+        desert under the rule is such a barrier, so it is not returned at all.
 
         The id is the lowest hex key in the component, so it is stable for a
         board however the hexes were iterated.
         """
-        land = sorted(key for key, hex_obj in self.hexes.items() if hex_obj.type != 'ocean')
+        barriers = {'ocean'}
+        if self.rules['desert_regions']:
+            barriers.add('desert')
+        land = sorted(
+            key for key, hex_obj in self.hexes.items() if hex_obj.type not in barriers
+        )
         island_of = {}
         for start in land:
             if start in island_of:
@@ -673,7 +686,7 @@ class BoardBuilder:
                 key = frontier.pop()
                 component.append(key)
                 for neighbor_key in sorted(self.hexes[key].neighbors):
-                    if neighbor_key in seen or self.hexes[neighbor_key].type == 'ocean':
+                    if neighbor_key in seen or self.hexes[neighbor_key].type in barriers:
                         continue
                     seen.add(neighbor_key)
                     frontier.append(neighbor_key)
