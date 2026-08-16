@@ -103,6 +103,13 @@ MAX_OASIS_ARROWS = 12
 # Roaming barbarians a main-scenario map may print. The printed scenario has 3;
 # the cap is generous room for a variant and bounds the payload.
 MAX_BARBARIAN_PATHS = 12
+# Marked gift coast edges a Forgotten Tribe map may print. The printed scenario
+# has 18 (8 Catan chits, 4 development cards, 6 harbours); the cap is generous
+# room for a variant and bounds the payload.
+MAX_GIFT_EDGES = 32
+# The three gift kinds a marked coast edge can carry (Seafarers 2021, Scenario 5,
+# p. 20). A harbour gift also names the harbour it hands over.
+GIFT_KINDS = ('victory_point', 'dev_card', 'harbor')
 MAX_NAME = 64
 MAX_NOTES = 512
 
@@ -394,6 +401,12 @@ class MapDefinition:
     # every map that prints none. The trade hexes themselves are read off the
     # dealt board by terrain (castle/quarry/glassworks), so they need no field.
     barbarian_paths: tuple = ()
+    # The Forgotten Tribe marked gift coast edges: sorted (edge_key, kind, port)
+    # triples, where kind is one of GIFT_KINDS and port names the harbour a
+    # 'harbor' gift hands over (None for the other kinds). A map-level field like
+    # `bridge_sites`, because a gift edge is not owned by a hex. Empty on every
+    # map that prints none.
+    gift_edges: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -421,6 +434,11 @@ class MapDefinition:
             data['oasis_arrows'] = list(self.oasis_arrows)
         if self.barbarian_paths:
             data['barbarian_paths'] = list(self.barbarian_paths)
+        if self.gift_edges:
+            data['gift_edges'] = {
+                edge_key: ({'gift': kind, 'port': port} if port else {'gift': kind})
+                for edge_key, kind, port in self.gift_edges
+            }
         return data
 
     def region_of(self) -> dict:
@@ -776,13 +794,56 @@ def parse_map(data: dict) -> MapDefinition:
         barbarian_paths.add(key)
     barbarian_tuple = tuple(sort_hex_keys(barbarian_paths))
 
+    gift_tuple = _parse_gift_edges(data.get('gift_edges'), radius, bag)
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
         excluded_hexes=excluded_tuple, bridge_sites=bridge_tuple,
         oasis_arrows=oasis_tuple, barbarian_paths=barbarian_tuple,
+        gift_edges=gift_tuple,
     )
+
+
+def _parse_gift_edges(raw, radius: int, harbour_bag) -> tuple:
+    """The Forgotten Tribe marked gift coast edges as sorted triples.
+
+    Shape only, exactly as the other map-level edge fields: each key names a hex
+    side on the lattice, and each value names one of the three gift kinds. A
+    'harbor' gift also names the harbour it hands over — a harbour type the bag
+    allows — because that harbour is not in the auto-placed bag but delivered to
+    a player to place. `None` for the other kinds. Which small island a gift edge
+    borders is a board fact, checked no more than the other edge fields are.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or len(raw) > MAX_GIFT_EDGES:
+        raise InvalidPayload(
+            'INVALID_MAP', f'gift_edges maps at most {MAX_GIFT_EDGES} hex sides to a gift')
+
+    gifts = {}
+    for key in sort_hex_keys(raw):
+        coords = parse_edge_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex side')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'gift edge {key!r} is outside the frame')
+        spec = raw[key]
+        if not isinstance(spec, dict) or spec.get('gift') not in GIFT_KINDS:
+            raise InvalidPayload(
+                'INVALID_MAP', f'a gift edge is one of: {", ".join(GIFT_KINDS)}')
+        kind = spec['gift']
+        port = None
+        if kind == 'harbor':
+            port = spec.get('port')
+            if port not in HARBOUR_TYPES:
+                raise InvalidPayload('INVALID_MAP', 'a harbour gift names a harbour type')
+        elif spec.get('port') is not None:
+            raise InvalidPayload('INVALID_MAP', f'a {kind} gift takes no harbour type')
+        gifts[key] = (kind, port)
+
+    return tuple((key, gifts[key][0], gifts[key][1]) for key in sort_hex_keys(gifts))
 
 
 # --- Validation: meaning ------------------------------------------------

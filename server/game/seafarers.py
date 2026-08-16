@@ -166,8 +166,13 @@ class SeafarersRules:
         # from a face-down hex, so a plain Seafarers table is unaffected.
         revealed = self.discover_from_build(player_name, edge.neighbors['hexes'])
 
+        # The Forgotten Tribe: a ship built onto a marked coast edge claims its
+        # gift (Seafarers 2021, Scenario 5). A no-op without `coast_gifts` and
+        # away from a marked edge, so a plain Seafarers table is unaffected.
+        gift = self.claim_coast_gift(player_name, edge_key)
+
         return {'success': True, 'error': '', 'used_free_road': used_free_road,
-                'revealed': revealed}
+                'revealed': revealed, 'gift': gift}
 
     # --- Moving --------------------------------------------------------
 
@@ -350,7 +355,13 @@ class SeafarersRules:
 
         self.ship_moved_this_turn = True
         self.update_longest_road()
-        return {'success': True, 'error': ''}
+
+        # The Forgotten Tribe: a ship *moved* onto a marked coast edge claims its
+        # gift just as a built one does (Seafarers 2021, Scenario 5). A no-op
+        # without `coast_gifts` and away from a marked edge.
+        gift = self.claim_coast_gift(player_name, to_edge_key)
+
+        return {'success': True, 'error': '', 'gift': gift}
 
     # --- The pirate ----------------------------------------------------
 

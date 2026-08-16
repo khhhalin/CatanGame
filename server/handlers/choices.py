@@ -98,4 +98,6 @@ def _story(name: str, result: dict) -> str:
         return f"{name} placed the caravan's camel"
     if kind == 'intrigue_coast':
         return f"{name} spirited a barbarian off the coast as a prisoner"
+    if kind == 'gift_harbor':
+        return f"{name} placed a gift harbor from the Forgotten Tribe"
     return f"{name} placed the deserting knight"

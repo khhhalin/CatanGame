@@ -13,6 +13,7 @@ from game.board import BoardBuilder
 from game.caravans import CaravansRules
 from game.cargo import CargoRules
 from game.cities_knights_rules import CitiesKnightsRules
+from game.coast_gifts import CoastGiftRules
 from game.dev_card_rules import DevCardRules
 from game.ep_pirate import EpPirateRules
 from game.exploration import ExplorationRules
@@ -45,7 +46,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
-           PendingChoiceRules, TurnClock):
+           CoastGiftRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -163,6 +164,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # points for reaching a new one have added up to.
         self.player_islands = {}
         self.island_points = {}
+        # The Forgotten Tribe. The marked gift coast edges read off the map
+        # (edge key -> {'gift', 'port'}), which of them have been claimed, the
+        # barren small islands the gift edges border, the 1-VP chits each player
+        # has claimed, and the harbours a player is holding until they can place
+        # one. All empty off the Forgotten Tribe board.
+        self.gift_edges = {}
+        self.claimed_gift_edges = set()
+        self.barren_island_hexes = set()
+        self.gift_points = {}
+        self.held_gift_harbors = {}
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -404,6 +415,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Traders & Barbarians (Rivers): read the map's river-crossing bridge
         # sites into `self.bridge_sites`. A no-op for a board that prints none.
         self.setup_rivers_board()
+
+        # The Forgotten Tribe: read the map's marked gift coast edges and the
+        # barren islands they border. A no-op for a board that prints none.
+        self.setup_coast_gifts_board()
 
         # Traders & Barbarians (Caravans): read the oasis and its arrow paths off
         # the dealt board. A no-op for a board that prints no oasis.
@@ -738,6 +753,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         plaza = self.trade_hex_settlement_refusal(vertex_key)
         if plaza is not None:
             return plaza
+        # The Forgotten Tribe: no settlement on the barren small islands. A
+        # no-op without the rule and away from a barren island.
+        barren = self.barren_island_build_refusal(vertex.neighbors['hexes'])
+        if barren is not None:
+            return barren
         if not self._respects_distance_rule(vertex_key):
             return refused(
                 'INVALID_PLACEMENT', 'Cannot place settlement next to another settlement'
@@ -781,6 +801,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if in_setup:
             self.last_setup_settlement = vertex_key
         self.setup_action = "road" if in_setup else "settlement"
+
+        # The Forgotten Tribe: a player holding a gift harbour with nowhere to
+        # put it is offered it again now a fresh coastal settlement may give it
+        # one. A no-op without the rule and when nothing is held.
+        if self.rules['coast_gifts']:
+            self.offer_held_gift_harbors(player_name)
 
         # The Rivers of Catan: a settlement adjacent to a river hex pays 1 gold
         # coin — set-up and later both, but never for a city. A no-op without
@@ -1072,6 +1098,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.rules['island_victory_points']:
             points += self.island_points.get(player_name, 0)
 
+        # The Forgotten Tribe: each 1-VP Catan chit claimed at a marked coast
+        # edge is a special point banked under its claimer, added like the
+        # island bonus above. A no-op without the rule.
+        if self.rules['coast_gifts']:
+            points += self.gift_points.get(player_name, 0)
+
         # "The player controlling the merchant scores 1 victory point for as
         # long as they control it" — and control passes the moment somebody
         # else plays a Merchant card, so this is read rather than banked.
@@ -1319,6 +1351,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # client draws the arrows on these; empty off the Caravans board. The
             # camels themselves and the caravan chains ride on the `tb` payload.
             'oasis_arrows': sorted(self.oasis_arrows),
+            # The Forgotten Tribe marked gift coast edges: the kind of gift on
+            # each, and which have already been claimed, so the client can draw
+            # the markers and grey out spent ones. Empty off the scenario board.
+            'gift_edges': {
+                edge_key: gift['gift'] for edge_key, gift in sorted(self.gift_edges.items())
+            },
+            'claimed_gift_edges': sorted(self.claimed_gift_edges),
+            'gift_points': self.gift_points,
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),

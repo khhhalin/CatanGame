@@ -259,6 +259,13 @@ class RobberRules:
                 'produces something.',
             )
 
+        if (self.rules['robber_avoids_barren_islands']
+                and hex_key in self.barren_island_hexes):
+            return (
+                'BARREN_ISLAND',
+                'The robber may not move to the small islands of the Forgotten Tribe.',
+            )
+
         if not self.robber_is_allowed(hex_key):
             return (
                 'FRIENDLY_ROBBER',
@@ -283,6 +290,10 @@ class RobberRules:
         if not self.rules['robber_may_return_to_desert']:
             if self.hexes[hex_key].type == 'desert':
                 return False
+
+        # The Forgotten Tribe keeps the robber off the barren small islands.
+        if self.rules['robber_avoids_barren_islands'] and hex_key in self.barren_island_hexes:
+            return False
 
         if not self.rules['friendly_robber']:
             return True

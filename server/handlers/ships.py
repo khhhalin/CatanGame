@@ -11,6 +11,7 @@ from game.validation import (
     require_str,
 )
 from state import (
+    announce_choices,
     bump_and_broadcast,
     log_event,
     rate_limited,
@@ -75,6 +76,10 @@ def handle_build_ship(data):
 
         logger.info("ship player=%s edge=%s", name, edge_key)
         log_event('build', f"{name} built a ship", player=name)
+        _log_gift(name, result.get('gift'))
+        # A gift harbour opens a placement choice; tell the player who owes it
+        # before the board goes out.
+        announce_choices()
         bump_and_broadcast()
         # A ship can complete the Longest Trade Route, and that card is worth
         # two points, so building one can end the game.
@@ -110,10 +115,31 @@ def handle_move_ship(data):
 
         logger.info("ship moved player=%s from=%s to=%s", name, from_edge, to_edge)
         log_event('build', f"{name} moved a ship", player=name)
+        _log_gift(name, result.get('gift'))
+        announce_choices()
         bump_and_broadcast()
         # Moving a ship can hand over the Longest Trade Route, and that card is
         # worth two points, so it can end the game.
         announce_victory(name)
+
+
+def _log_gift(name: str, gift):
+    """Tell the table a Forgotten Tribe coast gift was claimed.
+
+    What the gift *is* stays public for a chit and a harbour, which the board
+    shows anyway; a drawn development card is announced only as "a gift", since
+    which card it is stays secret exactly as a bought one does.
+    """
+    if not gift:
+        return
+    kind = gift['gift']
+    if kind == 'victory_point':
+        log_event('game', f"{name} claimed a victory point from the Forgotten Tribe", player=name)
+    elif kind == 'dev_card':
+        log_event('game', f"{name} received a development card from the Forgotten Tribe",
+                  player=name)
+    else:
+        log_event('game', f"{name} received a harbor from the Forgotten Tribe", player=name)
 
 
 @socketio.on('move_pirate')

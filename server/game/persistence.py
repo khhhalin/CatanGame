@@ -181,6 +181,13 @@ def serialize(game: Game) -> dict:
         'ship_moved_this_turn': game.ship_moved_this_turn,
         'player_islands': game.player_islands,
         'island_points': game.island_points,
+        # The Forgotten Tribe: the claimed 1-VP chits, which marked edges are
+        # spent, and any harbour a player is holding to place. The gift edges and
+        # the barren islands are re-derived from the map when the board is
+        # regenerated, so only what the players decided is saved.
+        'gift_points': game.gift_points,
+        'claimed_gift_edges': sorted(game.claimed_gift_edges),
+        'held_gift_harbors': game.held_gift_harbors,
         'must_move_robber': game.must_move_robber,
         # Main scenario: a barbarian move owed after a 7 survives a save.
         'must_move_barbarian': game.must_move_barbarian,
@@ -401,9 +408,14 @@ def deserialize(data: dict, config=None) -> Game:
                   'longest_road_length', 'harbormaster_holder', 'harbor_points',
                   'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
                   'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
-                  'merchant_fleet_types'):
+                  'merchant_fleet_types', 'gift_points', 'held_gift_harbors'):
         if field in data:
             setattr(game, field, data[field])
+
+    # A set on the game, a list in the save: spent gift edges must not be
+    # reclaimable after a reload.
+    if 'claimed_gift_edges' in data:
+        game.claimed_gift_edges = set(data['claimed_gift_edges'])
 
     game.dice_deck = [tuple(pair) for pair in data.get('dice_deck', [])]
     saved_dice = data.get('pending_dice')

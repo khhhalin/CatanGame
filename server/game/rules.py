@@ -659,6 +659,30 @@ RULES += [
           "nothing. There are no special victory points for a discovery — the "
           "fog only hides resources. Play it on the Fog Islands map.",
           group=EXPANSION),
+    _bool("coast_gifts", "Coast gifts of the Forgotten Tribe", False,
+          "Seafarers rulebook, Scenario 5: The Forgotten Tribe, p. 20; "
+          "expansions.md 128-131 (research §2.1)",
+          "The small islands carry marked coast edges. Sailing a ship onto one — "
+          "building it or moving it there — claims the gift printed on it, once: "
+          "a Catan chit worth 1 special victory point, a development card drawn "
+          "from the deck (playable only from your next turn, like a bought one), "
+          "or a harbour you place at one of your own coastal settlements. Play it "
+          "on the Forgotten Tribe map.",
+          group=EXPANSION),
+    _bool("no_build_barren_islands", "No building on barren islands", False,
+          "Seafarers rulebook, Scenario 5: The Forgotten Tribe, p. 20 "
+          "(\"no settlement can be built on the surrounding small islands that do "
+          "not produce resources\")",
+          "You may not build a settlement on the barren small islands — the ones "
+          "that carry the gift edges and yield no resources. They exist only to "
+          "hold the gifts. On a board with no such islands it changes nothing.",
+          group=EXPANSION),
+    _bool("robber_avoids_barren_islands", "Robber avoids barren islands", False,
+          "Seafarers rulebook, Scenario 5: The Forgotten Tribe, p. 20 "
+          "(\"the robber cannot move to the small islands\")",
+          "The robber may not be moved onto the barren small islands of the "
+          "Forgotten Tribe. On a board with no such islands it changes nothing.",
+          group=EXPANSION),
 ]
 
 
@@ -1133,6 +1157,10 @@ DEPENDENCIES = {
     # so without ships there is no way to sail to one and reveal it — the board
     # is islands separated by ocean.
     "fog_reveal": ("ships",),
+    # The Forgotten Tribe's gift edges are the coasts of small islands out in the
+    # sea; a gift is claimed by sailing a ship onto one, so without ships nothing
+    # can ever be claimed.
+    "coast_gifts": ("ships",),
     # Explorers & Pirates. Transport ships are built and moved from harbor
     # settlements, so nothing in the transport system means anything without
     # them; the pirate charges its tribute in gold; missions need their tracks
@@ -1666,6 +1694,35 @@ PRESETS = [
             "island_victory_points": True,
             "desert_regions": True,
             "victory_target": 14,
+        },
+    },
+    {
+        "id": "forgotten_tribe",
+        "name": "Seafarers: The Forgotten Tribe",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 5 'The Forgotten Tribe', p. 20; "
+            "expansions.md 128-131 (research §2.1)"
+        ),
+        "summary": (
+            "The Seafarers scenario built around gifts: the small islands around "
+            "the main land carry marked coast edges, and sailing a ship onto one "
+            "claims its gift — a 1-VP Catan chit, a development card, or a harbour "
+            "you place at one of your own coastal settlements. All six harbours "
+            "arrive as gifts; none start on the board. The barren islands cannot "
+            "be built on and the robber may not move to them. The rulebook ends "
+            "the race at 13, so the target is suggested at 13; the lobby can still "
+            "change it. Pick the Forgotten Tribe map."
+        ),
+        "rules": {
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            "longest_road_card": False,
+            "longest_trade_route": True,
+            "coast_gifts": True,
+            "no_build_barren_islands": True,
+            "robber_avoids_barren_islands": True,
+            "victory_target": 13,
         },
     },
     {
