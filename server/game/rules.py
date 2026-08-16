@@ -1679,7 +1679,8 @@ PRESETS = [
             "settlements anywhere and the same island bonus that rewards a new "
             "shore rewards the first settlement on each foreign island. "
             "The rulebook ends the race at 13, so the target is suggested at 13; "
-            "the lobby can still change it. Pick the Four Islands map."
+            "the lobby can still change it. Pick the Four Islands map — or its "
+            "larger 4-Player variant at a four-player table."
         ),
         "rules": {
             "ships": True,
