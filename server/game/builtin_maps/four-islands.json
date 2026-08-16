@@ -1,0 +1,97 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 6
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "four-islands",
+  "map_version": 1,
+  "name": "The Four Islands",
+  "notes": "Seafarers 'The Four Islands' (2021 rulebook, 3-player set-up, p.12). Four islands of 6, 4, 4 and 6 land hexes and no main land, so no home continent: a player places their two starting settlements anywhere and races to be first onto each foreign island for 2 extra points. No desert, no gold. 20 tokens, 9 harbours. Terrains and tokens shuffle freely within the fixed contours, as the variable set-up allows. Needs Ships. Win at 13.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-9,12,-3",
+        "-6,9,-3",
+        "-9,9,0",
+        "-6,6,0",
+        "-3,3,0",
+        "-6,3,3",
+        "3,3,-6",
+        "6,0,-6",
+        "3,0,-3",
+        "6,-3,-3",
+        "-6,-3,9",
+        "-3,-6,9",
+        "-6,-6,12",
+        "-3,-9,12",
+        "3,-6,3",
+        "6,-9,3",
+        "9,-12,3",
+        "6,-12,6",
+        "9,-15,6",
+        "6,-15,9"
+      ],
+      "id": "islands",
+      "kind": "island",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          2,
+          3,
+          3,
+          4,
+          4,
+          5,
+          5,
+          5,
+          6,
+          6,
+          8,
+          8,
+          9,
+          9,
+          9,
+          10,
+          10,
+          11,
+          11,
+          12
+        ],
+        "terrain": {
+          "brick": 4,
+          "ore": 4,
+          "sheep": 4,
+          "wheat": 4,
+          "wood": 4
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 107
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 13
+}

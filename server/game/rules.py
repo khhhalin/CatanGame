@@ -1559,6 +1559,31 @@ PRESETS = [
         },
     },
     {
+        "id": "four_islands",
+        "name": "Seafarers: The Four Islands",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 2 'The Four Islands', pp. 11-12; "
+            "expansions.md 118 (research §2.1)"
+        ),
+        "summary": (
+            "The Seafarers scenario with no home continent: the four-islands "
+            "board has no main land, so a player places their two starting "
+            "settlements anywhere and the same island bonus that rewards a new "
+            "shore rewards the first settlement on each foreign island. "
+            "The rulebook ends the race at 13, so the target is suggested at 13; "
+            "the lobby can still change it. Pick the Four Islands map."
+        ),
+        "rules": {
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            "longest_road_card": False,
+            "longest_trade_route": True,
+            "island_victory_points": True,
+            "victory_target": 13,
+        },
+    },
+    {
         "id": "traders_and_barbarians",
         "name": "Traders & Barbarians variants",
         "source": "Traders & Barbarians rulebook; expansions.md 756–803",
