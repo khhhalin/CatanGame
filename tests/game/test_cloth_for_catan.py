@@ -293,6 +293,123 @@ class TestNoLineAward:
         assert game.victory_points_for('Bob') == 0
 
 
+def _dice_for(total):
+    """A die pair that sums to a village number (2..12, never 7)."""
+    if total <= 7:
+        return (1, total - 1)
+    return (6, total - 6)
+
+
+def _drain_all_but(game, keep):
+    """Empty every village but `keep` of them, so the next depletion ends the
+    game. Leaves `keep` villages holding a bolt; the rest hold none."""
+    villages = sorted(game.village_number)
+    for vertex_key in villages[keep:]:
+        game.village_cloth[vertex_key] = 0
+
+
+class TestVillagesOutEnd:
+    """The scenario's second end condition (expansions.md 191-192): the game
+    ends the instant three or fewer villages still hold cloth, and the winner is
+    the player with the most victory points, a tie broken in favour of more
+    bolts of cloth."""
+
+    def test_the_depleting_roll_ends_the_game_for_the_most_victory_points(self):
+        """When a roll empties the fourth-from-last village — dropping the count
+        to three — the game finishes and the leader on victory points wins."""
+        game = _playing(cloth_game())
+        village = min(game.village_number)
+        number = game.village_number[village]
+        connect_by_ships(game, 'Alice', village)
+
+        # Four villages hold cloth going into the roll; the target village holds
+        # its last bolt, so paying it out drops the count to three.
+        _drain_all_but(game, 4)
+        game.village_cloth[village] = 1
+        assert game.villages_with_cloth_remaining() == 4
+
+        # Alice leads: her banked bolts score points Bob has no answer to.
+        game.cloth_tokens['Alice'] = 5
+        game.pending_dice = _dice_for(number)
+
+        result = game.roll_dice('Alice')
+
+        assert game.villages_with_cloth_remaining() == 3
+        assert game.game_state == 'finished'
+        assert result['game_over'] == {
+            'winner': 'Alice',
+            'victory_points': game.victory_points_for('Alice'),
+            'reason': 'villages_depleted',
+        }
+
+    def test_a_tie_on_points_is_broken_by_more_bolts_of_cloth(self):
+        """Level on victory points, the villages-out win goes to the player
+        holding more bolts of cloth."""
+        game = _playing(cloth_game())
+        _drain_all_but(game, 3)
+        assert game.villages_with_cloth_remaining() == 3
+
+        # Equal victory points (one cloth point each), Alice with the odd bolt
+        # that breaks the tie.
+        game.cloth_tokens['Alice'] = 3
+        game.cloth_tokens['Bob'] = 2
+        assert game.victory_points_for('Alice') == game.victory_points_for('Bob')
+
+        ended = game.cloth_alternate_end()
+
+        assert ended['winner'] == 'Alice'
+        assert ended['reason'] == 'villages_depleted'
+        assert game.game_state == 'finished'
+
+    def test_reaching_the_target_on_your_turn_wins_ahead_of_the_villages_end(self):
+        """The primary 14-VP win takes precedence: a roller who reaches the
+        target on their own turn wins by points, even if the same roll empties
+        the last village (expansions.md 191)."""
+        game = _playing(cloth_game())
+        village = min(game.village_number)
+        number = game.village_number[village]
+        connect_by_ships(game, 'Alice', village)
+        _drain_all_but(game, 4)
+        game.village_cloth[village] = 1
+
+        # One bolt short of the target; the roll's bolt pushes Alice to 14 while
+        # it also drops the village count to three.
+        target = game.victory_points_to_win
+        base = game.victory_points_for('Alice')
+        game.cloth_tokens['Alice'] = 2 * (target - base) - 1
+        game.pending_dice = _dice_for(number)
+
+        result = game.roll_dice('Alice')
+
+        assert game.villages_with_cloth_remaining() == 3
+        assert result['game_over']['winner'] == 'Alice'
+        assert result['game_over']['victory_points'] >= target
+        assert result['game_over']['reason'] == 'victory_target'
+
+
+class TestTheEndIsGatedOnTheRule:
+    """A game without villages must never trip the villages-out end. It has zero
+    villages holding cloth, which is `<= 3`, so nothing but the `cloth_villages`
+    gate stops every base-game roll from ending the game on the spot."""
+
+    def test_a_base_game_roll_never_reports_a_villages_out_win(self):
+        game = Game(['Alice', 'Bob'], [], rng=random.Random(5))
+        game.start()
+        game.game_phase = 'playing'
+        game.current_player_index = 0
+        game.start_turn()
+
+        assert game.rules['cloth_villages'] is False
+        # The count the alternate end reads is already at zero — the gate is the
+        # only thing between that and a game that ends before anyone plays.
+        assert game.villages_with_cloth_remaining() == 0
+
+        result = game.roll_dice('Alice')
+
+        assert result['game_over'] is None
+        assert game.game_state != 'finished'
+
+
 class TestThirdSettlement:
     def _play_setup(self, game):
         seats = []

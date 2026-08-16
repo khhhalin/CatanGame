@@ -1795,6 +1795,25 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # no-op without the villages rule.
         cloth = self.distribute_cloth(total)
 
+        # Cloth for Catan is the one scenario a roll can end: its bolts move
+        # victory points and empty villages, so both of its end conditions are
+        # checked here, the instant that roll resolves. The primary 14-VP win
+        # comes first — a roller who reaches the target on their own turn wins by
+        # points (expansions.md 191) and would be the leader anyway — and only
+        # otherwise does the villages-out end fire, when three or fewer villages
+        # still hold cloth (expansions.md 192). The whole block is gated on the
+        # cloth rule, so a village-less board (which reports zero remaining, i.e.
+        # `<= 3`) never ends on a roll.
+        game_over = None
+        if self.rules['cloth_villages']:
+            threshold_points = self.claim_victory(player_name)
+            if threshold_points is not None:
+                game_over = {'winner': player_name,
+                             'victory_points': threshold_points,
+                             'reason': 'victory_target'}
+            else:
+                game_over = self.cloth_alternate_end()
+
         return {
             'success': True,
             'error': '',
@@ -1817,6 +1836,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Cloth bolts the roll paid (player -> count). Empty when no village
             # matched the roll or every matching village was already empty.
             'cloth': cloth,
+            # The win this roll produced, or None. Only Cloth for Catan sets it:
+            # {'winner', 'victory_points', 'reason'} where reason is
+            # 'victory_target' (reached 14 on turn) or 'villages_depleted'.
+            'game_over': game_over,
         }
 
     def next_dice(self) -> tuple:

@@ -170,3 +170,42 @@ class ClothForCatanRules:
         """
         return sum(1 for vertex_key in self.village_number
                    if self.village_cloth.get(vertex_key, 0) > 0)
+
+    def cloth_alternate_end(self) -> dict | None:
+        """The scenario's second end condition, checked after a roll pays cloth.
+
+        The game ends the moment three or fewer villages still hold a bolt, and
+        the winner is the player with the most victory points, a tie broken in
+        favour of more bolts of cloth (expansions.md 191-192). Marks the game
+        finished and returns {'winner', 'victory_points', 'reason'}, or None if
+        the board still has more than three villages in cloth. Gated on
+        `cloth_villages` — every village-less board reports zero remaining, which
+        is `<= 3`, so this gate is the only thing keeping a base game from ending
+        on its first roll.
+        """
+        if not self.rules['cloth_villages']:
+            return None
+        if self.villages_with_cloth_remaining() > 3:
+            return None
+        self.game_state = "finished"
+        winner = self._cloth_endgame_winner()
+        return {
+            'winner': winner,
+            'victory_points': self.victory_points_for(winner),
+            'reason': 'villages_depleted',
+        }
+
+    def _cloth_endgame_winner(self) -> str:
+        """Who takes the villages-out win: most victory points, a tie broken by
+        more bolts of cloth (expansions.md 192).
+
+        The rulebook names no third tiebreak, so a pair still level on both is
+        settled by seat order — `max` returns the first player reaching the top
+        key — which is deterministic rather than an undecided winner that would
+        stall the announcement.
+        """
+        return max(
+            self.players,
+            key=lambda player: (self.victory_points_for(player.name),
+                                self.cloth_tokens.get(player.name, 0)),
+        ).name

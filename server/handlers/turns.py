@@ -256,6 +256,21 @@ def _announce_dice_roll(name, result):
     announce_choices()
     bump_and_broadcast({'highlight': total})
 
+    # Cloth for Catan can win on a roll — the primary 14-VP win or the
+    # villages-out end — so the same banner every other win uses is fired here,
+    # after the final board so the table sees the deciding roll first. `reason`
+    # rides along so the banner can name why it ended.
+    game_over = result.get('game_over')
+    if game_over:
+        socketio.emit('game_won', {
+            'player': game_over['winner'],
+            'victory_points': game_over['victory_points'],
+            'reason': game_over['reason'],
+        })
+        logger.info("GAME OVER! %s wins with %s victory points (%s)",
+                    game_over['winner'], game_over['victory_points'],
+                    game_over['reason'])
+
 
 @socketio.on('refresh_board')
 def handle_refresh_board(data=None):
