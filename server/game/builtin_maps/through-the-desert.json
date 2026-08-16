@@ -17,7 +17,7 @@
   "id": "through-the-desert",
   "map_version": 2,
   "name": "Through the Desert",
-  "notes": "Seafarers 'Through the Desert' (2021 rulebook, Scenario 4, 3-player, p.17). A belt of 3 deserts splits the island into the main land (14 hexes) and a strip beyond it (3 hexes); 3 islands lie at sea. Strip + 3 islands are the four foreign areas: first settlement in each pays 2 points, up to 8; win at 14. The strip is reached via the desert-regions rule, which treats desert like sea when deciding a settlement's region. The 2 printed gold fields deal as ore (no gold-of-choice production here).",
+  "notes": "Seafarers 'Through the Desert' (2021 rulebook, Scenario 4, 3-player, p.17). A belt of 3 deserts splits the island into main land (14) and a strip beyond (3); 3 islands lie at sea. Strip + 3 islands are the four foreign areas: first settlement in each pays 2, up to 8; win at 14. Reached via desert-regions. The 2 printed gold fields sit on the two southern/eastern islands (gold_field_choice, no 6 or 8): when rolled, each adjacent owner takes resources of choice - 1 per settlement, 2 per city.",
   "regions": [
     {
       "color": "#8bb26a",
@@ -116,7 +116,7 @@
         "mode": "shuffled",
         "numbers": [9, 11],
         "terrain": {
-          "ore": 1,
+          "gold": 1,
           "sheep": 1
         }
       }
@@ -132,7 +132,7 @@
         "mode": "shuffled",
         "numbers": [5],
         "terrain": {
-          "ore": 1
+          "gold": 1
         }
       }
     },

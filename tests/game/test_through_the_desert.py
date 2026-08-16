@@ -69,22 +69,23 @@ class TestTheBoardAsDealt:
         sizes = sorted(Counter(game.islands().values()).values())
         assert sizes == [1, 2, 2, 3, 14]
 
-    def test_the_three_deserts_form_the_belt_and_no_gold_field(self):
-        """The component list is "Desert 3, Gold field 2", and the two gold
-        fields are dealt as ore because this engine has no gold-of-choice
-        production — so the board carries three deserts and not one gold hex."""
+    def test_the_three_deserts_form_the_belt_and_two_gold_fields(self):
+        """The component list is "Desert 3, Gold field 2": the belt is three
+        deserts and the two printed gold fields sit on the small sea-islands,
+        dealt as real gold-of-choice hexes (gold_field_choice)."""
         game = desert_game()
         counts = Counter(game.hexes[key].type for key in land_hexes(game))
         assert counts['desert'] == 3
-        assert not any('gold' in kind for kind in counts)
+        assert counts['gold'] == 2
 
     def test_the_terrain_is_the_three_player_component_list(self):
-        """Main land + strip + islands, the two gold fields substituted to ore:
-        6 ore, 4 wheat, 5 wood, 4 sheep, 3 hills and the 3 deserts (25 hexes)."""
+        """Main land + strip + islands, the two gold fields restored on the two
+        southern/eastern islands: 4 ore, 4 wheat, 5 wood, 4 sheep, 3 hills, 2
+        gold and the 3 deserts (25 hexes)."""
         game = desert_game()
         counts = Counter(game.hexes[key].type for key in land_hexes(game))
-        assert counts == {'ore': 6, 'wheat': 4, 'wood': 5, 'sheep': 4,
-                          'brick': 3, 'desert': 3}
+        assert counts == {'ore': 4, 'wheat': 4, 'wood': 5, 'sheep': 4,
+                          'brick': 3, 'gold': 2, 'desert': 3}
 
     def test_the_number_tokens_are_the_printed_twenty_two(self):
         game = desert_game()
@@ -212,5 +213,6 @@ class TestThePreset:
         assert chosen['victory_target'] == 14
         assert chosen['desert_regions'] is True
         assert chosen['island_victory_points'] is True
+        assert chosen['gold_field_choice'] is True
         assert chosen['ships'] is True
         assert chosen['pirate'] is True

@@ -15,12 +15,13 @@ the scenario ships — read off the generated board, never a literal copied from
 the file — and that a ship reaching a fog hex reveals it for a resource and
 nothing more.
 
-The printed face-down stack holds two gold fields. This engine has no Seafarers
-gold-field production (resource-of-choice on a roll), only the Explorers &
-Pirates gold currency, so a gold field would be dealt and then pay nothing when
-its number came up. The map deals those two hexes as one extra sheep and one
-extra wood instead; the 12 fog hexes and 10 fog tokens are otherwise faithful,
-and `test_no_gold_and_no_desert` pins that substitution.
+The printed face-down stack holds two gold fields. With the `gold_field_choice`
+rule they are dealt as real Seafarers gold-of-choice hexes: revealed for nothing
+(gold has no reveal reward), and when their number is rolled every adjacent
+building's owner takes resources of their choice — one per settlement, two per
+city (base Seafarers rulebook, Section 9). The 12 fog hexes and 10 fog tokens are
+faithful, and `test_the_two_gold_fields_are_dealt` pins them on the generated
+board.
 """
 
 import random
@@ -54,12 +55,13 @@ def fog_hexes(game):
     return [key for key, hex_obj in game.hexes.items() if hex_obj.hidden]
 
 
-def _single_fog_target(game, want_sea):
-    """A sea side bordering exactly one fog hex, sea or land as asked.
+def _single_fog_target(game, kind):
+    """A sea side bordering exactly one fog hex of the asked kind.
 
-    `want_sea` picks a fog hex whose real terrain is water (pays nothing) or a
-    producing land hex (pays its resource). Searched on the generated board so
-    the test never copies the deal.
+    `kind` is 'producer' (a resource land hex that pays its card on reveal),
+    'sea' (open water, pays nothing) or 'gold' (a gold field, pays nothing on
+    reveal but takes a token). Searched on the generated board so the test never
+    copies the deal.
     """
     for edge_key in sorted(game.edges):
         if not game.is_sea_edge(edge_key):
@@ -68,10 +70,15 @@ def _single_fog_target(game, want_sea):
                 if game.hexes[hk].hidden]
         if len(fogs) != 1:
             continue
-        is_sea = game.hexes[fogs[0]].type == 'ocean'
-        if is_sea == want_sea:
+        terrain = game.hexes[fogs[0]].type
+        matches = {
+            'sea': terrain == 'ocean',
+            'gold': terrain == 'gold',
+            'producer': terrain in maps.RESOURCE_TERRAINS,
+        }[kind]
+        if matches:
             return edge_key, fogs[0]
-    raise AssertionError(f'no single-fog {"sea" if want_sea else "land"} target')
+    raise AssertionError(f'no single-fog {kind} target')
 
 
 class TestTheBoardAsDealt:
@@ -104,22 +111,22 @@ class TestTheBoardAsDealt:
         assert len(fogs) == 12
         assert all(game.hexes[key].number is None for key in fogs)
 
-    def test_the_fog_stack_is_the_printed_mix_with_gold_substituted(self):
+    def test_the_fog_stack_is_the_printed_mix_with_two_gold_fields(self):
         """The face-down stack's real terrain (secret to clients, known to the
-        server): 2 of each producing resource and 2 sea. The rulebook's 2 gold
-        fields are the extra sheep and wood; the 10 producers and 2 sea hold."""
+        server): the rulebook's 2 gold fields, 2 sea, and 8 producers (2 wheat,
+        2 brick, 2 ore, 1 sheep, 1 wood) — 12 hexes."""
         game = fog_game()
         counts = Counter(game.hexes[key].type for key in fog_hexes(game))
-        assert counts == {'wheat': 2, 'brick': 2, 'ore': 2, 'sheep': 2,
-                          'wood': 2, 'ocean': 2}
+        assert counts == {'gold': 2, 'wheat': 2, 'brick': 2, 'ore': 2,
+                          'sheep': 1, 'wood': 1, 'ocean': 2}
 
-    def test_no_gold_and_no_desert(self):
-        """No gold field pays out in a Seafarers game here, and the scenario
-        prints no desert, so neither belongs on the dealt board."""
+    def test_the_two_gold_fields_are_dealt(self):
+        """The printed stack's two gold fields land on the generated board (in
+        the fog, revealed by exploration), and the scenario prints no desert."""
         game = fog_game()
-        kinds = {game.hexes[key].type for key in game.hexes}
+        kinds = Counter(game.hexes[key].type for key in game.hexes)
+        assert kinds['gold'] == 2
         assert 'desert' not in kinds
-        assert not any('gold' in kind for kind in kinds)
 
 
 class TestDiscoveryRevealsForResourcesOnly:
@@ -143,7 +150,7 @@ class TestDiscoveryRevealsForResourcesOnly:
 
     def test_reaching_a_land_fog_hex_pays_one_resource_of_its_type(self):
         game = fog_game()
-        target, fog = _single_fog_target(game, want_sea=False)
+        target, fog = _single_fog_target(game, 'producer')
         terrain = game.hexes[fog].type
         self._scaffold(game, target)
         vp_before = game.victory_points_for('Alice')
@@ -161,7 +168,7 @@ class TestDiscoveryRevealsForResourcesOnly:
 
     def test_reaching_a_sea_fog_hex_pays_nothing(self):
         game = fog_game()
-        target, fog = _single_fog_target(game, want_sea=True)
+        target, fog = _single_fog_target(game, 'sea')
         self._scaffold(game, target)
         vp_before = game.victory_points_for('Alice')
 
@@ -171,6 +178,27 @@ class TestDiscoveryRevealsForResourcesOnly:
         assert result['revealed'] == [fog]
         assert not game.hexes[fog].hidden
         assert game.hexes[fog].number is None
+        alice = game.get_player('Alice')
+        assert alice.resources == {}
+        assert alice.gold == 0
+        assert game.victory_points_for('Alice') == vp_before
+
+    def test_revealing_a_gold_field_pays_nothing_but_takes_a_token(self):
+        """Gold has no reveal reward — no resource card, no gold currency (this
+        board plays gold-of-choice, not the E&P currency) — but a gold field is
+        a producing tile, so it still draws a number token to pay out on later
+        rolls."""
+        game = fog_game()
+        target, fog = _single_fog_target(game, 'gold')
+        self._scaffold(game, target)
+        vp_before = game.victory_points_for('Alice')
+
+        result = game.build_ship('Alice', target)
+
+        assert result['success']
+        assert result['revealed'] == [fog]
+        assert not game.hexes[fog].hidden
+        assert game.hexes[fog].number in maps.TOKEN_VALUES
         alice = game.get_player('Alice')
         assert alice.resources == {}
         assert alice.gold == 0
@@ -186,6 +214,7 @@ class TestThePreset:
         assert chosen is not None
         assert chosen['victory_target'] == 12
         assert chosen['fog_reveal'] is True
+        assert chosen['gold_field_choice'] is True
         assert chosen['ships'] is True
         assert chosen['pirate'] is True
         assert chosen['island_victory_points'] is False

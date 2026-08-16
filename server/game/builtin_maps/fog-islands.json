@@ -17,7 +17,7 @@
   "id": "fog-islands",
   "map_version": 2,
   "name": "The Fog Islands",
-  "notes": "Seafarers 'The Fog Islands' (2021 rulebook, 3-player set-up, p.14). Two islands start face-up; 12 fog hexes between them are dealt face-down and revealed when a ship or road reaches one - a land hex pays 1 resource of its type, a sea hex nothing. No special VP chits: win at 12. The printed stack's 2 gold fields are dealt as 1 extra sheep and 1 wood, as this engine has no Seafarers gold-field production; the 12 fog hexes and 10 tokens are otherwise faithful. Needs Ships and fog reveal.",
+  "notes": "Seafarers 'The Fog Islands' (2021 rulebook, 3-player, p.14). Two islands start face-up; 12 fog hexes between them are dealt face-down and revealed by a ship/road - a land hex pays 1 resource, a sea or gold hex nothing on reveal. Win at 12, no VP chits. The printed stack's 2 gold fields are real gold-of-choice hexes (gold_field_choice): when rolled, each adjacent owner takes resources of choice - 1 per settlement, 2 per city. Needs Ships, fog reveal and gold_field_choice.",
   "regions": [
     {
       "color": "#8bb26a",
@@ -119,11 +119,12 @@
         ],
         "terrain": {
           "brick": 2,
+          "gold": 2,
           "ore": 2,
           "sea": 2,
-          "sheep": 2,
+          "sheep": 1,
           "wheat": 2,
-          "wood": 2
+          "wood": 1
         }
       }
     },
