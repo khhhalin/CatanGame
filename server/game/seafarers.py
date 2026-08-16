@@ -171,8 +171,14 @@ class SeafarersRules:
         # away from a marked edge, so a plain Seafarers table is unaffected.
         gift = self.claim_coast_gift(player_name, edge_key)
 
+        # Cloth for Catan: a ship completing a route to a village earns its first
+        # bolt of cloth (Seafarers 2021, Scenario 6). A no-op without
+        # `cloth_villages` and away from a village, so a plain Seafarers table is
+        # unaffected.
+        cloth = self.claim_cloth_connections(player_name)
+
         return {'success': True, 'error': '', 'used_free_road': used_free_road,
-                'revealed': revealed, 'gift': gift}
+                'revealed': revealed, 'gift': gift, 'cloth': cloth}
 
     # --- Moving --------------------------------------------------------
 
@@ -361,7 +367,12 @@ class SeafarersRules:
         # without `coast_gifts` and away from a marked edge.
         gift = self.claim_coast_gift(player_name, to_edge_key)
 
-        return {'success': True, 'error': '', 'gift': gift}
+        # Cloth for Catan: a ship *moved* into a route reaching a village earns
+        # its first bolt just as a built one does. A no-op without the villages
+        # rule and away from a village.
+        cloth = self.claim_cloth_connections(player_name)
+
+        return {'success': True, 'error': '', 'gift': gift, 'cloth': cloth}
 
     # --- The pirate ----------------------------------------------------
 

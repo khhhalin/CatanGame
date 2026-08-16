@@ -163,6 +163,9 @@ export const STATUS_ICON = {
     // set's stand-in for "a commodity". A panel showing a specific commodity
     // should prefer resourceTile('cloth'|'coin'|'paper') instead.
     commodity: 'i-coin',
+    // Cloth for Catan bolts: the cloth commodity's own glyph, since a bolt is
+    // that same fabric even though it is scored, not spent like a C&K commodity.
+    cloth: 'i-cloth',
 };
 
 /**

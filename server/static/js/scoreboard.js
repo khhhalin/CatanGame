@@ -81,6 +81,15 @@ function scoreChipsFor(board, entry) {
         chips.push({ concept: 'ship', value: (entry.ships || []).length, label: 'ships' });
     }
 
+    // Cloth for Catan: the bolts a player has banked. Every two are already
+    // counted in the score above, but the raw bolt count is what tells a player
+    // whether they are one bolt short of the next point, so it earns a chip.
+    if (board.rules?.cloth_villages === true) {
+        chips.push({
+            concept: 'cloth', value: board.cloth_tokens?.[name] || 0, label: 'bolts of cloth'
+        });
+    }
+
     // Two different things wear a sword. With the expansion's knights on, the
     // number that matters is how many are standing on the board; without them
     // it is how many knight cards have been played, which is what Largest Army

@@ -683,6 +683,24 @@ RULES += [
           "The robber may not be moved onto the barren small islands of the "
           "Forgotten Tribe. On a board with no such islands it changes nothing.",
           group=EXPANSION),
+    _bool("cloth_villages", "Cloth for Catan villages", False,
+          "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22",
+          "The small islands carry villages — number tokens sitting on "
+          "intersections, each with a supply of cloth bolts. Connect one of your "
+          "settlements or cities to a village by a shipping route and you take 1 "
+          "bolt at once, then 1 more from that village every time its number is "
+          "rolled, until its supply runs dry. Two bolts of cloth score 1 victory "
+          "point; an unpaired bolt scores nothing. Play it on the Cloth for Catan "
+          "map.",
+          group=EXPANSION),
+    _bool("setup_third_settlement", "Start with a third settlement", False,
+          "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22 "
+          "(\"everyone can build a third settlement ... you receive your "
+          "starting resources\")",
+          "Setup runs a third round: after the two normal starting settlements, "
+          "everyone places a third one, and it is the third settlement — not the "
+          "second — that pays out its adjacent hexes as your opening hand.",
+          group=EXPANSION),
 ]
 
 
@@ -1161,6 +1179,11 @@ DEPENDENCIES = {
     # sea; a gift is claimed by sailing a ship onto one, so without ships nothing
     # can ever be claimed.
     "coast_gifts": ("ships",),
+    # The Cloth for Catan villages are on small islands out in the sea, and a
+    # village pays cloth only to a settlement it is joined to by a shipping
+    # route; with no ships there is no route to reach one, so cloth can never be
+    # earned.
+    "cloth_villages": ("ships",),
     # Explorers & Pirates. Transport ships are built and moved from harbor
     # settlements, so nothing in the transport system means anything without
     # them; the pirate charges its tribute in gold; missions need their tracks
@@ -1723,6 +1746,41 @@ PRESETS = [
             "no_build_barren_islands": True,
             "robber_avoids_barren_islands": True,
             "victory_target": 13,
+        },
+    },
+    {
+        "id": "cloth_for_catan",
+        "name": "Seafarers: Cloth for Catan",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 6 'Cloth for Catan', p. 22; "
+            "research §2.1"
+        ),
+        "summary": (
+            "The Seafarers scenario built around trade: the small islands carry "
+            "villages, and connecting one to a settlement by a shipping route "
+            "earns cloth — a bolt on the connection and a bolt each time the "
+            "village number is rolled, until its supply runs out. Every two "
+            "bolts are worth a victory point. No victory points are awarded for "
+            "the Longest Trade Route, so both line awards are left off, and "
+            "players start with a third settlement. The barren islands cannot be "
+            "built on and the robber may not move to them. The rulebook ends the "
+            "race at 14, so the target is suggested at 14; the lobby can still "
+            "change it. Pick the Cloth for Catan map."
+        ),
+        "rules": {
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            # No line award at all: the rulebook awards no points for the
+            # Longest Trade Route, and the roads-only Longest Road is not in a
+            # ship scenario either.
+            "longest_road_card": False,
+            "longest_trade_route": False,
+            "cloth_villages": True,
+            "setup_third_settlement": True,
+            "no_build_barren_islands": True,
+            "robber_avoids_barren_islands": True,
+            "victory_target": 14,
         },
     },
     {

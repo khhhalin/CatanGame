@@ -13,6 +13,7 @@ from game.board import BoardBuilder
 from game.caravans import CaravansRules
 from game.cargo import CargoRules
 from game.cities_knights_rules import CitiesKnightsRules
+from game.cloth_for_catan import CLOTH_GENERAL_SUPPLY, ClothForCatanRules
 from game.coast_gifts import CoastGiftRules
 from game.dev_card_rules import DevCardRules
 from game.ep_pirate import EpPirateRules
@@ -46,7 +47,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
-           CoastGiftRules, PendingChoiceRules, TurnClock):
+           CoastGiftRules, ClothForCatanRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -174,6 +175,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.barren_island_hexes = set()
         self.gift_points = {}
         self.held_gift_harbors = {}
+        # Cloth for Catan: each village's number and its remaining bolts of
+        # cloth, the players who have established trade relations with each (so a
+        # connection pays its opening bolt only once), each player's banked
+        # bolts, and the general supply a short village draws its shortfall from.
+        self.village_number = {}
+        self.village_cloth = {}
+        self.village_traders = {}
+        self.cloth_tokens = {}
+        self.cloth_general_supply = CLOTH_GENERAL_SUPPLY
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -420,6 +430,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # barren islands they border. A no-op for a board that prints none.
         self.setup_coast_gifts_board()
 
+        # Cloth for Catan: read the map's villages and the barren islands they
+        # sit on into cloth state. A no-op for a board that prints no villages.
+        self.setup_cloth_villages()
+
         # Traders & Barbarians (Caravans): read the oasis and its arrow paths off
         # the dealt board. A no-op for a board that prints no oasis.
         self.setup_caravans_board()
@@ -554,9 +568,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.setup_turn < num_players:
             # First round: forward, in seating order
             return self.setup_turn
-        else:
+        if self.setup_turn < 2 * num_players:
             # Second round: back down it
             return (2 * num_players - 1) - self.setup_turn
+        # Third round (Cloth for Catan): forward again, "starting with this same
+        # player" — the one who laid the last second settlement, at index 0 — and
+        # on clockwise. Only reached when `setup_third_settlement` keeps setup
+        # going past the second round.
+        return self.setup_turn - 2 * num_players
 
     def setup_building_type(self) -> str:
         """What the current setup placement builds.
@@ -576,15 +595,19 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.last_setup_settlement = None
 
         num_players = len(self.players)
-        if self.setup_turn >= num_players * 2:
-            # Setup complete - distribute starter resources from second settlements
-            logger.debug("=== Distributing starter resources from second settlements ===")
+        # Cloth for Catan runs a third setup round, and it is the third
+        # settlement that pays the opening hand — "when you place your third
+        # settlement, you receive your starting resources" (Seafarers 2021,
+        # p. 22). Every other table stops after two and pays from the second.
+        rounds = 3 if self.rules['setup_third_settlement'] else 2
+        if self.setup_turn >= num_players * rounds:
+            # Setup complete - distribute starter resources from the last-placed
+            # starting settlement (the second normally, the third with the rule).
+            logger.debug("=== Distributing starter resources from starting settlements ===")
             for player in self.players:
                 settlements = self.player_settlements.get(player.name, [])
-                if len(settlements) >= 2:
-                    # Second settlement is at index 1
-                    second_settlement = settlements[1]
-                    self.distribute_from_settlement(second_settlement, player.name)
+                if len(settlements) >= rounds:
+                    self.distribute_from_settlement(settlements[rounds - 1], player.name)
 
             self.game_phase = "playing"
             self.current_player_index = 0
@@ -1104,6 +1127,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.rules['coast_gifts']:
             points += self.gift_points.get(player_name, 0)
 
+        # Cloth for Catan: every two bolts of cloth score a point, an unpaired
+        # bolt nothing. Read live off the bolt count, so a point lands the moment
+        # a second bolt does. A no-op without the villages rule.
+        if self.rules['cloth_villages']:
+            points += self.cloth_victory_points(player_name)
+
         # "The player controlling the merchant scores 1 victory point for as
         # long as they control it" — and control passes the moment somebody
         # else plays a Merchant card, so this is read rather than banked.
@@ -1359,6 +1388,18 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             },
             'claimed_gift_edges': sorted(self.claimed_gift_edges),
             'gift_points': self.gift_points,
+            # Cloth for Catan: each village's number and remaining bolts, so the
+            # client can mark the villages and grey a spent one, and each
+            # player's banked bolts for the scoreboard readout. Empty off the
+            # scenario board.
+            'cloth_villages': {
+                vertex_key: {
+                    'number': self.village_number[vertex_key],
+                    'cloth': self.village_cloth.get(vertex_key, 0),
+                }
+                for vertex_key in sorted(self.village_number)
+            },
+            'cloth_tokens': self.cloth_tokens,
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),
@@ -1730,6 +1771,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # fish token is not a resource card.
         fish = self.distribute_fish(total)
 
+        # Cloth for Catan: a village pays a bolt to each route joined to it when
+        # its number is rolled. After the resource walk, like the fish, and kept
+        # apart from `gained` because a bolt of cloth is not a resource card. A
+        # no-op without the villages rule.
+        cloth = self.distribute_cloth(total)
+
         return {
             'success': True,
             'error': '',
@@ -1749,6 +1796,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Fish tokens the roll drew (player -> count). Empty when no fishing
             # source matched or the supply was too short to pay the whole table.
             'fish': fish,
+            # Cloth bolts the roll paid (player -> count). Empty when no village
+            # matched the roll or every matching village was already empty.
+            'cloth': cloth,
         }
 
     def next_dice(self) -> tuple:

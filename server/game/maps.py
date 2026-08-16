@@ -107,6 +107,10 @@ MAX_BARBARIAN_PATHS = 12
 # has 18 (8 Catan chits, 4 development cards, 6 harbours); the cap is generous
 # room for a variant and bounds the payload.
 MAX_GIFT_EDGES = 32
+# Cloth-for-Catan villages a map may print (Seafarers 2021, Scenario 6, p. 22).
+# The printed scenario has 8 (two per small island); the cap is generous room
+# for a variant and bounds the payload.
+MAX_CLOTH_VILLAGES = 16
 # The three gift kinds a marked coast edge can carry (Seafarers 2021, Scenario 5,
 # p. 20). A harbour gift also names the harbour it hands over.
 GIFT_KINDS = ('victory_point', 'dev_card', 'harbor')
@@ -164,6 +168,25 @@ def parse_edge_key(key: str) -> tuple:
     except ValueError:
         return None
     if sum(coords) != 0 or sum(1 for value in coords if value % 3 == 0) != 1:
+        return None
+    return coords
+
+
+def parse_vertex_key(key: str) -> tuple:
+    """A vertex key as (x, y, z), or None if it does not name an intersection.
+
+    An intersection sits one step out from a centre along a vertex direction, so
+    its coordinates sum to zero and none of the three is divisible by 3 — the
+    same lattice `board.py` builds vertices on, and what tells a corner apart
+    from a hex centre (all three divisible by 3) and a hex side (exactly one).
+    """
+    if not isinstance(key, str) or key.count(',') != 2:
+        return None
+    try:
+        coords = tuple(int(part) for part in key.split(','))
+    except ValueError:
+        return None
+    if sum(coords) != 0 or any(value % 3 == 0 for value in coords):
         return None
     return coords
 
@@ -407,6 +430,12 @@ class MapDefinition:
     # `bridge_sites`, because a gift edge is not owned by a hex. Empty on every
     # map that prints none.
     gift_edges: tuple = ()
+    # The Cloth for Catan villages: sorted (vertex_key, number) pairs. A village
+    # is a number token that sits on an intersection of a small island and starts
+    # with a supply of cloth; a shipping route reaching it earns its owner cloth.
+    # A map-level field like `bridge_sites`, because a village is owned by an
+    # intersection, not a hex. Empty on every map that prints none.
+    cloth_villages: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -438,6 +467,10 @@ class MapDefinition:
             data['gift_edges'] = {
                 edge_key: ({'gift': kind, 'port': port} if port else {'gift': kind})
                 for edge_key, kind, port in self.gift_edges
+            }
+        if self.cloth_villages:
+            data['cloth_villages'] = {
+                vertex_key: number for vertex_key, number in self.cloth_villages
             }
         return data
 
@@ -796,14 +829,47 @@ def parse_map(data: dict) -> MapDefinition:
 
     gift_tuple = _parse_gift_edges(data.get('gift_edges'), radius, bag)
 
+    cloth_tuple = _parse_cloth_villages(data.get('cloth_villages'), radius)
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
         robber_start=robber_start, suggested_victory_target=target,
         excluded_hexes=excluded_tuple, bridge_sites=bridge_tuple,
         oasis_arrows=oasis_tuple, barbarian_paths=barbarian_tuple,
-        gift_edges=gift_tuple,
+        gift_edges=gift_tuple, cloth_villages=cloth_tuple,
     )
+
+
+def _parse_cloth_villages(raw, radius: int) -> tuple:
+    """The Cloth for Catan villages as sorted (vertex_key, number) pairs.
+
+    Shape only, like the other map-level fields: each key names an intersection
+    on the lattice and each value is a number token a die can roll (2-12, never
+    7). Which small island the intersection sits on is a board fact, checked no
+    more than the gift edges are. Empty when the map prints none.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or len(raw) > MAX_CLOTH_VILLAGES:
+        raise InvalidPayload(
+            'INVALID_MAP',
+            f'cloth_villages maps at most {MAX_CLOTH_VILLAGES} intersections to a number')
+
+    villages = {}
+    for key in sort_hex_keys(raw):
+        coords = parse_vertex_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name an intersection')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'village {key!r} is outside the frame')
+        number = raw[key]
+        if not isinstance(number, int) or isinstance(number, bool) \
+                or number < 2 or number > 12 or number == 7:
+            raise InvalidPayload('INVALID_MAP', 'a village number is 2-12 and never 7')
+        villages[key] = number
+
+    return tuple((key, villages[key]) for key in sort_hex_keys(villages))
 
 
 def _parse_gift_edges(raw, radius: int, harbour_bag) -> tuple:

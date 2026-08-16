@@ -188,6 +188,16 @@ def serialize(game: Game) -> dict:
         'gift_points': game.gift_points,
         'claimed_gift_edges': sorted(game.claimed_gift_edges),
         'held_gift_harbors': game.held_gift_harbors,
+        # Cloth for Catan: the bolts each player has banked, each village's
+        # remaining supply, which players have already established trade
+        # relations with each village, and the general supply. The village
+        # numbers and positions are re-derived from the map when the board is
+        # regenerated, so only what the game has spent and earned is saved.
+        'cloth_tokens': game.cloth_tokens,
+        'village_cloth': game.village_cloth,
+        'village_traders': {vertex: sorted(players)
+                            for vertex, players in game.village_traders.items()},
+        'cloth_general_supply': game.cloth_general_supply,
         'must_move_robber': game.must_move_robber,
         # Main scenario: a barbarian move owed after a 7 survives a save.
         'must_move_barbarian': game.must_move_barbarian,
@@ -408,7 +418,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'longest_road_length', 'harbormaster_holder', 'harbor_points',
                   'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
                   'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
-                  'merchant_fleet_types', 'gift_points', 'held_gift_harbors'):
+                  'merchant_fleet_types', 'gift_points', 'held_gift_harbors',
+                  'cloth_tokens', 'village_cloth', 'cloth_general_supply'):
         if field in data:
             setattr(game, field, data[field])
 
@@ -416,6 +427,12 @@ def deserialize(data: dict, config=None) -> Game:
     # reclaimable after a reload.
     if 'claimed_gift_edges' in data:
         game.claimed_gift_edges = set(data['claimed_gift_edges'])
+
+    # Sets on the game, lists in the save: an established trade relation must
+    # not pay its opening bolt again after a reload.
+    if 'village_traders' in data:
+        game.village_traders = {vertex: set(players)
+                                for vertex, players in data['village_traders'].items()}
 
     game.dice_deck = [tuple(pair) for pair in data.get('dice_deck', [])]
     saved_dice = data.get('pending_dice')
