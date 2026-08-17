@@ -26,6 +26,14 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.8.0 — 2026-08-17 16:14
+
+- **Fixed** A trade offer now shows, per player, who has accepted and who has denied — and everyone at the table sees it, not just the person who made the offer.
+- **New** Denying a trade offer reacts on the spot and shows on every screen; an offer that every other player denies now clears itself off the table.
+- **Fixed** The left-hand panel no longer scrolls as a whole — the bank and titles stay put and only the game log scrolls, the way a chat does.
+- **Fixed** The Traders & Barbarians trade hexes now carry their real central plaza and its spoke roads, instead of the single-corner stand-in — the simplified plaza noted in v3.7.0 is gone.
+- **Fixed** The board repaints correctly when you switch between the light and dark themes.
+
 ## v3.7.0 — 2026-08-17 08:13
 
 - **New** Seafarers now has all seven named scenarios, each with its own board and twist: The Four Islands, The Fog Islands, Through the Desert, The Forgotten Tribe, Cloth for Catan, The Pirate Islands and The Wonders of Catan.
