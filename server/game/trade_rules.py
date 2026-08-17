@@ -225,8 +225,17 @@ class TradeRules:
         return {'success': True, 'error': ''}
 
     def decline_trade(self, offer_id: int, player_name: str) -> bool:
-        """Decline a trade offer."""
-        return self.trade_manager.decline(offer_id, player_name)
+        """Decline a trade offer.
+
+        The manager is handed the table's non-proposers so it can retire the
+        offer once every one of them has refused — the player list lives here on
+        the Game, not on the manager.
+        """
+        offer = self.trade_manager.offers.get(offer_id)
+        if not offer:
+            return False
+        responders = [p.name for p in self.players if p.name != offer['proposer']]
+        return self.trade_manager.decline(offer_id, player_name, responders)
 
     def cancel_trade(self, offer_id: int, player_name: str) -> bool:
         """Cancel a trade offer (proposer only)."""

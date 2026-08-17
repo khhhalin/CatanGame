@@ -149,6 +149,11 @@ def handle_decline_trade(data):
     if session.game.decline_trade(offer_id, name):
         logger.info(f"Player {name} declined trade #{offer_id}")
         socketio.emit('trade_declined', {'offer_id': offer_id, 'player': name})
+        # The refusal changes what every screen should show — the denier marked,
+        # the offer gone once all responders decline — so the board goes out to
+        # everyone, the same as an accept does. Without this the decline was
+        # recorded but invisible ("deny nie jest responsywne").
+        bump_and_broadcast()
 
 
 @socketio.on('cancel_trade')

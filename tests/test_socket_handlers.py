@@ -2340,3 +2340,86 @@ class TestBuildingAWonderOverTheWire:
         alice.emit('build_wonder_level', {'name': 'Alice', 'wonder': 'theater'})
         error = last_error(alice)
         assert error is not None, 'a base game accepted a Wonder build'
+
+
+class TestTradeResponsesReachEveryone:
+    """The v3.7.0 tester's report: "deny nie jest responsywne", "all players
+    should see which players already agreed to a trade or denied it", and "if
+    every not-proposing player denies a trade offer it should disappear".
+
+    The decline handler recorded the refusal on the offer but never broadcast
+    the board, so no screen updated: a Deny was invisible to the denier and to
+    everyone else, and an offer every responder had refused stayed on the table
+    forever. This drives three real sockets through the handlers and reads the
+    board each one is actually sent.
+    """
+
+    def _three_player_turn(self, socket_app):
+        alice = socketio.test_client(socket_app)
+        bob = socketio.test_client(socket_app)
+        carol = socketio.test_client(socket_app)
+        alice.emit('join', {'name': 'Alice', 'role': 'player'})
+        bob.emit('join', {'name': 'Bob', 'role': 'player'})
+        carol.emit('join', {'name': 'Carol', 'role': 'player'})
+        alice.emit('start_game')
+
+        game = state.session().game
+        game.game_phase = "playing"
+        game.start_turn()
+        game.set_dice_rolled()
+
+        clients = {'Alice': alice, 'Bob': bob, 'Carol': carol}
+        proposer = game.players[game.current_player_index].name
+        responders = [n for n in ('Alice', 'Bob', 'Carol') if n != proposer]
+
+        # A one-for-one no bank rate would settle, so it stands as a live offer
+        # waiting on the table's answer rather than paying out at once.
+        game.get_player(proposer).resources = {'wood': 1}
+        for responder in responders:
+            game.get_player(responder).resources = {'brick': 1}
+
+        for client in clients.values():
+            client.get_received()
+        return game, clients, proposer, responders
+
+    def _offer_active_for(self, client):
+        updates = events(client, 'board_updated')
+        assert updates, "no board update reached this client"
+        return updates[-1]['board']['trades']['active']
+
+    def test_a_deny_rides_the_broadcast_and_a_full_deny_clears_the_offer(
+        self, socket_app
+    ):
+        game, clients, proposer, responders = self._three_player_turn(socket_app)
+        first, second = responders
+
+        clients[proposer].emit('propose_trade', {
+            'name': proposer, 'offered': {'wood': 1}, 'wanted': {'brick': 1},
+        })
+        offer_id = events(clients[proposer], 'trade_proposed')[-1]['offer']['id']
+        for client in clients.values():
+            client.get_received()
+
+        # One responder denies. Every client — the denier, the proposer and the
+        # still-pending responder — is sent a board carrying that refusal, and
+        # the offer stays live because someone might still take it.
+        clients[first].emit('decline_trade', {'name': first, 'offer_id': offer_id})
+        for name, client in clients.items():
+            active = self._offer_active_for(client)
+            assert len(active) == 1, f"{name} lost the still-live offer"
+            assert active[0]['accepted_by'].get(first) is False, (
+                f"{name} was not told {first} denied"
+            )
+            assert second not in active[0]['accepted_by'], (
+                f"{name} saw {second} as having answered when they had not"
+            )
+        for client in clients.values():
+            client.get_received()
+
+        # The last responder denies too: now no non-proposer could take it, so it
+        # comes off the table for everyone, the proposer included.
+        clients[second].emit('decline_trade', {'name': second, 'offer_id': offer_id})
+        for name, client in clients.items():
+            assert self._offer_active_for(client) == [], (
+                f"{name} still sees an offer every responder denied"
+            )

@@ -106,8 +106,16 @@ class TradeManager:
         offer['accepted_by'][player_name] = True
         return True
 
-    def decline(self, offer_id: int, player_name: str) -> bool:
-        """Player explicitly declines a trade offer."""
+    def decline(self, offer_id: int, player_name: str, responder_names=None) -> bool:
+        """Player explicitly declines a trade offer.
+
+        `responder_names` is every non-proposing player at the table. Once all of
+        them have declined, no one is left who might take the offer, so it comes
+        off the table for everyone — the status turns terminal and the normal
+        `get_all_active` filter prunes it on the next broadcast, the way a
+        cancelled or expired offer is pruned. A single pending or accepting
+        responder keeps it alive.
+        """
         if offer_id not in self.offers:
             return False
 
@@ -117,6 +125,11 @@ class TradeManager:
 
         # Mark as declined (but keep in list for proposer to see)
         offer['accepted_by'][player_name] = False
+
+        if responder_names and all(
+            offer['accepted_by'].get(name) is False for name in responder_names
+        ):
+            offer['status'] = 'declined'
         return True
 
     def cancel(self, offer_id: int, player_name: str) -> bool:

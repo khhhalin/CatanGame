@@ -359,6 +359,64 @@ function buildTradeActionButton(action, offerId, label) {
 }
 
 /**
+ * One row of per-responder verdicts for an offer card, so every player — the
+ * proposer and each responder alike — can read at a glance who has accepted (✓),
+ * who has denied (✗) and who has not yet answered (—). Driven from the offer's
+ * `accepted_by` map, which is on the board for every viewer, so the same row
+ * renders identically on all screens.
+ *
+ * The proposer is not listed: the row is the table's answer to their offer, and
+ * they are not answering it. Returns null when there is no one to show, so an
+ * empty row is never appended.
+ *
+ * Each name lands via textContent — a player named `<img src=x onerror=…>` has
+ * to read as literal text, the same care `buildTradeOfferCard` takes with the
+ * proposer's name.
+ *
+ * @param {object} offer - The offer whose responses to show
+ * @param {Array} allPlayers - Board players, for names and colours
+ * @returns {HTMLElement|null}
+ */
+function offerResponsesRow(offer, allPlayers) {
+    const responders = allPlayers.filter(p => p.name !== offer.proposer);
+    if (responders.length === 0) {
+        return null;
+    }
+    const accepted = offer.accepted_by || {};
+    const row = document.createElement('div');
+    row.className = 'trade-offer-responses';
+
+    for (const player of responders) {
+        const answer = accepted[player.name];
+        const state = answer === true ? 'accepted'
+            : answer === false ? 'denied'
+            : 'pending';
+        const mark = answer === true ? '✓' : answer === false ? '✗' : '—';
+        const word = answer === true ? 'accepted'
+            : answer === false ? 'denied'
+            : 'has not responded';
+
+        const chip = document.createElement('span');
+        chip.className = `trade-response is-${state}`;
+        chip.setAttribute('aria-label', `${player.name} ${word}`);
+
+        const who = document.createElement('span');
+        who.className = 'trade-response-name';
+        who.textContent = player.name;
+        who.style.color = player.color || '';
+
+        const glyph = document.createElement('span');
+        glyph.className = 'trade-response-mark';
+        glyph.textContent = mark;
+        glyph.setAttribute('aria-hidden', 'true');
+
+        chip.append(who, glyph);
+        row.appendChild(chip);
+    }
+    return row;
+}
+
+/**
  * The responder's view of other players' active offers — a card each with
  * Accept and Deny. Returns fresh elements, so the same builder fills both the
  * Trade tab and the floating popup independently.
@@ -371,6 +429,7 @@ function responderOfferCards(otherOffers, allPlayers) {
     return otherOffers.map(offer => {
         const accepted = offer.accepted_by || {};
         const hasAcceptedMe = accepted[viewState.identity.name] === true;
+        const hasDeniedMe = accepted[viewState.identity.name] === false;
 
         // For the responder the sides are mirrored: the proposer's wanted
         // resources are what this player would hand over.
@@ -393,11 +452,22 @@ function responderOfferCards(otherOffers, allPlayers) {
         acceptBtn.classList.toggle('is-accepted', hasAcceptedMe);
         actions.appendChild(acceptBtn);
 
-        const declineBtn = buildTradeActionButton('decline', offer.id, 'Deny');
+        // Deny reflects this viewer's own answer the same way Accept does — once
+        // the echoed board comes back marking them denied, the button reads
+        // "Denied" and latches, so a press that used to give no feedback now
+        // visibly lands.
+        const declineBtn = buildTradeActionButton(
+            'decline', offer.id, hasDeniedMe ? 'Denied' : 'Deny'
+        );
         declineBtn.classList.add('decline-btn');
+        declineBtn.classList.toggle('is-denied', hasDeniedMe);
         actions.appendChild(declineBtn);
 
         card.appendChild(actions);
+        const responses = offerResponsesRow(offer, allPlayers);
+        if (responses) {
+            card.appendChild(responses);
+        }
         return card;
     });
 }
@@ -444,6 +514,13 @@ function proposerOfferCards(myOfferList, allPlayers) {
         actions.appendChild(withdraw);
 
         card.appendChild(actions);
+        // The lit completion buttons already show who accepted; the row also
+        // shows who denied, which a button cannot, so the proposer sees the full
+        // state of their own offer.
+        const responses = offerResponsesRow(offer, allPlayers);
+        if (responses) {
+            card.appendChild(responses);
+        }
         return card;
     });
 }

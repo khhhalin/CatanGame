@@ -2623,6 +2623,58 @@ button:disabled {
     background-color: var(--bad);
 }
 
+/* Grey until this player has denied, then latched to the "no" colour with the
+   label reading "Denied" — the same latch the accept button uses, so a Deny
+   that used to give no feedback now visibly lands. */
+.trade-offer-actions button.decline-btn.is-denied {
+    opacity: 0.75;
+}
+
+/* The per-responder verdict row: who has accepted (✓), denied (✗) or not yet
+   answered (—). On every screen, the proposer's and each responder's alike, so
+   the whole table reads the same state off one offer card. */
+.trade-offer-responses {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.35rem;
+    margin-top: 0.3rem;
+    font-size: 0.65rem;
+}
+
+.trade-response {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background-color: var(--sunken);
+    border: 1px solid var(--muted-fill);
+    white-space: nowrap;
+}
+
+.trade-response-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.trade-response-mark {
+    font-weight: 700;
+}
+
+.trade-response.is-accepted .trade-response-mark {
+    color: var(--good);
+}
+
+.trade-response.is-denied .trade-response-mark {
+    color: var(--bad);
+}
+
+/* A responder who has not answered reads muted, so the eye lands on the ones
+   who have. */
+.trade-response.is-pending {
+    opacity: 0.6;
+}
+
 .accept-players-row {
     display: flex;
     gap: 0.2rem;
