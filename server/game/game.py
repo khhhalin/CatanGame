@@ -23,6 +23,7 @@ from game.fishing import FishingRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
 from game.helpers import HelpersRules
+from game.inkas import InkasRules
 from game.missions import MissionRules
 from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
@@ -54,7 +55,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
            PirateIslandsRules, HelpersRules, OilSpringsRules,
-           FavourRules, PendingChoiceRules, TurnClock):
+           InkasRules, FavourRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -193,6 +194,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.village_traders = {}
         self.cloth_tokens = {}
         self.cloth_general_supply = CLOTH_GENERAL_SUPPLY
+        # Rise of the Inkas: the player who owes a free founding settlement after
+        # sending a tribe into decline, or None. Per-player tribe number and
+        # culture markers live on the Player; this is the one piece of turn state
+        # the placement handlers gate on. None off the scenario.
+        self.founding_player = None
         # Catan: Oil Springs. The oil-spring hexes read off the dealt board, the
         # general oil supply (15 tokens for 3-4 players), the shared disaster
         # track (0-5, advanced as oil is used), how many number tokens pollution
@@ -759,6 +765,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 return None
             self.game_state = "finished"
             return points
+        # Rise of the Inkas replaces the plain threshold win with its own end: the
+        # first player to bring their third tribe to its cultural apex wins (p. 8),
+        # whatever the point total reads. The threshold path is gated out entirely
+        # when the rule is on rather than run alongside it.
+        if self.rules['third_tribe_victory']:
+            if not self.inka_victory(player_name):
+                return None
+            self.game_state = "finished"
+            return points
         if points < target:
             return None
         self.game_state = "finished"
@@ -839,6 +854,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if current_name != player_name:
             return refused('NOT_YOUR_TURN', f'Only {current_name} can place buildings')
 
+        # Rise of the Inkas: a player who has just declined a tribe owes a free
+        # founding settlement before anything else. Its siting rules are its own
+        # (free, no road, its own restrictions), so it diverts here rather than
+        # threading a founding flag through the whole paid build below.
+        if self.founding_required(player_name):
+            return self.place_founding_settlement(player_name, vertex_key)
+
         # Setup alternates settlement then road. Without this check a player can
         # keep placing free settlements for the whole of their setup turn.
         if in_setup and self.setup_action != "settlement":
@@ -859,6 +881,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # intersection touching none of them is out at sea.
         if not vertex.neighbors['hexes']:
             return refused('INVALID_PLACEMENT', 'A settlement must stand on the coast or inland')
+        # Rise of the Inkas: an active tribe may build a settlement over a
+        # declining (thicket-covered) building, which the base placement would
+        # refuse as OCCUPIED. Diverts to the overbuild path, which charges a
+        # settlement, returns the old piece to its owner and plants the new one.
+        if not in_setup and self.rules['overbuild_ruins'] and self.is_ruin(vertex_key):
+            return self.overbuild_ruin(player_name, vertex_key)
         # A settlement may not stand at an intersection beside a face-down hex
         # (891). A no-op unless the table is exploring, since nothing else hides
         # a hex.
@@ -988,6 +1016,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if not in_setup and self.rules['barbarian_attack']:
             attack = self.trigger_barbarian_attack()
 
+        # Rise of the Inkas: tag the new building with its owner's tribe (and add
+        # its culture marker), then — in play — check whether the tribe has just
+        # reached its apex and must decline. A no-op off the rule. Setup buildings
+        # are tagged (the two starting settlements are the first tribe's first two
+        # markers) but never trigger a decline.
+        self.tag_building_tribe(player_name, vertex_key)
+        tribe_decline = None
+        if not in_setup:
+            tribe_decline = self.check_tribe_transition(player_name)
+
         return {
             'success': True,
             'error': '',
@@ -995,6 +1033,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'island_points': island_points,
             'river_gold': river_gold,
             'barbarian_attack': attack,
+            'tribe_decline': tribe_decline,
         }
 
     def build_road(self, player_name: str, edge_key: str) -> dict:
@@ -1023,6 +1062,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         if in_setup and self.setup_action != "road":
             return refused('WRONG_PHASE', 'You must place a settlement first')
+
+        # Rise of the Inkas: a player who has just declined a tribe must place
+        # their founding settlement before any other build.
+        if self.founding_required(player_name):
+            return refused('MUST_FOUND_TRIBE', 'Place your founding settlement first')
 
         if not self.has_piece_available(player_name, 'road'):
             return refused('NO_PIECES_LEFT', f'You have used all {self.MAX_ROADS} roads')
@@ -1081,6 +1125,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         else:
             if not self._road_connects(player_name, edge_key):
                 return refused('INVALID_PLACEMENT', 'Road must be connected to your own road')
+            # Rise of the Inkas: a tribe in decline may not expand — a road may
+            # reach up to a thicket-covered building but never extend from one.
+            if self.rules['tribe_decline'] and self.road_only_from_ruin(player_name, edge_key):
+                return refused('DECLINED_NO_EXPANSION', 'A tribe in decline cannot build roads')
             if self.free_roads_remaining > 0:
                 self.free_roads_remaining -= 1
                 used_free_road = True
@@ -1159,11 +1207,29 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if vertex.building.get('player') != player_name:
             return refused('NOT_YOUR_PIECE', 'Can only upgrade your own settlements')
 
+        # Rise of the Inkas: a tribe in decline cannot upgrade, a player owing a
+        # founding settlement must place it first, and a tribe may hold only one
+        # city (rulebook pp. 6-7). Gated on the rule, so base play is untouched.
+        if self.rules['tribe_decline']:
+            if self.founding_required(player_name):
+                return refused('MUST_FOUND_TRIBE', 'Place your founding settlement first')
+            if vertex.building.get('ruined'):
+                return refused('DECLINED_NO_EXPANSION',
+                               'A tribe in decline cannot upgrade to a city')
+            upgrading = self.get_player(player_name)
+            if upgrading is not None and self.tribe_has_city(player_name, upgrading.tribe):
+                return refused('ONE_CITY_PER_TRIBE', 'A tribe may build only one city')
+
         if not self.can_afford(player_name, 'city'):
             return refused('INSUFFICIENT_RESOURCES', self._cost_message('city'))
         self.deduct_cost(player_name, 'city')
 
-        vertex.building = {'type': 'city', 'player': player_name}
+        # A city keeps the tribe tag its settlement already carried, so the
+        # upgraded building still counts toward the right tribe's apex.
+        upgraded = {'type': 'city', 'player': player_name}
+        if 'tribe' in vertex.building:
+            upgraded['tribe'] = vertex.building['tribe']
+        vertex.building = upgraded
 
         player = self.get_player(player_name)
         if player and vertex_key in player.settlements:
@@ -1171,6 +1237,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             player.cities.append(vertex_key)
 
         self.update_harbormaster()
+
+        # Rise of the Inkas: the upgrade places one more culture marker (a city is
+        # worth 2, one more than the settlement it replaces) and may carry the
+        # tribe to its apex, sending it into decline.
+        tribe_decline = None
+        if self.rules['tribe_decline'] and player is not None:
+            player.culture_points += 1
+            tribe_decline = self.check_tribe_transition(player_name)
 
         # The Caravans: upgrading a settlement to a city earns a camel too,
         # placed when the turn ends (expansions.md 578). A no-op without the rule.
@@ -1183,7 +1257,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.rules['barbarian_attack']:
             attack = self.trigger_barbarian_attack()
 
-        return {'success': True, 'error': '', 'barbarian_attack': attack}
+        return {'success': True, 'error': '', 'barbarian_attack': attack,
+                'tribe_decline': tribe_decline}
 
     def _touches_own_road(self, player_name: str, vertex_key: str) -> bool:
         vertex = self.vertices.get(vertex_key)
@@ -1562,6 +1637,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Catan: Frenemies — the favour-token bag count, each player's token
             # count, and the viewer's own tokens by guild. None off the scenario.
             'frenemies': self.frenemies_client_state(viewer),
+            # Rise of the Inkas — each player's tribe number and culture markers,
+            # the cultural goals, and who owes a founding settlement. The thicket
+            # markers themselves ride on each vertex's building.ruined flag. None
+            # off the scenario.
+            'inkas': self.inkas_client_state(),
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),

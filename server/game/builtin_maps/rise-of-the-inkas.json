@@ -1,0 +1,185 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "generic": 5,
+      "brick": 1,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "rise-of-the-inkas",
+  "map_version": 2,
+  "name": "Rise of the Inkas",
+  "notes": "Catan Histories: Rise of the Inkas (Teuber, 2018). Western South America: ocean/fishing to the west, jungle to the east, 27 producing hexes. Five resource terrains (wood, brick, sheep, wheat, ore) plus three goods dealt on the die: jungle feathers, plantation coca, fishing-ground fish. Fixed layout, so the 27 hexes are deterministic and asserted against the generated board. The bespoke official silhouette is approximated on the hex frame; the rulebook's Variable setup permits a variable layout.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-9,9,0",
+        "-9,6,3",
+        "-9,3,6",
+        "-9,0,9",
+        "-6,6,0",
+        "-6,3,3",
+        "-6,0,6",
+        "-3,6,-3",
+        "-3,3,0",
+        "-3,0,3",
+        "-3,-3,6",
+        "0,6,-6",
+        "0,3,-3",
+        "0,0,0",
+        "0,-3,3",
+        "0,-6,6",
+        "3,3,-6",
+        "3,0,-3",
+        "3,-3,0",
+        "3,-6,3",
+        "6,0,-6",
+        "6,-3,-3",
+        "6,-6,0",
+        "9,0,-9",
+        "9,-3,-6",
+        "9,-6,-3",
+        "9,-9,0"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-9,9,0": {
+            "number": 5,
+            "terrain": "fishery"
+          },
+          "-9,6,3": {
+            "number": 6,
+            "terrain": "fishery"
+          },
+          "-9,3,6": {
+            "number": 8,
+            "terrain": "fishery"
+          },
+          "-9,0,9": {
+            "number": 9,
+            "terrain": "fishery"
+          },
+          "-6,6,0": {
+            "number": 10,
+            "terrain": "fishery"
+          },
+          "9,0,-9": {
+            "number": 4,
+            "terrain": "feathers"
+          },
+          "9,-3,-6": {
+            "number": 3,
+            "terrain": "feathers"
+          },
+          "9,-6,-3": {
+            "number": 11,
+            "terrain": "feathers"
+          },
+          "9,-9,0": {
+            "number": 6,
+            "terrain": "coca"
+          },
+          "6,0,-6": {
+            "number": 8,
+            "terrain": "coca"
+          },
+          "6,-3,-3": {
+            "number": 5,
+            "terrain": "coca"
+          },
+          "-6,3,3": {
+            "number": 9,
+            "terrain": "wood"
+          },
+          "-6,0,6": {
+            "number": 4,
+            "terrain": "wood"
+          },
+          "-3,6,-3": {
+            "number": 10,
+            "terrain": "wood"
+          },
+          "-3,3,0": {
+            "number": 3,
+            "terrain": "wood"
+          },
+          "-3,0,3": {
+            "number": 11,
+            "terrain": "brick"
+          },
+          "-3,-3,6": {
+            "number": 2,
+            "terrain": "brick"
+          },
+          "0,6,-6": {
+            "number": 12,
+            "terrain": "brick"
+          },
+          "0,3,-3": {
+            "number": 6,
+            "terrain": "sheep"
+          },
+          "0,0,0": {
+            "number": 8,
+            "terrain": "sheep"
+          },
+          "0,-3,3": {
+            "number": 4,
+            "terrain": "sheep"
+          },
+          "0,-6,6": {
+            "number": 10,
+            "terrain": "wheat"
+          },
+          "3,3,-6": {
+            "number": 5,
+            "terrain": "wheat"
+          },
+          "3,0,-3": {
+            "number": 9,
+            "terrain": "wheat"
+          },
+          "3,-3,0": {
+            "number": 3,
+            "terrain": "ore"
+          },
+          "3,-6,3": {
+            "number": 11,
+            "terrain": "ore"
+          },
+          "6,-6,0": {
+            "number": 8,
+            "terrain": "ore"
+          }
+        }
+      }
+    },
+    {
+      "color": "#2f6288",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 10
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 11
+}

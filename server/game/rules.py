@@ -1373,6 +1373,48 @@ RULES += [
 ]
 
 
+# --- Catan Histories: Rise of the Inkas, one mechanic at a time ---------
+# The expansion decomposed into three independently switchable rules. Every one
+# is read by the engine's InkasRules mixin and the placement handlers; none of
+# the engine ever asks "is this the Inkas" — it asks for the rule that governs
+# the behaviour in front of it.
+RULES += [
+    _bool("tribe_decline", "Tribe decline", False,
+          "Catan Histories: Rise of the Inkas (Klaus & Benjamin Teuber, 2018), "
+          "rulebook 'The Tribes' pp. 7-8; the 4/4/3 cultural goals are stated "
+          "verbatim on p. 7 (OFFICIAL, not fan-sourced)",
+          "Rise of the Inkas. Each player develops three successive tribes. A "
+          "settlement is 1 culture point, a city 2, and a tribe reaches its apex "
+          "at 4 culture points (the 1st and 2nd tribes) — the moment it does, it "
+          "declines: you remove all your roads, cover that tribe's settlements "
+          "and cities with thickets (they keep producing but can never expand or "
+          "upgrade, and a tribe may build only one city), and found the next "
+          "tribe by placing one free settlement elsewhere, which ends your turn. "
+          "The third tribe's apex is 3 culture points. Turn on 'Third-tribe "
+          "victory' to end the game on it.",
+          group=EXPANSION, suggests_victory_target=11),
+    _bool("overbuild_ruins", "Overbuild ruins", False,
+          "Catan Histories: Rise of the Inkas (Teuber, 2018), rulebook "
+          "'Consequences of Decline / Rebuilding' p. 7",
+          "Rise of the Inkas. An active tribe may build a settlement over an "
+          "opponent's declining (thicket-covered) building: build a road up to "
+          "it, pay a settlement's cost, and the old settlement or city and its "
+          "thicket go back to their owner's supply, replaced by your own "
+          "settlement. Needs Tribe decline, which is what covers a building with "
+          "a thicket in the first place.",
+          group=EXPANSION, suggests_victory_target=11),
+    _bool("third_tribe_victory", "Third-tribe victory", False,
+          "Catan Histories: Rise of the Inkas (Teuber, 2018), rulebook 'Game "
+          "End' p. 8 (11 culture markers total: 4 + 4 + 3)",
+          "Rise of the Inkas. The game is won not by a point threshold but by "
+          "the first player to bring their third tribe to its cultural apex (3 "
+          "culture points, 11 markers in all). The plain point-total win is "
+          "switched off while this is on. Needs Tribe decline, which is what "
+          "gives a player a third tribe to complete.",
+          group=EXPANSION, suggests_victory_target=11),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -1497,6 +1539,12 @@ DEPENDENCIES = {
     # Catan: Frenemies. The guild hall spends favour tokens; with no bag to earn
     # from there is nothing to redeem or exchange, so it needs the earn rule.
     "guild_hall": ("favour_tokens",),
+    # Rise of the Inkas. Overbuilding replaces a thicket-covered building, and
+    # only tribe decline ever covers one; the third-tribe win needs a third tribe
+    # to complete, and only decline gives a player one. Both are meaningless
+    # without the decline machinery, so each needs it.
+    "overbuild_ruins": ("tribe_decline",),
+    "third_tribe_victory": ("tribe_decline",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2335,6 +2383,48 @@ PRESETS = [
         "rules": {
             "favour_tokens": True,
             "guild_hall": True,
+            "victory_target": 11,
+        },
+    },
+    {
+        "id": "rise_of_the_inkas",
+        "name": "Catan Histories: Rise of the Inkas",
+        "source": (
+            "Catan Histories: Rise of the Inkas (Klaus & Benjamin Teuber, 2018), "
+            "rulebook pp. 2-8 (5f-catan-rise-of-the-inkas-rulebook.pdf); "
+            "catan-expansions-research.md"
+        ),
+        "summary": (
+            "Three tribes rise and fall on a stretch of western South America: "
+            "ocean and fishing grounds to the west, jungle to the east. Each "
+            "player brings three successive tribes to their cultural apex — a "
+            "settlement is 1 culture point, a city 2 — and the first two decline "
+            "at 4 points each: your roads come off, your buildings are covered "
+            "with thickets (they still produce but can never grow), and you found "
+            "the next tribe with one free settlement. Opponents may build over "
+            "your ruins. The third tribe wins at 3 points, 11 markers in all, so "
+            "the target is suggested at 11; the lobby can still change it. The "
+            "Longest Road and Largest Army award no points here. Pick the Rise of "
+            "the Inkas map."
+        ),
+        "rules": {
+            "board_layout": "custom",
+            "board_map": "rise-of-the-inkas",
+            "tribe_decline": True,
+            "overbuild_ruins": True,
+            "third_tribe_victory": True,
+            # The Longest Trade Route and Mightiest Combat Arts grant a gameplay
+            # advantage, not victory points, in this game (rulebook p. 5). The
+            # advantage itself is not modelled; the point award is switched off.
+            "longest_road_card": False,
+            "largest_army_card": False,
+            # Eight settlements, two cities, seven roads per player (rulebook
+            # p. 4). The engine keeps a tribe's ruins on the board until its next
+            # decline, so a little headroom on cities avoids a piece-starvation
+            # stall; the one-city-per-tribe rule is what really caps them.
+            "max_settlements": 8,
+            "max_cities": 3,
+            "max_roads": 7,
             "victory_target": 11,
         },
     },

@@ -48,6 +48,14 @@ DEFAULT_RESOURCES = {
     "gold":   {"name": "Gold",   "color": "#d9a441", "symbol": "",       "pattern": "stipple"},
     "fish":   {"name": "Fish",   "color": "#3f9fb8", "symbol": "",       "pattern": "dots"},
     "spice":  {"name": "Spice",  "color": "#b5643c", "symbol": "",       "pattern": "stripes"},
+    # Rise of the Inkas goods (game/tiles.py), each dealt on the die like any
+    # resource — 1:1, so one entry serves both the hex fill and the card. The
+    # jungle pays feathers (a warm plumage gold), the plantation coca (a deep leaf
+    # green, apart from the forest), and the fishing-ground `fishery` a Fish card
+    # (a colder sea-teal than the ocean frame so the shoals stand out on the coast).
+    "feathers": {"name": "Feathers", "color": "#d9a441", "symbol": "", "pattern": "dots"},
+    "coca":     {"name": "Coca",     "color": "#2f7d4f", "symbol": "", "pattern": "pines"},
+    "fishery":  {"name": "Fish",     "color": "#2f8fb0", "symbol": "", "pattern": "dots"},
     # Traders & Barbarians (Fishermen): the lake that replaces the desert. It
     # deals no resource card (symbol empty, like the desert), and takes a watery
     # blue so it reads as open water inside the island rather than a resource hex.

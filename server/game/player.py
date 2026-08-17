@@ -64,6 +64,14 @@ class Player:
         # kept apart from resources because it is spent on its own actions and
         # cannot be traded at a harbour (coilspringsgb_2015_web.pdf p. 1).
         self.oil = 0
+        # Rise of the Inkas only: the tribe this player is currently developing
+        # (1, 2, then 3) and the running count of culture markers placed across
+        # all their tribes. `tribe` tags each building at placement so a tribe's
+        # apex can be measured and its pieces covered with thickets on decline;
+        # `culture_points` is the cumulative marker total (11 wins), never
+        # decremented, shown on the Inkas panel. Both inert off the scenario.
+        self.tribe = 1
+        self.culture_points = 0
 
     def set_color(self, color: str):
         """Set or update the player's color."""

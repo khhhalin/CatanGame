@@ -152,6 +152,19 @@ register(Terrain("sea", "ocean", produces=None, is_sea=True))
 # printed to yield one.
 register(Terrain("cotton", "cotton", produces="cotton"))
 
+# Catan Histories: Rise of the Inkas (2018) goods terrains, refused in a v1 map.
+# Unlike the base five they carry no Cities & Knights commodity, but — unlike the
+# Explorers & Pirates fish/spice shoals, which pay through missions — they pay a
+# goods card on the die roll exactly the way cotton does, so `produces` is set and
+# the existing production walk deals feathers, coca and fish with no new code. Each
+# is 1:1 like cotton — the hex type is the resource id the production walk deals —
+# so the fishing-ground terrain is `fishery` (shown as "Fish" by the registry), the
+# jungle pays feathers and the jungle plantation coca. The E&P `fish` shoal keeps
+# its own name; this is a distinct dice-producing terrain, not that one.
+register(Terrain("feathers", "feathers", produces="feathers", v2=True))
+register(Terrain("coca", "coca", produces="coca", v2=True))
+register(Terrain("fishery", "fishery", produces="fishery", v2=True))
+
 # Explorers & Pirates map-format-v2 terrains, refused in a v1 map. Gold pays out
 # on its roll (a token sits on it) but its yield is a player's choice, so
 # `produces` stays None and `token` is set explicitly. Fish shoals and spice
