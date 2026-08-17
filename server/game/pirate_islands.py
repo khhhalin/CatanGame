@@ -241,6 +241,147 @@ class PirateIslandsRules:
             'warships': self.player_warships[player_name],
         }
 
+    # --- Fortress combat ---------------------------------------------------
+
+    def own_fortress(self, player_name: str):
+        """This player's own-colour fortress (vertex_key, state), or (None, None).
+
+        The one fortress handed to this seat at setup — captured or not. The win
+        and the attack both ask for it here rather than scanning themselves.
+        """
+        for vertex_key, fort in sorted(self.pirate_fortresses.items()):
+            if fort['owner'] == player_name:
+                return vertex_key, fort
+        return None, None
+
+    def route_reaches_fortress(self, player_name: str, vertex_key: str) -> bool:
+        """Whether this player's shipping route has reached the fortress corner.
+
+        "If your shipping route has reached the pirate fortress that matches your
+        colour, you can attack" (p. 22). Modelled as one of the player's ships
+        lying on a side that meets the fortress intersection — the far end of the
+        route the scenario has them build out to it.
+        """
+        vertex = self.vertices.get(vertex_key)
+        if vertex is None:
+            return False
+        incident = set(vertex.neighbors.get('edges', []))
+        return any(edge_key in incident for edge_key in self.get_player(player_name).ships)
+
+    def attack_pirate_fortress(self, player_name: str) -> dict:
+        """Roll the die-combat against this player's own-colour fortress.
+
+        "You roll a die — the result is the pirate's strength" (p. 22). More
+        warships than the roll strips a chit; fewer costs the player two warships
+        and a tie one — the ships they must rebuild before attacking again.
+        Clearing the third chit recaptures the settlement (a point, a producer,
+        upgradeable to a city). Refused unless the rule is on, it is the player's
+        turn, their route has reached their own uncaptured fortress, and they have
+        not already attacked this turn.
+        """
+        if not self.rules['pirate_fortresses']:
+            return refused('FORTRESSES_OFF',
+                           'This table is not playing the Pirate Islands scenario')
+        blocked = self.choice_block(player_name)
+        if blocked is not None:
+            return blocked
+        if self.game_phase == 'setup':
+            return refused('WRONG_PHASE', 'Cannot attack a fortress during setup phase')
+
+        current_name = self.current_player_name()
+        if current_name != player_name:
+            return refused('NOT_YOUR_TURN', f'Only {current_name} can attack a fortress')
+
+        if self.fortress_attacked_this_turn:
+            return refused('ALREADY_ATTACKED', 'You may attack a fortress only once a turn')
+
+        vertex_key, fort = self.own_fortress(player_name)
+        if fort is None:
+            return refused('NO_FORTRESS', 'You have no pirate fortress of your colour')
+        if fort['captured']:
+            return refused('ALREADY_CAPTURED', 'You have already recaptured your fortress')
+        if not self.route_reaches_fortress(player_name, vertex_key):
+            return refused('ROUTE_NOT_REACHED',
+                           'Your shipping route has not reached your fortress')
+
+        self.fortress_attacked_this_turn = True
+        strength = self.rng.randint(1, 6)
+        warships = self.player_warships.get(player_name, 0)
+
+        captured = False
+        lost_warships = 0
+        if warships > strength:
+            fort['chits'] -= 1
+            outcome = 'won'
+            if fort['chits'] <= 0:
+                captured = self._recapture_fortress(player_name, vertex_key, fort)
+        elif warships < strength:
+            outcome = 'lost'
+            lost_warships = min(2, warships)
+            self.player_warships[player_name] = warships - lost_warships
+        else:
+            outcome = 'tie'
+            lost_warships = min(1, warships)
+            self.player_warships[player_name] = warships - lost_warships
+
+        won = False
+        victory_points = 0
+        if captured:
+            threshold = self.claim_victory(player_name)
+            if threshold is not None:
+                won = True
+                victory_points = threshold
+
+        return {
+            'success': True, 'error': '',
+            'outcome': outcome,
+            'strength': strength,
+            'warships': self.player_warships.get(player_name, 0),
+            'chits': max(0, fort['chits']),
+            'lost_warships': lost_warships,
+            'captured': captured,
+            'won': won,
+            'victory_points': victory_points,
+        }
+
+    def _recapture_fortress(self, player_name: str, vertex_key: str, fort: dict) -> bool:
+        """Turn a cleared fortress into the player's own settlement.
+
+        "Once your pirate fortress has lost all three Catan chits ... the pirate
+        fortress is one of your settlements — it gives you a victory point, it
+        produces for you, and it can be upgraded to a city" (p. 22). The corner is
+        stood up as a real settlement so the rest of the engine scores and pays it
+        exactly like any other.
+        """
+        fort['chits'] = 0
+        fort['captured'] = True
+        vertex = self.vertices.get(vertex_key)
+        if vertex is not None and vertex.building is None:
+            vertex.building = {'type': 'settlement', 'player': player_name}
+            player = self.get_player(player_name)
+            if vertex_key not in player.settlements:
+                player.settlements.append(vertex_key)
+        return True
+
+    # --- Victory -----------------------------------------------------------
+
+    def recaptured_own_fortress(self, player_name: str) -> bool:
+        """Whether this player has driven the pirates from their own fortress."""
+        _vertex_key, fort = self.own_fortress(player_name)
+        return fort is not None and fort['captured']
+
+    def pirate_islands_victory(self, player_name: str, points: int) -> bool:
+        """Whether this player has won under the Pirate Islands' end.
+
+        "A player wins when he has captured the pirate fortress of his colour AND
+        when he has a total of at least 10 victory points" (p. 22). Reaching the
+        points alone is not a win, and recapturing alone is not a win — both halves
+        are required. The 10 is the table's target, so the lobby can still change
+        the length.
+        """
+        target = self.victory_points_to_win + self.personal_target_delta(player_name)
+        return self.recaptured_own_fortress(player_name) and points >= target
+
     # --- Client state ------------------------------------------------------
 
     def pirate_islands_client_state(self) -> dict:

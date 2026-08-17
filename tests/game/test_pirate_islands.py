@@ -237,6 +237,153 @@ class TestWarships:
         assert game.player_warships['Alice'] == 1
 
 
+class FixedDie:
+    """An RNG whose ``randint`` always returns a scripted die face.
+
+    The fortress roll is the one place combat turns on a die, so pinning it lets
+    a test drive the win and the loss branches deterministically. Everything else
+    the engine asks the RNG for delegates to a real seeded generator.
+    """
+
+    def __init__(self, value, base):
+        self.value = value
+        self.base = base
+
+    def randint(self, a, b):
+        return self.value
+
+    def __getattr__(self, name):
+        return getattr(self.base, name)
+
+
+def _route_to_own_fortress(game, player_name):
+    """Sit a ship on a side of this player's fortress so its route has reached it."""
+    vertex_key, _fort = game.own_fortress(player_name)
+    edge_key = sorted(game.vertices[vertex_key].neighbors['edges'])[0]
+    game.get_player(player_name).ships.append(edge_key)
+    return vertex_key
+
+
+class TestFortressCombat:
+    def test_more_warships_than_the_roll_strips_a_chit(self):
+        game = _playing(pirate_game())
+        _route_to_own_fortress(game, 'Alice')
+        game.player_warships['Alice'] = 4
+        game.rng = FixedDie(2, game.rng)  # pirate strength 2 < 4 warships
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['outcome'] == 'won'
+        assert result['chits'] == 2
+        _vertex, fort = game.own_fortress('Alice')
+        assert fort['chits'] == 2 and fort['captured'] is False
+
+    def test_fewer_warships_than_the_roll_costs_two_warships(self):
+        game = _playing(pirate_game())
+        _route_to_own_fortress(game, 'Alice')
+        game.player_warships['Alice'] = 3
+        game.rng = FixedDie(5, game.rng)  # pirate strength 5 > 3 warships
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['outcome'] == 'lost'
+        assert result['lost_warships'] == 2
+        assert game.player_warships['Alice'] == 1
+        _vertex, fort = game.own_fortress('Alice')
+        assert fort['chits'] == 3  # the fortress is untouched
+
+    def test_an_equal_roll_costs_one_warship(self):
+        game = _playing(pirate_game())
+        _route_to_own_fortress(game, 'Alice')
+        game.player_warships['Alice'] = 3
+        game.rng = FixedDie(3, game.rng)  # a tie at 3
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['outcome'] == 'tie'
+        assert game.player_warships['Alice'] == 2
+
+    def test_an_attack_needs_the_route_to_have_reached_the_fortress(self):
+        game = _playing(pirate_game())
+        game.player_warships['Alice'] = 4
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['success'] is False
+        assert result['code'] == 'ROUTE_NOT_REACHED'
+
+    def test_a_fortress_may_be_attacked_only_once_a_turn(self):
+        game = _playing(pirate_game())
+        _route_to_own_fortress(game, 'Alice')
+        game.player_warships['Alice'] = 4
+        game.rng = FixedDie(2, game.rng)
+
+        first = game.attack_pirate_fortress('Alice')
+        second = game.attack_pirate_fortress('Alice')
+
+        assert first['success'] is True
+        assert second['success'] is False
+        assert second['code'] == 'ALREADY_ATTACKED'
+
+
+class TestRecaptureAndVictory:
+    def test_clearing_the_last_chit_recaptures_the_settlement(self):
+        game = _playing(pirate_game())
+        vertex_key = _route_to_own_fortress(game, 'Alice')
+        _vertex, fort = game.own_fortress('Alice')
+        fort['chits'] = 1
+        game.player_warships['Alice'] = 4
+        game.rng = FixedDie(1, game.rng)
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['captured'] is True
+        assert fort['captured'] is True
+        # The corner is now Alice's own settlement — scoring and on the board.
+        assert game.vertices[vertex_key].building == \
+            {'type': 'settlement', 'player': 'Alice'}
+        assert vertex_key in game.get_player('Alice').settlements
+
+    def test_recapture_with_ten_points_wins(self):
+        game = _playing(pirate_game())
+        _route_to_own_fortress(game, 'Alice')
+        _vertex, fort = game.own_fortress('Alice')
+        fort['chits'] = 1
+        game.player_warships['Alice'] = 4
+        game.rng = FixedDie(1, game.rng)
+        # Nine points already; the recaptured settlement is the tenth.
+        game.get_player('Alice').victory_points = 9
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['captured'] is True
+        assert result['won'] is True
+        assert game.game_state == 'finished'
+
+    def test_recapture_without_ten_points_is_not_a_win(self):
+        game = _playing(pirate_game())
+        _route_to_own_fortress(game, 'Alice')
+        _vertex, fort = game.own_fortress('Alice')
+        fort['chits'] = 1
+        game.player_warships['Alice'] = 4
+        game.rng = FixedDie(1, game.rng)
+
+        result = game.attack_pirate_fortress('Alice')
+
+        assert result['captured'] is True
+        assert result['won'] is False
+        assert game.game_state != 'finished'
+
+    def test_ten_points_without_recapture_is_not_a_win(self):
+        game = _playing(pirate_game())
+        alice = game.get_player('Alice')
+        alice.victory_points = 12  # well past the target
+
+        # Nobody has recaptured their fortress, so the threshold win is gated out.
+        assert game.claim_victory('Alice') is None
+        assert game.game_state != 'finished'
+
+
 class TestNoRobberNoAwards:
     def test_a_seven_moves_no_robber(self):
         game = _playing(pirate_game())

@@ -179,6 +179,7 @@ def serialize(game: Game) -> dict:
         # a real state and not a missing field.
         'pirate_hex': game.pirate_hex,
         'ship_moved_this_turn': game.ship_moved_this_turn,
+        'fortress_attacked_this_turn': game.fortress_attacked_this_turn,
         'player_islands': game.player_islands,
         'island_points': game.island_points,
         # The Forgotten Tribe: the claimed 1-VP chits, which marked edges are
@@ -430,6 +431,7 @@ def deserialize(data: dict, config=None) -> Game:
                   'state_version', 'longest_road_holder', 'largest_army_holder',
                   'longest_road_length', 'harbormaster_holder', 'harbor_points',
                   'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
+                  'fortress_attacked_this_turn',
                   'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
                   'merchant_fleet_types', 'gift_points', 'held_gift_harbors',
                   'cloth_tokens', 'village_cloth', 'cloth_general_supply',

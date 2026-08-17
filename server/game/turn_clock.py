@@ -40,6 +40,10 @@ class TurnClock:
         # Seafarers allows one ship to be moved per turn, and the allowance
         # does not accumulate.
         self.ship_moved_this_turn = False
+        # The Pirate Islands lets a player attack a fortress only once per turn
+        # ("it is not possible to attack a pirate fortress more than once per
+        # turn", p. 22); the record starts empty each turn.
+        self.fortress_attacked_this_turn = False
         # A transport ship may move once per turn; the allowance does not
         # accumulate, so the record of which ships have moved starts empty.
         self.transport_ships_moved = set()

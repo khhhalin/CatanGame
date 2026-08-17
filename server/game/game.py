@@ -164,6 +164,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # enters play the first time somebody moves it.
         self.pirate_hex = None
         self.ship_moved_this_turn = False
+        # The Pirate Islands: a fortress may be attacked only once a turn (p. 22).
+        self.fortress_attacked_this_turn = False
         # Which islands each player has a building on, and what the special
         # points for reaching a new one have added up to.
         self.player_islands = {}
@@ -673,6 +675,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # rule is on rather than run alongside.
         if self.rules['wonders']:
             if not self.wonder_victory(player_name, points, target):
+                return None
+            self.game_state = "finished"
+            return points
+        # The Pirate Islands replaces the plain threshold win with its own end:
+        # recapturing your own-colour fortress AND holding the target in points
+        # (p. 22). Reaching ten points alone is not a win here, so the threshold
+        # path is gated out entirely when the rule is on rather than run alongside.
+        if self.rules['pirate_fortresses']:
+            if not self.pirate_islands_victory(player_name, points):
                 return None
             self.game_state = "finished"
             return points
