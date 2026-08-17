@@ -131,6 +131,22 @@ MAX_PIRATE_TRACK = 64
 MAX_NAME = 64
 MAX_NOTES = 512
 
+# Non-standard "explicit-adjacency" pieces a map injects onto the lattice: a
+# plaza vertex sitting at a hex centre, or a spoke edge bordering one hex from
+# inside — pieces the %3 lattice cannot predict, so they carry their own
+# neighbour lists. The caps bound the payload; a Traders & Barbarians trade hex
+# needs one plaza and up to six spokes, so a handful of trade hexes fits well
+# inside these.
+MAX_EXPLICIT_PIECES = 128
+MAX_EXPLICIT_NEIGHBOURS = 12
+
+# The syntactic prefixes that mark a non-standard piece's key. A lattice key is
+# only digits, commas and minus signs, so a colon can never appear in one: a
+# tagged key is therefore unmistakable, never collides with the lattice
+# namespace, and never reaches the %3 classifiers the numeric path uses.
+PLAZA_PREFIX = 'plaza:'
+SPOKE_PREFIX = 'spoke:'
+
 # Exactly one region may say this instead of listing hexes.
 REMAINING = 'remaining'
 AUTO = 'auto'
@@ -203,6 +219,53 @@ def parse_vertex_key(key: str) -> tuple:
     if sum(coords) != 0 or any(value % 3 == 0 for value in coords):
         return None
     return coords
+
+
+def parse_plaza_key(key: str) -> tuple:
+    """A plaza vertex key 'plaza:<hex>' as the hex's (x, y, z), or None.
+
+    A plaza sits at a hex centre — a position the lattice reserves for the hex
+    itself, never a corner — so it cannot be a standard vertex key and carries
+    the tagged form instead. The embedded key must name a real hex centre; the
+    coordinates are returned so a caller can reuse them for a frame-bounds check.
+    """
+    if not isinstance(key, str) or not key.startswith(PLAZA_PREFIX):
+        return None
+    return parse_hex_key(key[len(PLAZA_PREFIX):])
+
+
+def parse_spoke_key(key: str) -> tuple:
+    """A spoke edge key 'spoke:<hex>|<vertex>' as the hex's (x, y, z), or None.
+
+    A spoke runs from a hex centre out to one of its corners — an interior side
+    the lattice cannot name, since every lattice edge sits between two centres.
+    The key embeds the hex it is interior to and the corner it reaches, so it is
+    unique and legible; the hex coordinates are returned for the bounds check.
+    The explicit neighbour lists, not this key, are what the board wires up.
+    """
+    if not isinstance(key, str) or not key.startswith(SPOKE_PREFIX):
+        return None
+    hex_part, sep, vertex_part = key[len(SPOKE_PREFIX):].partition('|')
+    if not sep:
+        return None
+    hex_coords = parse_hex_key(hex_part)
+    if hex_coords is None or parse_vertex_key(vertex_part) is None:
+        return None
+    return hex_coords
+
+
+def _valid_hex_ref(key) -> bool:
+    return parse_hex_key(key) is not None
+
+
+def _valid_vertex_ref(key) -> bool:
+    """A neighbour that names an intersection: a lattice corner or a plaza."""
+    return parse_vertex_key(key) is not None or parse_plaza_key(key) is not None
+
+
+def _valid_edge_ref(key) -> bool:
+    """A neighbour that names a hex side: a lattice edge or a spoke."""
+    return parse_edge_key(key) is not None or parse_spoke_key(key) is not None
 
 
 def sort_hex_keys(keys) -> list:
@@ -479,6 +542,18 @@ class MapDefinition:
     # `cloth_villages`, because a fortress is owned by an intersection, not a hex.
     # Empty on every map that prints none.
     pirate_fortresses: tuple = ()
+    # Non-standard "explicit-adjacency" pieces the map injects onto the lattice,
+    # each as a (key, hexes, vertices, edges) 4-tuple where key is a tagged
+    # (non-lattice) key and the three lists name the lattice-or-tagged pieces it
+    # connects to, in the order the map declares them. `plaza_vertices` are
+    # intersections at a hex centre; `spoke_edges` are interior sides bordering
+    # one hex from inside — the Traders & Barbarians trade-hex plaza is the
+    # motivating case. The %3 lattice cannot predict either, so they carry their
+    # own neighbours and the board splices them into the standard graph after it
+    # is built. Empty on every map that declares none, which is every board that
+    # existed before this channel — so those boards are byte-for-byte unchanged.
+    plaza_vertices: tuple = ()
+    spoke_edges: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -527,6 +602,10 @@ class MapDefinition:
             data['pirate_fortresses'] = {
                 vertex_key: index for vertex_key, index in self.pirate_fortresses
             }
+        if self.plaza_vertices:
+            data['plaza_vertices'] = _explicit_pieces_to_json(self.plaza_vertices)
+        if self.spoke_edges:
+            data['spoke_edges'] = _explicit_pieces_to_json(self.spoke_edges)
         return data
 
     def region_of(self) -> dict:
@@ -896,6 +975,11 @@ def parse_map(data: dict) -> MapDefinition:
         data.get('pirate_fleet_track'), data.get('pirate_fleet_start'), radius)
     fortress_tuple = _parse_pirate_fortresses(data.get('pirate_fortresses'), radius)
 
+    plaza_tuple = _parse_explicit_pieces(
+        data.get('plaza_vertices'), radius, parse_plaza_key, 'plaza_vertices')
+    spoke_tuple = _parse_explicit_pieces(
+        data.get('spoke_edges'), radius, parse_spoke_key, 'spoke_edges')
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
@@ -906,6 +990,7 @@ def parse_map(data: dict) -> MapDefinition:
         wonder_markers=wonder_tuple,
         pirate_fleet_track=track_tuple, pirate_fleet_start=track_start,
         pirate_fortresses=fortress_tuple,
+        plaza_vertices=plaza_tuple, spoke_edges=spoke_tuple,
     )
 
 
@@ -1029,6 +1114,73 @@ def _parse_pirate_fortresses(raw, radius: int) -> tuple:
                 'INVALID_MAP', f'a fortress index is 0 to {MAX_PIRATE_FORTRESSES - 1}')
         forts[key] = index
     return tuple((key, forts[key]) for key in sort_hex_keys(forts))
+
+
+def _explicit_pieces_to_json(pieces) -> dict:
+    """A channel of non-standard pieces back to its map-file form."""
+    return {
+        key: {'hexes': list(hexes), 'vertices': list(vertices), 'edges': list(edges)}
+        for key, hexes, vertices, edges in pieces
+    }
+
+
+def _require_ref_list(raw, field: str, validator) -> tuple:
+    """A non-standard piece's neighbour list: lattice or tagged keys.
+
+    Kept in the order the map gives them rather than sorted, because a piece's
+    neighbour order is part of what the author declares — the way an edge's two
+    endpoint vertices are ordered.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or len(raw) > MAX_EXPLICIT_NEIGHBOURS:
+        raise InvalidPayload(
+            'INVALID_MAP',
+            f'{field} must be a list of at most {MAX_EXPLICIT_NEIGHBOURS} keys')
+    keys = []
+    for key in raw:
+        if not validator(key):
+            raise InvalidPayload('INVALID_MAP', f'{key!r} is not a valid key in {field}')
+        keys.append(key)
+    return tuple(keys)
+
+
+def _parse_explicit_pieces(raw, radius: int, key_parser, kind_label: str) -> tuple:
+    """A channel of non-standard pieces: tagged key -> explicit neighbour lists.
+
+    Shape only, exactly like the other map-level fields. The key is a tagged key
+    `key_parser` recognises — never a lattice key, so it can never be
+    misclassified as a standard piece — and its value names the hexes, vertices
+    and edges the piece connects to, each of which is a lattice key or another
+    tagged key. The board splices these into the standard graph after it is
+    built; whether the referenced pieces exist is a board fact, checked against
+    the generated board, not here. Returns sorted (key, hexes, vertices, edges)
+    4-tuples. Empty when the map declares none.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or len(raw) > MAX_EXPLICIT_PIECES:
+        raise InvalidPayload(
+            'INVALID_MAP',
+            f'{kind_label} maps at most {MAX_EXPLICIT_PIECES} pieces to their neighbours')
+
+    pieces = {}
+    for key in sorted(raw):
+        coords = key_parser(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} is not a {kind_label} key')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'{kind_label} {key!r} is outside the frame')
+        spec = raw[key]
+        if not isinstance(spec, dict):
+            raise InvalidPayload('INVALID_MAP', f'{key} names the neighbours it connects to')
+        pieces[key] = (
+            _require_ref_list(spec.get('hexes'), f'{key} hexes', _valid_hex_ref),
+            _require_ref_list(spec.get('vertices'), f'{key} vertices', _valid_vertex_ref),
+            _require_ref_list(spec.get('edges'), f'{key} edges', _valid_edge_ref),
+        )
+
+    return tuple((key, *pieces[key]) for key in sorted(pieces))
 
 
 def _parse_gift_edges(raw, radius: int, harbour_bag) -> tuple:

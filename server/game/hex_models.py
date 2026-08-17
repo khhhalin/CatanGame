@@ -68,16 +68,25 @@ class Vertex:
             - "hexes": List of 3 adjacent hex keys
             - "edges": List of 3 adjacent edge keys
             - "vertices": List of adjacent vertex keys
+        kind (str): "standard" for a corner the %3 lattice predicts, or a tag
+                    ("plaza", ...) for a non-standard intersection a map injects
+                    with explicit neighbours — one the lattice cannot express,
+                    such as a central-plaza vertex at a hex centre. Standard
+                    vertices are produced only by the algebraic pass; a tagged
+                    vertex carries a non-lattice key and is never fed to the %3
+                    classifiers.
     """
 
-    def __init__(self, key: str):
+    def __init__(self, key: str, kind: str = "standard"):
         """
         Initialize a Vertex object.
 
         Args:
             key: Unique coordinate key in "x,y,z" format
+            kind: "standard" (lattice) or a tag for an injected piece
         """
         self.key = key
+        self.kind = kind
         self.building = None  # {"type": "settlement"/"city", "player": name}
         self.port = None  # {"type": "generic"/resource, "resource": resource_type}
         self.neighbors = {
@@ -111,16 +120,25 @@ class Edge:
             - "hexes": List of 2 adjacent hex keys
             - "edges": List of adjacent edge keys
             - "vertices": List of 2 adjacent vertex keys
+        kind (str): "standard" for a hex side the %3 lattice predicts, or a tag
+                    ("spoke", ...) for a non-standard side a map injects with
+                    explicit neighbours — one the lattice cannot express, such
+                    as an interior spoke bordering a single hex from inside.
+                    Standard edges are produced only by the algebraic pass; a
+                    tagged edge carries a non-lattice key, has no lattice twin,
+                    and is never fed to the %3 classifiers.
     """
 
-    def __init__(self, key: str):
+    def __init__(self, key: str, kind: str = "standard"):
         """
         Initialize an Edge object.
 
         Args:
             key: Unique coordinate key in "x,y,z" format
+            kind: "standard" (lattice) or a tag for an injected piece
         """
         self.key = key
+        self.kind = kind
         self.road = None  # {"player": name}
         self.ship = None  # {"player": name, "built_turn": turn}
         self.port = None  # {"type": "generic"/"resource", "resource": type}

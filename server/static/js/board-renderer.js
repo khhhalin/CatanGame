@@ -143,6 +143,14 @@ function cubeToPixel(x, y, z, radius) {
  * @returns {object} - {x, y, z} coordinates
  */
 function parseKey(key) {
+    // A non-standard piece (a plaza vertex, a spoke edge) carries a tagged,
+    // non-lattice key like "plaza:0,0,0" or "spoke:0,0,0|1,-2,1". Strip the tag
+    // and read the hex-centre coordinate embedded in it, so a plaza positions at
+    // its hex centre and a spoke has a sane fallback. A spoke is normally placed
+    // from its two endpoint vertices' midpoint and does not depend on this.
+    if (key.includes(':')) {
+        key = key.slice(key.indexOf(':') + 1).split('|')[0];
+    }
     const parts = key.split(',').map(Number);
     return { x: parts[0], y: parts[1], z: parts[2] };
 }

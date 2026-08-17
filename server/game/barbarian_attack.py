@@ -549,7 +549,14 @@ class BarbarianAttackRules:
         An edge key has exactly one coordinate divisible by three; that
         coordinate's index is the orientation, so the six castle paths fall into
         three orientation pairs — what the post-victory die selects between.
+
+        A non-standard side (a spoke) has no lattice orientation and is never a
+        castle path, so it is reported as -1: an orientation the post-victory die
+        never selects, which leaves any knight on such a side untouched rather
+        than crashing on a key the int-split cannot parse.
         """
+        if ':' in edge_key:
+            return -1
         parts = [int(part) for part in edge_key.split(',')]
         for index, value in enumerate(parts):
             if value % 3 == 0:

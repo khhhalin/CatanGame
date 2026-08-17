@@ -240,6 +240,13 @@ class BoardBuilder:
         holds, and loading such a game has to translate. Returns None when the
         key names nothing on this board.
         """
+        # A non-standard side (a spoke) has no lattice twin: it is its own only
+        # name and never went through `_edge_key`, so it is canonical exactly
+        # when the board holds it. This keeps a saved road on a spoke from being
+        # dropped by the numeric path below, which would raise on its key.
+        edge = self.edges.get(key)
+        if edge is not None and edge.kind != 'standard':
+            return key
         try:
             canonical = self._edge_key(*self._parse_key(key))
         except (IndexError, ValueError):
@@ -318,6 +325,14 @@ class BoardBuilder:
         # Step 5: Hang the harbours off the coast
         self._assign_ports()
 
+        # Step 6: splice in the map's non-standard pieces, last of all, so every
+        # step above — the graph, the red-number separation, the coastline walk
+        # that placed the harbours — saw only the algebraic board and is
+        # byte-for-byte what it was. A built-in layout has no map and skips this
+        # entirely, which is what keeps every existing board unchanged.
+        if self.map_definition is not None:
+            self._apply_explicit_pieces()
+
         logger.debug("\n=== Board Generated ===")
         logger.debug(f"Total hexes: {len(self.hexes)}")
         logger.debug(f"Total vertices: {len(self.vertices)}")
@@ -365,6 +380,57 @@ class BoardBuilder:
             if not tiles.is_sea(terrain)
         }
         return land_hex_keys, set(instance.placed) - land_hex_keys
+
+    def _apply_explicit_pieces(self):
+        """Splice the map's non-standard pieces into the finished lattice graph.
+
+        A non-standard piece is one the cube-coordinate lattice cannot express —
+        a plaza vertex at a hex centre, a spoke edge bordering one hex from
+        inside — so it is not derived algebraically but declared in the map with
+        its own neighbour lists. Each is created as a tagged Vertex/Edge and its
+        neighbours are set straight from the declaration; then every piece it
+        names is given the new piece back, so a walk from either side finds the
+        other and the road and building rules — which read exactly these
+        neighbour lists — treat it like any other side or corner.
+
+        Only reached for a custom map (a built-in layout has none), and only
+        after the whole standard board is built, so nothing here can change a
+        board that declares no such pieces.
+        """
+        defn = self.map_definition
+        for key, hexes, vertices, edges in defn.plaza_vertices:
+            vertex = Vertex(key, kind='plaza')
+            vertex.neighbors['hexes'] = list(hexes)
+            vertex.neighbors['vertices'] = list(vertices)
+            vertex.neighbors['edges'] = list(edges)
+            self.vertices[key] = vertex
+        for key, hexes, vertices, edges in defn.spoke_edges:
+            edge = Edge(key, kind='spoke')
+            edge.neighbors['hexes'] = list(hexes)
+            edge.neighbors['vertices'] = list(vertices)
+            edge.neighbors['edges'] = list(edges)
+            self.edges[key] = edge
+
+        # Mirror each declared relationship so it is symmetric. A hex carries no
+        # list of the corners or sides on it (a Hex knows only its neighbouring
+        # hexes), so nothing is spliced back onto a hex; production reads a
+        # vertex's `hexes`, not the other way round.
+        for key, _, vertices, edges in defn.plaza_vertices:
+            for vertex_key in vertices:  # vertex <-> vertex
+                self._splice(self.vertices.get(vertex_key), 'vertices', key)
+            for edge_key in edges:  # this corner is an endpoint of that side
+                self._splice(self.edges.get(edge_key), 'vertices', key)
+        for key, _, vertices, edges in defn.spoke_edges:
+            for vertex_key in vertices:  # this side meets that corner
+                self._splice(self.vertices.get(vertex_key), 'edges', key)
+            for edge_key in edges:  # edge <-> edge (shared corner)
+                self._splice(self.edges.get(edge_key), 'edges', key)
+
+    @staticmethod
+    def _splice(piece, list_name: str, key: str):
+        """Add `key` to a piece's neighbour list once, if the piece exists."""
+        if piece is not None and key not in piece.neighbors[list_name]:
+            piece.neighbors[list_name].append(key)
 
     def is_main_land(self, hex_key: str) -> bool:
         """Whether this hex belongs to a region the map calls the main land.
@@ -715,6 +781,15 @@ class BoardBuilder:
         on it has two hexes of which exactly one is land. An inland side has
         two land hexes, and a side out at sea has none.
         """
+        # A non-standard side (a spoke) borders one hex from *inside* it, so it
+        # has a single land neighbour and would otherwise read as coastal — but
+        # it is interior, with no sea on the other hand, so it is never coast and
+        # never takes a harbour. (Harbours are placed before these pieces are
+        # spliced in, so this only guards a runtime caller, but it is correct
+        # rather than merely defensive: an interior side has no coastline.)
+        edge = self.edges.get(edge_key)
+        if edge is not None and edge.kind != 'standard':
+            return False
         return len(self.land_hexes_of_edge(edge_key)) == 1
 
     def _coastline_rings(self) -> list:
