@@ -93,6 +93,36 @@ def test_every_catalogue_rule_is_read_by_server_code():
     )
 
 
+def test_every_catalogue_rule_has_a_canonical_category():
+    """Every rule self-classifies into one of the eight functional categories.
+
+    The lobby trees the ~140-rule picker into a collapsible section per category,
+    reading the category off each catalogue entry. A rule with no category, or one
+    the client has no section for, would silently vanish from that tree — the same
+    "picker offers a setting nothing honours" failure the read-guard above catches,
+    here for the section a player opens to find the rule. Walk the generated
+    catalogue (never a hand-copied id list) and fail naming any rule whose category
+    is not one of the eight canonical ids.
+    """
+    canonical = {category["id"] for category in rules.CATEGORIES}
+    stray = [
+        (entry["id"], entry.get("category"))
+        for entry in rules.catalogue()
+        if entry.get("category") not in canonical
+    ]
+    assert not stray, (
+        f"catalogue rules with no/invalid category: {stray}. Give each a "
+        f"category from {sorted(canonical)} in rules.py."
+    )
+
+
+def test_category_ids_are_unique():
+    """A duplicated category id would render two sections that fight over the same
+    rules, or a rule that lands in whichever the client meets first."""
+    ids = [category["id"] for category in rules.CATEGORIES]
+    assert len(ids) == len(set(ids)), f"duplicate category id in CATEGORIES: {ids}"
+
+
 def test_starting_gold_seeds_each_player_purse():
     """Regression: `starting_gold` was dead — the E&P preset set it to 2 and no
     code handed it out, so every game began with empty purses whatever the rule

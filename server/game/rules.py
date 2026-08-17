@@ -30,10 +30,45 @@ EXPANSION = "expansion"
 VARIANT = "variant"
 
 
-def _bool(rule_id, name, default, source, summary, **extra):
+# Categories are the *functional* home of a rule, kept beside `group` rather than
+# replacing it: `group` says where a rule was published (core/expansion/variant),
+# `category` says what part of the game it touches, so the lobby can offer the
+# ~140 rules as a collapsible tree a player can read instead of one flat list.
+# This is the single, ordered source of truth — the client renders whatever is
+# listed here, in this order, so adding a category is a one-place change. Each
+# rule carries exactly one `category`, its single best-fit primary home; the
+# guard in tests/test_rules.py fails any rule whose category is not one of these.
+CATEGORIES = [
+    {"id": "board", "label": "Board & Setup",
+     "hint": "The map, terrain, regions and how the game is set up."},
+    {"id": "base", "label": "Base numbers",
+     "hint": "Piece supplies, bank size, dev-deck composition, player counts — "
+             "the numbers on the box."},
+    {"id": "victory", "label": "Victory & Awards",
+     "hint": "The victory target, the road and army cards, and everything that "
+             "scores or ends the game."},
+    {"id": "trade", "label": "Trade & Money",
+     "hint": "Bank and harbour rates, gold, coins, favour tokens and the guild."},
+    {"id": "sea", "label": "Sea & Ships",
+     "hint": "Ships, their movement, the pirate, warships, gold fields and fog."},
+    {"id": "military", "label": "Knights & Barbarians",
+     "hint": "Knights, city walls and the barbarian scenarios they defend against."},
+    {"id": "cards", "label": "Commodities & Cards",
+     "hint": "Commodities, city improvements, the card decks, and the helper "
+             "tiles."},
+    {"id": "scenario", "label": "Scenario mechanics",
+     "hint": "Wagons, caravans, fishing, rivers, missions and the other "
+             "one-scenario mechanics."},
+]
+
+CATEGORY_IDS = {category["id"] for category in CATEGORIES}
+
+
+def _bool(rule_id, category, name, default, source, summary, **extra):
     return {
         "id": rule_id,
         "group": extra.pop("group", VARIANT),
+        "category": category,
         "type": BOOL,
         "default": default,
         "name": name,
@@ -43,10 +78,11 @@ def _bool(rule_id, name, default, source, summary, **extra):
     }
 
 
-def _int(rule_id, name, default, minimum, maximum, source, summary, **extra):
+def _int(rule_id, category, name, default, minimum, maximum, source, summary, **extra):
     return {
         "id": rule_id,
         "group": extra.pop("group", CORE),
+        "category": category,
         "type": INT,
         "default": default,
         "minimum": minimum,
@@ -62,6 +98,7 @@ RULES = [
     {
         "id": "board_layout",
         "group": CORE,
+        "category": "board",
         "type": CHOICE,
         "default": "random",
         "options": [
@@ -117,6 +154,7 @@ RULES = [
     {
         "id": "board_map",
         "group": CORE,
+        "category": "board",
         "type": CHOICE,
         "default": "standard",
         # Filled in by `catalogue()` from whatever is on disk right now, so a
@@ -138,6 +176,7 @@ RULES = [
     {
         "id": "turn_order",
         "group": CORE,
+        "category": "board",
         "type": CHOICE,
         "default": "random",
         "options": [
@@ -168,6 +207,7 @@ RULES = [
     {
         "id": "dice_set",
         "group": CORE,
+        "category": "board",
         "type": CHOICE,
         "default": "standard",
         "options": [
@@ -203,6 +243,7 @@ RULES = [
     {
         "id": "starting_city_yield",
         "group": CORE,
+        "category": "board",
         "type": CHOICE,
         "default": "resource_and_commodity",
         "options": [
@@ -253,79 +294,79 @@ RULES = [
 # Every one of them is read at Game construction, so changing one only affects
 # the next game.
 RULES += [
-    _int("victory_target", "Victory points to win", 10, 5, 20,
+    _int("victory_target", "victory", "Victory points to win", 10, 5, 20,
          "Base game rulebook (10); expansions.md 299 (Cities & Knights, 13)",
          "How many victory points end the game. This number is exactly what "
          "the table sets: no rule below ever changes it behind your back, "
          "though several suggest a different one."),
-    _int("max_hand_before_discard", "Hand limit on a 7", 7, 5, 20,
+    _int("max_hand_before_discard", "base", "Hand limit on a 7", 7, 5, 20,
          "Base game rulebook (7); expansions.md 244, 327",
          "Hold more than this when a 7 is rolled and you discard half, "
          "rounded down. Commodities count toward it."),
-    _int("bank_trade_rate", "Bank trade rate", 4, 2, 6,
+    _int("bank_trade_rate", "trade", "Bank trade rate", 4, 2, 6,
          "Base game rulebook (4:1); expansions.md 856, 1479 (3:1 variants)",
          "How many identical cards the bank charges for one of your choice, "
          "before harbours. Harbours still improve on it."),
-    _int("generic_harbour_rate", "Any-resource harbour rate", 3, 2, 6,
+    _int("generic_harbour_rate", "trade", "Any-resource harbour rate", 3, 2, 6,
          "Base game rulebook (the 3:1 harbours)",
          "What a settlement on a 3:1 harbour pays for one card of your "
          "choice. A harbour never makes a trade worse, so the bank rate wins "
          "if it is already better."),
-    _int("special_harbour_rate", "Matching harbour rate", 2, 1, 6,
+    _int("special_harbour_rate", "trade", "Matching harbour rate", 2, 1, 6,
          "Base game rulebook (the five 2:1 harbours)",
          "What a settlement on a 2:1 harbour pays, for that harbour's own "
          "resource only."),
-    _int("city_production", "Cards a city collects", 2, 1, 4,
+    _int("city_production", "base", "Cards a city collects", 2, 1, 4,
          "Base game rulebook (a city collects 2 of a hex's resource)",
          "How much a city takes from each of its hexes when their number is "
          "rolled. A settlement always takes one. With commodities on, a city "
          "on pasture, mountain or forest takes one of each instead."),
-    _int("min_players", "Players needed to start", 2, 1, 6,
+    _int("min_players", "base", "Players needed to start", 2, 1, 6,
          "Base game rulebook (3); expansions.md 804 (Catan for Two)",
          "How many players must be in the lobby before a game can start. "
          "Set it to 1 to try the board on your own."),
     # 0 is not "no limit": it means "whatever this server is configured with",
     # exactly as the clocks below do. A table that never opened the setting
     # keeps the deployment's own cap.
-    _int("max_players", "Seats at the table", 0, 0, 6,
+    _int("max_players", "base", "Seats at the table", 0, 0, 6,
          "Base game rulebook (4 players); Catan 5-6 Player Extension rulebook "
          "(6, on the larger board)",
          "How many people may take a seat. The 5-6 player game needs a board "
          "with room for them - the large map or a custom one. 0 keeps this "
          "server's own default."),
-    _int("max_settlements", "Settlements per player", 5, 1, 20,
+    _int("max_settlements", "base", "Settlements per player", 5, 1, 20,
          "Base game rulebook (5 pieces in the box)",
          "How many settlements each player may have standing at once."),
-    _int("max_cities", "Cities per player", 4, 1, 20,
+    _int("max_cities", "base", "Cities per player", 4, 1, 20,
          "Base game rulebook (4 pieces in the box)",
          "How many cities each player may have standing at once."),
-    _int("max_roads", "Roads per player", 15, 1, 60,
+    _int("max_roads", "base", "Roads per player", 15, 1, 60,
          "Base game rulebook (15 pieces in the box)",
          "How many roads each player may have on the board at once."),
-    _int("bank_resource_limit", "Bank cards per resource", 19, 5, 99,
+    _int("bank_resource_limit", "base", "Bank cards per resource", 19, 5, 99,
          "Base game rulebook (19 of each resource)",
          "How many cards of each resource the bank starts with. When it runs "
          "out, nobody collects that resource."),
-    _int("longest_road_minimum", "Longest Road minimum", 5, 2, 15,
+    _int("longest_road_minimum", "victory", "Longest Road minimum", 5, 2, 15,
          "Base game rulebook (5 segments); expansions.md 304",
          "The shortest road that can claim the Longest Road card."),
-    _int("largest_army_minimum", "Largest Army minimum", 3, 1, 10,
+    _int("largest_army_minimum", "victory", "Largest Army minimum", 3, 1, 10,
          "Base game rulebook (3 knights)",
          "How many knight cards must be played before Largest Army can be "
          "claimed."),
-    _int("dev_knights", "Knight cards in the deck", 14, 0, 40,
+    _int("dev_knights", "base", "Knight cards in the deck", 14, 0, 40,
          "Base game rulebook (14 of 25)",
          "How many Knight development cards the deck holds."),
-    _int("dev_victory_points", "Victory Point cards in the deck", 5, 0, 20,
+    _int("dev_victory_points", "base", "Victory Point cards in the deck", 5, 0, 20,
          "Base game rulebook (5 of 25)",
          "How many Victory Point development cards the deck holds."),
-    _int("dev_road_building", "Road Building cards in the deck", 2, 0, 20,
+    _int("dev_road_building", "base", "Road Building cards in the deck", 2, 0, 20,
          "Base game rulebook (2 of 25)",
          "How many Road Building development cards the deck holds."),
-    _int("dev_invention", "Year of Plenty cards in the deck", 2, 0, 20,
+    _int("dev_invention", "base", "Year of Plenty cards in the deck", 2, 0, 20,
          "Base game rulebook (2 of 25)",
          "How many Year of Plenty (Invention) development cards the deck holds."),
-    _int("dev_monopoly", "Monopoly cards in the deck", 2, 0, 20,
+    _int("dev_monopoly", "base", "Monopoly cards in the deck", 2, 0, 20,
          "Base game rulebook (2 of 25)",
          "How many Monopoly development cards the deck holds."),
 ]
@@ -338,24 +379,24 @@ RULES += [
 # rulebook number: the physical game has no clock at all, and these exist
 # because an online table cannot wait for a player who closed their laptop.
 RULES += [
-    _int("dice_timer_seconds", "Dice roll clock", 0, 0, 600,
+    _int("dice_timer_seconds", "base", "Dice roll clock", 0, 0, 600,
          "No published rule: an online table's replacement for a player who "
          "has walked away from the table",
          "How long a player has to roll before the server rolls for them. "
          "0 keeps this server's own default."),
-    _int("discard_timer_seconds", "Discard clock", 0, 0, 600,
+    _int("discard_timer_seconds", "base", "Discard clock", 0, 0, 600,
          "No published rule; the discard itself is base game rulebook (a 7 "
          "costs every hand over the limit half its cards)",
          "How long a player has to hand back half their hand after a 7 "
          "before the server discards at random for them. 0 keeps this "
          "server's own default."),
-    _int("robber_timer_seconds", "Robber clock", 0, 0, 600,
+    _int("robber_timer_seconds", "base", "Robber clock", 0, 0, 600,
          "No published rule; the move itself is base game rulebook (the "
          "robber is moved to another hex and one card is stolen)",
          "How long the roller of a 7 has to move the robber and pick a "
          "victim before the server does it for them. 0 keeps this server's "
          "own default."),
-    _int("turn_timer_seconds", "Turn clock", 0, 0, 3600,
+    _int("turn_timer_seconds", "base", "Turn clock", 0, 0, 3600,
          "No published rule: an online table's replacement for a player who "
          "has walked away from the table",
          "How long the rest of a turn lasts once the roll — and any discard "
@@ -365,14 +406,14 @@ RULES += [
     # no deployment setting behind it to fall back to, and a table that never
     # wanted a trade timer is playing the physical game, where an offer stands
     # until it is taken or withdrawn.
-    _int("trade_offer_seconds", "Trade offer clock", 0, 0, 600,
+    _int("trade_offer_seconds", "trade", "Trade offer clock", 0, 0, 600,
          "No published rule: the physical game leaves an offer on the table "
          "until it is taken or withdrawn, and this is the online table's "
          "stand-in for picking the cards back up",
          "How long an offer stays open for the rest of the table to accept "
          "before the server drops it. 0 leaves an offer standing until its "
          "proposer cancels it or somebody trades."),
-    _int("choice_timer_seconds", "Decision clock", 0, 0, 600,
+    _int("choice_timer_seconds", "base", "Decision clock", 0, 0, 600,
          "No published rule; the decisions themselves are the rules that ask "
          "for them (which city the barbarians sack, which card a Wedding "
          "takes)",
@@ -384,31 +425,32 @@ RULES += [
 
 # --- Base-game variants -------------------------------------------------
 RULES += [
-    _bool("longest_road_card", "Longest Road card", True,
+    _bool("longest_road_card", "victory", "Longest Road card", True,
           "Base game rulebook; expansions.md 304 (kept in Cities & Knights)",
           "The 2-point card for the longest unbroken road. Turn it off for a "
           "game decided on buildings alone."),
-    _bool("largest_army_card", "Largest Army card", True,
+    _bool("largest_army_card", "victory", "Largest Army card", True,
           "Base game rulebook; expansions.md 303 (dropped in Cities & Knights)",
           "The 2-point card for the most knight cards played. Cities & "
           "Knights drops it, because its knights replace the soldier cards."),
-    _bool("dev_card_hold_a_turn", "Hold a development card a turn", True,
+    _bool("dev_card_hold_a_turn", "cards", "Hold a development card a turn", True,
           "Base game rulebook; expansions.md 180, 434",
           "A development card cannot be played on the turn it was bought. "
           "Turn it off and a card bought this turn may be played at once."),
-    _bool("robber_may_return_to_desert", "Robber may sit on the desert", True,
+    _bool("robber_may_return_to_desert", "board", "Robber may sit on the desert", True,
           "Base game rulebook (the robber starts there); expansions.md 188",
           "Whether the desert is a legal hex for the robber. Off, the robber "
           "must always sit on producing land, where it costs somebody "
           "something."),
-    _bool("victory_point_cards_count_in_hand", "Victory Point cards count in hand", False,
+    _bool("victory_point_cards_count_in_hand", "victory",
+          "Victory Point cards count in hand", False,
           "Base game rulebook (a Victory Point card counts the moment you "
           "hold it and is revealed on the winning turn)",
           "A Victory Point card in your hand counts toward your total and can "
           "end the game, without being played and without being shown to "
           "anybody first. Off — how this server has always scored — a card "
           "does nothing until its owner plays it face up."),
-    _bool("dice_deck", "Even production (dice deck)", False,
+    _bool("dice_deck", "board", "Even production (dice deck)", False,
           "Traders & Barbarians, Catan Event Cards; expansions.md 767, 772 "
           "(\"a perfect distribution of production numbers ... play through "
           "all 36 event cards ... and simply reshuffle\")",
@@ -419,7 +461,7 @@ RULES += [
           "Cards variant only — the events printed on the cards are not part "
           "of it.",
           group=VARIANT),
-    _bool("epidemic", "Epidemic", False,
+    _bool("epidemic", "scenario", "Epidemic", False,
           "Traders & Barbarians, Catan Event Cards; expansions.md 775 (\"The "
           "'Epidemic' event appears on production numbers '6' and '8' and "
           "causes each player to receive only 1 resource for each of his "
@@ -430,23 +472,23 @@ RULES += [
           "untouched, and so is the commodity a city takes with commodities "
           "on — it was only ever one card either way.",
           group=VARIANT),
-    _bool("no_adjacent_red_numbers", "Keep 6s and 8s apart", False,
+    _bool("no_adjacent_red_numbers", "board", "Keep 6s and 8s apart", False,
           "Base game rulebook, variable setup; expansions.md 1509–1510",
           "The rulebook's fix-up for a randomly dealt board: no two red "
           "numbers — the 6s and 8s — may end up on neighbouring hexes, and "
           "tokens are swapped until none do."),
-    _bool("friendly_robber", "Friendly Robber", False,
+    _bool("friendly_robber", "board", "Friendly Robber", False,
           "Traders & Barbarians variant; expansions.md 756–763",
           "The robber may not be placed on a hex touching a settlement of a "
           "player who has only 2 victory points."),
-    _bool("harbormaster", "Harbormaster", False,
+    _bool("harbormaster", "victory", "Harbormaster", False,
           "Traders & Barbarians variant; expansions.md 793–803",
           "Settlements on a harbour are worth 1 harbour point and cities 2. "
           "The first player to 3 points takes a card worth 2 victory points, "
           "and it moves to anyone who later has more. The published variant "
           "suggests raising the target by 1 to keep the game the same length.",
           suggests_victory_target=11),
-    _bool("chat_commands", "Chat commands", False,
+    _bool("chat_commands", "scenario", "Chat commands", False,
           "No published rule: the online table's version of reaching into the "
           "box mid-game, which a table sitting round a real board can do "
           "without asking anybody's permission",
@@ -457,7 +499,7 @@ RULES += [
           "commands that only report — /help, /whoami, /rules, /deck — work "
           "whether this is on or off.",
           group=VARIANT),
-    _int("robber_free_opening_rounds", "Robber-free opening rounds", 0, 0, 10,
+    _int("robber_free_opening_rounds", "board", "Robber-free opening rounds", 0, 0, 10,
          "Cities & Knights rulebook (no robber until the first barbarian "
          "attack); expansions.md 317",
          "For this many rounds from the start, a 7 does not move the robber. "
@@ -471,33 +513,33 @@ RULES += [
 # The expansion decomposed. Each of these is independently switchable, and
 # `DEPENDENCIES` below records the few that genuinely cannot stand alone.
 RULES += [
-    _bool("commodities", "Commodities", False,
+    _bool("commodities", "cards", "Commodities", False,
           "Cities & Knights rulebook, 'Commodities'; expansions.md 319–333",
           "Cities produce a commodity as well as a resource: pasture gives "
           "wool and cloth, mountains ore and coin, forest lumber and paper. "
           "Fields and hills are unchanged. Commodities count toward the hand "
           "limit on a 7.",
           group=EXPANSION),
-    _bool("city_improvements", "City improvements", False,
+    _bool("city_improvements", "cards", "City improvements", False,
           "Cities & Knights rulebook, 'City Improvements'; expansions.md 334–354",
           "Three tracks of five levels — trade bought with cloth, politics "
           "with coin, science with paper. Level 3 unlocks the Merchant Guild, "
           "the Fortress or the Aqueduct. You need a city to buy any of it.",
           group=EXPANSION),
-    _bool("metropolis", "Metropolis", False,
+    _bool("metropolis", "cards", "Metropolis", False,
           "Cities & Knights rulebook, 'Metropolis'; expansions.md 364–375",
           "The first player to level 4 on a track turns one of their cities "
           "into a metropolis worth 4 points instead of 2. Level 5 takes it "
           "off a holder who has not reached 5 themselves. A metropolis can "
           "never be pillaged.",
           group=EXPANSION),
-    _bool("knights", "Knights", False,
+    _bool("knights", "military", "Knights", False,
           "Cities & Knights rulebook, 'Knights'; expansions.md 376–405",
           "Build knights on your road network for 1 wool and 1 ore, wake them "
           "with grain, promote them with wool and ore. An active knight can "
           "move once a turn and shove a weaker knight off its intersection.",
           group=EXPANSION),
-    _bool("barbarians", "Barbarian attacks", False,
+    _bool("barbarians", "military", "Barbarian attacks", False,
           "Cities & Knights rulebook, 'Barbarian Attacks'; expansions.md 406–425",
           "A third die is rolled every turn; three of its six faces sail the "
           "barbarian ship one space closer. When it arrives, your active "
@@ -505,13 +547,13 @@ RULES += [
           "Win and the strongest defender scores; lose and the weakest lose a "
           "city. Until the first attack a 7 does not move the robber.",
           group=EXPANSION),
-    _bool("city_walls", "City walls", False,
+    _bool("city_walls", "military", "City walls", False,
           "Cities & Knights rulebook, 'City Walls'; expansions.md 470–477",
           "Two brick builds a wall under one of your cities and raises your "
           "safe hand limit on a 7 by two cards. Three per player, and a wall "
           "falls with the city it protects.",
           group=EXPANSION),
-    _bool("progress_cards", "Progress cards", False,
+    _bool("progress_cards", "cards", "Progress cards", False,
           "Cities & Knights rulebook, 'Progress Cards'; expansions.md 426–462",
           "Three decks — science, trade and politics — drawn when the event "
           "die shows a matching city gate and your improvement level beats "
@@ -521,6 +563,7 @@ RULES += [
     {
         "id": "card_system",
         "group": EXPANSION,
+        "category": "cards",
         "type": CHOICE,
         # "Progress" rather than "development", so a table that ticks progress
         # cards and changes nothing else plays the published rule. It says
@@ -577,7 +620,7 @@ RULES += [
             "third option is a house rule that runs both at once."
         ),
     },
-    _bool("setup_second_city", "Start with a city", False,
+    _bool("setup_second_city", "board", "Start with a city", False,
           "Cities & Knights rulebook, 'Setup'; expansions.md 301–302",
           "The second starting building is a city rather than a settlement, "
           "and it pays out one resource — and one commodity where the terrain "
@@ -591,7 +634,7 @@ RULES += [
 # foundation: nothing else here means anything without a sea network, which is
 # what `DEPENDENCIES` below records.
 RULES += [
-    _bool("ships", "Ships", False,
+    _bool("ships", "sea", "Ships", False,
           "Seafarers rulebook, 'Ships'; expansions.md 35-56",
           "One wool and one lumber builds a ship on a sea edge, and a shipping "
           "route expands your network exactly as roads do. A ship may never "
@@ -599,7 +642,7 @@ RULES += [
           "you have a settlement. This also gives the board its sea edges, so "
           "a second island can be reached at all.",
           group=EXPANSION),
-    _bool("ship_movement", "Moving ships", False,
+    _bool("ship_movement", "sea", "Moving ships", False,
           "Seafarers rulebook, 'Moving Ships'; expansions.md 62-71",
           "One ship per turn may be picked up and re-laid anywhere you could "
           "build a new one, for free. Not a ship built this turn, not one whose "
@@ -607,21 +650,21 @@ RULES += [
           "between two of your settlements is — and never off a hex side the "
           "pirate is sitting beside.",
           group=EXPANSION),
-    _bool("pirate", "The pirate", False,
+    _bool("pirate", "sea", "The pirate", False,
           "Seafarers rulebook, 'The Pirate'; expansions.md 88-100",
           "A black ship the roller of a 7 may move instead of the robber. It "
           "sits on a sea hex, steals one card from a player with a ship beside "
           "it, and blocks every hex side around that hex: no ship may be built "
           "there and none may be moved away. It does not stop production.",
           group=EXPANSION),
-    _bool("longest_trade_route", "Longest Trade Route", False,
+    _bool("longest_trade_route", "victory", "Longest Trade Route", False,
           "Seafarers rulebook, 'The Longest Trade Route'; expansions.md 76-85",
           "Roads and ships count together for the 2-point card, replacing the "
           "roads-only Longest Road. A road and a shipping route only join into "
           "one route where their owner has a settlement or city at the "
           "intersection they meet on.",
           group=EXPANSION),
-    _bool("start_on_main_land", "Start on the main land only", False,
+    _bool("start_on_main_land", "board", "Start on the main land only", False,
           "Seafarers rulebook, Scenario: The Wonders of Catan; expansions.md 251 "
           "(\"Players build their first two settlements with roads or ships on "
           "the main island only\"); Heading for New Shores, expansions.md 131",
@@ -632,7 +675,7 @@ RULES += [
           "nothing there; it takes effect on a custom map that names an island "
           "region.",
           group=EXPANSION),
-    _bool("island_victory_points", "Special points for new islands", False,
+    _bool("island_victory_points", "victory", "Special points for new islands", False,
           "Seafarers rulebook, 'Catan Chits'; expansions.md 121-122, 208-210",
           "Your first settlement on an island you did not start on scores "
           "special victory points on top of the point the settlement itself is "
@@ -640,7 +683,7 @@ RULES += [
           "land the sea cuts off from the rest is one — so the same rule fits "
           "any map.",
           group=EXPANSION),
-    _bool("desert_regions", "Desert splits regions like the sea", False,
+    _bool("desert_regions", "board", "Desert splits regions like the sea", False,
           "Seafarers rulebook, Scenario: Through the Desert; expansions.md 125-127 "
           "(research §2.1)",
           "A belt of desert counts as a barrier between regions, exactly as open "
@@ -650,7 +693,7 @@ RULES += [
           "foreign areas rather than four islands. Needs the island bonus, which "
           "does the scoring. On a board with no desert belt it changes nothing.",
           group=EXPANSION),
-    _bool("fog_reveal", "Fog hexes revealed by ships", False,
+    _bool("fog_reveal", "sea", "Fog hexes revealed by ships", False,
           "Seafarers rulebook, Scenario: The Fog Islands; expansions.md 119 "
           "(research §2.1)",
           "The fog hexes lie face-down until one of your ships or roads reaches "
@@ -659,7 +702,7 @@ RULES += [
           "nothing. There are no special victory points for a discovery — the "
           "fog only hides resources. Play it on the Fog Islands map.",
           group=EXPANSION),
-    _bool("coast_gifts", "Coast gifts of the Forgotten Tribe", False,
+    _bool("coast_gifts", "scenario", "Coast gifts of the Forgotten Tribe", False,
           "Seafarers rulebook, Scenario 5: The Forgotten Tribe, p. 20; "
           "expansions.md 128-131 (research §2.1)",
           "The small islands carry marked coast edges. Sailing a ship onto one — "
@@ -669,7 +712,7 @@ RULES += [
           "or a harbour you place at one of your own coastal settlements. Play it "
           "on the Forgotten Tribe map.",
           group=EXPANSION),
-    _bool("no_build_barren_islands", "No building on barren islands", False,
+    _bool("no_build_barren_islands", "scenario", "No building on barren islands", False,
           "Seafarers rulebook, Scenario 5: The Forgotten Tribe, p. 20 "
           "(\"no settlement can be built on the surrounding small islands that do "
           "not produce resources\")",
@@ -677,13 +720,13 @@ RULES += [
           "that carry the gift edges and yield no resources. They exist only to "
           "hold the gifts. On a board with no such islands it changes nothing.",
           group=EXPANSION),
-    _bool("robber_avoids_barren_islands", "Robber avoids barren islands", False,
+    _bool("robber_avoids_barren_islands", "scenario", "Robber avoids barren islands", False,
           "Seafarers rulebook, Scenario 5: The Forgotten Tribe, p. 20 "
           "(\"the robber cannot move to the small islands\")",
           "The robber may not be moved onto the barren small islands of the "
           "Forgotten Tribe. On a board with no such islands it changes nothing.",
           group=EXPANSION),
-    _bool("cloth_villages", "Cloth for Catan villages", False,
+    _bool("cloth_villages", "cards", "Cloth for Catan villages", False,
           "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22",
           "The small islands carry villages — number tokens sitting on "
           "intersections, each with a supply of cloth bolts. Connect one of your "
@@ -693,7 +736,7 @@ RULES += [
           "point; an unpaired bolt scores nothing. Play it on the Cloth for Catan "
           "map.",
           group=EXPANSION),
-    _bool("oil_tokens", "Oil Springs: oil production", False,
+    _bool("oil_tokens", "cards", "Oil Springs: oil production", False,
           "Catan: Oil Springs (Assadourian & Hansen), coilspringsgb_2015_web.pdf "
           "p. 1 (\"Buildings on oil springs produce oil\")",
           "Three hexes carry Oil Spring tiles. A building on one produces oil "
@@ -703,7 +746,7 @@ RULES += [
           "of 15 runs out. You may hold at most 4 oil. Play it on the Oil "
           "Springs map.",
           group=EXPANSION),
-    _bool("disaster_track", "Oil Springs: disaster track", False,
+    _bool("disaster_track", "scenario", "Oil Springs: disaster track", False,
           "Catan: Oil Springs, coilspringsgb_2015_web.pdf p. 2 (\"For every five "
           "oil used ... an environmental disaster results\")",
           "Using oil is powerful — convert 1 oil into 2 of any resource — but "
@@ -714,7 +757,7 @@ RULES += [
           "number tokens have been destroyed the board dies and the game ends "
           "with no true winner.",
           group=EXPANSION),
-    _bool("oil_sequester_vp", "Oil Springs: sequester oil for VP", False,
+    _bool("oil_sequester_vp", "victory", "Oil Springs: sequester oil for VP", False,
           "Catan: Oil Springs, coilspringsgb_2015_web.pdf p. 2 (\"For every 3 "
           "oil you sequester, you gain 1 Victory Point\")",
           "Instead of using oil you may sequester one per turn — flipping it out "
@@ -723,7 +766,7 @@ RULES += [
           "sequester three takes the 1-VP Champion of the Environment token, "
           "which passes to anyone who later sequesters more.",
           group=EXPANSION),
-    _bool("oil_metropolis", "Oil Springs: oil metropolis", False,
+    _bool("oil_metropolis", "cards", "Oil Springs: oil metropolis", False,
           "Catan: Oil Springs, coilspringsgb_2015_web.pdf p. 2 (\"use 1 brick, 1 "
           "grain, 1 ore and 2 oil to upgrade one of your cities to a "
           "metropolis\")",
@@ -733,7 +776,7 @@ RULES += [
           "immune to coastal flooding. Using the oil advances the disaster track "
           "like any other oil use.",
           group=EXPANSION),
-    _bool("setup_third_settlement", "Start with a third settlement", False,
+    _bool("setup_third_settlement", "board", "Start with a third settlement", False,
           "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22 "
           "(\"everyone can build a third settlement ... you receive your "
           "starting resources\")",
@@ -741,7 +784,7 @@ RULES += [
           "everyone places a third one, and it is the third settlement — not the "
           "second — that pays out its adjacent hexes as your opening hand.",
           group=EXPANSION),
-    _bool("gold_field_choice", "Gold fields (resources of choice)", False,
+    _bool("gold_field_choice", "sea", "Gold fields (resources of choice)", False,
           "Seafarers rulebook, Section 9 'Gold Fields' (\"each settlement is "
           "entitled to one resource, while each city is entitled to two ... may "
           "select ANY of the five resources ... any mix\")",
@@ -751,7 +794,7 @@ RULES += [
           "five. Each owed player picks their own, and the roll waits on them. "
           "Distinct from the Explorers & Pirates gold currency, which pays coins.",
           group=EXPANSION),
-    _bool("wonders", "Wonders of Catan", False,
+    _bool("wonders", "victory", "Wonders of Catan", False,
           "Seafarers rulebook, Scenario 8: The Wonders of Catan, pp. 26-29",
           "Each player may build one Wonder chosen from five — Cathedral, Great "
           "Bridge, Great Wall, Monument, Theater. A Wonder can only be started "
@@ -763,7 +806,7 @@ RULES += [
           "Wonder, or by reaching the target with a strictly higher wonder level "
           "than every opponent. Play it on the Wonders of Catan map.",
           group=EXPANSION),
-    _bool("wonder_island_points", "Special points for small islands", False,
+    _bool("wonder_island_points", "victory", "Special points for small islands", False,
           "Seafarers rulebook, Scenario 8: The Wonders of Catan, p. 27 "
           "(\"If you build a settlement on one of the smaller islands ... you "
           "receive a special victory point\")",
@@ -773,7 +816,7 @@ RULES += [
           "the rule fits any map; on a board with no small islands it changes "
           "nothing.",
           group=EXPANSION),
-    _bool("pirate_fleet", "The pirate fleet", False,
+    _bool("pirate_fleet", "sea", "The pirate fleet", False,
           "Seafarers rulebook, Scenario 7 'The Pirate Islands', p. 22",
           "A roaming enemy fleet — a neutral ship, not a player — circles the two "
           "central desert islands clockwise. After every roll, before production or "
@@ -784,14 +827,14 @@ RULES += [
           "choice. There is no robber in this scenario. Play it on the Pirate "
           "Islands map.",
           group=EXPANSION),
-    _bool("pirate_warships", "Warships", False,
+    _bool("pirate_warships", "sea", "Warships", False,
           "Seafarers rulebook, Scenario 7 'The Pirate Islands', p. 20",
           "Reveal a Knight card to turn one of your ships into a warship. Warships "
           "are your strength against the pirate fleet and the fortresses; the card "
           "is spent and set aside, and the ship stays on the board turned on its "
           "side. Needs ships, so there is a ship to convert.",
           group=EXPANSION),
-    _bool("pirate_fortresses", "Pirate fortresses", False,
+    _bool("pirate_fortresses", "sea", "Pirate fortresses", False,
           "Seafarers rulebook, Scenario 7 'The Pirate Islands', pp. 20-22",
           "Four fortresses — a settlement of a player's colour on three Catan "
           "chits — sit on the western islands. Sail a route to your own-colour "
@@ -812,34 +855,34 @@ RULES += [
 # after this catalogue — so the picker and the presets have real ids to point
 # at while the mechanics are built.
 RULES += [
-    _bool("movement_phase", "Movement phase", False,
+    _bool("movement_phase", "sea", "Movement phase", False,
           "Catan: Explorers & Pirates rulebook, 'Turn Structure'; expansions.md 851-862",
           "A turn runs production, then trade and build, then movement, in that "
           "fixed order. You may not trade or build once movement has begun — the "
           "one exception is founding a settlement with a settler ship.",
           group=EXPANSION),
-    _bool("gold", "Gold", False,
+    _bool("gold", "trade", "Gold", False,
           "Catan: Explorers & Pirates rulebook, 'Gold'; expansions.md 854, 960-967",
           "Gold is a second currency beside resources: you take 1 gold when a "
           "non-7 production roll pays you nothing, three identical resources buy "
           "1 gold, and twice a turn 2 gold buys any 1 resource. Gold trades with "
           "opponents like a resource card.",
           group=EXPANSION),
-    _bool("no_dev_cards", "No development cards", False,
+    _bool("no_dev_cards", "cards", "No development cards", False,
           "Catan: Explorers & Pirates rulebook, 'Fundamental Differences'; "
           "expansions.md 839",
           "No development cards exist — the deck cannot be bought from at all. "
           "Explorers & Pirates has no knight, progress or victory point "
           "development cards.",
           group=EXPANSION),
-    _bool("no_city_upgrades", "No city upgrades", False,
+    _bool("no_city_upgrades", "scenario", "No city upgrades", False,
           "Catan: Explorers & Pirates rulebook, 'Fundamental Differences'; "
           "expansions.md 838",
           "Settlements are never upgraded to cities and the city pieces are "
           "unused. A game scored on settlements, harbor settlements and missions "
           "instead.",
           group=EXPANSION),
-    _bool("transport_ships", "Transport ships", False,
+    _bool("transport_ships", "sea", "Transport ships", False,
           "Catan: Explorers & Pirates rulebook, 'Ships and Movement'; "
           "expansions.md 864-882",
           "Ships are transports carrying pieces in a hold (1 large or 2 small) "
@@ -847,7 +890,7 @@ RULES += [
           "for 1 lumber and 1 wool on a sea route beside one of your harbor "
           "settlements.",
           group=EXPANSION),
-    _bool("harbor_settlements", "Harbor settlements", False,
+    _bool("harbor_settlements", "sea", "Harbor settlements", False,
           "Catan: Explorers & Pirates rulebook, 'Harbor Settlements'; "
           "expansions.md 894-902",
           "Upgrade a coastal settlement (2 grain and 2 ore) into a harbor "
@@ -855,23 +898,23 @@ RULES += [
           "where ships, settlers and crews may be built. It yields 1, not 2, on "
           "production.",
           group=EXPANSION),
-    _bool("ships_explore", "Ships explore", False,
+    _bool("ships_explore", "sea", "Ships explore", False,
           "Catan: Explorers & Pirates rulebook, 'Discovery'; expansions.md 883-893",
           "Moving a ship so one end points at an undiscovered hex reveals it, "
           "and that discovery ends the ship's movement for the turn.",
           group=EXPANSION),
-    _bool("cargo_settlers", "Settlers", False,
+    _bool("cargo_settlers", "sea", "Settlers", False,
           "Catan: Explorers & Pirates rulebook, 'Settlers'; expansions.md 903-918",
           "Settlers (a settlement's cost) are built into a basin or hold and "
           "carried by ship. A settler ship pointing at a free coastal corner "
           "founds a settlement there for free.",
           group=EXPANSION),
-    _bool("crews", "Crews", False,
+    _bool("crews", "sea", "Crews", False,
           "Catan: Explorers & Pirates rulebook, 'Crews'; expansions.md 919-928",
           "Crews (1 ore and 1 wool) ride ships and are landed on mission "
           "destinations only.",
           group=EXPANSION),
-    _bool("pirate_ship_instead_of_robber", "Pirate ship instead of the robber", False,
+    _bool("pirate_ship_instead_of_robber", "sea", "Pirate ship instead of the robber", False,
           "Catan: Explorers & Pirates rulebook, 'The Pirate Ship'; "
           "expansions.md 841, 843, 934-949",
           "The roller of a 7 places their own pirate ship on an allowed sea hex, "
@@ -879,33 +922,33 @@ RULES += [
           "charges every mover 1 gold tribute per ship crossing that hex. No "
           "robber, and no land is blocked.",
           group=EXPANSION),
-    _bool("chase_pirate", "Chase the pirate", False,
+    _bool("chase_pirate", "sea", "Chase the pirate", False,
           "Catan: Explorers & Pirates rulebook, 'Chasing the Pirate'; "
           "expansions.md 951-958",
           "A battle-ready ship — unmoved and next to the pirate's hex — may roll "
           "one die; a 6 chases the pirate away and lets the chaser reposition it "
           "and steal.",
           group=EXPANSION),
-    _bool("missions", "Missions", False,
+    _bool("missions", "scenario", "Missions", False,
           "Catan: Explorers & Pirates rulebook, 'Missions in General'; "
           "expansions.md 969-978",
           "Mission tracks with a per-player marker each; a marker ahead of every "
           "other on a track holds that mission's 1-point lead card. The container "
           "for the three missions below.",
           group=EXPANSION),
-    _bool("mission_pirate_lairs", "Mission: Pirate Lairs", False,
+    _bool("mission_pirate_lairs", "scenario", "Mission: Pirate Lairs", False,
           "Catan: Explorers & Pirates rulebook, 'Pirate Lairs'; expansions.md 980-998",
           "Discover gold-field and pirate-lair hexes, land crews to capture "
           "lairs and advance the Pirate Lairs track. A captured lair's number "
           "pays 2 gold per adjacent building.",
           group=EXPANSION),
-    _bool("mission_fish", "Mission: Fish for Catan", False,
+    _bool("mission_fish", "scenario", "Mission: Fish for Catan", False,
           "Catan: Explorers & Pirates rulebook, 'Fish for Catan'; "
           "expansions.md 1000-1019",
           "Catch fish hauls at discovered shoal hexes and deliver them to the "
           "Council of Catan docks to advance the Fish track.",
           group=EXPANSION),
-    _bool("mission_spices", "Mission: Spices for Catan", False,
+    _bool("mission_spices", "scenario", "Mission: Spices for Catan", False,
           "Catan: Explorers & Pirates rulebook, 'Spices for Catan'; "
           "expansions.md 1021-1040",
           "Trade crews for spice sacks at village hexes — each village grants a "
@@ -917,25 +960,25 @@ RULES += [
 
 # --- Expansion numbers --------------------------------------------------
 RULES += [
-    _int("barbarian_track_length", "Barbarian track spaces", 7, 3, 15,
+    _int("barbarian_track_length", "military", "Barbarian track spaces", 7, 3, 15,
          "Cities & Knights rulebook; expansions.md 407",
          "How many spaces the barbarian ship crosses before it attacks. "
          "Shorter means a more dangerous game.",
          group=EXPANSION),
-    _int("progress_hand_limit", "Progress cards in hand", 4, 1, 10,
+    _int("progress_hand_limit", "cards", "Progress cards in hand", 4, 1, 10,
          "Cities & Knights rulebook; expansions.md 431",
          "How many progress cards a player may hold. Cards worth a victory "
          "point are revealed on sight and never take a slot.",
          group=EXPANSION),
-    _int("max_city_walls", "City walls per player", 3, 0, 10,
+    _int("max_city_walls", "military", "City walls per player", 3, 0, 10,
          "Cities & Knights rulebook; expansions.md 473–474",
          "How many city walls each player may have standing at once.",
          group=EXPANSION),
-    _int("max_ships", "Ships per player", 15, 1, 60,
+    _int("max_ships", "sea", "Ships per player", 15, 1, 60,
          "Seafarers rulebook; expansions.md 51-52",
          "How many ships each player may have on the board at once.",
          group=EXPANSION),
-    _int("island_points_per_island", "Points for a new island", 2, 1, 5,
+    _int("island_points_per_island", "victory", "Points for a new island", 2, 1, 5,
          "Seafarers rulebook, 'Heading for New Shores'; expansions.md 121",
          "How many special victory points the first settlement on an island "
          "you did not start on is worth.",
@@ -943,24 +986,24 @@ RULES += [
     # The Explorers & Pirates piece supplies (849): 4 harbor settlements, 2
     # settlers, 9 crews. Ships reuse the existing `max_ships`, which every E&P
     # preset sets to 3 rather than adding a second ships count.
-    _int("max_harbor_settlements", "Harbor settlements per player", 4, 0, 20,
+    _int("max_harbor_settlements", "sea", "Harbor settlements per player", 4, 0, 20,
          "Catan: Explorers & Pirates rulebook; expansions.md 849",
          "How many harbor settlements each player may have standing at once.",
          group=EXPANSION),
-    _int("max_settlers", "Settlers per player", 2, 0, 10,
+    _int("max_settlers", "sea", "Settlers per player", 2, 0, 10,
          "Catan: Explorers & Pirates rulebook; expansions.md 849",
          "How many settlers each player may have at once.",
          group=EXPANSION),
-    _int("max_crews", "Crews per player", 9, 0, 20,
+    _int("max_crews", "sea", "Crews per player", 9, 0, 20,
          "Catan: Explorers & Pirates rulebook; expansions.md 849",
          "How many crews each player may have at once.",
          group=EXPANSION),
-    _int("ship_movement_points", "Ship movement points", 4, 1, 12,
+    _int("ship_movement_points", "sea", "Ship movement points", 4, 1, 12,
          "Catan: Explorers & Pirates rulebook, 'Ships and Movement'; expansions.md 874",
          "How many movement points a ship has each turn, before any wool or "
          "Swift Voyage bonus.",
          group=EXPANSION),
-    _int("starting_gold", "Starting gold", 0, 0, 10,
+    _int("starting_gold", "trade", "Starting gold", 0, 0, 10,
          "Catan: Explorers & Pirates rulebook; expansions.md 1045, 1053",
          "How much gold each player starts the game with. Every published "
          "Explorers & Pirates scenario starts each player with 2.",
@@ -975,7 +1018,7 @@ RULES += [
 # and the old boot each declare `fish_tokens` in DEPENDENCIES below. Every switch
 # defaults off, so a base game is unchanged.
 RULES += [
-    _bool("fish_tokens", "Fish tokens", False,
+    _bool("fish_tokens", "scenario", "Fish tokens", False,
           "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
           "expansions.md 501-516",
           "A face-down supply of fish tokens you draw, hold privately (cap 7) "
@@ -985,21 +1028,21 @@ RULES += [
           "never counted toward the hand limit, never discarded on a 7, never "
           "stolen and never traded. The container for the fish sources below.",
           group=EXPANSION),
-    _bool("fishing_grounds", "Fishing grounds", False,
+    _bool("fishing_grounds", "scenario", "Fishing grounds", False,
           "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
           "expansions.md 495-499",
           "Fishing-ground tiles sit on the board frame; a settlement built on "
           "one of the three coastal intersections a tile touches draws 1 fish "
           "token, a city 2, whenever the tile's number (4/5/6/8/9/10) is rolled.",
           group=EXPANSION),
-    _bool("lake_hex", "The lake", False,
+    _bool("lake_hex", "scenario", "The lake", False,
           "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
           "expansions.md 493, 500",
           "A lake replaces the desert (and never sits on the coast); a "
           "settlement adjacent to it draws 1 fish token, a city 2, whenever a "
           "2, 3, 11 or 12 is rolled.",
           group=EXPANSION),
-    _bool("old_boot", "The old boot", False,
+    _bool("old_boot", "scenario", "The old boot", False,
           "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
           "expansions.md 517-521",
           "The old boot (mixed into the fish supply and revealed the moment it "
@@ -1007,7 +1050,7 @@ RULES += [
           "rolling you may pass it to any player with as many victory points as "
           "you or more; the sole points leader must keep it.",
           group=EXPANSION),
-    _bool("robber_starts_off_board", "Robber starts off the board", False,
+    _bool("robber_starts_off_board", "board", "Robber starts off the board", False,
           "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
           "expansions.md 496, 504",
           "The robber begins beside the board rather than on the desert and "
@@ -1017,13 +1060,13 @@ RULES += [
 ]
 
 RULES += [
-    _int("max_fish_held", "Fish tokens in hand", 7, 1, 15,
+    _int("max_fish_held", "scenario", "Fish tokens in hand", 7, 1, 15,
          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
          "expansions.md 510",
          "How many fish tokens a player may hold at once. A draw that would "
          "exceed the cap is not taken.",
          group=EXPANSION),
-    _int("fishing_ground_count", "Fishing grounds on the board", 6, 0, 12,
+    _int("fishing_ground_count", "scenario", "Fishing grounds on the board", 6, 0, 12,
          "Catan: Traders & Barbarians rulebook, 'The Fishermen of Catan'; "
          "expansions.md 492",
          "How many fishing-ground tiles the board frame carries.",
@@ -1038,7 +1081,7 @@ RULES += [
 # economies on one field, so EXCLUSIONS refuses them both on. Defaults off, so a
 # base game is unchanged.
 RULES += [
-    _bool("gold_coins", "Gold coins", False,
+    _bool("gold_coins", "trade", "Gold coins", False,
           "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
           "expansions.md 559-565, 664-668, 740-744",
           "Gold coins are a second currency held apart from your resource hand: "
@@ -1056,7 +1099,7 @@ RULES += [
 # every switch off by default, the coin economy shared through `gold_coins`, and
 # the two scoring tiles folded into `victory_points_for` behind their own flags.
 RULES += [
-    _bool("river_gold", "River gold", False,
+    _bool("river_gold", "scenario", "River gold", False,
           "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
           "expansions.md 542-544",
           "Building a settlement adjacent to a river hex, or a road on a path "
@@ -1064,7 +1107,7 @@ RULES += [
           "set-up as well as later. Upgrading a settlement to a city pays "
           "nothing.",
           group=EXPANSION),
-    _bool("bridges", "Bridges", False,
+    _bool("bridges", "scenario", "Bridges", False,
           "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
           "expansions.md 546-552",
           "Bridges (2 brick and 1 lumber) are built only on a river-crossing "
@@ -1073,14 +1116,14 @@ RULES += [
           "road may never sit on a bridge site, and Road Building may not place "
           "one. Each player may build at most three.",
           group=EXPANSION),
-    _bool("wealthiest_settler", "Wealthiest Settler", False,
+    _bool("wealthiest_settler", "victory", "Wealthiest Settler", False,
           "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
           "expansions.md 556-558",
           "The one player who alone holds the most gold coins keeps the "
           "Wealthiest Settler tile, worth +1 victory point. It is lost the "
           "moment another player's coin total equals or passes theirs.",
           group=EXPANSION),
-    _bool("poor_settler", "Poor Settler", False,
+    _bool("poor_settler", "victory", "Poor Settler", False,
           "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
           "expansions.md 553-555",
           "Every player tied for the fewest gold coins (a tie at zero counts) "
@@ -1090,7 +1133,7 @@ RULES += [
 ]
 
 RULES += [
-    _int("max_bridges", "Bridges per player", 3, 0, 10,
+    _int("max_bridges", "scenario", "Bridges per player", 3, 0, 10,
          "Catan: Traders & Barbarians rulebook, 'The Rivers of Catan'; "
          "expansions.md 551",
          "How many bridges one player may build over the whole game.",
@@ -1105,7 +1148,7 @@ RULES += [
 # vote is meaningless. Depends on the oasis map (refused at start without it), so
 # it needs no other rule; defaults off, so a base game is unchanged.
 RULES += [
-    _bool("caravans", "The Caravans", False,
+    _bool("caravans", "scenario", "The Caravans", False,
           "Catan: Traders & Barbarians rulebook, 'The Caravans'; "
           "expansions.md 573-601",
           "Camels grow out of the central oasis in up to three non-branching "
@@ -1119,7 +1162,7 @@ RULES += [
 ]
 
 RULES += [
-    _int("max_camels", "Camels in the supply", 22, 0, 40,
+    _int("max_camels", "scenario", "Camels in the supply", 22, 0, 40,
          "Catan: Traders & Barbarians rulebook, 'The Caravans'; "
          "expansions.md 574",
          "How many camels the box holds; all three caravans end the moment the "
@@ -1138,7 +1181,7 @@ RULES += [
 # compensation payouts and the scenario deck it trains knights from, so it
 # declares both in DEPENDENCIES below.
 RULES += [
-    _bool("barbarian_attack", "Barbarian Attack", False,
+    _bool("barbarian_attack", "military", "Barbarian Attack", False,
           "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
           "expansions.md 607-662",
           "Barbarians land on the coastal hexes whenever you build: each build "
@@ -1151,7 +1194,7 @@ RULES += [
           "those barbarians as your prisoners, and every two prisoners are worth "
           "a victory point. There is no robber. Needs the castle board.",
           group=EXPANSION, suggests_victory_target=12),
-    _bool("barbarian_attack_deck", "Barbarian Attack deck", False,
+    _bool("barbarian_attack_deck", "military", "Barbarian Attack deck", False,
           "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
           "expansions.md 617, 633-642",
           "Replaces the base development deck with the scenario's 26 cards — 14 "
@@ -1162,13 +1205,13 @@ RULES += [
 ]
 
 RULES += [
-    _int("max_barbarian_knights", "Knights per player", 6, 1, 12,
+    _int("max_barbarian_knights", "military", "Knights per player", 6, 1, 12,
          "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
          "expansions.md 615",
          "How many knights of their own colour each player may have on the "
          "board at once.",
          group=EXPANSION),
-    _int("barbarian_supply", "Barbarians in the supply", 30, 0, 60,
+    _int("barbarian_supply", "military", "Barbarians in the supply", 30, 0, 60,
          "Catan: Traders & Barbarians rulebook, 'Barbarian Attack'; "
          "expansions.md 610",
          "How many barbarian figures the box holds; once the supply is empty no "
@@ -1189,7 +1232,7 @@ RULES += [
 # declares both in DEPENDENCIES; the baggage train and the path barbarians are
 # meaningless without the wagon, so each depends on it.
 RULES += [
-    _bool("trade_caravans", "Trade wagons", False,
+    _bool("trade_caravans", "scenario", "Trade wagons", False,
           "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
           "expansions.md 679, 696-719",
           "Your wagon starts on your city's intersection and, after you finish "
@@ -1201,7 +1244,7 @@ RULES += [
           "draw the next commodity, which names your next destination. Needs the "
           "trade-hex board.",
           group=EXPANSION, suggests_victory_target=13),
-    _bool("baggage_train", "Baggage train", False,
+    _bool("baggage_train", "scenario", "Baggage train", False,
           "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
           "expansions.md 689, 720-726",
           "An upgradeable card of your own: upgrading it (paying the resources on "
@@ -1210,7 +1253,7 @@ RULES += [
           "that drive off a barbarian. The fifth and last upgrade is worth 1 "
           "victory point.",
           group=EXPANSION),
-    _bool("roaming_barbarians", "Roaming barbarians", False,
+    _bool("roaming_barbarians", "military", "Roaming barbarians", False,
           "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
           "expansions.md 690, 727-737, 745",
           "Three barbarians sit on paths. Crossing a barbarian's path costs 2 "
@@ -1219,7 +1262,7 @@ RULES += [
           "Once your baggage train is upgraded you may pause beside a barbarian "
           "and roll to drive it off.",
           group=EXPANSION),
-    _bool("trade_dev_deck", "Trade wagon deck", False,
+    _bool("trade_dev_deck", "cards", "Trade wagon deck", False,
           "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
           "expansions.md 691, 745-748",
           "Replaces the base development deck with the scenario's 26 cards — 15 "
@@ -1231,7 +1274,7 @@ RULES += [
 ]
 
 RULES += [
-    _int("wagon_movement_points", "Wagon movement points", 4, 1, 12,
+    _int("wagon_movement_points", "scenario", "Wagon movement points", 4, 1, 12,
          "Catan: Traders & Barbarians rulebook, 'Traders & Barbarians'; "
          "expansions.md 704",
          "How many movement points a wagon has each turn from the first baggage "
@@ -1250,7 +1293,7 @@ RULES += [
 # unchanged. No tile touches the victory target (Helpers_Rules.pdf p. 4), so the
 # preset keeps the 10-point game.
 RULES += [
-    _bool("helper_tiles", "Helper tiles", False,
+    _bool("helper_tiles", "cards", "Helper tiles", False,
           "Helpers_Rules.pdf, 'The Helpers Overview and Set-up' and 'Using The "
           "Helpers', pp. 2-4",
           "CATAN - The Helpers: each player holds one helper tile with a "
@@ -1260,75 +1303,75 @@ RULES += [
           "are in play is set by the twelve switches below; a base game is "
           "unchanged.",
           group=EXPANSION),
-    _bool("helper_forced_trade", "Helper: Forced Trade (Asla)", False,
+    _bool("helper_forced_trade", "cards", "Helper: Forced Trade (Asla)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Forced Trade (Asla), p. 6",
           "Choose 1 resource type and request it from 1 or 2 players; each who "
           "holds it gives you 1, and you give back 1 resource of your choice per "
           "resource received.",
           group=EXPANSION),
-    _bool("helper_makeshift_road", "Helper: Makeshift Road Building (Yngvi)", False,
+    _bool("helper_makeshift_road", "cards", "Helper: Makeshift Road Building (Yngvi)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Makeshift Road Building "
           "(Yngvi), p. 6",
           "When you build a road you may substitute 1 lumber or 1 brick with any "
           "1 other resource of your choice.",
           group=EXPANSION),
-    _bool("helper_resource_compensation", "Helper: Resource Compensation (Hilda)", False,
+    _bool("helper_resource_compensation", "cards", "Helper: Resource Compensation (Hilda)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Resource Compensation "
           "(Hilda), p. 8",
           "Immediately after any production roll that is not a 7, if you received "
           "no resources, take any 1 resource card of your choice from the supply.",
           group=EXPANSION),
-    _bool("helper_move_road", "Helper: Move a Road (Hogni)", False,
+    _bool("helper_move_road", "cards", "Helper: Move a Road (Hogni)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Move a Road (Hogni), p. 7",
           "Remove 1 of your end roads and place it in another location following "
           "normal placement rules.",
           group=EXPANSION),
-    _bool("helper_protection_from_seven", "Helper: Protection from the 7 (Thorolf)", False,
+    _bool("helper_protection_from_seven", "cards", "Helper: Protection from the 7 (Thorolf)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Protection from the 7 "
           "(Thorolf), p. 9",
           "When any player rolls a 7 you must use this: if over 7 cards, keep "
           "them all instead of discarding half; if 7 or fewer, take any 1 "
           "resource of your choice from the supply.",
           group=EXPANSION),
-    _bool("helper_dev_card_choice", "Helper: Development Card Choice (Diara)", False,
+    _bool("helper_dev_card_choice", "cards", "Helper: Development Card Choice (Diara)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Development Card Choice "
           "(Diara), p. 9",
           "When you buy a development card you may substitute 1 of the 3 "
           "resources, then look at the top 3 cards, keep 1 and shuffle the other "
           "2 back.",
           group=EXPANSION),
-    _bool("helper_take_from_leader", "Helper: Take Card from Leader (Ryan)", False,
+    _bool("helper_take_from_leader", "cards", "Helper: Take Card from Leader (Ryan)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Take Card From Leader "
           "(Ryan), p. 10",
           "After your production roll is resolved, take 1 resource card of your "
           "choice from an opponent who has more victory points than you.",
           group=EXPANSION),
-    _bool("helper_knight_to_building", "Helper: Assign Knight to Building (Gregor)", False,
+    _bool("helper_knight_to_building", "cards", "Helper: Assign Knight to Building (Gregor)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Assign Knight to Building "
           "(Gregor), p. 10",
           "Discard 1 of your played knight cards (it no longer counts toward the "
           "Largest Army) to build a settlement for 1 lumber + 1 brick or a city "
           "for 2 ore + 1 grain.",
           group=EXPANSION),
-    _bool("helper_trade_frenzy", "Helper: 2:1 Trade Frenzy (Stina)", False,
+    _bool("helper_trade_frenzy", "cards", "Helper: 2:1 Trade Frenzy (Stina)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', 2:1 Trade Frenzy (Stina), "
           "p. 11",
           "Choose 1 resource type and exchange it with the bank at 2:1 as many "
           "times as you like, all at once.",
           group=EXPANSION),
-    _bool("helper_chase_robber", "Helper: Chase Robber to Desert (Digur)", False,
+    _bool("helper_chase_robber", "cards", "Helper: Chase Robber to Desert (Digur)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Chase Robber to Desert "
           "(Digur), p. 10",
           "Move the robber to the desert and take 1 resource of the type the hex "
           "it left produced. Not playable if the robber is already in the desert.",
           group=EXPANSION),
-    _bool("helper_take_robber_resource", "Helper: Take Robber's Resource (Kaja)", False,
+    _bool("helper_take_robber_resource", "cards", "Helper: Take Robber's Resource (Kaja)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Take Robber's Resource "
           "(Kaja), p. 11",
           "Take 1 resource from the supply matching the terrain hex the robber "
           "occupies; if it is in the desert, take a resource of your choice.",
           group=EXPANSION),
-    _bool("helper_dev_card_swap", "Helper: Development Card Swap (Carla)", False,
+    _bool("helper_dev_card_swap", "cards", "Helper: Development Card Swap (Carla)", False,
           "Helpers_Rules.pdf, 'The Helpers in Detail', Development Card Swap "
           "(Carla), p. 11",
           "Place 1 unplayed development card at the bottom of the stack and draw "
@@ -1346,7 +1389,7 @@ RULES += [
 # rule needs the bag to spend from, so it declares `favour_tokens` in
 # DEPENDENCIES below.
 RULES += [
-    _bool("favour_tokens", "Favour tokens", False,
+    _bool("favour_tokens", "trade", "Favour tokens", False,
           "Catan: Frenemies (Benjamin Teuber), catan_frenemies_rules_093012s.pdf "
           "p. 1, 'Earning Favor Tokens'",
           "Catan: Frenemies. A face-down bag of 58 favour tokens you draw blind "
@@ -1358,7 +1401,7 @@ RULES += [
           "next turn, and favours are never traded or stolen. The bag is spent "
           "at the guild hall below.",
           group=EXPANSION, suggests_victory_target=11),
-    _bool("guild_hall", "Guild hall", False,
+    _bool("guild_hall", "trade", "Guild hall", False,
           "Catan: Frenemies (Benjamin Teuber), catan_frenemies_rules_093012s.pdf "
           "p. 2, 'Using Favor Tokens'",
           "Catan: Frenemies. On your turn you redeem favour tokens face up at a "
@@ -1379,7 +1422,7 @@ RULES += [
 # the engine ever asks "is this the Inkas" — it asks for the rule that governs
 # the behaviour in front of it.
 RULES += [
-    _bool("tribe_decline", "Tribe decline", False,
+    _bool("tribe_decline", "scenario", "Tribe decline", False,
           "Catan Histories: Rise of the Inkas (Klaus & Benjamin Teuber, 2018), "
           "rulebook 'The Tribes' pp. 7-8; the 4/4/3 cultural goals are stated "
           "verbatim on p. 7 (OFFICIAL, not fan-sourced)",
@@ -1393,7 +1436,7 @@ RULES += [
           "The third tribe's apex is 3 culture points. Turn on 'Third-tribe "
           "victory' to end the game on it.",
           group=EXPANSION, suggests_victory_target=11),
-    _bool("overbuild_ruins", "Overbuild ruins", False,
+    _bool("overbuild_ruins", "scenario", "Overbuild ruins", False,
           "Catan Histories: Rise of the Inkas (Teuber, 2018), rulebook "
           "'Consequences of Decline / Rebuilding' p. 7",
           "Rise of the Inkas. An active tribe may build a settlement over an "
@@ -1403,7 +1446,7 @@ RULES += [
           "settlement. Needs Tribe decline, which is what covers a building with "
           "a thicket in the first place.",
           group=EXPANSION, suggests_victory_target=11),
-    _bool("third_tribe_victory", "Third-tribe victory", False,
+    _bool("third_tribe_victory", "victory", "Third-tribe victory", False,
           "Catan Histories: Rise of the Inkas (Teuber, 2018), rulebook 'Game "
           "End' p. 8 (11 culture markers total: 4 + 4 + 3)",
           "Rise of the Inkas. The game is won not by a point threshold but by "
@@ -2652,3 +2695,13 @@ def presets() -> list:
 def exclusions() -> list:
     """The mutual-exclusion groups, for the lobby to decorate and enforce."""
     return [dict(group) for group in EXCLUSIONS]
+
+
+def categories() -> list:
+    """The functional sections, in display order, for the lobby to tree the picker.
+
+    The client reads its section headers and their order from this, exactly as it
+    reads the rules themselves from `catalogue()` — a category added here appears
+    as a new collapsible section in every client with no front-end change.
+    """
+    return [dict(category) for category in CATEGORIES]
