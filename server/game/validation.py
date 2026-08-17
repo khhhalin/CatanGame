@@ -94,15 +94,25 @@ def _clean_counts(raw, field: str, allowed, total_max: int) -> dict:
     return cleaned
 
 
-def clean_resource_counts(raw, field: str = "resources", total_max: int = 100) -> dict:
-    """Validate a {resource_type: count} mapping — the five resources only."""
-    return _clean_counts(raw, field, RESOURCE_TYPES, total_max)
+def clean_resource_counts(raw, field: str = "resources", total_max: int = 100,
+                          allow_oil: bool = False) -> dict:
+    """Validate a {resource_type: count} mapping — the five resources only.
+
+    On an Oil Springs table `allow_oil` admits `oil` too, because Year of Plenty
+    may take oil from the supply (coilspringsgb_2015_web.pdf p. 1).
+    """
+    allowed = RESOURCE_TYPES + ("oil",) if allow_oil else RESOURCE_TYPES
+    return _clean_counts(raw, field, allowed, total_max)
 
 
-def clean_card_counts(raw, field: str = "cards", total_max: int = 100) -> dict:
+def clean_card_counts(raw, field: str = "cards", total_max: int = 100,
+                      allow_oil: bool = False) -> dict:
     """Validate a {card_type: count} mapping over resources *and* commodities.
 
     Used by the discard on a 7: commodities count toward the hand limit, so a
-    player over the limit has to be able to hand them back.
+    player over the limit has to be able to hand them back. On an Oil Springs
+    table `allow_oil` admits `oil` too, because oil counts as a card on a 7 and
+    may be discarded back to its supply (coilspringsgb_2015_web.pdf p. 1).
     """
-    return _clean_counts(raw, field, CARD_TYPES, total_max)
+    allowed = CARD_TYPES + ("oil",) if allow_oil else CARD_TYPES
+    return _clean_counts(raw, field, allowed, total_max)

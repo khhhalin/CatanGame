@@ -64,8 +64,9 @@ def handle_discard_resources(data):
 
     try:
         # Commodities count toward the limit a 7 enforces, so the discard has
-        # to be able to name them too.
-        resources = clean_card_counts(data.get('resources'))
+        # to be able to name them too — and oil on an Oil Springs table.
+        resources = clean_card_counts(
+            data.get('resources'), allow_oil=session.game.rules['oil_tokens'])
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
         return

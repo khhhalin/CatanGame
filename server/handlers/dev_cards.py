@@ -135,8 +135,11 @@ def handle_use_invention(data):
 
     try:
         # Invention grants exactly two cards, so the whole request is bounded
-        # here rather than trusting the client to ask for a sane amount.
-        resources = clean_resource_counts(data.get('resources'), total_max=2)
+        # here rather than trusting the client to ask for a sane amount. Oil is a
+        # legal choice on an Oil Springs table.
+        resources = clean_resource_counts(
+            data.get('resources'), total_max=2,
+            allow_oil=session.game.rules['oil_tokens'])
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
         return
@@ -163,7 +166,10 @@ def handle_use_monopoly(data):
         return
 
     try:
-        resource_type = require_choice(data.get('resource_type'), 'resource_type', RESOURCE_TYPES)
+        # Oil is a legal monopoly target on an Oil Springs table.
+        allowed = (RESOURCE_TYPES + ('oil',)
+                   if session.game.rules['oil_tokens'] else RESOURCE_TYPES)
+        resource_type = require_choice(data.get('resource_type'), 'resource_type', allowed)
     except InvalidPayload as exc:
         reject(exc.code, exc.message)
         return

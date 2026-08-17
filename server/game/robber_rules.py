@@ -8,6 +8,7 @@ hands, and the pending-choice flags the socket handlers drive the UI from.
 import logging
 
 from game import tiles
+from game.oil_springs import MAX_OIL_HELD
 from game.results import refused
 from game.validation import CARD_TYPES, COMMODITY_TYPES
 
@@ -183,6 +184,11 @@ class RobberRules:
             list(player.resources.items()) + list(player.commodities.items())
         ):
             hand.extend([card_type] * count)
+        # Oil Springs: oil counts toward the limit, so it must be in the hand a
+        # forced discard draws from — otherwise a timed-out player whose overage
+        # is oil could never be brought down to the limit.
+        if self.rules['oil_tokens']:
+            hand.extend(['oil'] * player.oil)
 
         required = min(self.players_needing_discard[player_name], len(hand))
         chosen = {}
@@ -336,7 +342,11 @@ class RobberRules:
         base_limit = self.rules['max_hand_before_discard']
         for player in self.players:
             # Commodities count toward the limit; each city wall raises it by 2.
+            # Oil Springs: oil counts as a card on a 7 too ("count each oil as
+            # 1 card", p. 1), so it is added to the hand size the limit measures.
             total_cards = player.total_cards()
+            if self.rules['oil_tokens']:
+                total_cards += player.oil
             limit = base_limit
             if self.rules['city_walls'] and self.ck is not None:
                 limit += self.ck.city_wall_bonus(player.name)
@@ -370,8 +380,12 @@ class RobberRules:
         # but re-check here so the engine is safe to call directly from a test or
         # a future handler: a negative count would pass the `current < count`
         # check below and then *add* cards when subtracted.
+        oil_on = self.rules['oil_tokens']
         for card_type, count in resources.items():
-            if card_type not in CARD_TYPES:
+            if card_type == 'oil':
+                if not oil_on:
+                    return False
+            elif card_type not in CARD_TYPES:
                 return False
             if isinstance(count, bool) or not isinstance(count, int) or count < 0:
                 return False
@@ -383,11 +397,20 @@ class RobberRules:
             return False
 
         for card_type, count in resources.items():
+            if card_type == 'oil':
+                if player.oil < count:
+                    return False
+                continue
             hand = player.commodities if card_type in COMMODITY_TYPES else player.resources
             if hand.get(card_type, 0) < count:
                 return False
 
         for card_type, count in resources.items():
+            if card_type == 'oil':
+                # Oil discarded on a 7 goes back to its own supply (p. 1).
+                player.oil -= count
+                self.oil_supply += count
+                continue
             if card_type in COMMODITY_TYPES:
                 player.commodities[card_type] = player.commodities.get(card_type, 0) - count
                 # The bank tracks the five resources only; C&K's commodity
@@ -446,6 +469,12 @@ class RobberRules:
             return None
 
         available_resources = [r for r, count in victim.resources.items() if count > 0]
+        # Oil Springs: oil sits in front of the victim as a stealable card, and
+        # the thief "can choose to take one oil specifically" (p. 1). It is only
+        # a candidate while the thief is under the 4-oil hold cap, since a steal
+        # may not push them past it.
+        if self.rules['oil_tokens'] and victim.oil > 0 and thief.oil < MAX_OIL_HELD:
+            available_resources = available_resources + ['oil']
         if not available_resources:
             return None
 
@@ -454,6 +483,10 @@ class RobberRules:
         else:
             stolen = self.rng.choice(available_resources)
 
+        if stolen == 'oil':
+            victim.oil -= 1
+            thief.oil += 1
+            return stolen
         victim.resources[stolen] = victim.resources[stolen] - 1
         thief.resources[stolen] = thief.resources.get(stolen, 0) + 1
         return stolen

@@ -170,6 +170,120 @@ class TestDevCardFollowUpsRequireTheCard:
         assert last_error(alice)['code'] == 'INVALID_PAYLOAD'
 
 
+def _install_oil_game():
+    """Replace the session's game with an Oil Springs game, Alice to move."""
+    defn = maps.parse_map(map_store.read_map('oil-springs'))
+    rules = dict(rules_module.preset_rules('oil_springs'))
+    rules['turn_order'] = 'lobby'
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(7), rules=rules,
+                map_definition=defn)
+    game.start()
+    game.game_phase = 'playing'
+    game.game_state = 'started'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+    state.session().game = game
+    return game
+
+
+class TestOilActionsAnnounceAWinImmediately:
+    """An oil action that reaches the target must end the game on that action,
+    not silently wait for the next roll or build to notice."""
+
+    def test_a_sequester_that_reaches_the_target_wins_now(self, clients):
+        alice, bob = clients
+        game = _install_oil_game()
+        alice_player = game.get_player('Alice')
+        alice_player.victory_points = 10   # 10 to the target of 12
+        game.oil_sequestered = {'Alice': 2}
+        alice_player.oil = 1
+        alice.get_received()
+        bob.get_received()
+
+        # The third sequestered oil scores 1 (the triple) + 1 (Champion) = 2,
+        # crossing 12.
+        alice.emit('sequester_oil', {'name': 'Alice'})
+
+        won = events(alice, 'game_won')
+        assert won and won[-1]['player'] == 'Alice', won
+        assert game.game_state == 'finished'
+
+    def test_a_metropolis_that_reaches_the_target_wins_now(self, clients):
+        alice, bob = clients
+        game = _install_oil_game()
+        vertex_key = next(key for key, vertex in sorted(game.vertices.items())
+                          if not vertex.building and vertex.neighbors['hexes'])
+        game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+        alice_player = game.get_player('Alice')
+        alice_player.cities.append(vertex_key)   # a city scores 2
+        alice_player.victory_points = 9          # 9 + 2 = 11, one short
+        alice_player.resources = {'brick': 1, 'wheat': 1, 'ore': 1}
+        alice_player.oil = 2
+        alice.get_received()
+        bob.get_received()
+
+        # The metropolis lifts the city from 2 to 3 points: 11 -> 12.
+        alice.emit('build_oil_metropolis', {'name': 'Alice', 'vertex': vertex_key})
+
+        won = events(alice, 'game_won')
+        assert won and won[-1]['player'] == 'Alice', won
+        assert game.game_state == 'finished'
+
+
+class TestOilInDevCards:
+    """Year of Plenty and Monopoly may name oil on an Oil Springs table."""
+
+    def test_year_of_plenty_can_take_oil_from_the_supply(self, clients):
+        alice, _ = clients
+        game = _install_oil_game()
+        game.pending_invention = 'Alice'
+        game.get_player('Alice').oil = 0
+        supply_before = game.oil_supply
+        alice.get_received()
+
+        alice.emit('use_invention', {'name': 'Alice', 'resources': {'oil': 2}})
+
+        assert last_error(alice) is None
+        assert game.get_player('Alice').oil == 2
+        assert game.oil_supply == supply_before - 2
+
+    def test_monopoly_can_sweep_oil(self, clients):
+        alice, _ = clients
+        game = _install_oil_game()
+        game.pending_monopoly = 'Alice'
+        game.get_player('Alice').oil = 0
+        game.get_player('Bob').oil = 3
+        alice.get_received()
+
+        alice.emit('use_monopoly', {'name': 'Alice', 'resource_type': 'oil'})
+
+        assert last_error(alice) is None
+        assert game.get_player('Alice').oil == 3
+        assert game.get_player('Bob').oil == 0
+
+    def test_monopoly_on_oil_respects_the_four_oil_hold_cap(self, clients):
+        alice, _ = clients
+        game = _install_oil_game()
+        game.pending_monopoly = 'Alice'
+        game.get_player('Alice').oil = 2
+        game.get_player('Bob').oil = 3
+        alice.get_received()
+
+        alice.emit('use_monopoly', {'name': 'Alice', 'resource_type': 'oil'})
+
+        # Alice tops up to the cap of 4; Bob keeps the one that would not fit.
+        assert game.get_player('Alice').oil == 4
+        assert game.get_player('Bob').oil == 1
+
+    def test_oil_is_not_a_monopoly_target_without_the_rule(self, clients):
+        """Off an Oil Springs table oil is not a resource, so the base game is
+        unchanged — naming it is refused, exactly as naming gold is."""
+        alice, _ = clients
+        state.session().game.pending_monopoly = 'Alice'
+        alice.emit('use_monopoly', {'name': 'Alice', 'resource_type': 'oil'})
+        assert last_error(alice)['code'] == 'INVALID_PAYLOAD'
+
+
 class TestDiscardOverTheWire:
     def test_negative_counts_are_refused_at_the_boundary(self, clients):
         alice, _ = clients

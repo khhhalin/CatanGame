@@ -359,6 +359,58 @@ class TestMetropolis:
         assert produced == {'Alice': 3}
 
 
+class TestOilInTheRobberAndDiscard:
+    def test_oil_counts_toward_the_discard_limit_on_a_seven(self):
+        """Oil counts as a card on a 7 (p. 1): 5 cards + 4 oil is 9, over the
+        limit of 7, so half (4) must be discarded. Without oil counting, a
+        5-card hand would owe nothing."""
+        game = oil_game()
+        alice = game.get_player('Alice')
+        alice.resources = {'wood': 5}
+        alice.oil = 4
+        game.check_discard_required()
+        assert game.players_needing_discard.get('Alice') == 4  # 9 // 2
+
+    def test_a_player_may_discard_oil_to_meet_the_seven(self):
+        game = oil_game()
+        alice = game.get_player('Alice')
+        alice.resources = {'wood': 5}
+        alice.oil = 4
+        game.check_discard_required()
+        supply_before = game.oil_supply
+        ok = game.discard_resources('Alice', {'oil': 2, 'wood': 2})
+        assert ok is True
+        assert alice.oil == 2
+        assert alice.resources['wood'] == 3
+        assert game.oil_supply == supply_before + 2  # discarded oil returns
+
+    def test_the_robber_can_steal_an_oil(self):
+        game = oil_game(rng=ScriptedRandom())
+        victim = game.get_player('Bob')
+        victim.resources = {}   # only oil in front of them
+        victim.oil = 2
+        thief = game.get_player('Alice')
+        thief.oil = 0
+        stolen = game.steal_resource('Bob', 'Alice')
+        assert stolen == 'oil'
+        assert victim.oil == 1
+        assert thief.oil == 1
+
+    def test_a_thief_at_the_hold_cap_cannot_steal_oil(self):
+        """A steal may not push the thief past the 4-oil cap, so a full thief
+        takes a resource instead (p. 1)."""
+        game = oil_game(rng=ScriptedRandom())
+        victim = game.get_player('Bob')
+        victim.resources = {'wood': 1}
+        victim.oil = 2
+        thief = game.get_player('Alice')
+        thief.oil = 4
+        stolen = game.steal_resource('Bob', 'Alice')
+        assert stolen == 'wood'
+        assert thief.oil == 4
+        assert victim.oil == 2
+
+
 class TestPersistence:
     def test_oil_and_the_supply_survive_a_save_and_reload(self):
         game = oil_game()

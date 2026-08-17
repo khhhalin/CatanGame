@@ -14,6 +14,7 @@ from extensions import socketio
 from game.validation import InvalidPayload, require_str
 from state import bump_and_broadcast, log_event, reject
 
+from handlers.building import announce_victory
 from handlers.tb import _actor_for
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,10 @@ def handle_sequester_oil(data):
             return
         log_event('build', f"{name} sequestered an oil", player=name)
         bump_and_broadcast()
+        # Sequestering scores victory points, so it can win outright — announced
+        # on this action, not held to the next roll (rules p. 3: the win "which
+        # includes resolving the Disaster Phase").
+        announce_victory(name)
 
 
 @socketio.on('build_oil_metropolis')
@@ -70,3 +75,5 @@ def handle_build_oil_metropolis(data):
             return
         log_event('build', f"{name} built a metropolis", player=name)
         bump_and_broadcast()
+        # A metropolis is worth 3 VP, so it can win outright — announced now.
+        announce_victory(name)

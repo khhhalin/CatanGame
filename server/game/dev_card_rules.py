@@ -9,6 +9,7 @@ import logging
 
 from game import cards
 from game import rules as rules_module
+from game.oil_springs import MAX_OIL_HELD
 from game.results import refused
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,15 @@ class DevCardRules:
         taken = {}
         for resource_type, count in resources.items():
             for _ in range(count):
+                if resource_type == 'oil':
+                    # Oil is drawn from its own supply, never the resource bank,
+                    # and may not push the holder past the 4-oil cap (p. 1).
+                    if self.rules['oil_tokens'] and self.oil_supply > 0 \
+                            and player.oil < MAX_OIL_HELD:
+                        self.oil_supply -= 1
+                        player.oil += 1
+                        taken['oil'] = taken.get('oil', 0) + 1
+                    continue
                 if self.bank.take(resource_type):
                     player.resources[resource_type] = player.resources.get(resource_type, 0) + 1
                     taken[resource_type] = taken.get(resource_type, 0) + 1
@@ -109,6 +119,14 @@ class DevCardRules:
         player = self.get_player(player_name)
         if not player:
             return refused('ACTION_REJECTED', 'Player not found')
+
+        # Oil Springs: oil is a legal monopoly target, swept from every player —
+        # but only up to the 4-oil hold cap, taking one at a time from the next
+        # player clockwise, so the excess stays with the victims (p. 3).
+        if resource_type == 'oil':
+            if not self.rules['oil_tokens']:
+                return refused('ACTION_REJECTED', 'Invalid resource type')
+            return self._monopolize_oil(player)
 
         if resource_type not in self.bank.resources:
             return refused('ACTION_REJECTED', 'Invalid resource type')
@@ -138,6 +156,35 @@ class DevCardRules:
             'error': '',
             'stolen_count': stolen_count,
             'stolen_from': stolen_from,
+        }
+
+    def _monopolize_oil(self, player) -> dict:
+        """Sweep oil with a Monopoly card, capped at the 4-oil hold limit.
+
+        Oil is taken one at a time from the next player clockwise until the
+        monopolizer reaches the cap or nobody has oil left, so a player already
+        holding oil takes only what fits (coilspringsgb_2015_web.pdf p. 3).
+        """
+        index = next(i for i, seat in enumerate(self.players) if seat.name == player.name)
+        others = [self.players[(index + step) % len(self.players)]
+                  for step in range(1, len(self.players))]
+        per_player = {}
+        progress = True
+        while player.oil < MAX_OIL_HELD and progress:
+            progress = False
+            for other in others:
+                if player.oil >= MAX_OIL_HELD:
+                    break
+                if other.oil > 0:
+                    other.oil -= 1
+                    player.oil += 1
+                    per_player[other.name] = per_player.get(other.name, 0) + 1
+                    progress = True
+        return {
+            'success': True,
+            'error': '',
+            'stolen_count': sum(per_player.values()),
+            'stolen_from': [f"{name}({count})" for name, count in per_player.items()],
         }
 
     def can_play_dev_card(self, player_name: str, card_type: str) -> tuple:
