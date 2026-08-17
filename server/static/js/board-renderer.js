@@ -444,7 +444,10 @@ function buildTerrainPatterns(ctx, defs, colors) {
         if (!motif) {
             continue;  // 'solid' or an unknown style: flat fill, no motif.
         }
-        const base = (def && def.color) || colors[hexType];
+        // The themed terrain token wins where the sheet defines one, so the
+        // motif's base fill (and the ink shaded from it) tracks the theme; the
+        // registry colour is the fallback for an imported resource with no token.
+        const base = colors[hexType] || (def && def.color);
         if (!base) {
             continue;
         }
@@ -648,20 +651,25 @@ function drawNumberToken(ctx, centerX, centerY, number, isHighlighted = false) {
 }
 
 /**
- * Get the color for a hex type. The server resource registry is the source of
- * truth; the page's terrain tokens are a fallback for a hex the registry does
- * not define (or before any board has loaded).
+ * Get the color for a hex type. The page's terrain tokens win where the
+ * stylesheet themes the terrain, so a hex repaints on a theme flip (the tokens
+ * differ per theme by design); the server resource registry colour is the
+ * fallback for an imported resource the sheet has no token for (or before any
+ * board has loaded).
  *
  * @param {string} hexType - Type of hex (ore, wheat, sheep, brick, wood, desert, ocean)
  * @returns {string} - Hex color code
  */
 function getHexColor(hexType) {
+    const colors = readPalette();
+    if (colors[hexType]) {
+        return colors[hexType];
+    }
     const def = resourceDefs[hexType];
     if (def && def.color) {
         return def.color;
     }
-    const colors = readPalette();
-    return colors[hexType] || colors.ocean;
+    return colors.ocean;
 }
 
 /**

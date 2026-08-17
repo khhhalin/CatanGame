@@ -188,4 +188,8 @@ window.addEventListener('resize', markDirty);
 if (window.matchMedia) {
     window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
         .addEventListener('change', markDirty);
+    // The terrain fills are themed CSS tokens, so a theme flip must repaint the
+    // board; the renderer re-reads the palette on the next dirty frame.
+    window.matchMedia('(prefers-color-scheme: dark)')
+        .addEventListener('change', markDirty);
 }
