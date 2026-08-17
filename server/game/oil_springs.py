@@ -347,6 +347,126 @@ class OilSpringsRules:
         self.oil_numbers_removed += 1
         return {'hex': target, 'oil_spring': False, 'polluted': True}
 
+    # --- Sequestering oil --------------------------------------------------
+
+    def sequester_oil(self, player_name: str) -> dict:
+        """Flip one oil out of the game for environmental credit (p. 2).
+
+        An alternative to using oil: forgo one, one per turn, and it leaves the
+        game for good (it is not returned to the supply). It does not advance the
+        disaster track, and because it is not "usage" it cannot be mixed with
+        using oil in the same turn. Every three sequestered score a victory
+        point, and reaching three first (or overtaking the holder) takes the
+        Champion of the Environment token.
+        """
+        if not self.rules['oil_sequester_vp']:
+            return refused('RULE_OFF', 'Sequestering oil is not in play')
+
+        block = self._oil_action_block(player_name)
+        if block is not None:
+            return block
+
+        player = self.get_player(player_name)
+        if player.oil < 1:
+            return refused('NO_OIL', 'You have no oil to sequester')
+        if self.oil_sequestered_this_turn:
+            return refused('ALREADY_SEQUESTERED', 'You may sequester only one oil per turn')
+        if self.oil_used_this_turn > 0:
+            return refused('OIL_ALREADY_USED', 'You cannot sequester after using oil this turn')
+
+        player.oil -= 1  # out of the game for good — not back to the supply
+        self.oil_sequestered[player_name] = self.oil_sequestered.get(player_name, 0) + 1
+        self.oil_sequestered_this_turn = True
+        self._update_oil_champion(player_name)
+        return {'success': True, 'error': '', 'oil': player.oil,
+                'sequestered': self.oil_sequestered[player_name],
+                'champion': self.oil_champion}
+
+    def _update_oil_champion(self, player_name: str):
+        """Award or move the Champion of the Environment token (p. 2).
+
+        The first player to reach three sequestered oil gains it; thereafter it
+        moves to anyone who sequesters strictly more than the current holder.
+        """
+        seq = self.oil_sequestered.get(player_name, 0)
+        if seq < 3:
+            return
+        if self.oil_champion is None:
+            self.oil_champion = player_name
+        elif player_name != self.oil_champion \
+                and seq > self.oil_sequestered.get(self.oil_champion, 0):
+            self.oil_champion = player_name
+
+    def oil_sequester_victory_points(self, player_name: str) -> int:
+        """This player's oil victory points: one per three sequestered, plus one
+        for holding the Champion of the Environment token (p. 2)."""
+        if not self.rules['oil_sequester_vp']:
+            return 0
+        points = self.oil_sequestered.get(player_name, 0) // 3
+        if self.oil_champion == player_name:
+            points += 1
+        return points
+
+    # --- Metropolises ------------------------------------------------------
+
+    def build_oil_metropolis(self, player_name: str, vertex_key: str) -> dict:
+        """Upgrade one of your cities into a flood-proof metropolis (p. 2).
+
+        Costs 1 brick, 1 grain, 1 ore and 2 oil, and the oil used advances the
+        disaster track by two like any other use. A metropolis produces three of
+        its resource, is worth 3 victory points, and is immune to coastal
+        flooding.
+        """
+        if not self.rules['oil_metropolis']:
+            return refused('RULE_OFF', 'Metropolises are not in play')
+
+        block = self._oil_action_block(player_name)
+        if block is not None:
+            return block
+
+        player = self.get_player(player_name)
+        vertex = self.vertices.get(vertex_key)
+        if vertex is None or not vertex.building \
+                or vertex.building.get('player') != player_name \
+                or vertex.building.get('type') != 'city':
+            return refused('INVALID_TARGET', 'Choose one of your own cities')
+        if vertex_key in self.oil_metropolises:
+            return refused('ALREADY_METROPOLIS', 'That city is already a metropolis')
+        if player.oil < 2:
+            return refused('NOT_ENOUGH_OIL', 'A metropolis costs 2 oil')
+        if self.rules['disaster_track'] \
+                and self.disaster_track + 2 > DISASTER_THRESHOLD:
+            return refused(
+                'DISASTER_IMMINENT',
+                'Using 2 oil now would push the disaster track past 5',
+            )
+        cost = {'brick': 1, 'wheat': 1, 'ore': 1}
+        for resource, amount in cost.items():
+            if player.resources.get(resource, 0) < amount:
+                return refused('INSUFFICIENT_RESOURCES',
+                               'A metropolis costs 1 brick, 1 grain and 1 ore')
+
+        for resource, amount in cost.items():
+            player.resources[resource] -= amount
+            self.bank.return_resources(resource, amount)
+        player.oil -= 2
+        self.oil_supply += 2  # oil used to build returns to the supply (p. 2)
+        self.oil_metropolises[vertex_key] = player_name
+        self._advance_disaster_track(2)
+        return {'success': True, 'error': '', 'vertex': vertex_key,
+                'oil': player.oil, 'disaster_track': self.disaster_track}
+
+    def oil_metropolis_victory_points(self, player_name: str) -> int:
+        """The extra victory point each of this player's metropolises adds.
+
+        A metropolis is worth 3 and the city under it already scores 2, so each
+        adds one on top of what the city scored (p. 2). A no-op without the rule.
+        """
+        if not self.rules['oil_metropolis']:
+            return 0
+        return sum(1 for owner in self.oil_metropolises.values()
+                   if owner == player_name)
+
     # --- Client state ------------------------------------------------------
 
     def oil_client_state(self) -> dict | None:
@@ -367,4 +487,14 @@ class OilSpringsRules:
             'disaster_track': self.disaster_track,
             'numbers_removed': self.oil_numbers_removed,
             'board_death_at': BOARD_DEATH_REMOVED,
+            # Sequestering: each player's total and who holds the Champion token.
+            'sequestered': dict(self.oil_sequestered),
+            'champion': self.oil_champion,
+            # The upgraded cities (vertex -> owner), so the client can badge a
+            # metropolis and know it is flood-proof.
+            'metropolises': dict(self.oil_metropolises),
+            # Whether this turn's player still has an oil action open — used oil
+            # and sequestering are mutually exclusive within a turn.
+            'used_oil_this_turn': self.oil_used_this_turn,
+            'sequestered_this_turn': self.oil_sequestered_this_turn,
         }

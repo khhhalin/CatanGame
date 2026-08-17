@@ -206,9 +206,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.oil_sequestered = {}
         self.oil_champion = None
         self.oil_metropolises = {}
-        # Per-turn: how much oil this turn's player has used, reset each turn.
-        # Read by the disaster cap and (chunk 3) the sequester mutual-exclusion.
+        # Per-turn: how much oil this turn's player has used, and whether they
+        # have sequestered, reset each turn. Using oil and sequestering are
+        # mutually exclusive within a turn (p. 2).
         self.oil_used_this_turn = 0
+        self.oil_sequestered_this_turn = False
         # The Wonders of Catan: which Wonder each player has started (player ->
         # wonder id) and how many of its four levels they have finished (player ->
         # level), and the marked intersections read off the map — the strait
@@ -1290,6 +1292,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # the rule.
         if self.rules['trade_caravans']:
             points += self.trade_victory_points(player_name)
+
+        # Catan: Oil Springs. Sequestered oil scores 1 VP per 3 plus the 1-VP
+        # Champion of the Environment token, and each metropolis adds 1 on top of
+        # the 2 its city already scored. Read live off the oil state, so a point
+        # lands the moment a third oil is sequestered or a city is upgraded. Each
+        # gated on its own rule, so a table without it is unaffected.
+        if self.rules['oil_sequester_vp']:
+            points += self.oil_sequester_victory_points(player_name)
+        if self.rules['oil_metropolis']:
+            points += self.oil_metropolis_victory_points(player_name)
 
         return points
 

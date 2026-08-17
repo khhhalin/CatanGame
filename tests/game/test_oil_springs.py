@@ -244,14 +244,142 @@ class TestDisaster:
         assert disaster['game_over']['reason'] == 'board_dead'
 
 
+class TestSequester:
+    def test_sequestering_three_oil_scores_two_points_and_the_champion(self):
+        """1 VP per 3 sequestered, plus the 1-VP Champion of the Environment
+        token for reaching three first (p. 2)."""
+        game = oil_game()
+        alice = game.get_player('Alice')
+        alice.oil = 3
+        for _ in range(3):
+            result = game.sequester_oil('Alice')
+            assert result['success'] is True
+            game.start_turn()  # a fresh turn re-opens the one-per-turn allowance
+        assert game.oil_sequestered['Alice'] == 3
+        assert alice.oil == 0
+        assert game.oil_champion == 'Alice'
+        # 3 // 3 == 1 point, plus 1 for the Champion token.
+        assert game.oil_sequester_victory_points('Alice') == 2
+        assert game.victory_points_for('Alice') == 2
+
+    def test_the_sequestered_oil_leaves_the_game_not_the_supply(self):
+        game = oil_game()
+        game.get_player('Alice').oil = 1
+        supply_before = game.oil_supply
+        game.sequester_oil('Alice')
+        assert game.oil_supply == supply_before  # gone for good, not returned
+
+    def test_only_one_oil_may_be_sequestered_per_turn(self):
+        game = oil_game()
+        game.get_player('Alice').oil = 2
+        assert game.sequester_oil('Alice')['success'] is True
+        second = game.sequester_oil('Alice')
+        assert second['code'] == 'ALREADY_SEQUESTERED'
+
+    def test_you_cannot_sequester_after_using_oil_this_turn(self):
+        game = oil_game()
+        alice = game.get_player('Alice')
+        alice.oil = 2
+        game.convert_oil_to_resource('Alice', 'wheat')  # a use
+        blocked = game.sequester_oil('Alice')
+        assert blocked['code'] == 'OIL_ALREADY_USED'
+
+    def test_the_champion_passes_to_whoever_sequesters_more(self):
+        game = oil_game()
+        game.get_player('Alice').oil = 3
+        game.get_player('Bob').oil = 4
+        for _ in range(3):
+            game.sequester_oil('Alice')
+            game.start_turn()
+        assert game.oil_champion == 'Alice'
+        game.current_player_index = 1  # Bob's turn
+        game.start_turn()
+        for _ in range(4):
+            game.sequester_oil('Bob')
+            game.start_turn()
+        assert game.oil_champion == 'Bob'
+
+
+class TestMetropolis:
+    def _city(self, game, vertex_key, player_name):
+        game.vertices[vertex_key].building = {'type': 'city', 'player': player_name}
+        game.get_player(player_name).cities.append(vertex_key)
+
+    def test_a_metropolis_costs_resources_and_two_oil_and_advances_the_track(self):
+        game = oil_game()
+        alice = game.get_player('Alice')
+        city_v = _a_coastal_vertex(game)
+        self._city(game, city_v, 'Alice')
+        alice.resources = {'brick': 1, 'wheat': 1, 'ore': 1}
+        alice.oil = 2
+        result = game.build_oil_metropolis('Alice', city_v)
+        assert result['success'] is True
+        assert game.oil_metropolises[city_v] == 'Alice'
+        assert alice.oil == 0
+        assert alice.resources == {'brick': 0, 'wheat': 0, 'ore': 0}
+        assert game.disaster_track == 2
+
+    def test_a_metropolis_is_worth_three_points(self):
+        game = oil_game()
+        alice = game.get_player('Alice')
+        city_v = _a_coastal_vertex(game)
+        self._city(game, city_v, 'Alice')
+        base = game.victory_points_for('Alice')  # the city scores 2
+        alice.resources = {'brick': 1, 'wheat': 1, 'ore': 1}
+        alice.oil = 2
+        game.build_oil_metropolis('Alice', city_v)
+        assert game.victory_points_for('Alice') == base + 1  # 2 -> 3
+
+    def test_a_metropolis_is_immune_to_coastal_flooding(self):
+        game = oil_game(rng=ScriptedRandom(rolls=[3, 4]))  # a 7
+        alice = game.get_player('Alice')
+        city_v = _a_coastal_vertex(game)
+        plain_v = _a_coastal_vertex(game, exclude={city_v})
+        self._city(game, city_v, 'Alice')
+        game.vertices[plain_v].building = {'type': 'settlement', 'player': 'Alice'}
+        alice.settlements.append(plain_v)
+        alice.resources = {'brick': 1, 'wheat': 1, 'ore': 1}
+        alice.oil = 2
+        game.build_oil_metropolis('Alice', city_v)
+
+        game.disaster_track = 5
+        game.advance_turn('Alice')
+        # The flood removed the plain coastal settlement but spared the metropolis.
+        assert game.vertices[plain_v].building is None
+        assert game.vertices[city_v].building == {'type': 'city', 'player': 'Alice'}
+        assert city_v in game.oil_metropolises
+
+    def test_a_metropolis_on_a_spring_produces_three_oil(self):
+        game = oil_game()
+        spring = next(k for k in game.oil_spring_hexes if game.hexes[k].type == 'wood')
+        vertex_key = game._oil_spring_vertices(spring)[0]
+        game.vertices[vertex_key].building = {'type': 'city', 'player': 'Alice'}
+        game.oil_metropolises[vertex_key] = 'Alice'
+        produced = game.distribute_oil(9, 'Alice')
+        assert produced == {'Alice': 3}
+
+
 class TestPersistence:
     def test_oil_and_the_supply_survive_a_save_and_reload(self):
         game = oil_game()
         game.get_player('Alice').oil = 3
         game.oil_supply = 9
+        game.disaster_track = 3
+        game.oil_numbers_removed = 2
+        game.oil_sequestered = {'Alice': 4}
+        game.oil_champion = 'Alice'
+        city_v = _a_coastal_vertex(game)
+        game.vertices[city_v].building = {'type': 'city', 'player': 'Alice'}
+        game.get_player('Alice').cities.append(city_v)
+        game.oil_metropolises = {city_v: 'Alice'}
         blob = persistence.serialize(game)
         restored = persistence.deserialize(blob)
         assert restored.get_player('Alice').oil == 3
         assert restored.oil_supply == 9
+        assert restored.disaster_track == 3
+        assert restored.oil_numbers_removed == 2
+        assert restored.oil_sequestered == {'Alice': 4}
+        assert restored.oil_champion == 'Alice'
+        assert restored.oil_metropolises == {city_v: 'Alice'}
         # The springs are re-derived from the map, not the save.
         assert len(restored.oil_spring_hexes) == 3

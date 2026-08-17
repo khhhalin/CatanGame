@@ -714,6 +714,25 @@ RULES += [
           "number tokens have been destroyed the board dies and the game ends "
           "with no true winner.",
           group=EXPANSION),
+    _bool("oil_sequester_vp", "Oil Springs: sequester oil for VP", False,
+          "Catan: Oil Springs, coilspringsgb_2015_web.pdf p. 2 (\"For every 3 "
+          "oil you sequester, you gain 1 Victory Point\")",
+          "Instead of using oil you may sequester one per turn — flipping it out "
+          "of the game for good rather than advancing the disaster track. Every "
+          "three oil sequestered scores a victory point, and the first player to "
+          "sequester three takes the 1-VP Champion of the Environment token, "
+          "which passes to anyone who later sequesters more.",
+          group=EXPANSION),
+    _bool("oil_metropolis", "Oil Springs: oil metropolis", False,
+          "Catan: Oil Springs, coilspringsgb_2015_web.pdf p. 2 (\"use 1 brick, 1 "
+          "grain, 1 ore and 2 oil to upgrade one of your cities to a "
+          "metropolis\")",
+          "Spend 1 brick, 1 grain, 1 ore and 2 oil to upgrade one of your cities "
+          "into a metropolis. A metropolis produces three of its resource instead "
+          "of two, is worth 3 victory points, and — thanks to its sea walls — is "
+          "immune to coastal flooding. Using the oil advances the disaster track "
+          "like any other oil use.",
+          group=EXPANSION),
     _bool("setup_third_settlement", "Start with a third settlement", False,
           "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22 "
           "(\"everyone can build a third settlement ... you receive your "
@@ -1433,6 +1452,12 @@ DEPENDENCIES = {
     "helper_chase_robber": ("helper_tiles",),
     "helper_take_robber_resource": ("helper_tiles",),
     "helper_dev_card_swap": ("helper_tiles",),
+    # Catan: Oil Springs. Everything that uses, sequesters or spends oil is
+    # meaningless without oil to hold, so each needs the production rule that
+    # brings oil into the game.
+    "disaster_track": ("oil_tokens",),
+    "oil_sequester_vp": ("oil_tokens",),
+    "oil_metropolis": ("oil_tokens",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2075,6 +2100,8 @@ PRESETS = [
             "board_map": "oil-springs",
             "oil_tokens": True,
             "disaster_track": True,
+            "oil_sequester_vp": True,
+            "oil_metropolis": True,
             "victory_target": 12,
         },
     },

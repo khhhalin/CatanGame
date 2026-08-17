@@ -73,9 +73,11 @@ class TurnClock:
         self.helper_used_this_turn = set()
         self.last_roll_total = None
         self.last_roll_gains = {}
-        # Oil Springs: a fresh turn has used no oil yet. The shared disaster
-        # track persists across turns; only this per-turn count resets.
+        # Oil Springs: a fresh turn has used no oil yet and has not sequestered.
+        # The shared disaster track persists across turns; only these per-turn
+        # records reset.
         self.oil_used_this_turn = 0
+        self.oil_sequestered_this_turn = False
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.

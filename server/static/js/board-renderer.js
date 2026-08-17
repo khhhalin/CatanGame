@@ -1533,6 +1533,25 @@ function drawFishermenState(ctx, tb, hexPositions, hexRadius) {
 }
 
 /**
+ * Draw the Catan: Oil Springs markers on `board.oil`: an oil-drop badge on each
+ * Oil Spring tile, so a player can see which hexes produce oil. A hex polluted
+ * of its number renders tokenless already (drawHex omits a null number), so no
+ * extra overdraw is needed. A no-op on a table without the scenario.
+ */
+function drawOilState(ctx, oil, hexPositions, hexRadius) {
+    if (!oil) {
+        return;
+    }
+    const badge = hexRadius * 0.3;
+    for (const hexKey of oil.springs || []) {
+        const pos = hexPositions[hexKey];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y, badge, '#1b1b2a', '⬤', '#3fb56b');
+        }
+    }
+}
+
+/**
  * Draw the Barbarian Attack state on `board.tb`: the barbarian figures on each
  * coastal hex (a dark-red badge with the count), the conquered hexes (a dim
  * cross over the tile), and each player's knight pieces on their paths (a small
@@ -2523,6 +2542,9 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     // roaming enemy fleet on its track.
     drawPirateIslandsState(ctx, boardData.pirate_islands, hexPositions,
                            vertexPositions, playerColors);
+
+    // Catan: Oil Springs: an oil-drop badge on each Oil Spring tile.
+    drawOilState(ctx, boardData.oil, hexPositions, hexRadius);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.
