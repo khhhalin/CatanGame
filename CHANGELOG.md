@@ -26,6 +26,28 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.7.0 — 2026-08-17 08:13
+
+- **New** Seafarers now has all seven named scenarios, each with its own board and twist: The Four Islands, The Fog Islands, Through the Desert, The Forgotten Tribe, Cloth for Catan, The Pirate Islands and The Wonders of Catan.
+- **New** The Four Islands: no home continent — start split across the sea and race to be first onto each foreign island for points. Now with its own four-player board too.
+- **New** The Fog Islands: most of the map starts face-down, and a ship that reaches a fog hex flips it over and takes whatever it finds.
+- **New** Through the Desert: a belt of desert splits the island; cross it and reach the far regions to score for each new area you settle first.
+- **New** The Forgotten Tribe: sail a ship to a marked coast to claim a gift — a victory point, a development card, or a harbour you place yourself.
+- **New** Cloth for Catan: connect your ships to the coastal villages; each pays cloth on its number and two cloth make a point. The game can also end when the villages run dry.
+- **New** The Pirate Islands: a roaming pirate fleet raids the coast every roll; build warships from your knights, storm the fortress of your colour and take it back to win.
+- **New** The Wonders of Catan: race to raise one of five Wonders — Cathedral, Great Bridge, Great Wall, Monument or Theatre — four levels each, and be the first to finish one.
+- **New** Gold fields, the Seafarers way: when the number on a gold field is rolled, each town beside it takes resources of your own choosing.
+- **New** Helpers of Catan: twelve character tiles, each a one-shot favour — a forced trade, a cheaper road, a card from the leader, safety from the seven and more; use one, then swap it or flip it to use once more.
+- **New** Oil Springs: pump oil from the springs and burn it for a rush of resources — but every five oil used brings a disaster, and enough disasters kill the board. Sequester oil instead to score.
+- **New** Frenemies of Catan: earn favour tokens by playing nice — a harmless robber, a gift to a trailing rival, the first road to a neighbour — and spend them at the Guild Hall.
+- **New** Rise of the Inkas: your tribe rises then declines — roads vanish and towns become ruins that still produce but never grow, and rivals can build over them. The third tribe ends the game.
+- **New** Gold and coins can now be put on either side of a trade offer between players.
+- **Fixed** Every scenario deals its own board now, instead of sometimes handing one table a random map.
+- **Fixed** The board no longer collapses to a strip in a narrow or tiled window, and the crowded Cities & Knights table fits on screen at 1920×1080.
+- **Fixed** Barbarian Attack: you now choose where Treason and Intrigue strike, and a building the barbarians conquer loses the use of its harbour.
+- **Fixed** Scenario side panels no longer leak into the wrong Traders & Barbarians scenario.
+- **Known issue** The Traders & Barbarians central trade hex still uses a simplified plaza — one land corner rather than the printed central square and spokes.
+
 ## v3.6.0 — 2026-08-12 20:34
 
 - **New** Caravans of Catan, a new scenario: each turn you build, a camel joins a caravan out of the oasis (the table bids wool and grain for who places it); roads along a caravan count double for the Longest Road, and a settlement between two caravans is worth a point.
