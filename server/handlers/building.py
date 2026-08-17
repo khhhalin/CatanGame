@@ -131,6 +131,74 @@ def handle_build_wonder_level(data):
     bump_and_broadcast()
     announce_victory(name)
 
+@socketio.on('build_warship')
+def handle_build_warship(data):
+    session = state.session()
+    if rate_limited():
+        return
+    if session.game is None or session.game.game_state != "started":
+        return
+
+    name = require_actor(data)
+    if name is None:
+        return
+
+    if blocked_by_phase(name):
+        return
+
+    result = session.game.build_warship(name)
+    if not result['success']:
+        reject(result['code'], result['error'])
+        return
+
+    logger.info("warship player=%s warships=%s", name, result['warships'])
+    log_event('build', f"{name} turned a ship into a warship "
+                        f"({result['warships']} now)", player=name)
+
+    bump_and_broadcast()
+
+@socketio.on('attack_pirate_fortress')
+def handle_attack_pirate_fortress(data):
+    session = state.session()
+    if rate_limited():
+        return
+    if session.game is None or session.game.game_state != "started":
+        return
+
+    name = require_actor(data)
+    if name is None:
+        return
+
+    if blocked_by_phase(name):
+        return
+
+    result = session.game.attack_pirate_fortress(name)
+    if not result['success']:
+        reject(result['code'], result['error'])
+        return
+
+    if result['captured']:
+        message = (f"{name} recaptured their pirate fortress "
+                   f"(rolled {result['strength']}, {result['warships']} warships)")
+    elif result['outcome'] == 'won':
+        message = (f"{name} attacked their pirate fortress and took a chit "
+                   f"(rolled {result['strength']}, {result['warships']} warships; "
+                   f"{result['chits']} left)")
+    elif result['outcome'] == 'lost':
+        message = (f"{name} lost the fight for their pirate fortress "
+                   f"(rolled {result['strength']}, lost {result['lost_warships']} warships)")
+    else:
+        message = (f"{name} tied the fight for their pirate fortress "
+                   f"(rolled {result['strength']}, lost {result['lost_warships']} warship)")
+    logger.info("fortress player=%s outcome=%s roll=%s captured=%s",
+                name, result['outcome'], result['strength'], result['captured'])
+    log_event('build', message, player=name)
+
+    bump_and_broadcast()
+    if result['won']:
+        socketio.emit('game_won',
+                      {'player': name, 'victory_points': result['victory_points']})
+
 @socketio.on('upgrade_city')
 def handle_upgrade_city(data):
     session = state.session()

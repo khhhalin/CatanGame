@@ -20,6 +20,7 @@ import { renderRivers } from './rivers.js';
 import { renderCaravans } from './caravans.js';
 import { renderWonders } from './wonders.js';
 import { renderBarbarianAttack } from './barbarian_attack.js';
+import { renderPirateIslands } from './pirate_islands.js';
 import { renderTbMain } from './tb_main.js';
 import { renderSeafarers } from './seafarers.js';
 import { forgetPlacements, notePlacements, playTurnSound } from './sound.js';
@@ -138,6 +139,7 @@ socket.on('game_started', (data) => {
     renderCaravans();
     renderWonders();
     renderBarbarianAttack();
+    renderPirateIslands();
     renderTbMain();
     renderPendingChoices();
 
@@ -198,6 +200,7 @@ socket.on('game_state', (data) => {
     renderCaravans();
     renderWonders();
     renderBarbarianAttack();
+    renderPirateIslands();
     renderTbMain();
         // A reload or a reconnect in the middle of a question: the snapshot
         // carries the open choice, so the player is asked again rather than
@@ -242,6 +245,7 @@ socket.on('turn_changed', (data) => {
     renderCaravans();
     renderWonders();
     renderBarbarianAttack();
+    renderPirateIslands();
     renderTbMain();
     console.log('Turn changed. Current player:', data.current_player);
 
@@ -372,6 +376,7 @@ socket.on('board_updated', (data) => {
     renderCaravans();
     renderWonders();
     renderBarbarianAttack();
+    renderPirateIslands();
     renderTbMain();
     renderPendingChoices();
     checkLogGap(data);
@@ -408,6 +413,7 @@ socket.on('event_die', (data) => {
     renderCaravans();
     renderWonders();
     renderBarbarianAttack();
+    renderPirateIslands();
     renderTbMain();
 });
 

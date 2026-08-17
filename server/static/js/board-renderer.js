@@ -1415,6 +1415,52 @@ function drawPirate(ctx, centerX, centerY) {
     drawBoat(ctx, centerX, centerY + 6, PIRATE_HULL, PIRATE_HULL, 1.45);
 }
 
+/**
+ * The Pirate Islands fortresses and roaming fleet (board.pirate_islands).
+ *
+ * An uncaptured fortress is a dark keep ringed in its owner's colour with the
+ * count of Catan chits still stacked under it; a recaptured one is already a
+ * settlement drawn with the other buildings, so it is skipped here. The fleet is
+ * the single black Seafarers pirate ship, on its current track hex. A no-op off
+ * the scenario.
+ */
+function drawPirateIslandsState(ctx, pirate, hexPositions, vertexPositions, playerColors) {
+    if (!pirate) {
+        return;
+    }
+    for (const fort of pirate.fortresses || []) {
+        if (fort.captured) {
+            continue;
+        }
+        const pos = vertexPositions[fort.vertex];
+        if (pos) {
+            drawFortress(ctx, pos.x, pos.y, playerColors[fort.owner] || '#888888',
+                         fort.chits);
+        }
+    }
+    if (pirate.fleet_hex && hexPositions[pirate.fleet_hex]) {
+        const pos = hexPositions[pirate.fleet_hex];
+        drawPirate(ctx, pos.x, pos.y);
+    }
+}
+
+/** A pirate fortress: a dark keep ringed in the owner's colour, chits inside. */
+function drawFortress(ctx, x, y, color, chits) {
+    ctx.save();
+    const size = 14;
+    ctx.fillStyle = '#2b2b2b';
+    ctx.fillRect(x - size / 2, y - size / 2, size, size);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - size / 2, y - size / 2, size, size);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(chits), x, y + 0.5);
+    ctx.restore();
+}
+
 /* -------------------------------------------------------------------------
  * Explorers & Pirates markers
  *
@@ -2472,6 +2518,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     // intersection and the three barbarians roaming the paths.
     drawWagonState(ctx, boardData.tb, vertexPositions, edgePositions,
                    playerColors);
+
+    // The Pirate Islands: the four fortresses on the western islands and the
+    // roaming enemy fleet on its track.
+    drawPirateIslandsState(ctx, boardData.pirate_islands, hexPositions,
+                           vertexPositions, playerColors);
 
     // The intersections a pending choice is asking about. Over the pieces,
     // because the thing being chosen is usually one of them.
