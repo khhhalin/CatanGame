@@ -73,6 +73,10 @@ class RobberRules:
             self.must_choose_victim = True
             self.robber_victims = victims
 
+        # Catan: Frenemies: a move to a hex with no building on any corner robs
+        # nobody and earns a favour token (p. 1). A no-op off the rule.
+        self.award_harmless_robber_favour(player_name, hex_key, victims)
+
         return {'success': True, 'error': '', 'victims': victims}
 
     def steal_from_victim(self, player_name: str, victim_name: str) -> dict:

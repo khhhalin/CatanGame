@@ -78,6 +78,9 @@ class TurnClock:
         # records reset.
         self.oil_used_this_turn = 0
         self.oil_sequestered_this_turn = False
+        # Catan: Frenemies: the tokens this player drew last turn have now waited
+        # a turn and become usable, and a fresh turn may gift a resource again.
+        self.start_favour_turn()
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.

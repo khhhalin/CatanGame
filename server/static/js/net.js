@@ -22,6 +22,7 @@ import { renderWonders } from './wonders.js';
 import { renderBarbarianAttack } from './barbarian_attack.js';
 import { renderPirateIslands } from './pirate_islands.js';
 import { renderOil } from './oil.js';
+import { renderFrenemies } from './frenemies.js';
 import { renderHelperTiles } from './helper_tiles.js';
 import { renderTbMain } from './tb_main.js';
 import { renderSeafarers } from './seafarers.js';
@@ -143,6 +144,7 @@ socket.on('game_started', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderFrenemies();
     renderHelperTiles();
     renderTbMain();
     renderPendingChoices();
@@ -206,6 +208,7 @@ socket.on('game_state', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderFrenemies();
     renderHelperTiles();
     renderTbMain();
         // A reload or a reconnect in the middle of a question: the snapshot
@@ -253,6 +256,7 @@ socket.on('turn_changed', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderFrenemies();
     renderHelperTiles();
     renderTbMain();
     console.log('Turn changed. Current player:', data.current_player);
@@ -386,6 +390,7 @@ socket.on('board_updated', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderFrenemies();
     renderHelperTiles();
     renderTbMain();
     renderPendingChoices();
@@ -425,6 +430,7 @@ socket.on('event_die', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderFrenemies();
     renderHelperTiles();
     renderTbMain();
 });

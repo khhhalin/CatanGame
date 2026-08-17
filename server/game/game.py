@@ -18,6 +18,7 @@ from game.coast_gifts import CoastGiftRules
 from game.dev_card_rules import DevCardRules
 from game.ep_pirate import EpPirateRules
 from game.exploration import ExplorationRules
+from game.favours import FavourRules
 from game.fishing import FishingRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
@@ -53,7 +54,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
            PirateIslandsRules, HelpersRules, OilSpringsRules,
-           PendingChoiceRules, TurnClock):
+           FavourRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -211,6 +212,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # mutually exclusive within a turn (p. 2).
         self.oil_used_this_turn = 0
         self.oil_sequestered_this_turn = False
+        # Catan: Frenemies. The face-down favour-token bag (dealt once the RNG
+        # exists, below), each player's usable and locked holdings (a token drawn
+        # on your own turn is locked until your next one), the Victory-Point
+        # markers taken from the guild and the 8-marker supply, the network
+        # connections already rewarded (a set of {builder, opponent} pairs, so a
+        # first-time join pays once), and the per-turn flag that a resource has
+        # been gifted. All empty or full off the scenario.
+        self.favour_bag = []
+        self.favour_usable = {}
+        self.favour_locked = {}
+        self.favour_vp_markers = {}
+        self.favour_vp_supply = 0
+        self.favour_connections = set()
+        self.favour_gift_made_this_turn = False
         # The Wonders of Catan: which Wonder each player has started (player ->
         # wonder id) and how many of its four levels they have finished (player ->
         # level), and the marked intersections read off the map — the strait
@@ -513,6 +528,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # A no-op unless the helper subsystem is on.
         if self.helpers_in_play():
             self.setup_helper_pile()
+
+        # Catan: Frenemies: shuffle the 58-token favour bag. Needs no board of
+        # its own, only the RNG and the chosen rules. A no-op off the scenario.
+        self.setup_favours()
 
         # Traders & Barbarians (Barbarian Attack): read the castle, the coast and
         # the un-conquerable hexes off the dealt board, seed the opening two
@@ -1078,6 +1097,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             self._advance_setup_turn()
         else:
             self.update_longest_road()
+            # Catan: Frenemies: a road that joins your network to an opponent's
+            # for the first time earns three favours for you and one for them
+            # (p. 1). A no-op off the rule and during setup (no favours then).
+            self.award_connection_favours(player_name, edge_key)
 
         # The Rivers of Catan: a road on a path adjacent to a river hex pays 1
         # gold coin — set-up and later both. A no-op without `river_gold`.
@@ -1526,6 +1549,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Catan: Oil Springs — the oil springs to badge, the general supply,
             # and each player's oil. None off the scenario.
             'oil': self.oil_client_state(),
+            # Catan: Frenemies — the favour-token bag count, each player's token
+            # count, and the viewer's own tokens by guild. None off the scenario.
+            'frenemies': self.frenemies_client_state(viewer),
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),

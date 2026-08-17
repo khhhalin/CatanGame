@@ -213,6 +213,18 @@ def serialize(game: Game) -> dict:
         'oil_sequestered': game.oil_sequestered,
         'oil_champion': game.oil_champion,
         'oil_metropolises': game.oil_metropolises,
+        # Catan: Frenemies. The favour-token bag is dealt from the RNG and then
+        # mutated by play (draws and, later, exchanges), so like the Helpers pile
+        # it must be saved outright rather than re-derived. Usable and locked
+        # holdings, the VP markers taken and their supply, and the network
+        # connections already rewarded are all play state. The per-turn gift flag
+        # is rebuilt by start_turn, so it is not saved.
+        'favour_bag': game.favour_bag,
+        'favour_usable': game.favour_usable,
+        'favour_locked': game.favour_locked,
+        'favour_vp_markers': game.favour_vp_markers,
+        'favour_vp_supply': game.favour_vp_supply,
+        'favour_connections': [sorted(pair) for pair in game.favour_connections],
         # The Wonders of Catan: which Wonder each player started and how many of
         # its levels they finished. The marked intersections are re-derived from
         # the map when the board regenerates, so only the players' progress is
@@ -458,6 +470,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'cloth_tokens', 'village_cloth', 'cloth_general_supply',
                   'oil_supply', 'disaster_track', 'oil_numbers_removed',
                   'oil_sequestered', 'oil_champion', 'oil_metropolises',
+                  'favour_bag', 'favour_usable', 'favour_locked',
+                  'favour_vp_markers', 'favour_vp_supply',
                   'wonder_choice', 'wonder_level',
                   'pirate_fleet_index', 'pirate_fortresses', 'player_warships',
                   'helper_pile', 'helper_held'):
@@ -468,6 +482,11 @@ def deserialize(data: dict, config=None) -> Game:
     # reclaimable after a reload.
     if 'claimed_gift_edges' in data:
         game.claimed_gift_edges = set(data['claimed_gift_edges'])
+
+    # A set of {builder, opponent} pairs on the game, a list of lists in the
+    # save: a network connection already rewarded must not pay again on reload.
+    if 'favour_connections' in data:
+        game.favour_connections = {frozenset(pair) for pair in data['favour_connections']}
 
     # Sets on the game, lists in the save: an established trade relation must
     # not pay its opening bolt again after a reload.

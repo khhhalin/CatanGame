@@ -1337,6 +1337,30 @@ RULES += [
 ]
 
 
+# --- Catan: Frenemies ---------------------------------------------------
+# The scenario by Benjamin Teuber: pro-social acts earn blind-drawn favour
+# tokens you spend at a guild hall. Decomposed the way every other expansion is
+# — the earn framework (`favour_tokens`) is one container rule and the guild-hall
+# redemption (`guild_hall`) is a second, each individually switchable and each
+# read by engine code. Both default off, so a base game is unchanged. The guild
+# rule needs the bag to spend from, so it declares `favour_tokens` in
+# DEPENDENCIES below.
+RULES += [
+    _bool("favour_tokens", "Favour tokens", False,
+          "Catan: Frenemies (Benjamin Teuber), catan_frenemies_rules_093012s.pdf "
+          "p. 1, 'Earning Favor Tokens'",
+          "Catan: Frenemies. A face-down bag of 58 favour tokens you draw blind "
+          "for pro-social acts: 1 for moving the robber harmlessly (to a hex "
+          "with no building, or the desert without stealing), 1 for gifting a "
+          "resource to an opponent on as many visible points as you or fewer, "
+          "and — the first time a road joins your network to an opponent's — 3 "
+          "to you and 1 to them. A token drawn on your turn is locked until your "
+          "next turn, and favours are never traded or stolen. The bag is spent "
+          "at the guild hall below.",
+          group=EXPANSION, suggests_victory_target=11),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -2275,6 +2299,27 @@ PRESETS = [
             "helper_chase_robber": True,
             "helper_take_robber_resource": True,
             "helper_dev_card_swap": True,
+        },
+    },
+    {
+        "id": "frenemies",
+        "name": "Catan: Frenemies",
+        "source": (
+            "Catan: Frenemies (Benjamin Teuber), "
+            "catan_frenemies_rules_093012s.pdf, the 3-4 player rules"
+        ),
+        "summary": (
+            "Altruism has gripped Catan. You earn blind-drawn favour tokens for "
+            "pro-social acts — moving the robber harmlessly, gifting a resource "
+            "to a player who is not ahead of you, and connecting your road "
+            "network to an opponent's for the first time — and spend them at the "
+            "guild hall for trades, resources, free roads, development cards or "
+            "victory-point markers. Played on the base board to 11 points. Every "
+            "switch it ticks stays one you can untick."
+        ),
+        "rules": {
+            "favour_tokens": True,
+            "victory_target": 11,
         },
     },
 ]
