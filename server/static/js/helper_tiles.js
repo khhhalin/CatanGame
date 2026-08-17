@@ -87,14 +87,20 @@ function renderActions(state, held, tile) {
         return;
     }
     const used = (state.used_this_turn || []).includes(viewState.identity.name);
-    const pickers = [];
+    const resourcePickers = [];
+    const playerPickers = [];
     (tile.needs || []).forEach((need, index) => {
-        if (need !== 'resource') {
-            return;
+        if (need === 'resource') {
+            const picker = resourcePicker(`${held.tile}-res-${index}`);
+            resourcePickers.push(picker);
+            actions.appendChild(picker);
+        } else if (need === 'player') {
+            const picker = playerPicker(`${held.tile}-plr-${index}`);
+            if (picker) {
+                playerPickers.push(picker);
+                actions.appendChild(picker);
+            }
         }
-        const picker = resourcePicker(`${held.tile}-res-${index}`);
-        pickers.push(picker);
-        actions.appendChild(picker);
     });
 
     const activate = document.createElement('button');
@@ -104,10 +110,15 @@ function renderActions(state, held, tile) {
     activate.disabled = used || !canActOffTurn(tile);
     activate.addEventListener('click', () => {
         const params = {};
-        if (pickers.length === 1) {
-            params.resource = pickers[0].value;
-        } else if (pickers.length > 1) {
-            params.resources = pickers.map(picker => picker.value);
+        if (resourcePickers.length === 1) {
+            params.resource = resourcePickers[0].value;
+        } else if (resourcePickers.length > 1) {
+            params.resources = resourcePickers.map(picker => picker.value);
+        }
+        if (playerPickers.length === 1) {
+            params.target = playerPickers[0].value;
+        } else if (playerPickers.length > 1) {
+            params.targets = playerPickers.map(picker => picker.value);
         }
         emitGame('activate_helper', { tile: held.tile, params });
     });
@@ -133,6 +144,25 @@ function resourcePicker(id) {
         const option = document.createElement('option');
         option.value = resource;
         option.textContent = resource;
+        select.appendChild(option);
+    });
+    return select;
+}
+
+/** A dropdown of the other seats, or null when there are none. */
+function playerPicker(id) {
+    const me = viewState.identity.name;
+    const others = ((getBoard().players || []).map(p => p.name)).filter(name => name !== me);
+    if (!others.length) {
+        return null;
+    }
+    const select = document.createElement('select');
+    select.className = 'helper-player';
+    select.id = id;
+    others.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
         select.appendChild(option);
     });
     return select;

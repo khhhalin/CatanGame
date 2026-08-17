@@ -214,6 +214,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.helper_pile = []
         self.helper_held = {}
         self.helper_used_this_turn = set()
+        # What the last production roll paid and what it totalled, so the helper
+        # tiles that react to a roll (resource compensation, protection from the
+        # 7, take from leader) can tell an empty roll from a 7. Reset to None at
+        # the top of every turn; `last_roll_gains` is {player: {card: count}}.
+        self.last_roll_total = None
+        self.last_roll_gains = {}
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -1889,6 +1895,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         # A 7 produces nothing; distribute_resources knows that itself.
         gained = self.distribute_resources(total)
+
+        # Remembered for the helper tiles that react to a roll: what it totalled
+        # (a 7 or not) and who it paid, so Hilda can tell an empty roll from a
+        # seven and Thorolf can fire on the seven. A no-op read off the scenario.
+        self.last_roll_total = total
+        self.last_roll_gains = gained
 
         # Fishermen: fishing grounds and the lake draw fish on their numbers,
         # after the resource walk so the short-supply check sees the whole roll.

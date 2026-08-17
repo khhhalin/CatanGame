@@ -146,7 +146,19 @@ class HelpersRules:
             if current != player_name:
                 return refused("NOT_YOUR_TURN", "You can only play this helper on your own turn")
             return None
-        # Off-turn timings are added with the advantages that use them.
+        if when == helper_tiles.WHEN_AFTER_PRODUCTION:
+            # Any player may react to a roll, so no own-turn check here; the
+            # advantage that reads it (resource compensation on-turn or off,
+            # take-from-leader on-turn) adds its own conditions.
+            if self.last_roll_total is None:
+                return refused(
+                    "HELPER_WRONG_TIME", "Play this only right after a production roll"
+                )
+            return None
+        if when == helper_tiles.WHEN_ON_SEVEN:
+            if self.last_roll_total != 7:
+                return refused("HELPER_WRONG_TIME", "Play this only when a 7 is rolled")
+            return None
         return refused("HELPER_WRONG_TIME", "This helper cannot be played right now")
 
     # --- Activation dispatch -------------------------------------------
@@ -232,6 +244,111 @@ class HelpersRules:
         if not self.give_resource(player_name, produced):
             return refused("SUPPLY_EMPTY", f"The supply has no {produced} left")
         return {"taken": produced}
+
+    def _desert_hex_key(self) -> str | None:
+        """The board's desert hex, or None if it has none."""
+        for key, hex_obj in self.hexes.items():
+            if hex_obj.type == "desert":
+                return key
+        return None
+
+    def _helper_digur(self, player_name: str, params: dict) -> dict:
+        """Digur: move the robber to the desert and take the hex it left's card.
+
+        Reuses the robber's own hex, `tiles.produces` and `give_resource`; the
+        move is a plain reassignment of `robber_hex`, not a robber-phase move, so
+        it steals from nobody (Helpers_Rules.pdf, Chase Robber to Desert, p. 10).
+        """
+        hex_obj = self.hexes.get(self.robber_hex)
+        if hex_obj is not None and hex_obj.type == "desert":
+            return refused("ROBBER_IN_DESERT", "The robber is already in the desert")
+        desert = self._desert_hex_key()
+        if desert is None:
+            return refused("NO_DESERT", "There is no desert to chase the robber to")
+
+        produced = tiles.produces(hex_obj.type) if hex_obj is not None else None
+        self.robber_hex = desert
+        taken = None
+        if produced is not None and self.give_resource(player_name, produced):
+            taken = produced
+        return {"moved_to": desert, "taken": taken}
+
+    def _helper_hilda(self, player_name: str, params: dict) -> dict:
+        """Hilda: after an empty production roll, take 1 resource of choice.
+
+        Reads the roll the engine remembered: legal only when the last roll was
+        not a 7 and paid this player nothing (Helpers_Rules.pdf, Resource
+        Compensation, p. 8). Reuses `give_resource`.
+        """
+        if self.last_roll_total is None or self.last_roll_total == 7:
+            return refused(
+                "HELPER_WRONG_TIME", "Hilda reacts only to a production roll that is not a 7"
+            )
+        if self.last_roll_gains.get(player_name):
+            return refused("HELPER_NO_NEED", "You received resources from that roll")
+        resource = params.get("resource")
+        if resource not in RESOURCE_TYPES:
+            return refused("NEEDS_RESOURCE", "Choose which resource to take")
+        if not self.give_resource(player_name, resource):
+            return refused("SUPPLY_EMPTY", f"The supply has no {resource} left")
+        return {"taken": resource}
+
+    def _helper_thorolf(self, player_name: str, params: dict) -> dict:
+        """Thorolf: on a 7, keep an over-full hand, or take 1 if 7 or fewer.
+
+        Over the limit means the roll already listed the player as owing a
+        discard (`players_needing_discard`); removing them there is what waives
+        the discard, so no card leaves the hand. A hand of 7 or fewer takes 1
+        resource of choice instead (Helpers_Rules.pdf, Protection from the 7,
+        p. 9).
+        """
+        if self.last_roll_total != 7:
+            return refused("HELPER_WRONG_TIME", "Thorolf reacts only to a 7")
+        if player_name in self.players_needing_discard:
+            del self.players_needing_discard[player_name]
+            return {"protected": True}
+        resource = params.get("resource")
+        if resource not in RESOURCE_TYPES:
+            return refused("NEEDS_RESOURCE", "Choose which resource to take")
+        if not self.give_resource(player_name, resource):
+            return refused("SUPPLY_EMPTY", f"The supply has no {resource} left")
+        return {"taken": resource}
+
+    def _helper_ryan(self, player_name: str, params: dict) -> dict:
+        """Ryan: after your roll, take 1 chosen card from a richer opponent.
+
+        Own-turn only, once the roll is resolved. The opponent must have strictly
+        more victory points, counted the way the scoreboard counts them (longest
+        road and largest army included), and must actually hold the chosen
+        resource (Helpers_Rules.pdf, Take Card From Leader, p. 10).
+        """
+        current = self.players[self.current_player_index].name
+        if current != player_name:
+            return refused("NOT_YOUR_TURN", "Ryan acts after your own production roll")
+
+        target = params.get("target")
+        victim = self.get_player(target) if target else None
+        if victim is None or victim.name == player_name:
+            return refused("INVALID_TARGET", "Choose an opponent to take a card from")
+
+        me = self.get_player(player_name)
+        my_vp = me.get_victory_points(self.longest_road_holder, self.largest_army_holder)
+        their_vp = victim.get_victory_points(self.longest_road_holder, self.largest_army_holder)
+        if their_vp <= my_vp:
+            return refused(
+                "NOT_A_LEADER",
+                "You may only take from an opponent with more victory points than you",
+            )
+
+        resource = params.get("resource")
+        if resource not in RESOURCE_TYPES:
+            return refused("NEEDS_RESOURCE", "Choose which resource to take")
+        if victim.resources.get(resource, 0) <= 0:
+            return refused("NOT_HELD", f"{target} has no {resource} to take")
+
+        victim.resources[resource] -= 1
+        me.resources[resource] = me.resources.get(resource, 0) + 1
+        return {"from": target, "taken": resource}
 
     # --- Client / persistence view -------------------------------------
 

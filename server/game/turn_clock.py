@@ -68,8 +68,11 @@ class TurnClock:
         self.must_move_barbarian = None
         # A helper's advantage may be used once per turn (Helpers_Rules.pdf p. 4);
         # the record of who has spent theirs starts empty each turn. Off the
-        # scenario this set never fills.
+        # scenario this set never fills. The last roll is forgotten too, so a
+        # helper that reacts to production cannot fire on the previous turn's.
         self.helper_used_this_turn = set()
+        self.last_roll_total = None
+        self.last_roll_gains = {}
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.

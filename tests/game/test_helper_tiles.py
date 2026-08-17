@@ -203,6 +203,127 @@ class TestKaja:
         assert game.get_player("Alice").resources.get("sheep", 0) == 1
 
 
+def _hold(game, player, tile):
+    game.helper_held[player] = {"tile": tile, "side": "sun", "received_turn": None}
+
+
+class TestDigur:
+    def test_digur_chases_the_robber_to_the_desert_and_pays_the_hex_it_left(self):
+        game = playing_game()
+        _hold(game, "Alice", "digur")
+        game.robber_hex = _hex_producing(game, "wheat")
+        bank_before = game.bank.resources["wheat"]
+
+        result = game.activate_helper("Alice", "digur", {})
+        assert result["success"], result
+        assert game.hexes[game.robber_hex].type == "desert"
+        assert result["taken"] == "wheat"
+        assert game.get_player("Alice").resources.get("wheat", 0) == 1
+        assert game.bank.resources["wheat"] == bank_before - 1
+
+    def test_digur_is_refused_when_the_robber_is_already_in_the_desert(self):
+        game = playing_game()
+        _hold(game, "Alice", "digur")
+        game.robber_hex = _desert_hex(game)
+        refused = game.activate_helper("Alice", "digur", {})
+        assert not refused["success"]
+        assert refused["code"] == "ROBBER_IN_DESERT"
+
+
+class TestHilda:
+    def test_hilda_pays_an_empty_roll(self):
+        game = playing_game()
+        _hold(game, "Bob", "hilda")  # off-turn: any player's roll
+        game.last_roll_total = 8
+        game.last_roll_gains = {"Alice": {"wood": 1}}  # Bob got nothing
+
+        result = game.activate_helper("Bob", "hilda", {"resource": "ore"})
+        assert result["success"], result
+        assert game.get_player("Bob").resources.get("ore", 0) == 1
+
+    def test_hilda_is_refused_when_you_did_receive_resources(self):
+        game = playing_game()
+        _hold(game, "Bob", "hilda")
+        game.last_roll_total = 8
+        game.last_roll_gains = {"Bob": {"wood": 1}}
+        refused = game.activate_helper("Bob", "hilda", {"resource": "ore"})
+        assert not refused["success"]
+        assert refused["code"] == "HELPER_NO_NEED"
+
+    def test_hilda_will_not_fire_on_a_seven(self):
+        game = playing_game()
+        _hold(game, "Bob", "hilda")
+        game.last_roll_total = 7
+        game.last_roll_gains = {}
+        refused = game.activate_helper("Bob", "hilda", {"resource": "ore"})
+        assert not refused["success"]
+        assert refused["code"] == "HELPER_WRONG_TIME"
+
+
+class TestThorolf:
+    def test_thorolf_waives_the_discard_for_an_over_full_hand(self):
+        game = playing_game()
+        _hold(game, "Bob", "thorolf")
+        game.get_player("Bob").resources = {"wood": 5, "brick": 5}  # 10 cards
+        game.last_roll_total = 7
+        game.players_needing_discard = {"Bob": 5}
+
+        result = game.activate_helper("Bob", "thorolf", {})
+        assert result["success"], result
+        assert "Bob" not in game.players_needing_discard
+        # Not a card is discarded: the whole hand is kept.
+        assert game.get_player("Bob").total_resources() == 10
+
+    def test_thorolf_pays_a_small_hand_a_resource(self):
+        game = playing_game()
+        _hold(game, "Bob", "thorolf")
+        game.get_player("Bob").resources = {"wood": 2}
+        game.last_roll_total = 7
+        game.players_needing_discard = {}
+
+        result = game.activate_helper("Bob", "thorolf", {"resource": "sheep"})
+        assert result["success"], result
+        assert game.get_player("Bob").resources.get("sheep", 0) == 1
+
+    def test_thorolf_only_fires_on_a_seven(self):
+        game = playing_game()
+        _hold(game, "Bob", "thorolf")
+        game.last_roll_total = 8
+        refused = game.activate_helper("Bob", "thorolf", {"resource": "sheep"})
+        assert not refused["success"]
+        assert refused["code"] == "HELPER_WRONG_TIME"
+
+
+class TestRyan:
+    def _leader_bob(self, game):
+        """Give Bob more victory points than Alice via extra settlements."""
+        game.get_player("Bob").settlements = ["v1", "v2", "v3"]
+        game.get_player("Alice").settlements = ["v9"]
+
+    def test_ryan_takes_a_chosen_card_from_a_richer_opponent(self):
+        game = playing_game()
+        _hold(game, "Alice", "ryan")
+        self._leader_bob(game)
+        game.get_player("Bob").resources = {"ore": 2}
+        game.last_roll_total = 6  # Alice's roll is resolved
+
+        result = game.activate_helper("Alice", "ryan", {"target": "Bob", "resource": "ore"})
+        assert result["success"], result
+        assert game.get_player("Alice").resources.get("ore", 0) == 1
+        assert game.get_player("Bob").resources.get("ore", 0) == 1
+
+    def test_ryan_refuses_a_target_who_is_not_ahead(self):
+        game = playing_game()
+        _hold(game, "Alice", "ryan")
+        game.get_player("Alice").settlements = ["v1", "v2"]
+        game.get_player("Bob").settlements = ["v9"]
+        game.get_player("Bob").resources = {"ore": 2}
+        game.last_roll_total = 6
+        refused = game.activate_helper("Alice", "ryan", {"target": "Bob", "resource": "ore"})
+        assert not refused["success"]
+        assert refused["code"] == "NOT_A_LEADER"
+
+
 class TestPersistence:
     def test_the_display_and_hands_survive_a_save(self):
         from game import persistence
