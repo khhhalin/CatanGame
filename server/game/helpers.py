@@ -511,6 +511,162 @@ class HelpersRules:
         me.dev_cards[drawn]["purchase_turn"] = self.turn_count
         return {"returned": card_type, "drawn": drawn}
 
+    def _helper_yngvi(self, player_name: str, params: dict) -> dict:
+        """Yngvi: build a road, paying a substitute for one of its base cards.
+
+        Reuses `build_road` in full - every placement check, the free-road path,
+        the Longest Road update. The substitution is set up around it: the player
+        is lent the dropped base card from the bank and pays the substitute, so
+        `build_road` deducts the ordinary road cost and the net paid is the
+        substitute plus the other base card (Helpers_Rules.pdf, Makeshift Road
+        Building, p. 6).
+        """
+        edge = params.get("edge")
+        drop = params.get("drop")
+        pay = params.get("resource") or params.get("pay")
+        if drop not in ("wood", "brick"):
+            return refused("INVALID_SUBSTITUTE", "You may only substitute lumber or brick")
+        if pay not in RESOURCE_TYPES or pay == drop:
+            return refused("NEEDS_RESOURCE", "Choose a different resource to pay instead")
+        if self.free_roads_remaining > 0:
+            return refused("HAS_FREE_ROAD", "Use your free road rather than Yngvi")
+
+        me = self.get_player(player_name)
+        if me.resources.get(pay, 0) <= 0:
+            return refused("CANNOT_AFFORD", f"You have no {pay} to pay instead")
+        if not self.bank.take(drop):
+            return refused("SUPPLY_EMPTY", f"The supply cannot lend a {drop}")
+
+        me.resources[drop] = me.resources.get(drop, 0) + 1
+        me.resources[pay] -= 1
+        self.bank.return_resources(pay, 1)
+
+        result = self.build_road(player_name, edge)
+        if not result["success"]:
+            # Undo the swap so a refused placement costs nothing.
+            me.resources[drop] -= 1
+            self.bank.return_resources(drop, 1)
+            me.resources[pay] += 1
+            self.bank.take(pay)
+            return result
+        return {"edge": edge, "dropped": drop, "paid": pay}
+
+    def _is_end_road(self, player_name: str, edge_key: str) -> bool:
+        """Whether one end of this road touches none of the player's own pieces."""
+        edge = self.edges.get(edge_key)
+        if edge is None:
+            return False
+        for vertex_key in edge.neighbors.get("vertices", []):
+            vertex = self.vertices.get(vertex_key)
+            if vertex is not None and vertex.building \
+                    and vertex.building.get("player") == player_name:
+                continue  # a building of the player's own holds this end
+            touches = False
+            for other in vertex.neighbors.get("edges", []) if vertex else []:
+                if other == edge_key:
+                    continue
+                other_edge = self.edges.get(other)
+                if other_edge and other_edge.road \
+                        and other_edge.road.get("player") == player_name:
+                    touches = True
+                    break
+            if not touches:
+                return True
+        return False
+
+    def _helper_hogni(self, player_name: str, params: dict) -> dict:
+        """Hogni: pick up one of your end roads and lay it elsewhere for free.
+
+        The lift is a plain removal; the re-lay reuses `build_road` through a
+        granted free road, so the new spot has to obey every normal placement
+        rule and the Longest Road is recomputed (Helpers_Rules.pdf, Move a Road,
+        p. 7).
+        """
+        from_edge = params.get("from_edge")
+        to_edge = params.get("to_edge")
+        edge = self.edges.get(from_edge)
+        me = self.get_player(player_name)
+        if edge is None or edge.road is None or edge.road.get("player") != player_name:
+            return refused("NOT_YOUR_PIECE", "That is not one of your roads")
+        if not self._is_end_road(player_name, from_edge):
+            return refused("NOT_END_ROAD", "You may only move a road with a free end")
+
+        edge.road = None
+        if from_edge in me.roads:
+            me.roads.remove(from_edge)
+
+        self.free_roads_remaining += 1
+        result = self.build_road(player_name, to_edge)
+        if not result["success"]:
+            # Put the lifted road back exactly where it was.
+            if self.free_roads_remaining > 0:
+                self.free_roads_remaining -= 1
+            edge.road = {"player": player_name}
+            if from_edge not in me.roads:
+                me.roads.append(from_edge)
+            return result
+        return {"from": from_edge, "to": to_edge}
+
+    def _lend(self, player_name: str, resources) -> list:
+        """Lend the player one of each named resource from the bank, if it can.
+
+        Returns the resources actually lent, so the caller can reclaim exactly
+        those if the build it was setting up is refused.
+        """
+        me = self.get_player(player_name)
+        lent = []
+        for resource in resources:
+            if self.bank.take(resource):
+                me.resources[resource] = me.resources.get(resource, 0) + 1
+                lent.append(resource)
+        return lent
+
+    def _reclaim(self, player_name: str, lent) -> None:
+        """Take back resources lent by `_lend` after a refused build."""
+        me = self.get_player(player_name)
+        for resource in lent:
+            if me.resources.get(resource, 0) > 0:
+                me.resources[resource] -= 1
+                self.bank.return_resources(resource, 1)
+
+    def _helper_gregor(self, player_name: str, params: dict) -> dict:
+        """Gregor: discard a played knight to build at a reduced cost.
+
+        Reuses `place_settlement` and `upgrade_city` in full. The reduction is
+        set up by lending the player the cards the helper waives - the wheat and
+        wool a settlement normally also costs, the extra ore and grain a city
+        normally costs - so the real build deducts its full price and the net
+        paid is Gregor's price (Helpers_Rules.pdf, Assign Knight to Building,
+        p. 10).
+        """
+        build = params.get("build")
+        vertex = params.get("vertex")
+        if build not in ("settlement", "city"):
+            return refused("INVALID_BUILD", "Choose to build a settlement or a city")
+        me = self.get_player(player_name)
+        if me.knights_played < 1:
+            return refused("NO_KNIGHT", "You have no played knight to discard")
+
+        me.knights_played -= 1
+        self.update_largest_army()
+
+        # A settlement's full cost is wood+brick+wheat+wool; Gregor's is wood+brick,
+        # so the wheat and wool are lent. A city's full cost is 3 ore + 2 wheat;
+        # Gregor's is 2 ore + 1 wheat, so one of each is lent.
+        waived = ["wheat", "sheep"] if build == "settlement" else ["ore", "wheat"]
+        lent = self._lend(player_name, waived)
+        if build == "settlement":
+            result = self.place_settlement(player_name, vertex)
+        else:
+            result = self.upgrade_city(player_name, vertex)
+
+        if not result["success"]:
+            self._reclaim(player_name, lent)
+            me.knights_played += 1
+            self.update_largest_army()
+            return result
+        return {"built": build, "vertex": vertex}
+
     # --- Client / persistence view -------------------------------------
 
     def helpers_client_state(self, viewer: str = None) -> dict | None:

@@ -220,6 +220,32 @@ const CUSTOM_FORMS = {
         actions.appendChild(labelled('Swap away', select));
         return () => ({ dev_card: select.value });
     },
+    // Yngvi: which edge to build, which base card to drop, and what to pay.
+    // Edges are typed as keys (board tapping for a helper is a known limitation).
+    yngvi(tile, actions) {
+        const edge = textInput('yngvi-edge', 'road edge key');
+        const drop = document.createElement('select');
+        drop.className = 'helper-resource';
+        [['wood', 'lumber'], ['brick', 'brick']].forEach(([value, text]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = text;
+            drop.appendChild(option);
+        });
+        const pay = resourcePicker('yngvi-pay');
+        actions.appendChild(labelled('Road', edge));
+        actions.appendChild(labelled('drop', drop));
+        actions.appendChild(labelled('pay', pay));
+        return () => ({ edge: edge.value, drop: drop.value, resource: pay.value });
+    },
+    // Hogni: the end road to lift and where to lay it, as edge keys.
+    hogni(tile, actions) {
+        const from = textInput('hogni-from', 'end road key');
+        const to = textInput('hogni-to', 'new spot key');
+        actions.appendChild(labelled('Move', from));
+        actions.appendChild(labelled('to', to));
+        return () => ({ from_edge: from.value, to_edge: to.value });
+    },
     // Gregor: which building to raise; the intersection is typed as a vertex key
     // (board tapping for a helper is a known client limitation).
     gregor(tile, actions) {
@@ -231,10 +257,7 @@ const CUSTOM_FORMS = {
             option.textContent = text;
             build.appendChild(option);
         });
-        const vertex = document.createElement('input');
-        vertex.type = 'text';
-        vertex.className = 'helper-vertex';
-        vertex.placeholder = 'intersection key';
+        const vertex = textInput('gregor-vertex', 'intersection key');
         actions.appendChild(labelled('Build', build));
         actions.appendChild(labelled('at', vertex));
         return () => ({ build: build.value, vertex: vertex.value });
@@ -247,6 +270,16 @@ function labelled(text, control) {
     wrap.className = 'helper-field';
     wrap.append(`${text} `, control);
     return wrap;
+}
+
+/** A short text input with a placeholder, for typed edge/vertex keys. */
+function textInput(id, placeholder) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = id;
+    input.className = 'helper-vertex';
+    input.placeholder = placeholder;
+    return input;
 }
 
 /** A checkbox, defaulting on or off. */

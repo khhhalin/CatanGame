@@ -458,6 +458,130 @@ class TestCarla:
         assert refused["code"] == "NOT_HELD"
 
 
+def _edges_at(game, vertex):
+    return [key for key in sorted(game.edges)
+            if vertex in game.edges[key].neighbors["vertices"]]
+
+
+def _far_vertex(game, edge, near):
+    return next(v for v in game.edges[edge].neighbors["vertices"] if v != near)
+
+
+class TestYngvi:
+    def test_yngvi_builds_a_road_paying_a_substitute_for_brick(self):
+        game = playing_game()
+        _hold(game, "Alice", "yngvi")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        alice = game.get_player("Alice")
+        alice.settlements.append(home)
+        edge = _edges_at(game, home)[0]
+        # No brick: pay a sheep instead. Wood is still owed normally.
+        alice.resources = {"wood": 1, "sheep": 1}
+
+        result = game.activate_helper(
+            "Alice", "yngvi", {"edge": edge, "drop": "brick", "resource": "sheep"},
+        )
+        assert result["success"], result
+        assert game.edges[edge].road == {"player": "Alice"}
+        assert alice.resources.get("wood", 0) == 0
+        assert alice.resources.get("sheep", 0) == 0
+        assert alice.resources.get("brick", 0) == 0
+
+    def test_yngvi_refuses_without_the_substitute_in_hand(self):
+        game = playing_game()
+        _hold(game, "Alice", "yngvi")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        game.get_player("Alice").settlements.append(home)
+        game.get_player("Alice").resources = {"wood": 1}  # no sheep to pay
+        edge = _edges_at(game, home)[0]
+        refused = game.activate_helper(
+            "Alice", "yngvi", {"edge": edge, "drop": "brick", "resource": "sheep"},
+        )
+        assert not refused["success"]
+        assert refused["code"] == "CANNOT_AFFORD"
+
+
+class TestHogni:
+    def test_hogni_moves_an_end_road_to_another_spot(self):
+        game = playing_game()
+        _hold(game, "Alice", "hogni")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        alice = game.get_player("Alice")
+        alice.settlements.append(home)
+        edges = _edges_at(game, home)
+        from_edge, to_edge = edges[0], edges[1]
+        game.edges[from_edge].road = {"player": "Alice"}
+        alice.roads.append(from_edge)
+
+        result = game.activate_helper(
+            "Alice", "hogni", {"from_edge": from_edge, "to_edge": to_edge},
+        )
+        assert result["success"], result
+        assert game.edges[from_edge].road is None
+        assert game.edges[to_edge].road == {"player": "Alice"}
+        assert from_edge not in alice.roads
+        assert to_edge in alice.roads
+
+    def test_hogni_refuses_a_road_that_is_not_an_end(self):
+        game = playing_game()
+        _hold(game, "Alice", "hogni")
+        home = next(iter(sorted(game.vertices)))
+        alice = game.get_player("Alice")
+        edges = _edges_at(game, home)
+        from_edge = edges[0]
+        middle = _far_vertex(game, from_edge, home)
+        # Both ends carry an Alice building, so neither end is free.
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        game.vertices[middle].building = {"type": "settlement", "player": "Alice"}
+        alice.settlements.extend([home, middle])
+        game.edges[from_edge].road = {"player": "Alice"}
+        alice.roads.append(from_edge)
+        other = _edges_at(game, home)[1]
+
+        refused = game.activate_helper(
+            "Alice", "hogni", {"from_edge": from_edge, "to_edge": other},
+        )
+        assert not refused["success"]
+        assert refused["code"] == "NOT_END_ROAD"
+
+
+class TestGregor:
+    def test_gregor_discards_a_knight_to_build_a_city_cheaply(self):
+        game = playing_game()
+        _hold(game, "Alice", "gregor")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        alice = game.get_player("Alice")
+        alice.settlements.append(home)
+        alice.knights_played = 3
+        game.largest_army_holder = "Alice"
+        # Gregor's city is 2 ore + 1 wheat, not the usual 3 ore + 2 wheat.
+        alice.resources = {"ore": 2, "wheat": 1}
+
+        result = game.activate_helper("Alice", "gregor", {"build": "city", "vertex": home})
+        assert result["success"], result
+        assert game.vertices[home].building["type"] == "city"
+        assert alice.resources.get("ore", 0) == 0
+        assert alice.resources.get("wheat", 0) == 0
+        # The discarded knight no longer counts toward the Largest Army.
+        assert alice.knights_played == 2
+
+    def test_gregor_refuses_without_a_played_knight(self):
+        game = playing_game()
+        _hold(game, "Alice", "gregor")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        game.get_player("Alice").settlements.append(home)
+        game.get_player("Alice").knights_played = 0
+        game.get_player("Alice").resources = {"ore": 2, "wheat": 1}
+        refused = game.activate_helper("Alice", "gregor", {"build": "city", "vertex": home})
+        assert not refused["success"]
+        assert refused["code"] == "NO_KNIGHT"
+
+
 class TestPersistence:
     def test_the_display_and_hands_survive_a_save(self):
         from game import persistence
