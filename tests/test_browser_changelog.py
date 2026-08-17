@@ -284,7 +284,10 @@ def test_an_unread_release_badges_the_panel_until_it_is_read(browser, server):
     tab = Tab(browser, server, "Ann")
 
     assert tab.page.is_visible("#changelog-badge")
-    unread = int(tab.page.inner_text("#changelog-badge"))
+    raw = tab.page.inner_text("#changelog-badge")
+    # The badge caps at "99+" when more entries are unread than a two-digit pill
+    # can hold - a fresh tab has every entry of every shipped release unread.
+    unread = 99 if raw == "99+" else int(raw)
     assert unread > 0
     # The count reaches a screen reader too - a badge announces nothing.
     assert "new entries" in tab.page.get_attribute("#changelog-toggle", "aria-label")
