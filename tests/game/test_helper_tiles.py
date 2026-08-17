@@ -324,6 +324,140 @@ class TestRyan:
         assert refused["code"] == "NOT_A_LEADER"
 
 
+class TestAsla:
+    def test_asla_takes_a_resource_and_returns_one_of_your_choice(self):
+        game = playing_game()
+        _hold(game, "Alice", "asla")
+        game.get_player("Alice").resources = {"wheat": 1}
+        game.get_player("Bob").resources = {"ore": 2}
+
+        result = game.activate_helper(
+            "Alice", "asla",
+            {"resource": "ore", "targets": ["Bob"], "returns": ["wheat"]},
+        )
+        assert result["success"], result
+        assert game.get_player("Alice").resources.get("ore", 0) == 1
+        assert game.get_player("Alice").resources.get("wheat", 0) == 0
+        assert game.get_player("Bob").resources.get("ore", 0) == 1
+        assert game.get_player("Bob").resources.get("wheat", 0) == 1
+
+    def test_asla_requests_from_two_players_in_turn(self):
+        game = playing_game(players=("Alice", "Bob", "Cara"))
+        _hold(game, "Alice", "asla")
+        game.get_player("Alice").resources = {"wheat": 2}
+        game.get_player("Bob").resources = {"ore": 1}
+        game.get_player("Cara").resources = {"ore": 1}
+
+        result = game.activate_helper(
+            "Alice", "asla",
+            {"resource": "ore", "targets": ["Bob", "Cara"], "returns": ["wheat", "wheat"]},
+        )
+        assert result["success"], result
+        assert game.get_player("Alice").resources.get("ore", 0) == 2
+
+    def test_asla_refuses_when_you_cannot_pay_the_return(self):
+        game = playing_game()
+        _hold(game, "Alice", "asla")
+        game.get_player("Alice").resources = {}  # nothing to give back
+        game.get_player("Bob").resources = {"ore": 1}
+        refused = game.activate_helper(
+            "Alice", "asla",
+            {"resource": "ore", "targets": ["Bob"], "returns": ["wheat"]},
+        )
+        assert not refused["success"]
+        assert refused["code"] == "CANNOT_RETURN"
+
+
+class TestStina:
+    def test_stina_trades_a_resource_two_for_one_several_times(self):
+        game = playing_game()
+        _hold(game, "Alice", "stina")
+        game.get_player("Alice").resources = {"wood": 4}
+        brick_bank = game.bank.resources["brick"]
+        ore_bank = game.bank.resources["ore"]
+
+        result = game.activate_helper(
+            "Alice", "stina",
+            {"resource_out": "wood", "resources": ["brick", "ore"]},
+        )
+        assert result["success"], result
+        alice = game.get_player("Alice")
+        assert alice.resources.get("wood", 0) == 0
+        assert alice.resources.get("brick", 0) == 1
+        assert alice.resources.get("ore", 0) == 1
+        # The received cards came out of the bank's own piles.
+        assert game.bank.resources["brick"] == brick_bank - 1
+        assert game.bank.resources["ore"] == ore_bank - 1
+
+    def test_stina_refuses_without_enough_of_the_traded_resource(self):
+        game = playing_game()
+        _hold(game, "Alice", "stina")
+        game.get_player("Alice").resources = {"wood": 3}  # only enough for one 2:1
+        refused = game.activate_helper(
+            "Alice", "stina",
+            {"resource_out": "wood", "resources": ["brick", "ore"]},
+        )
+        assert not refused["success"]
+        assert refused["code"] == "CANNOT_AFFORD"
+
+
+class TestDiara:
+    def test_diara_buys_with_substitution_then_keeps_one_of_three(self):
+        game = playing_game()
+        _hold(game, "Alice", "diara")
+        # No wheat: substitute it with brick to pay brick + sheep + ore.
+        game.get_player("Alice").resources = {"brick": 1, "sheep": 1, "ore": 1}
+
+        opened = game.activate_helper(
+            "Alice", "diara",
+            {"substitute_from": "wheat", "substitute_with": "brick"},
+        )
+        assert opened["success"], opened
+        assert game.get_player("Alice").resources.get("brick", 0) == 0
+
+        keep = game.pending_choice_for("Alice")
+        assert keep["kind"] == "helper_keep_dev"
+        assert len(keep["options"]) == 3
+
+        before = game.get_player("Alice").total_dev_cards()
+        game.resolve_choice("Alice", "helper_keep_dev", keep["options"][0])
+        assert game.get_player("Alice").total_dev_cards() == before + 1
+        # The exchange-or-flip step follows the keep.
+        assert game.pending_choice_for("Alice")["kind"] == "helper_resolution"
+
+    def test_diara_refuses_when_you_cannot_pay(self):
+        game = playing_game()
+        _hold(game, "Alice", "diara")
+        game.get_player("Alice").resources = {}
+        refused = game.activate_helper("Alice", "diara", {})
+        assert not refused["success"]
+        assert refused["code"] == "CANNOT_AFFORD"
+
+
+class TestCarla:
+    def test_carla_swaps_an_unplayed_card_for_a_fresh_draw(self):
+        game = playing_game()
+        _hold(game, "Alice", "carla")
+        alice = game.get_player("Alice")
+        alice.dev_cards["knight"]["count"] = 1
+        alice.dev_cards["knight"]["purchase_turn"] = 0
+
+        result = game.activate_helper("Alice", "carla", {"dev_card": "knight"})
+        assert result["success"], result
+        # One card in, one card out: the hand size holds.
+        assert alice.total_dev_cards() == 1
+        # The drawn card cannot be played this turn.
+        drawn_type = result["drawn"]
+        assert alice.dev_cards[drawn_type]["purchase_turn"] == game.turn_count
+
+    def test_carla_refuses_a_card_you_do_not_hold(self):
+        game = playing_game()
+        _hold(game, "Alice", "carla")
+        refused = game.activate_helper("Alice", "carla", {"dev_card": "monopoly"})
+        assert not refused["success"]
+        assert refused["code"] == "NOT_HELD"
+
+
 class TestPersistence:
     def test_the_display_and_hands_survive_a_save(self):
         from game import persistence

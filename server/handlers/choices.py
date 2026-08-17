@@ -102,6 +102,8 @@ def _story(name: str, result: dict) -> str:
         return f"{name} placed a gift harbor from the Forgotten Tribe"
     if kind == 'gold_field_choice':
         return f"{name} took {result['option']} from a gold field"
+    if kind == 'helper_keep_dev':
+        return f"{name} kept a development card with Diara's help"
     if kind == 'helper_resolution':
         return (
             f"{name} flipped their helper to reuse it"

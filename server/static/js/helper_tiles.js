@@ -87,21 +87,11 @@ function renderActions(state, held, tile) {
         return;
     }
     const used = (state.used_this_turn || []).includes(viewState.identity.name);
-    const resourcePickers = [];
-    const playerPickers = [];
-    (tile.needs || []).forEach((need, index) => {
-        if (need === 'resource') {
-            const picker = resourcePicker(`${held.tile}-res-${index}`);
-            resourcePickers.push(picker);
-            actions.appendChild(picker);
-        } else if (need === 'player') {
-            const picker = playerPicker(`${held.tile}-plr-${index}`);
-            if (picker) {
-                playerPickers.push(picker);
-                actions.appendChild(picker);
-            }
-        }
-    });
+    // Each tile builds the inputs its advantage needs and returns a collector
+    // that reads them into an activation payload. The bespoke ones (Asla,
+    // Stina, Diara, Carla, Gregor) know their own shape; the rest fall back to
+    // the resource/player pickers their `needs` list describes.
+    const collect = (CUSTOM_FORMS[held.tile] || genericForm)(tile, actions);
 
     const activate = document.createElement('button');
     activate.type = 'button';
@@ -109,6 +99,32 @@ function renderActions(state, held, tile) {
     activate.textContent = used ? 'Helper used this turn' : 'Activate';
     activate.disabled = used || !canActOffTurn(tile);
     activate.addEventListener('click', () => {
+        emitGame('activate_helper', { tile: held.tile, params: collect() });
+    });
+    actions.appendChild(activate);
+}
+
+/** The five resources, and the build choices Gregor offers. */
+const RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
+
+/** Resource/player pickers driven by the tile's `needs` list. */
+function genericForm(tile, actions) {
+    const resourcePickers = [];
+    const playerPickers = [];
+    (tile.needs || []).forEach((need, index) => {
+        if (need === 'resource') {
+            const picker = resourcePicker(`res-${index}`);
+            resourcePickers.push(picker);
+            actions.appendChild(picker);
+        } else if (need === 'player') {
+            const picker = playerPicker(`plr-${index}`);
+            if (picker) {
+                playerPickers.push(picker);
+                actions.appendChild(picker);
+            }
+        }
+    });
+    return () => {
         const params = {};
         if (resourcePickers.length === 1) {
             params.resource = resourcePickers[0].value;
@@ -120,9 +136,126 @@ function renderActions(state, held, tile) {
         } else if (playerPickers.length > 1) {
             params.targets = playerPickers.map(picker => picker.value);
         }
-        emitGame('activate_helper', { tile: held.tile, params });
-    });
-    actions.appendChild(activate);
+        return params;
+    };
+}
+
+/** Bespoke parameter forms for the multi-input advantages. */
+const CUSTOM_FORMS = {
+    // Asla: a resource to request, and up to two (player, give-back) pairs.
+    asla(tile, actions) {
+        const request = resourcePicker('asla-req');
+        actions.appendChild(labelled('Request', request));
+        const rows = [1, 2].map(n => {
+            const target = playerPicker(`asla-tgt-${n}`);
+            const back = resourcePicker(`asla-back-${n}`);
+            const use = checkbox(`asla-use-${n}`, n === 1);
+            if (target) {
+                actions.appendChild(labelled(`From #${n}`, target));
+                actions.appendChild(labelled('give back', back));
+                actions.appendChild(labelled('use', use));
+            }
+            return { target, back, use };
+        });
+        return () => {
+            const targets = [];
+            const returns = [];
+            rows.forEach(row => {
+                if (row.target && row.use.checked) {
+                    targets.push(row.target.value);
+                    returns.push(row.back.value);
+                }
+            });
+            return { resource: request.value, targets, returns };
+        };
+    },
+    // Stina: a resource to spend, and up to three 2:1 receipts.
+    stina(tile, actions) {
+        const give = resourcePicker('stina-give');
+        actions.appendChild(labelled('Spend', give));
+        const receives = [1, 2, 3].map(n => {
+            const pick = resourcePicker(`stina-get-${n}`);
+            const use = checkbox(`stina-use-${n}`, n === 1);
+            actions.appendChild(labelled(`get ${n}`, pick));
+            actions.appendChild(labelled('on', use));
+            return { pick, use };
+        });
+        return () => ({
+            resource_out: give.value,
+            resources: receives.filter(r => r.use.checked).map(r => r.pick.value),
+        });
+    },
+    // Diara: an optional single-resource substitution on the card's cost.
+    diara(tile, actions) {
+        const from = document.createElement('select');
+        from.className = 'helper-resource';
+        [['', '(no swap)'], ['wheat', 'wheat'], ['sheep', 'sheep'], ['ore', 'ore']]
+            .forEach(([value, text]) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = text;
+                from.appendChild(option);
+            });
+        const withRes = resourcePicker('diara-with');
+        actions.appendChild(labelled('Swap', from));
+        actions.appendChild(labelled('for', withRes));
+        return () => (from.value
+            ? { substitute_from: from.value, substitute_with: withRes.value }
+            : {});
+    },
+    // Carla: which of your unplayed development cards to swap away.
+    carla(tile, actions) {
+        const select = document.createElement('select');
+        select.className = 'helper-resource';
+        const me = (getBoard().players || []).find(p => p.name === viewState.identity.name);
+        const dev = (me && me.dev_cards) || {};
+        Object.keys(dev).forEach(type => {
+            if ((dev[type].count || 0) > 0) {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                select.appendChild(option);
+            }
+        });
+        actions.appendChild(labelled('Swap away', select));
+        return () => ({ dev_card: select.value });
+    },
+    // Gregor: which building to raise; the intersection is typed as a vertex key
+    // (board tapping for a helper is a known client limitation).
+    gregor(tile, actions) {
+        const build = document.createElement('select');
+        build.className = 'helper-resource';
+        [['settlement', 'settlement'], ['city', 'city']].forEach(([value, text]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = text;
+            build.appendChild(option);
+        });
+        const vertex = document.createElement('input');
+        vertex.type = 'text';
+        vertex.className = 'helper-vertex';
+        vertex.placeholder = 'intersection key';
+        actions.appendChild(labelled('Build', build));
+        actions.appendChild(labelled('at', vertex));
+        return () => ({ build: build.value, vertex: vertex.value });
+    },
+};
+
+/** Wrap a control with a short inline label. */
+function labelled(text, control) {
+    const wrap = document.createElement('label');
+    wrap.className = 'helper-field';
+    wrap.append(`${text} `, control);
+    return wrap;
+}
+
+/** A checkbox, defaulting on or off. */
+function checkbox(id, checked) {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.id = id;
+    box.checked = checked;
+    return box;
 }
 
 /** Whether the seat may even attempt this tile now (own turn, bar exceptions). */
@@ -140,7 +273,7 @@ function resourcePicker(id) {
     const select = document.createElement('select');
     select.className = 'helper-resource';
     select.id = id;
-    ['wood', 'brick', 'sheep', 'wheat', 'ore'].forEach(resource => {
+    RESOURCES.forEach(resource => {
         const option = document.createElement('option');
         option.value = resource;
         option.textContent = resource;

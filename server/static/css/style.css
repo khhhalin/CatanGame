@@ -2265,8 +2265,23 @@ button:disabled {
     margin-top: var(--space-1);
 }
 
-.helper-resource {
+.helper-resource,
+.helper-player,
+.helper-vertex {
     margin-right: var(--space-1);
+}
+
+.helper-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin: 0 var(--space-1) var(--space-1) 0;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted, #8a9bb0);
+}
+
+.helper-vertex {
+    width: 8em;
 }
 
 .helper-display-label {

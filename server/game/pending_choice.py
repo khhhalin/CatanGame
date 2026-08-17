@@ -50,6 +50,7 @@ KINDS = {
     'gold_field_choice': 'choose a resource to take from the gold field',
     'pirate_repel_reward': 'choose a resource to take for driving off the pirate fleet',
     'helper_resolution': 'exchange your used helper for a new one, or flip it to reuse it',
+    'helper_keep_dev': 'choose which of the three development cards to keep',
 }
 
 # The safety net on draining the queue: a resolver may open a follow-up choice

@@ -183,7 +183,11 @@ class HelpersRules:
             return outcome
 
         self.helper_used_this_turn.add(player_name)
-        self._open_helper_resolution(player_name)
+        # An advantage that opens a follow-up decision of its own (Diara's
+        # keep-one-of-three) defers the exchange-or-flip until that decision is
+        # answered; its resolver opens it. Everything else opens it now.
+        if not outcome.get("defer_resolution"):
+            self._open_helper_resolution(player_name)
         outcome.update({"success": True, "error": "", "tile": tile_id, "player": player_name})
         return outcome
 
@@ -349,6 +353,163 @@ class HelpersRules:
         victim.resources[resource] -= 1
         me.resources[resource] = me.resources.get(resource, 0) + 1
         return {"from": target, "taken": resource}
+
+    def _helper_asla(self, player_name: str, params: dict) -> dict:
+        """Asla: demand a resource from up to two players, paying one back each.
+
+        A player-to-player exchange (bank-neutral): each named opponent who holds
+        the requested resource gives one, and gets one of the player's choice in
+        return - which may be the very card just received. Applied one player at
+        a time so the returned card can be paid out of the receipt, and rolled
+        back if the player cannot pay a return (Helpers_Rules.pdf, Forced Trade,
+        p. 6).
+        """
+        resource = params.get("resource")
+        if resource not in RESOURCE_TYPES:
+            return refused("NEEDS_RESOURCE", "Choose which resource to request")
+        targets = params.get("targets") or []
+        returns = params.get("returns") or []
+        if not 1 <= len(targets) <= 2 or len(returns) != len(targets):
+            return refused("INVALID_TARGET", "Name 1 or 2 players and a return for each")
+        if len(set(targets)) != len(targets):
+            return refused("INVALID_TARGET", "Name each player only once")
+
+        me = self.get_player(player_name)
+        exchanges = []
+        for target, give_back in zip(targets, returns, strict=True):
+            victim = self.get_player(target)
+            if victim is None or victim.name == player_name:
+                return refused("INVALID_TARGET", "Choose opponents to request from")
+            if give_back not in RESOURCE_TYPES:
+                return refused("NEEDS_RESOURCE", "Choose a resource to give back")
+            if victim.resources.get(resource, 0) <= 0:
+                continue  # they do not hold it; nothing changes hands with them
+            # Take first, so the return may be paid out of the card received.
+            victim.resources[resource] -= 1
+            me.resources[resource] = me.resources.get(resource, 0) + 1
+            if me.resources.get(give_back, 0) <= 0:
+                # Undo the take; the whole activation is refused so no card is
+                # left half-exchanged.
+                me.resources[resource] -= 1
+                victim.resources[resource] += 1
+                return refused("CANNOT_RETURN", f"You have no {give_back} to give {target}")
+            me.resources[give_back] -= 1
+            victim.resources[give_back] = victim.resources.get(give_back, 0) + 1
+            exchanges.append({"from": target, "took": resource, "returned": give_back})
+        return {"exchanges": exchanges}
+
+    def _helper_stina(self, player_name: str, params: dict) -> dict:
+        """Stina: exchange one resource with the bank at 2:1, several times at once.
+
+        Reuses the bank's take/return directly rather than the trade offer flow,
+        because this is a burst of bank trades resolved in one go, not a standing
+        2:1 rate for the turn (Helpers_Rules.pdf, 2:1 Trade Frenzy, p. 9).
+        """
+        give = params.get("resource_out") or params.get("resource")
+        if give not in RESOURCE_TYPES:
+            return refused("NEEDS_RESOURCE", "Choose the resource to trade away")
+        receives = params.get("resources") or []
+        if not receives or any(item not in RESOURCE_TYPES for item in receives):
+            return refused("NEEDS_RESOURCE", "Choose the resources to receive")
+
+        me = self.get_player(player_name)
+        cost = 2 * len(receives)
+        if me.resources.get(give, 0) < cost:
+            return refused("CANNOT_AFFORD", f"A 2:1 for {len(receives)} needs {cost} {give}")
+        for received in receives:
+            if not self.bank.take(received):
+                return refused("SUPPLY_EMPTY", f"The supply has no {received} left")
+
+        me.resources[give] -= cost
+        self.bank.return_resources(give, cost)
+        for received in receives:
+            me.resources[received] = me.resources.get(received, 0) + 1
+        return {"gave": give, "count": cost, "received": list(receives)}
+
+    def _helper_diara(self, player_name: str, params: dict) -> dict:
+        """Diara: buy a development card, one resource swappable, keep 1 of 3.
+
+        Pays the card's cost with one resource optionally substituted, draws
+        three from the deck, and opens the keep-one choice; the deferred
+        exchange-or-flip follows the keep. Needs the development deck in play
+        (Helpers_Rules.pdf, Development Card Choice, p. 9).
+        """
+        if not self.dev_deck_in_play():
+            return refused("DEV_CARDS_NOT_IN_PLAY", "This table does not buy development cards")
+
+        cost = self.get_cost("dev_card")
+        substitute_from = params.get("substitute_from")
+        substitute_with = params.get("substitute_with")
+        if substitute_from is not None or substitute_with is not None:
+            if substitute_from not in cost:
+                return refused("INVALID_SUBSTITUTE", "You may only swap a card you must pay")
+            if substitute_with not in RESOURCE_TYPES:
+                return refused("NEEDS_RESOURCE", "Choose a resource to pay instead")
+            cost = dict(cost)
+            cost[substitute_from] -= 1
+            if cost[substitute_from] == 0:
+                del cost[substitute_from]
+            cost[substitute_with] = cost.get(substitute_with, 0) + 1
+
+        me = self.get_player(player_name)
+        if any(me.resources.get(res, 0) < amount for res, amount in cost.items()):
+            return refused("CANNOT_AFFORD", "You cannot pay for the development card")
+
+        drawn = [self.bank.draw_dev_card() for _ in range(3)]
+        drawn = [card for card in drawn if card is not None]
+        if not drawn:
+            return refused("ACTION_FAILED", "No development cards left to draw")
+
+        for res, amount in cost.items():
+            me.resources[res] -= amount
+            self.bank.return_resources(res, amount)
+
+        self.open_choice("helper_keep_dev", player_name, drawn, drawn=drawn)
+        return {"drawn_count": len(drawn), "defer_resolution": True}
+
+    def _choice_helper_keep_dev(self, choice: dict, option: str) -> dict:
+        """Keep the chosen card, return the other two, then owe exchange-or-flip."""
+        player_name = choice["player"]
+        drawn = list(choice["context"]["drawn"])
+        me = self.get_player(player_name)
+
+        # The kept card enters the hand stamped with this turn, so it cannot be
+        # played until the next turn, exactly like a bought card.
+        me.dev_cards[option]["count"] += 1
+        me.dev_cards[option]["purchase_turn"] = self.turn_count
+        drawn.remove(option)
+        for card in drawn:
+            self.bank.return_dev_card(card)
+
+        self._open_helper_resolution(player_name)
+        return {"kept": option}
+
+    def _helper_carla(self, player_name: str, params: dict) -> dict:
+        """Carla: return an unplayed development card and draw a fresh one.
+
+        The bank's deck is a weighted bag, so "bottom of the stack" is modelled
+        as returning the card to the bag before drawing anew - the swap effect is
+        faithful even though the bag has no order. The drawn card is stamped with
+        this turn so it cannot be played at once (Helpers_Rules.pdf, Development
+        Card Swap, p. 11).
+        """
+        if not self.dev_deck_in_play():
+            return refused("DEV_CARDS_NOT_IN_PLAY", "This table does not use development cards")
+        card_type = params.get("dev_card")
+        me = self.get_player(player_name)
+        if card_type not in me.dev_cards or me.dev_cards[card_type]["count"] <= 0:
+            return refused("NOT_HELD", "You have no such development card to swap")
+
+        me.dev_cards[card_type]["count"] -= 1
+        self.bank.return_dev_card(card_type)
+        drawn = self.bank.draw_dev_card()
+        if drawn is None:
+            # Nothing to draw: undo the return so no card is lost.
+            me.dev_cards[card_type]["count"] += 1
+            return refused("ACTION_FAILED", "No development cards left to draw")
+        me.dev_cards[drawn]["count"] += 1
+        me.dev_cards[drawn]["purchase_turn"] = self.turn_count
+        return {"returned": card_type, "drawn": drawn}
 
     # --- Client / persistence view -------------------------------------
 
