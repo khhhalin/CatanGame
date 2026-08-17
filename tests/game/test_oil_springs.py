@@ -10,24 +10,39 @@ Source: coilspringsgb_2015_web.pdf, 3-4 player rules p. 1.
 
 import random
 
+from conftest import ScriptedRandom
 from game import map_store, maps, persistence
 from game import rules as rules_module
 from game.game import Game
 
 
-def oil_game(players=('Alice', 'Bob'), seed=12345, **overrides):
-    """A playing game on the Oil Springs board with the oil rule on."""
+def oil_game(players=('Alice', 'Bob'), seed=12345, rng=None, **overrides):
+    """A playing game on the Oil Springs board with the oil rule on.
+
+    Pass `rng` a `ScriptedRandom` to force the disaster dice; board generation
+    still shuffles off its seeded base.
+    """
     defn = maps.parse_map(map_store.read_map('oil-springs'))
     chosen = dict(rules_module.preset_rules('oil_springs'))
     chosen['turn_order'] = 'lobby'
     chosen.update(overrides)
-    game = Game(list(players), [], rng=random.Random(seed), rules=chosen,
+    game = Game(list(players), [], rng=rng or random.Random(seed), rules=chosen,
                 map_definition=defn)
     game.start()
     game.game_phase = 'playing'
     game.current_player_index = 0
     game.start_turn()
     return game
+
+
+def _a_coastal_vertex(game, exclude=()):
+    """A buildable intersection that borders open sea, not in `exclude`."""
+    for vertex_key in sorted(game.vertices):
+        if vertex_key in exclude:
+            continue
+        if game._borders_sea(vertex_key):
+            return vertex_key
+    raise AssertionError('no coastal vertex on the board')
 
 
 class TestBoardDeal:
@@ -115,6 +130,118 @@ class TestProduction:
         # With the rule off the springs are never read, so nothing produces.
         assert game.oil_spring_hexes == set()
         assert game.distribute_oil(9, 'Alice') == {}
+
+
+class TestConsumption:
+    def test_converting_oil_spends_it_pays_two_and_advances_the_track(self):
+        game = oil_game()
+        alice = game.get_player('Alice')
+        alice.oil = 2
+        before = game.bank.resources.get('wheat', 0)
+        result = game.convert_oil_to_resource('Alice', 'wheat')
+        assert result['success'] is True
+        assert alice.oil == 1
+        assert alice.resources['wheat'] == 2
+        assert game.bank.resources['wheat'] == before - 2
+        assert game.disaster_track == 1
+        assert game.oil_supply == 15 + 1  # the oil went back to the supply
+
+    def test_no_oil_can_be_used_once_the_track_is_full(self):
+        game = oil_game()
+        game.get_player('Alice').oil = 1
+        game.disaster_track = 5
+        result = game.convert_oil_to_resource('Alice', 'wheat')
+        assert result['success'] is False
+        assert result['code'] == 'DISASTER_IMMINENT'
+        assert game.get_player('Alice').oil == 1
+
+    def test_converting_without_oil_is_refused(self):
+        game = oil_game()
+        result = game.convert_oil_to_resource('Alice', 'wheat')
+        assert result['code'] == 'NO_OIL'
+
+
+class TestDisaster:
+    def test_the_fifth_oil_used_triggers_a_flood_on_a_seven(self):
+        """A 7 in the disaster phase floods the coasts: a coastal settlement is
+        removed and a coastal city reduced to a settlement (p. 2)."""
+        game = oil_game(rng=ScriptedRandom(rolls=[3, 4]))  # 3 + 4 = 7
+        settle_v = _a_coastal_vertex(game)
+        city_v = _a_coastal_vertex(game, exclude={settle_v})
+        alice = game.get_player('Alice')
+        game.vertices[settle_v].building = {'type': 'settlement', 'player': 'Alice'}
+        alice.settlements.append(settle_v)
+        game.vertices[city_v].building = {'type': 'city', 'player': 'Alice'}
+        alice.cities.append(city_v)
+
+        game.disaster_track = 4
+        alice.oil = 1
+        game.convert_oil_to_resource('Alice', 'wheat')  # track -> 5
+        assert game.oil_disaster_owed() is True
+
+        result = game.advance_turn('Alice')
+        disaster = result['oil_disaster']
+        assert disaster['kind'] == 'flood'
+        # The coastal settlement is gone; the coastal city is now a settlement.
+        assert game.vertices[settle_v].building is None
+        assert settle_v not in alice.settlements
+        assert game.vertices[city_v].building['type'] == 'settlement'
+        assert city_v not in alice.cities
+        assert game.disaster_track == 0
+
+    def test_the_fifth_oil_used_pollutes_a_hex_on_a_non_seven(self):
+        """Any non-7 pollutes a hex carrying the rolled number, removing its
+        token for good (asserted against the generated board)."""
+        game = oil_game(rng=ScriptedRandom(rolls=[6, 6]))  # 6 + 6 = 12
+        # The only 12 on this board is the wood hex at -6,0,6, not a spring.
+        twelve = [k for k, h in game.hexes.items() if h.number == 12]
+        assert twelve == ['-6,0,6']
+        assert twelve[0] not in game.oil_spring_hexes
+
+        game.disaster_track = 4
+        game.get_player('Alice').oil = 1
+        game.convert_oil_to_resource('Alice', 'wheat')  # track -> 5
+        result = game.advance_turn('Alice')
+
+        disaster = result['oil_disaster']
+        assert disaster['kind'] == 'pollution'
+        assert disaster['hex'] == '-6,0,6'
+        assert game.hexes['-6,0,6'].number is None
+        assert game.oil_numbers_removed == 1
+
+    def test_polluting_an_oil_spring_burns_three_oil_and_keeps_the_number(self):
+        """An oil spring struck by pollution loses 3 oil from the supply and
+        keeps its number; it can be hit again (p. 2)."""
+        game = oil_game(rng=ScriptedRandom(rolls=[4, 5]))  # 4 + 5 = 9
+        # Two hexes carry 9: the wood spring and a brick hex. Retire the brick's
+        # token first so the spring is the sole candidate — deterministic.
+        for key, hex_obj in game.hexes.items():
+            if hex_obj.number == 9 and key not in game.oil_spring_hexes:
+                hex_obj.number = None
+        spring9 = next(k for k in game.oil_spring_hexes if game.hexes[k].number == 9)
+
+        game.disaster_track = 5
+        supply_before = game.oil_supply
+        result = game.advance_turn('Alice')
+
+        disaster = result['oil_disaster']
+        assert disaster['hex'] == spring9
+        assert disaster['oil_spring'] is True
+        assert game.hexes[spring9].number == 9      # the spring keeps its token
+        assert game.oil_supply == supply_before - 3
+        assert game.oil_numbers_removed == 0
+
+    def test_the_board_dies_when_the_fifth_token_is_removed(self):
+        """Five destroyed tokens end the game with no true winner (p. 3)."""
+        game = oil_game(rng=ScriptedRandom(rolls=[6, 6]))  # 6 + 6 = 12
+        game.oil_numbers_removed = 4
+        game.disaster_track = 5
+
+        result = game.advance_turn('Alice')
+        disaster = result['oil_disaster']
+        assert game.oil_numbers_removed == 5
+        assert game.game_state == 'finished'
+        assert disaster['game_over']['reason'] == 'board_dead'
 
 
 class TestPersistence:

@@ -73,6 +73,9 @@ class TurnClock:
         self.helper_used_this_turn = set()
         self.last_roll_total = None
         self.last_roll_gains = {}
+        # Oil Springs: a fresh turn has used no oil yet. The shared disaster
+        # track persists across turns; only this per-turn count resets.
+        self.oil_used_this_turn = 0
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.
@@ -144,8 +147,20 @@ class TurnClock:
         if self.rules['barbarian_attack']:
             victories = self.resolve_barbarian_victories()
 
+        # Oil Springs: a disaster owed by this turn's oil use is resolved now —
+        # after the turn's actions but before the board passes on (p. 2). It can
+        # end the game (the board dies at five lost tokens), so the advance stops
+        # there rather than handing the turn on.
+        oil_disaster = None
+        if self.oil_disaster_owed():
+            oil_disaster = self.resolve_oil_disaster()
+            if self.game_state == 'finished':
+                return {'success': True, 'error': '', 'current_player': current_name,
+                        'oil_disaster': oil_disaster, 'barbarian_victories': victories}
+
         return {'success': True, 'error': '',
                 'current_player': self.force_advance_turn(),
+                'oil_disaster': oil_disaster,
                 'barbarian_victories': victories}
 
     def _camel_vote_owed(self, player_name: str) -> bool:

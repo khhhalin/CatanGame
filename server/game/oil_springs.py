@@ -21,6 +21,8 @@ currency, not a resource card. The general supply, the disaster track and the
 removed-token count live on the game and are read straight off it.
 """
 
+from game.results import refused
+
 # 3-4 player component counts (coilspringsgb_2015_web.pdf p. 1: "use 15 for
 # 3-4 players"; "you may only hold a maximum of 4 oil").
 OIL_SUPPLY = 15
@@ -31,6 +33,18 @@ MAX_OIL_HELD = 4
 OIL_PER_SETTLEMENT = 1
 OIL_PER_CITY = 2
 OIL_PER_METROPOLIS = 3
+
+# A disaster fires when the shared track reaches this, and no more oil may be
+# used in a turn once it does ("For every five oil used ... a disaster", p. 2).
+DISASTER_THRESHOLD = 5
+
+# Converting oil pays two of one resource for one oil (p. 2, "convert 1 oil into
+# 2 of the same ... resource").
+RESOURCES_PER_OIL = 2
+
+# The board dies when this many number tokens have been destroyed by pollution
+# (p. 3, 3-4 player rules: "the fifth number token is removed").
+BOARD_DEATH_REMOVED = 5
 
 
 class OilSpringsRules:
@@ -148,6 +162,191 @@ class OilSpringsRules:
                 found.append(vertex_key)
         return found
 
+    # --- Using oil: the disaster track ------------------------------------
+
+    def convert_oil_to_resource(self, player_name: str, resource: str) -> dict:
+        """Spend 1 oil for 2 of one resource, advancing the disaster track (p. 2).
+
+        Way 1 of using oil: "convert 1 oil into 2 of the same, non-oil resource
+        of your choice." Each conversion advances the shared track by one; once
+        it reaches 5 no more oil may be used this turn, and a disaster resolves
+        at the end of the turn. The oil spent goes back to the general supply.
+        """
+        if not self.rules['disaster_track']:
+            return refused('RULE_OFF', 'Oil conversion is not in play')
+
+        block = self._oil_action_block(player_name)
+        if block is not None:
+            return block
+
+        player = self.get_player(player_name)
+        if player.oil < 1:
+            return refused('NO_OIL', 'You have no oil to use')
+        if resource not in self.in_play_resource_types():
+            return refused('INVALID_RESOURCE', 'Choose a resource the board deals')
+        if self.disaster_track >= DISASTER_THRESHOLD:
+            return refused(
+                'DISASTER_IMMINENT',
+                'No more oil can be used this turn — a disaster is about to strike',
+            )
+        if self.bank.resources.get(resource, 0) < RESOURCES_PER_OIL:
+            return refused('BANK_EMPTY', f'The bank has too little {resource}')
+
+        player.oil -= 1
+        self.oil_supply += 1
+        for _ in range(RESOURCES_PER_OIL):
+            self.bank.take(resource)
+        player.resources[resource] = player.resources.get(resource, 0) + RESOURCES_PER_OIL
+        self._advance_disaster_track(1)
+        return {'success': True, 'error': '', 'resource': resource,
+                'oil': player.oil, 'disaster_track': self.disaster_track}
+
+    def _oil_action_block(self, player_name: str):
+        """Shared turn checks for a during-your-turn oil action, or None."""
+        if self.game_phase == 'setup':
+            return refused('WRONG_PHASE', 'You cannot use oil during setup')
+        current_name = self.players[self.current_player_index].name
+        if current_name != player_name:
+            return refused('NOT_YOUR_TURN', f'Only {current_name} may use oil')
+        if self.get_player(player_name) is None:
+            return refused('NO_SUCH_PLAYER', 'No such player')
+        if self.must_move_robber:
+            return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+        return None
+
+    def _advance_disaster_track(self, count: int):
+        """Advance the shared track by `count` oil used and note the usage.
+
+        The per-turn count feeds the sequester mutual-exclusion (chunk 3); the
+        shared track is what triggers the disaster phase.
+        """
+        self.disaster_track += count
+        self.oil_used_this_turn += count
+
+    def oil_disaster_owed(self) -> bool:
+        """Whether this turn's oil use owes a disaster at the turn's end."""
+        return self.rules['disaster_track'] and self.disaster_track >= DISASTER_THRESHOLD
+
+    # --- The disaster phase ------------------------------------------------
+
+    def resolve_oil_disaster(self) -> dict:
+        """Resolve one disaster at the end of a turn and reset the track (p. 2).
+
+        Rolls two dice: a 7 floods the coasts, any other number pollutes a hex
+        carrying it. Returns what happened — the roll, the kind, what was lost —
+        plus a `game_over` if the board has died. Deterministic through the
+        game's own generator, so a test can script the disaster roll.
+        """
+        die1 = self.rng.randint(1, 6)
+        die2 = self.rng.randint(1, 6)
+        total = die1 + die2
+
+        if total == 7:
+            detail = {'kind': 'flood', 'flooded': self._disaster_flood()}
+        else:
+            detail = {'kind': 'pollution', **self._disaster_pollution(total)}
+
+        self.disaster_track = 0
+
+        game_over = None
+        if self.oil_numbers_removed >= BOARD_DEATH_REMOVED:
+            self.game_state = 'finished'
+            # No player truly wins; the Champion of the Environment takes a
+            # Pyrrhic victory (p. 3). None when nobody has sequestered enough.
+            game_over = {'winner': self.oil_champion, 'reason': 'board_dead',
+                         'victory_points': self.victory_points_for(self.oil_champion)
+                         if self.oil_champion else 0}
+
+        return {'die1': die1, 'die2': die2, 'total': total,
+                'numbers_removed': self.oil_numbers_removed,
+                'game_over': game_over, **detail}
+
+    def _disaster_flood(self) -> list:
+        """Coastal flooding on a 7 (p. 2).
+
+        Every settlement bordering a sea hex is removed and returned to its
+        owner's supply; every coastal city is reduced to a settlement. A
+        metropolis is flood-proof, and roads are never touched. Returns the list
+        of {vertex, player, was, now} changes, sorted for a stable payload.
+        """
+        changes = []
+        for vertex_key in sorted(self.vertices):
+            vertex = self.vertices[vertex_key]
+            if not vertex.building:
+                continue
+            if not self._borders_sea(vertex_key):
+                continue
+            if vertex_key in self.oil_metropolises:
+                continue
+            player_name = vertex.building.get('player')
+            player = self.get_player(player_name)
+            was = vertex.building.get('type')
+            if was == 'city':
+                if player and vertex_key in player.cities:
+                    player.cities.remove(vertex_key)
+                    player.settlements.append(vertex_key)
+                vertex.building = {'type': 'settlement', 'player': player_name}
+                changes.append({'vertex': vertex_key, 'player': player_name,
+                                'was': 'city', 'now': 'settlement'})
+            elif was in ('settlement', 'harbor_settlement'):
+                if player and vertex_key in player.settlements:
+                    player.settlements.remove(vertex_key)
+                if player and vertex_key in getattr(player, 'harbor_settlements', []):
+                    player.harbor_settlements.remove(vertex_key)
+                vertex.building = None
+                changes.append({'vertex': vertex_key, 'player': player_name,
+                                'was': was, 'now': None})
+        return changes
+
+    def _borders_sea(self, vertex_key: str) -> bool:
+        """Whether this intersection is a corner of an open-sea hex.
+
+        A vertex only lists its *land* hexes in its neighbours, so the coast is
+        read the other way round — from the sea hexes' corners, the same walk the
+        Fishermen use — and cached, since the board's water never moves.
+        """
+        return vertex_key in self._sea_coast_vertices()
+
+    def _sea_coast_vertices(self) -> set:
+        """The intersections that are a corner of an ocean hex, cached."""
+        cached = getattr(self, '_oil_coast_cache', None)
+        if cached is not None:
+            return cached
+        coast = set()
+        for hex_key, hex_obj in self.hexes.items():
+            if hex_obj.type != 'ocean':
+                continue
+            coast.update(self._oil_spring_vertices(hex_key))
+        self._oil_coast_cache = coast
+        return coast
+
+    def _disaster_pollution(self, total: int) -> dict:
+        """Industrial pollution on a non-7 roll (p. 2).
+
+        A hex carrying the rolled number is struck. If more than one shares it,
+        one is chosen at random; if the number is on no hex any more, nothing
+        happens. An oil spring loses 3 oil from the general supply (unrecoverable)
+        and keeps its number; any other hex loses its number token for good, and
+        the fifth token lost dies the board.
+        """
+        candidates = sorted(
+            key for key, hex_obj in self.hexes.items()
+            if hex_obj.number == total and hex_obj.type != 'ocean'
+        )
+        if not candidates:
+            return {'hex': None, 'polluted': False}
+
+        target = candidates[0] if len(candidates) == 1 else self.rng.choice(candidates)
+        if target in self.oil_spring_hexes:
+            lost = min(3, self.oil_supply)
+            self.oil_supply -= lost
+            return {'hex': target, 'oil_spring': True, 'oil_lost': lost,
+                    'polluted': False}
+
+        self.hexes[target].number = None
+        self.oil_numbers_removed += 1
+        return {'hex': target, 'oil_spring': False, 'polluted': True}
+
     # --- Client state ------------------------------------------------------
 
     def oil_client_state(self) -> dict | None:
@@ -163,4 +362,9 @@ class OilSpringsRules:
             'springs': sorted(self.oil_spring_hexes),
             'supply': self.oil_supply,
             'oil': {player.name: player.oil for player in self.players},
+            # The shared disaster track (0-5) and how many number tokens
+            # pollution has destroyed toward the board's death at five.
+            'disaster_track': self.disaster_track,
+            'numbers_removed': self.oil_numbers_removed,
+            'board_death_at': BOARD_DEATH_REMOVED,
         }

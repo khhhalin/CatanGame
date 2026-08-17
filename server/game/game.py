@@ -206,6 +206,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.oil_sequestered = {}
         self.oil_champion = None
         self.oil_metropolises = {}
+        # Per-turn: how much oil this turn's player has used, reset each turn.
+        # Read by the disaster cap and (chunk 3) the sequester mutual-exclusion.
+        self.oil_used_this_turn = 0
         # The Wonders of Catan: which Wonder each player has started (player ->
         # wonder id) and how many of its four levels they have finished (player ->
         # level), and the marked intersections read off the map — the strait

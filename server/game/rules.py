@@ -703,6 +703,17 @@ RULES += [
           "of 15 runs out. You may hold at most 4 oil. Play it on the Oil "
           "Springs map.",
           group=EXPANSION),
+    _bool("disaster_track", "Oil Springs: disaster track", False,
+          "Catan: Oil Springs, coilspringsgb_2015_web.pdf p. 2 (\"For every five "
+          "oil used ... an environmental disaster results\")",
+          "Using oil is powerful — convert 1 oil into 2 of any resource — but "
+          "every fifth oil used advances a shared disaster track that fires at "
+          "the end of the turn. A 7 floods the coasts (sea-bordering settlements "
+          "are removed and coastal cities reduced to settlements); any other "
+          "roll pollutes a hex, which loses its number for good. When five "
+          "number tokens have been destroyed the board dies and the game ends "
+          "with no true winner.",
+          group=EXPANSION),
     _bool("setup_third_settlement", "Start with a third settlement", False,
           "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22 "
           "(\"everyone can build a third settlement ... you receive your "
@@ -2063,6 +2074,7 @@ PRESETS = [
             "board_layout": "custom",
             "board_map": "oil-springs",
             "oil_tokens": True,
+            "disaster_track": True,
             "victory_target": 12,
         },
     },
