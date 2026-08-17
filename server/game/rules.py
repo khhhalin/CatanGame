@@ -733,6 +733,34 @@ RULES += [
           "the rule fits any map; on a board with no small islands it changes "
           "nothing.",
           group=EXPANSION),
+    _bool("pirate_fleet", "The pirate fleet", False,
+          "Seafarers rulebook, Scenario 7 'The Pirate Islands', p. 22",
+          "A roaming enemy fleet — a neutral ship, not a player — circles the two "
+          "central desert islands clockwise. After every roll, before production or "
+          "a 7, it sails the lower of the two dice along its track; if it lands "
+          "beside one of your coastal settlements or cities it raids you, its "
+          "strength the die it moved and yours your warships. Lose and you are "
+          "robbed of a card and one more per city; win and you take a card of your "
+          "choice. There is no robber in this scenario. Play it on the Pirate "
+          "Islands map.",
+          group=EXPANSION),
+    _bool("pirate_warships", "Warships", False,
+          "Seafarers rulebook, Scenario 7 'The Pirate Islands', p. 20",
+          "Reveal a Knight card to turn one of your ships into a warship. Warships "
+          "are your strength against the pirate fleet and the fortresses; the card "
+          "is spent and set aside, and the ship stays on the board turned on its "
+          "side. Needs ships, so there is a ship to convert.",
+          group=EXPANSION),
+    _bool("pirate_fortresses", "Pirate fortresses", False,
+          "Seafarers rulebook, Scenario 7 'The Pirate Islands', pp. 20-22",
+          "Four fortresses — a settlement of a player's colour on three Catan "
+          "chits — sit on the western islands. Sail a route to your own-colour "
+          "fortress and attack at the end of your turn: roll a die for its "
+          "strength, and more warships than the roll strips a chit; fewer costs you "
+          "two warships and a tie one. Clear all three chits and you recapture the "
+          "settlement — a point, a producer, upgradeable to a city. You win by "
+          "recapturing your fortress and holding at least 10 victory points.",
+          group=EXPANSION),
 ]
 
 
@@ -1223,6 +1251,13 @@ DEPENDENCIES = {
     # ticked on its own map, but it too is only reachable by sea.
     "wonders": ("ships",),
     "wonder_island_points": ("ships",),
+    # The Pirate Islands. Warships are converted ships, so there must be a ship to
+    # turn on its side; the fortresses are fought and recaptured with warships, so
+    # the fortress rule needs the warship rule (and, through it, ships). The fleet
+    # can move and raid with no warships at all — you simply always lose — so it
+    # stands alone.
+    "pirate_warships": ("ships",),
+    "pirate_fortresses": ("pirate_warships",),
     # Explorers & Pirates. Transport ships are built and moved from harbor
     # settlements, so nothing in the transport system means anything without
     # them; the pirate charges its tribute in gold; missions need their tracks
@@ -1658,6 +1693,28 @@ WONDERS_OF_CATAN_RULES = {
 }
 
 
+# Seafarers, The Pirate Islands. Ticks ships and moving them, the roaming pirate
+# fleet, warships and the fortresses; restricts starting settlements to the
+# eastern main island (p. 21); drops the Longest Trade Route and Largest Army the
+# scenario sets aside (p. 20) — the roads-only Longest Road is off in a ship game
+# too; and points the table at the built-in Pirate Islands board. There is no
+# robber, gated off the fleet rule. The alternate win is recapturing your fortress
+# with 10 points, so the target is suggested at 10; the lobby can still change it.
+PIRATE_ISLANDS_RULES = {
+    "ships": True,
+    "ship_movement": True,
+    "pirate_fleet": True,
+    "pirate_warships": True,
+    "pirate_fortresses": True,
+    "start_on_main_land": True,
+    "longest_road_card": False,
+    "largest_army_card": False,
+    "board_layout": "custom",
+    "board_map": "pirate-islands",
+    "victory_target": 10,
+}
+
+
 PRESETS = [
     {
         "id": "base_game",
@@ -1882,6 +1939,25 @@ PRESETS = [
             "still change it. Pick the Wonders of Catan map."
         ),
         "rules": dict(WONDERS_OF_CATAN_RULES),
+    },
+    {
+        "id": "pirate_islands",
+        "name": "Seafarers: The Pirate Islands",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 7 'The Pirate Islands', pp. 20-22"
+        ),
+        "summary": (
+            "The largest Seafarers scenario: pirates hold four fortresses on the "
+            "western islands and a roaming enemy fleet circles the two central "
+            "desert islands clockwise, sailing the lower die each roll and raiding "
+            "any coast it lands beside. Reveal Knight cards to turn ships into "
+            "warships, fight the fleet and your own-colour fortress with dice, and "
+            "win by recapturing your fortress while holding 10 points. There is no "
+            "robber, no Longest Trade Route and no Largest Army. The rulebook ends "
+            "the race at 10, so the target is suggested at 10; the lobby can still "
+            "change it. Pick the Pirate Islands map."
+        ),
+        "rules": dict(PIRATE_ISLANDS_RULES),
     },
     {
         "id": "traders_and_barbarians",

@@ -48,6 +48,7 @@ KINDS = {
     'treason_destination': 'choose a coast to redeploy a barbarian to',
     'gift_harbor': 'choose which coastal side to place your gift harbor on',
     'gold_field_choice': 'choose a resource to take from the gold field',
+    'pirate_repel_reward': 'choose a resource to take for driving off the pirate fleet',
 }
 
 # The safety net on draining the queue: a resolver may open a follow-up choice

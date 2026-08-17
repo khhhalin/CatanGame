@@ -204,6 +204,13 @@ def serialize(game: Game) -> dict:
         # saved.
         'wonder_choice': game.wonder_choice,
         'wonder_level': game.wonder_level,
+        # The Pirate Islands: where the fleet sits on its track, the fortresses'
+        # chits and capture, and each player's warships. The track itself and the
+        # fortress intersections are re-derived from the map when the board
+        # regenerates, so only what play has changed is saved.
+        'pirate_fleet_index': game.pirate_fleet_index,
+        'pirate_fortresses': game.pirate_fortresses,
+        'player_warships': game.player_warships,
         'must_move_robber': game.must_move_robber,
         # Main scenario: a barbarian move owed after a 7 survives a save.
         'must_move_barbarian': game.must_move_barbarian,
@@ -426,7 +433,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
                   'merchant_fleet_types', 'gift_points', 'held_gift_harbors',
                   'cloth_tokens', 'village_cloth', 'cloth_general_supply',
-                  'wonder_choice', 'wonder_level'):
+                  'wonder_choice', 'wonder_level',
+                  'pirate_fleet_index', 'pirate_fortresses', 'player_warships'):
         if field in data:
             setattr(game, field, data[field])
 

@@ -121,6 +121,13 @@ GIFT_KINDS = ('victory_point', 'dev_card', 'harbor')
 # variant and bounds the payload.
 WONDER_MARKER_KINDS = ('strait', 'wasteland')
 MAX_WONDER_MARKERS = 24
+# The Pirate Islands (Seafarers 2021, Scenario 7, pp. 20-22). The printed board
+# carries four pirate fortresses (a settlement corner on each western island) and
+# a track of sea hexes the pirate fleet circumnavigates clockwise. The caps are
+# the rulebook's four fortresses (generous room for a variant) and a loop no
+# longer than the ring of sea around the board.
+MAX_PIRATE_FORTRESSES = 8
+MAX_PIRATE_TRACK = 64
 MAX_NAME = 64
 MAX_NOTES = 512
 
@@ -449,6 +456,22 @@ class MapDefinition:
     # like `bridge_sites`, because a marker is owned by an intersection, not a
     # hex. Empty on every map that prints none.
     wonder_markers: tuple = ()
+    # The Pirate Islands fleet track: an ordered tuple of sea-hex keys forming the
+    # clockwise loop the pirate fleet circumnavigates (Seafarers 2021, Scenario 7,
+    # p. 22). Consecutive entries name adjacent hexes, so a move of N steps is N
+    # hops along the ring. A map-level field like `bridge_sites`, because the ring
+    # is not owned by any one hex. Empty on every map that prints none.
+    pirate_fleet_track: tuple = ()
+    # The hex the fleet starts on — the field marked with a pirate ship in the
+    # scenario diagram (p. 22). One of the track's own keys; None on a map that
+    # prints no fleet.
+    pirate_fleet_start: str = None
+    # The Pirate Islands fortresses: sorted (vertex_key, index) pairs, where index
+    # names which fortress (0..3) the intersection carries. A settlement of a
+    # player's colour standing on three Catan chits (p. 20). A map-level field like
+    # `cloth_villages`, because a fortress is owned by an intersection, not a hex.
+    # Empty on every map that prints none.
+    pirate_fortresses: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -488,6 +511,14 @@ class MapDefinition:
         if self.wonder_markers:
             data['wonder_markers'] = {
                 vertex_key: kind for vertex_key, kind in self.wonder_markers
+            }
+        if self.pirate_fleet_track:
+            data['pirate_fleet_track'] = list(self.pirate_fleet_track)
+        if self.pirate_fleet_start is not None:
+            data['pirate_fleet_start'] = self.pirate_fleet_start
+        if self.pirate_fortresses:
+            data['pirate_fortresses'] = {
+                vertex_key: index for vertex_key, index in self.pirate_fortresses
             }
         return data
 
@@ -850,6 +881,10 @@ def parse_map(data: dict) -> MapDefinition:
 
     wonder_tuple = _parse_wonder_markers(data.get('wonder_markers'), radius)
 
+    track_tuple, track_start = _parse_pirate_track(
+        data.get('pirate_fleet_track'), data.get('pirate_fleet_start'), radius)
+    fortress_tuple = _parse_pirate_fortresses(data.get('pirate_fortresses'), radius)
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
@@ -858,6 +893,8 @@ def parse_map(data: dict) -> MapDefinition:
         oasis_arrows=oasis_tuple, barbarian_paths=barbarian_tuple,
         gift_edges=gift_tuple, cloth_villages=cloth_tuple,
         wonder_markers=wonder_tuple,
+        pirate_fleet_track=track_tuple, pirate_fleet_start=track_start,
+        pirate_fortresses=fortress_tuple,
     )
 
 
@@ -921,6 +958,66 @@ def _parse_wonder_markers(raw, radius: int) -> tuple:
         markers[key] = kind
 
     return tuple((key, markers[key]) for key in sort_hex_keys(markers))
+
+
+def _parse_pirate_track(raw, start, radius: int) -> tuple:
+    """The Pirate Islands fleet track as an ordered tuple of hex keys.
+
+    Shape only, like the other map-level fields: an ordered list of hex keys on
+    the lattice, kept in the order given (the loop is directional — clockwise —
+    so it is *not* sorted). The start, if named, must be one of the track's own
+    keys. Whether the keys are sea and mutually adjacent is a board fact, checked
+    against the generated board by the scenario code, not here. Empty when the
+    map prints none.
+    """
+    if raw is None:
+        return (), None
+    if not isinstance(raw, list) or len(raw) > MAX_PIRATE_TRACK:
+        raise InvalidPayload(
+            'INVALID_MAP', f'pirate_fleet_track is a list of at most {MAX_PIRATE_TRACK} hexes')
+    track = []
+    for key in raw:
+        coords = parse_hex_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name a hex')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'track hex {key!r} is outside the frame')
+        track.append(key)
+    if start is not None:
+        if start not in track:
+            raise InvalidPayload(
+                'INVALID_MAP', 'pirate_fleet_start must be one of the track hexes')
+    return tuple(track), start
+
+
+def _parse_pirate_fortresses(raw, radius: int) -> tuple:
+    """The Pirate Islands fortresses as sorted (vertex_key, index) pairs.
+
+    Shape only, like the other map-level fields: each key names an intersection
+    on the lattice and each value is the fortress index (a non-negative integer)
+    that intersection carries. Which island the corner sits on is a board fact,
+    checked no more than the cloth villages are. Empty when the map prints none.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or len(raw) > MAX_PIRATE_FORTRESSES:
+        raise InvalidPayload(
+            'INVALID_MAP',
+            f'pirate_fortresses maps at most {MAX_PIRATE_FORTRESSES} intersections to an index')
+    forts = {}
+    for key in sort_hex_keys(raw):
+        coords = parse_vertex_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name an intersection')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'fortress {key!r} is outside the frame')
+        index = raw[key]
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0 \
+                or index >= MAX_PIRATE_FORTRESSES:
+            raise InvalidPayload(
+                'INVALID_MAP', f'a fortress index is 0 to {MAX_PIRATE_FORTRESSES - 1}')
+        forts[key] = index
+    return tuple((key, forts[key]) for key in sort_hex_keys(forts))
 
 
 def _parse_gift_edges(raw, radius: int, harbour_bag) -> tuple:

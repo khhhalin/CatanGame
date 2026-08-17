@@ -27,6 +27,7 @@ from game.missions_lairs import MissionLairsRules
 from game.missions_spices import MissionSpicesRules
 from game.path_barbarians import PathBarbarianRules
 from game.pending_choice import PendingChoiceRules
+from game.pirate_islands import PirateIslandsRules
 from game.player import Player
 from game.results import refused
 from game.rivers import RiversRules
@@ -49,7 +50,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
-           PendingChoiceRules, TurnClock):
+           PirateIslandsRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -195,6 +196,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.wonder_level = {}
         self.wonder_strait = set()
         self.wonder_wasteland = set()
+        # The Pirate Islands: the fleet's track (ordered sea-hex keys) and where it
+        # sits on it, the four fortresses (vertex -> {index, owner, chits,
+        # captured}) read off the map, and each player's warship count. All empty
+        # off the Pirate Islands board.
+        self.pirate_fleet_track = []
+        self.pirate_fleet_index = 0
+        self.pirate_fortresses = {}
+        self.player_warships = {}
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -448,6 +457,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # The Wonders of Catan: read the map's marked strait and wasteland
         # intersections. A no-op for a board that prints no markers.
         self.setup_wonders_board()
+
+        # The Pirate Islands: read the map's fleet track and the four fortresses,
+        # and hand each fortress to a player in seat order. A no-op for a board
+        # that prints no fleet.
+        self.setup_pirate_islands()
 
         # Traders & Barbarians (Caravans): read the oasis and its arrow paths off
         # the dealt board. A no-op for a board that prints no oasis.
@@ -1470,6 +1484,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # The Wonders of Catan: the catalogue, each player's Wonder and level,
             # and the marked intersections. None off the scenario.
             'wonders': self.wonders_client_state(),
+            # The Pirate Islands: the fleet's track and where it sits, the
+            # fortresses and each player's warships. None off the scenario.
+            'pirate_islands': self.pirate_islands_client_state(),
             'must_move_robber': self.must_move_robber,
             # Main scenario: who owes a roaming-barbarian move after a 7, or None.
             'must_move_barbarian': self.must_move_barbarian,
@@ -1794,6 +1811,18 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
 
         self.set_dice_rolled()
 
+        # The Pirate Islands fleet sails "before anything else" (p. 22): the lower
+        # of the two dice, along its track, and it raids any coast it lands beside
+        # before production or a 7 is resolved. A no-op off the scenario.
+        pirate_fleet = None
+        if self.rules['pirate_fleet'] and self.pirate_fleet_track:
+            landed = self.advance_pirate_fleet(min(dice1, dice2))
+            pirate_fleet = {
+                'hex': landed,
+                'steps': min(dice1, dice2),
+                'attacks': self.resolve_pirate_fleet_attack(landed, min(dice1, dice2)),
+            }
+
         # The barbarians bring a third die, and it is resolved *before*
         # production. Without this the barbarian ship never moves and knights
         # have nothing to defend against. The same die is what deals progress
@@ -1811,9 +1840,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # main scenario moves a roaming barbarian instead of the robber
             # (expansions.md 736): a 7 still forces the discard but moves the
             # robber only in a game that has one.
+            # The Pirate Islands has no robber (p. 22): a 7 still forces the
+            # discard, but no robber is moved.
             if (not barbarians_still_coming and not self.in_robber_free_opening()
                     and not self.rules['barbarian_attack']
-                    and not self.rules['roaming_barbarians']):
+                    and not self.rules['roaming_barbarians']
+                    and not self.rules['pirate_fleet']):
                 self.must_move_robber = True
             # The main scenario: the roller must move one of the three barbarians
             # to a free path (expansions.md 736), gated the way the robber move is.
@@ -1878,6 +1910,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Cloth bolts the roll paid (player -> count). Empty when no village
             # matched the roll or every matching village was already empty.
             'cloth': cloth,
+            # The Pirate Islands fleet's move this roll and the coasts it raided,
+            # or None off the scenario: {'hex', 'steps', 'attacks'} where each
+            # attack names the player, the outcome and what was lost or rewarded.
+            'pirate_fleet': pirate_fleet,
             # The win this roll produced, or None. Only Cloth for Catan sets it:
             # {'winner', 'victory_points', 'reason'} where reason is
             # 'victory_target' (reached 14 on turn) or 'villages_depleted'.

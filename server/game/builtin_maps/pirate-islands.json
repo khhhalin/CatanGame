@@ -1,0 +1,163 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 6
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 3,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "pirate-islands",
+  "map_version": 2,
+  "name": "The Pirate Islands",
+  "notes": "Seafarers 'The Pirate Islands' (2021 rulebook, Scenario 7, pp.20-22). Eastern main island; two central desert islands the fleet circles clockwise; four western pirate islands each with a fortress; two gold fields. The fleet moves the lower die each roll and raids a coast beside it. Build warships from knight cards; fight fleet and fortress with dice. Win by recapturing your fortress AND 10 VP. No robber, Longest Trade Route or Largest Army. Geometry adapted to the frame.",
+  "pirate_fleet_track": [
+    "-3,3,0",
+    "0,3,-3",
+    "3,0,-3",
+    "6,-3,-3",
+    "6,-6,0",
+    "3,-6,3",
+    "0,-3,3",
+    "-3,0,3"
+  ],
+  "pirate_fleet_start": "-3,3,0",
+  "pirate_fortresses": {
+    "-14,13,1": 0,
+    "-5,13,-8": 1,
+    "4,10,-14": 2,
+    "-14,4,10": 3
+  },
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "id": "eastern-island",
+      "kind": "main",
+      "hexes": [
+        "6,-9,3",
+        "9,-12,3",
+        "9,-9,0",
+        "3,-9,6",
+        "6,-12,6",
+        "12,-15,3",
+        "12,-12,0",
+        "9,-15,6",
+        "12,-9,-3",
+        "9,-6,-3",
+        "0,-6,6",
+        "0,-9,9",
+        "3,-12,9",
+        "6,-15,9"
+      ],
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          2,
+          3,
+          3,
+          4,
+          4,
+          5,
+          5,
+          6,
+          8,
+          9,
+          9,
+          10,
+          11,
+          11
+        ],
+        "terrain": {
+          "wood": 3,
+          "brick": 3,
+          "sheep": 3,
+          "wheat": 3,
+          "ore": 2
+        }
+      }
+    },
+    {
+      "color": "#c0563b",
+      "id": "pirate-islands",
+      "kind": "island",
+      "hexes": [
+        "-15,15,0",
+        "-6,15,-9",
+        "3,12,-15",
+        "-15,6,9"
+      ],
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          4,
+          5,
+          9,
+          10
+        ],
+        "terrain": {
+          "ore": 1,
+          "wheat": 1,
+          "sheep": 1,
+          "wood": 1
+        }
+      }
+    },
+    {
+      "color": "#e6c34a",
+      "id": "gold-islands",
+      "kind": "island",
+      "hexes": [
+        "-12,-3,15",
+        "-3,-12,15"
+      ],
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          6,
+          8
+        ],
+        "terrain": {
+          "gold": 2
+        }
+      }
+    },
+    {
+      "color": "#b8a37e",
+      "id": "desert-islands",
+      "kind": "island",
+      "hexes": [
+        "0,0,0",
+        "3,-3,0"
+      ],
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "desert": 2
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "id": "ocean",
+      "kind": "sea",
+      "hexes": "remaining",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 105
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 10
+}
