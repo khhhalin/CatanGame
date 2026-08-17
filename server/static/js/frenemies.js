@@ -19,6 +19,13 @@ const GUILD_LABEL = {
 // Which opponent a gift is being aimed at, or null when the picker is closed.
 let giftRecipient = null;
 let giftOpen = false;
+// Which guild's redemption picker is open (merchant/trader need a resource), the
+// trader's chosen give resource, and whether the exchange picker is open.
+let redeemGuild = null;
+let traderGive = null;
+let exchangeOpen = false;
+
+const GUILD_ORDER = ['trader', 'merchant', 'road_builder', 'scholar', 'master_builder'];
 
 function el(id) {
     return document.getElementById(id);
@@ -40,6 +47,8 @@ export function renderFrenemies() {
     if (!show) {
         giftOpen = false;
         giftRecipient = null;
+        redeemGuild = null;
+        exchangeOpen = false;
         return;
     }
     renderStatus(board, state);
@@ -125,6 +134,125 @@ function renderActions(board, state) {
         giftOpen = false;
         giftRecipient = null;
     }
+
+    // The guild hall: redeem usable favours, or exchange one for a fresh draw.
+    if (state.guild_hall && mine) {
+        renderGuild(actions, board, state);
+    } else {
+        redeemGuild = null;
+        exchangeOpen = false;
+    }
+}
+
+function renderGuild(actions, board, state) {
+    const usable = state.your_favours?.usable || {};
+    const costs = state.costs || {};
+    const redeemed = state.redeemed_this_turn;
+    const exchanged = state.exchanged_this_turn;
+
+    for (const guild of GUILD_ORDER) {
+        const cost = costs[guild] ?? 1;
+        const have = usable[guild] || 0;
+        const affordable = have >= cost && !exchanged
+            && !(guild === 'master_builder' && (state.vp_supply ?? 0) < 1);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ep-action-btn';
+        btn.id = `frenemies-redeem-${guild}`;
+        btn.textContent = `${GUILD_LABEL[guild]} (${cost})`;
+        btn.disabled = !affordable;
+        btn.addEventListener('click', () => {
+            if (guild === 'merchant' || guild === 'trader') {
+                redeemGuild = redeemGuild === guild ? null : guild;
+                traderGive = null;
+                renderFrenemies();
+            } else {
+                emitGame('redeem_favour', { guild });
+            }
+        });
+        actions.appendChild(btn);
+
+        if (redeemGuild === guild && affordable) {
+            renderResourcePicker(actions, board, guild);
+        }
+    }
+
+    // Exchange, only if you have taken no guild action this turn.
+    const canExchange = !redeemed && !exchanged
+        && Object.values(usable).some(n => n > 0) && (state.bag_remaining ?? 0) > 0;
+    const exchange = document.createElement('button');
+    exchange.type = 'button';
+    exchange.className = 'ep-action-btn';
+    exchange.id = 'frenemies-exchange';
+    exchange.textContent = 'Exchange a token';
+    exchange.disabled = !canExchange;
+    exchange.addEventListener('click', () => {
+        exchangeOpen = !exchangeOpen;
+        renderFrenemies();
+    });
+    actions.appendChild(exchange);
+
+    if (exchangeOpen && canExchange) {
+        for (const guild of GUILD_ORDER) {
+            if ((usable[guild] || 0) <= 0) {
+                continue;
+            }
+            const ret = document.createElement('button');
+            ret.type = 'button';
+            ret.className = 'ep-action-btn frenemies-exchange-opt';
+            ret.dataset.guild = guild;
+            ret.textContent = `Return ${GUILD_LABEL[guild]}`;
+            ret.addEventListener('click', () => {
+                exchangeOpen = false;
+                emitGame('exchange_favour', { return: guild });
+            });
+            actions.appendChild(ret);
+        }
+    }
+}
+
+function renderResourcePicker(actions, board, guild) {
+    const resources = board.resource_types || [];
+    // The traders take a give resource first, then the different receive one.
+    if (guild === 'trader' && traderGive === null) {
+        for (const resource of resources) {
+            const opt = resourceButton(resource, `frenemies-trader-give-${resource}`);
+            opt.addEventListener('click', () => {
+                traderGive = resource;
+                renderFrenemies();
+            });
+            actions.appendChild(opt);
+        }
+        return;
+    }
+    for (const resource of resources) {
+        if (guild === 'trader' && resource === traderGive) {
+            continue;  // the traders swap for a different resource
+        }
+        const id = guild === 'trader'
+            ? `frenemies-trader-recv-${resource}`
+            : `frenemies-merchant-${resource}`;
+        const opt = resourceButton(resource, id);
+        opt.addEventListener('click', () => {
+            const payload = guild === 'trader'
+                ? { guild, give: traderGive, receive: resource }
+                : { guild, resource };
+            redeemGuild = null;
+            traderGive = null;
+            emitGame('redeem_favour', payload);
+        });
+        actions.appendChild(opt);
+    }
+}
+
+function resourceButton(resource, id) {
+    const opt = document.createElement('button');
+    opt.type = 'button';
+    opt.className = 'ep-action-btn frenemies-res-opt';
+    opt.id = id;
+    opt.dataset.resource = resource;
+    opt.textContent = resource;
+    return opt;
 }
 
 function renderGiftPicker(actions, board, me, state) {

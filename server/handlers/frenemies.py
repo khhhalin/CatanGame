@@ -16,6 +16,7 @@ from extensions import socketio
 from game.validation import InvalidPayload, require_str
 from state import bump_and_broadcast, log_event, rate_limited, reject, require_actor
 
+from handlers.building import announce_victory
 from handlers.ships import _started_game
 
 logger = logging.getLogger(__name__)
@@ -68,4 +69,72 @@ def handle_decline_steal(data):
             reject(result['code'], result['error'])
             return
         log_event('robber', f"{name} declined to steal on the desert", player=name)
+        bump_and_broadcast()
+
+
+# The optional resource choices a redemption carries: the traders' give/receive
+# pair and the merchants' single resource. Read only when the guild needs them;
+# the engine validates every one, so a missing or bad value is simply refused.
+_FAVOUR_LABEL = {
+    'trader': 'traded at the traders',
+    'merchant': 'took a resource from the merchants',
+    'road_builder': 'took a free road from the road builders',
+    'scholar': 'drew a card from the scholars',
+    'master_builder': 'took a Victory-Point marker from the master builders',
+}
+
+
+@socketio.on('redeem_favour')
+def handle_redeem_favour(data):
+    if rate_limited():
+        return
+    session = _started_game('guild_hall')
+    if session is None:
+        return
+    name = require_actor(data)
+    if name is None:
+        return
+    try:
+        guild = require_str(data.get('guild'), 'guild')
+    except InvalidPayload:
+        return
+    # The trader and merchant favours carry a resource choice; the rest ignore
+    # these, and the engine refuses a bad one, so they are passed straight
+    # through without a handler-side gate.
+    kwargs = {}
+    for key in ('give', 'receive', 'resource'):
+        if isinstance(data, dict) and isinstance(data.get(key), str):
+            kwargs[key] = data[key]
+    with session.lock:
+        result = session.game.redeem_favour(name, guild, **kwargs)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} {_FAVOUR_LABEL.get(guild, 'redeemed a favour')}", player=name)
+        bump_and_broadcast()
+        # A Victory-Point marker can win outright, so it is announced now rather
+        # than held to the next roll (p. 2, the win comes on your own turn).
+        announce_victory(name)
+
+
+@socketio.on('exchange_favour')
+def handle_exchange_favour(data):
+    if rate_limited():
+        return
+    session = _started_game('guild_hall')
+    if session is None:
+        return
+    name = require_actor(data)
+    if name is None:
+        return
+    try:
+        return_guild = require_str(data.get('return'), 'return')
+    except InvalidPayload:
+        return
+    with session.lock:
+        result = session.game.exchange_favour(name, return_guild)
+        if not result['success']:
+            reject(result['code'], result['error'])
+            return
+        log_event('build', f"{name} exchanged a favour token", player=name)
         bump_and_broadcast()

@@ -289,10 +289,156 @@ class TestNotThisTurn:
         assert sum(game.favour_locked.get('Alice', {}).values()) == 0
 
 
+def guild_game(**overrides):
+    """A Frenemies game with the guild hall on, no favours yet held."""
+    return frenemies_game(guild_hall=True, **overrides)
+
+
+class TestGuildRedemption:
+    def test_traders_swap_one_resource_for_another_at_the_bank(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'trader': 1}
+        game.get_player('Alice').resources = {'wood': 1}
+
+        result = game.redeem_favour('Alice', 'trader', give='wood', receive='ore')
+
+        assert result['success'], result
+        assert game.get_player('Alice').resources.get('wood', 0) == 0
+        assert game.get_player('Alice').resources.get('ore', 0) == 1
+        assert game.favour_usable['Alice'].get('trader', 0) == 0
+
+    def test_traders_will_not_swap_for_the_same_resource(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'trader': 1}
+        game.get_player('Alice').resources = {'wood': 1}
+
+        result = game.redeem_favour('Alice', 'trader', give='wood', receive='wood')
+        assert not result['success']
+        assert result['code'] == 'INVALID_RESOURCE'
+        assert game.favour_usable['Alice']['trader'] == 1  # token not spent
+
+    def test_merchants_take_any_one_resource(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'merchant': 1}
+
+        result = game.redeem_favour('Alice', 'merchant', resource='ore')
+        assert result['success']
+        assert game.get_player('Alice').resources.get('ore', 0) == 1
+        assert game.favour_usable['Alice'].get('merchant', 0) == 0
+
+    def test_road_builders_grant_a_free_road(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'road_builder': 1}
+
+        result = game.redeem_favour('Alice', 'road_builder')
+        assert result['success']
+        assert game.free_roads_remaining == 1
+        assert game.favour_usable['Alice'].get('road_builder', 0) == 0
+
+    def test_scholars_draw_a_development_card_for_two_tokens(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'scholar': 2}
+        before = game.get_player('Alice').total_dev_cards()
+
+        result = game.redeem_favour('Alice', 'scholar')
+        assert result['success']
+        assert game.get_player('Alice').total_dev_cards() == before + 1
+        assert game.favour_usable['Alice'].get('scholar', 0) == 0
+
+    def test_a_scholar_favour_needs_two_tokens(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'scholar': 1}
+
+        result = game.redeem_favour('Alice', 'scholar')
+        assert not result['success']
+        assert result['code'] == 'NOT_ENOUGH_FAVOURS'
+        assert game.favour_usable['Alice']['scholar'] == 1
+
+    def test_master_builders_hand_out_a_victory_point_marker(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'master_builder': 2}
+        before = game.victory_points_for('Alice')
+
+        result = game.redeem_favour('Alice', 'master_builder')
+        assert result['success']
+        assert game.favour_vp_markers['Alice'] == 1
+        assert game.favour_vp_supply == 7
+        assert game.victory_points_for('Alice') == before + 1
+
+    def test_the_marker_supply_is_eight_and_runs_out(self):
+        """There are 8 Victory-Point markers (p. 1)."""
+        game = guild_game()
+        assert game.favour_vp_supply == 8
+        game.favour_vp_supply = 0
+        game.favour_usable['Alice'] = {'master_builder': 2}
+
+        result = game.redeem_favour('Alice', 'master_builder')
+        assert not result['success']
+        assert result['code'] == 'NO_VP_MARKERS'
+        assert game.favour_usable['Alice']['master_builder'] == 2
+
+    def test_a_token_drawn_this_turn_cannot_be_redeemed(self):
+        """Locked tokens are not usable until your next turn (p. 2)."""
+        game = guild_game()
+        game.favour_locked['Alice'] = {'merchant': 1}
+
+        result = game.redeem_favour('Alice', 'merchant', resource='ore')
+        assert not result['success']
+        assert result['code'] == 'NOT_ENOUGH_FAVOURS'
+
+
+class TestGuildExchange:
+    def test_exchange_draws_one_and_returns_one(self):
+        game = guild_game()
+        game.favour_bag = ['trader', 'scholar']  # 'scholar' drawn (popped)
+        game.favour_usable['Alice'] = {'merchant': 1}
+
+        result = game.exchange_favour('Alice', 'merchant')
+        assert result['success']
+        assert result['drawn'] == 'scholar'
+        assert result['returned'] == 'merchant'
+        # The scholar is now held; the merchant went back to the bag.
+        assert game.favour_usable['Alice'].get('scholar', 0) == 1
+        assert game.favour_usable['Alice'].get('merchant', 0) == 0
+        assert 'merchant' in game.favour_bag
+
+    def test_a_turn_redeems_or_exchanges_never_both(self):
+        game = guild_game()
+        game.favour_usable['Alice'] = {'merchant': 2}
+        assert game.redeem_favour('Alice', 'merchant', resource='ore')['success']
+
+        blocked = game.exchange_favour('Alice', 'merchant')
+        assert not blocked['success']
+        assert blocked['code'] == 'ALREADY_REDEEMED'
+
+    def test_only_one_exchange_a_turn(self):
+        game = guild_game()
+        game.favour_bag = ['trader', 'trader', 'scholar']
+        game.favour_usable['Alice'] = {'merchant': 1}
+        assert game.exchange_favour('Alice', 'merchant')['success']
+
+        second = game.exchange_favour('Alice', 'scholar')
+        assert not second['success']
+        assert second['code'] == 'ALREADY_EXCHANGED'
+
+
+class TestGuildDependency:
+    def test_the_guild_hall_needs_the_favour_tokens(self):
+        problems = rules_module.dependency_problems(
+            rules_module.coerce({'guild_hall': True}))
+        assert any('Guild hall' in problem for problem in problems)
+
+    def test_the_favour_markers_score_only_with_the_guild(self):
+        game = frenemies_game()  # favours on, guild off
+        game.favour_vp_markers['Alice'] = 3
+        assert game.favour_victory_points('Alice') == 0
+
+
 class TestPreset:
-    def test_the_frenemies_preset_ticks_favours_and_suggests_eleven(self):
+    def test_the_frenemies_preset_ticks_favours_and_the_guild_at_eleven(self):
         chosen = rules_module.preset_rules('frenemies')
         assert chosen['favour_tokens'] is True
+        assert chosen['guild_hall'] is True
         assert chosen['victory_target'] == 11
 
     def test_the_rule_suggests_eleven_points(self):

@@ -226,6 +226,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.favour_vp_supply = 0
         self.favour_connections = set()
         self.favour_gift_made_this_turn = False
+        # Per-turn: a table redeems or exchanges favours, never both, and only
+        # one exchange a turn (p. 2). Rebuilt by start_turn like the gift flag.
+        self.favour_redeemed_this_turn = False
+        self.favour_exchanged_this_turn = False
         # The Wonders of Catan: which Wonder each player has started (player ->
         # wonder id) and how many of its four levels they have finished (player ->
         # level), and the marked intersections read off the map — the strait
@@ -1325,6 +1329,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             points += self.oil_sequester_victory_points(player_name)
         if self.rules['oil_metropolis']:
             points += self.oil_metropolis_victory_points(player_name)
+
+        # Catan: Frenemies. Each Victory-Point marker taken from the Master
+        # Builders' guild is worth 1 point and is kept face up, so it counts
+        # toward the public total. A no-op off the guild-hall rule.
+        if self.rules['guild_hall']:
+            points += self.favour_victory_points(player_name)
 
         return points
 

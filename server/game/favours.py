@@ -49,6 +49,18 @@ GIFT_FAVOUR = 1
 CONNECTION_BUILDER_FAVOURS = 3
 CONNECTION_OPPONENT_FAVOURS = 1
 
+# What each guild's favour costs, returned face up to that guild hall (p. 2):
+# traders, merchants and road builders one token, scholars and master builders
+# two. The token guild redeemed at each is its own type (a Trader favour spends
+# a trader token, and so on).
+GUILD_COST = {
+    'trader': 1,
+    'merchant': 1,
+    'road_builder': 1,
+    'scholar': 2,
+    'master_builder': 2,
+}
+
 
 class FavourRules:
     """The favour-token bag, the blind draw, per-player holdings and the three
@@ -108,6 +120,8 @@ class FavourRules:
         if not self.rules['favour_tokens']:
             return
         self.favour_gift_made_this_turn = False
+        self.favour_redeemed_this_turn = False
+        self.favour_exchanged_this_turn = False
         name = self.current_player_name()
         locked = self.favour_locked.get(name)
         if locked:
@@ -307,6 +321,200 @@ class FavourRules:
         vertices.update(player.harbor_settlements)
         return vertices
 
+    # --- Spending: the guild hall ------------------------------------------
+
+    def _favour_action_block(self, player_name: str):
+        """Shared turn checks for a during-your-turn favour action, or None."""
+        if not self.rules['guild_hall']:
+            return refused('RULE_OFF', 'The guild hall is not in play')
+        if self.game_phase == 'setup':
+            return refused('WRONG_PHASE', 'You cannot use favour tokens during setup')
+        current_name = self.current_player_name()
+        if current_name != player_name:
+            return refused('NOT_YOUR_TURN', f'Only {current_name} may use favour tokens')
+        if self.get_player(player_name) is None:
+            return refused('NO_SUCH_PLAYER', 'No such player')
+        if self.must_move_robber:
+            return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
+        return None
+
+    def _usable_favours(self, player_name: str, guild: str) -> int:
+        """How many tokens of one guild the player may spend right now.
+
+        Only usable tokens count — a token drawn this turn is locked out (p. 2).
+        """
+        return self.favour_usable.get(player_name, {}).get(guild, 0)
+
+    def _spend_favours(self, player_name: str, guild: str, count: int):
+        """Return `count` of a guild's tokens face up to the guild hall (p. 2).
+
+        Redeemed tokens leave the game — they are not returned to the bag — so
+        this only deducts from the player's usable holdings.
+        """
+        usable = self.favour_usable.setdefault(player_name, {})
+        usable[guild] = usable.get(guild, 0) - count
+        if usable[guild] <= 0:
+            usable.pop(guild, None)
+
+    def redeem_favour(self, player_name: str, guild: str, **kwargs) -> dict:
+        """Redeem favour tokens at a guild hall for its favour (p. 2).
+
+        The five guilds and their costs (p. 2):
+        - trader (1 token): trade 1 resource for a different one at the bank —
+          `give` and `receive` name which;
+        - merchant (1 token): take any 1 resource — `resource` names which;
+        - road_builder (1 token): build 1 road for free;
+        - scholar (2 tokens): draw 1 development card;
+        - master_builder (2 tokens): take 1 Victory-Point marker.
+
+        The favour is performed immediately (p. 2). A turn redeems or exchanges,
+        never both, so a redemption is refused once an exchange has been made.
+        """
+        block = self._favour_action_block(player_name)
+        if block is not None:
+            return block
+        if guild not in GUILD_COST:
+            return refused('INVALID_FAVOUR', 'No such guild favour')
+        if self.favour_exchanged_this_turn:
+            return refused('ALREADY_EXCHANGED',
+                           'You exchanged a token this turn; you cannot also redeem')
+        cost = GUILD_COST[guild]
+        if self._usable_favours(player_name, guild) < cost:
+            return refused('NOT_ENOUGH_FAVOURS',
+                           f'That favour costs {cost} usable {guild} token(s)')
+
+        handler = {
+            'trader': self._favour_trader,
+            'merchant': self._favour_merchant,
+            'road_builder': self._favour_road_builder,
+            'scholar': self._favour_scholar,
+            'master_builder': self._favour_master_builder,
+        }[guild]
+        outcome = handler(player_name, kwargs)
+        if not outcome['success']:
+            return outcome
+
+        self._spend_favours(player_name, guild, cost)
+        self.favour_redeemed_this_turn = True
+        outcome['guild'] = guild
+        return outcome
+
+    def _favour_trader(self, player_name: str, kwargs: dict) -> dict:
+        """Trade 1 resource for 1 different available resource at the bank (p. 2)."""
+        give = kwargs.get('give')
+        receive = kwargs.get('receive')
+        player = self.get_player(player_name)
+        in_play = self.in_play_resource_types()
+        if give not in in_play or receive not in in_play:
+            return refused('INVALID_RESOURCE', 'Choose resources the board deals')
+        if give == receive:
+            return refused('INVALID_RESOURCE', 'The traders swap for a different resource')
+        if player.resources.get(give, 0) < 1:
+            return refused('INSUFFICIENT_RESOURCES', f'You have no {give} to trade')
+        if self.bank.resources.get(receive, 0) < 1:
+            return refused('BANK_EMPTY', f'The bank has no {receive}')
+        player.resources[give] -= 1
+        self.bank.return_resources(give, 1)
+        self.bank.take(receive)
+        player.resources[receive] = player.resources.get(receive, 0) + 1
+        return {'success': True, 'error': '', 'give': give, 'receive': receive}
+
+    def _favour_merchant(self, player_name: str, kwargs: dict) -> dict:
+        """Take any 1 available resource of your choice (p. 2)."""
+        resource = kwargs.get('resource')
+        player = self.get_player(player_name)
+        if resource not in self.in_play_resource_types():
+            return refused('INVALID_RESOURCE', 'Choose a resource the board deals')
+        if self.bank.resources.get(resource, 0) < 1:
+            return refused('BANK_EMPTY', f'The bank has no {resource}')
+        self.bank.take(resource)
+        player.resources[resource] = player.resources.get(resource, 0) + 1
+        return {'success': True, 'error': '', 'resource': resource}
+
+    def _favour_road_builder(self, player_name: str, kwargs: dict) -> dict:
+        """Build 1 road for free — granted as a road-building credit (p. 2)."""
+        self.free_roads_remaining += 1
+        return {'success': True, 'error': '', 'free_roads': self.free_roads_remaining}
+
+    def _favour_scholar(self, player_name: str, kwargs: dict) -> dict:
+        """Draw 1 development card for free (p. 2).
+
+        Dealt like a bought card, so the hold-a-turn rule keeps it from being
+        played the turn it is drawn.
+        """
+        if not self.dev_deck_in_play():
+            return refused('DEV_CARDS_NOT_IN_PLAY', 'There is no development deck to draw from')
+        card_type = self.bank.draw_dev_card()
+        if not card_type:
+            return refused('DECK_EMPTY', 'No development cards left')
+        player = self.get_player(player_name)
+        player.dev_cards[card_type]['count'] += 1
+        player.dev_cards[card_type]['purchase_turn'] = self.turn_count
+        return {'success': True, 'error': '', 'card_type': card_type}
+
+    def _favour_master_builder(self, player_name: str, kwargs: dict) -> dict:
+        """Take 1 Victory-Point marker, kept face up (p. 2)."""
+        if self.favour_vp_supply < 1:
+            return refused('NO_VP_MARKERS', 'Every Victory-Point marker has been taken')
+        self.favour_vp_supply -= 1
+        self.favour_vp_markers[player_name] = self.favour_vp_markers.get(player_name, 0) + 1
+        return {'success': True, 'error': '', 'vp_markers': self.favour_vp_markers[player_name]}
+
+    def exchange_favour(self, player_name: str, return_guild: str) -> dict:
+        """Swap a favour token for a fresh blind draw (p. 2).
+
+        The alternative to a guild action: draw one token from the bag, then
+        return one of your tokens — which may be the one just drawn — to the bag.
+        Only one exchange a turn, and not on a turn you have redeemed (p. 2). The
+        returned token goes back into the bag, unlike a redeemed one.
+        """
+        block = self._favour_action_block(player_name)
+        if block is not None:
+            return block
+        if self.favour_redeemed_this_turn:
+            return refused('ALREADY_REDEEMED',
+                           'You redeemed a favour this turn; you cannot also exchange')
+        if self.favour_exchanged_this_turn:
+            return refused('ALREADY_EXCHANGED', 'You may only exchange one token a turn')
+        if return_guild not in GUILD_COST:
+            return refused('INVALID_FAVOUR', 'No such favour token')
+
+        # Draw first, into usable — an exchanged token is not one you drew this
+        # turn in the locking sense; it replaces one you already held.
+        if not self.favour_bag:
+            return refused('BAG_EMPTY', 'The favour-token bag is empty')
+        drawn = self.favour_bag.pop()
+        usable = self.favour_usable.setdefault(player_name, {})
+        usable[drawn] = usable.get(drawn, 0) + 1
+
+        # Then return one of your choice to the bag.
+        if usable.get(return_guild, 0) < 1:
+            # Undo the draw so a bad return leaves the holdings untouched.
+            usable[drawn] -= 1
+            if usable[drawn] <= 0:
+                usable.pop(drawn, None)
+            self.favour_bag.append(drawn)
+            return refused('NO_SUCH_TOKEN', f'You hold no usable {return_guild} token to return')
+        usable[return_guild] -= 1
+        if usable[return_guild] <= 0:
+            usable.pop(return_guild, None)
+        self.favour_bag.append(return_guild)
+        self.rng.shuffle(self.favour_bag)
+
+        self.favour_exchanged_this_turn = True
+        return {'success': True, 'error': '', 'drawn': drawn, 'returned': return_guild}
+
+    def favour_victory_points(self, player_name: str) -> int:
+        """The Victory-Point markers this player has taken from the guild (p. 2).
+
+        Each marker is worth 1 point and is kept face up, so it counts toward the
+        public total and toward whether an opponent may be gifted to. A no-op off
+        the guild-hall rule, which is the only way to take one.
+        """
+        if not self.rules['guild_hall']:
+            return 0
+        return self.favour_vp_markers.get(player_name, 0)
+
     # --- Client state ------------------------------------------------------
 
     def frenemies_client_state(self, viewer: str = None) -> dict | None:
@@ -333,6 +541,15 @@ class FavourRules:
             # Whether the viewer may decline a steal right now for a favour — the
             # robber is on the desert, a victim is on offer and it is their turn.
             'can_decline': self._favour_can_decline(viewer),
+            # The guild hall: whether it is in play, what each favour costs, the
+            # Victory-Point markers each player has taken and the supply left,
+            # and whether this turn's player has already redeemed or exchanged.
+            'guild_hall': self.rules['guild_hall'],
+            'costs': dict(GUILD_COST),
+            'vp_markers': dict(self.favour_vp_markers),
+            'vp_supply': self.favour_vp_supply,
+            'redeemed_this_turn': self.favour_redeemed_this_turn,
+            'exchanged_this_turn': self.favour_exchanged_this_turn,
         }
 
     def _favour_can_decline(self, viewer: str) -> bool:

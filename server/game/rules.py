@@ -1358,6 +1358,18 @@ RULES += [
           "next turn, and favours are never traded or stolen. The bag is spent "
           "at the guild hall below.",
           group=EXPANSION, suggests_victory_target=11),
+    _bool("guild_hall", "Guild hall", False,
+          "Catan: Frenemies (Benjamin Teuber), catan_frenemies_rules_093012s.pdf "
+          "p. 2, 'Using Favor Tokens'",
+          "Catan: Frenemies. On your turn you redeem favour tokens face up at a "
+          "guild hall for its favour, or — if you take no guild action — "
+          "exchange one token for a fresh blind draw. The five favours (p. 2): "
+          "traders (1 token) swap a resource for a different one, merchants (1) "
+          "take any resource, road builders (1) build a free road, scholars (2) "
+          "draw a development card, and master builders (2) take one of the 8 "
+          "Victory-Point markers, worth 1 point each. A token drawn this turn "
+          "cannot be spent until your next. Needs the favour tokens above.",
+          group=EXPANSION, suggests_victory_target=11),
 ]
 
 
@@ -1482,6 +1494,9 @@ DEPENDENCIES = {
     "disaster_track": ("oil_tokens",),
     "oil_sequester_vp": ("oil_tokens",),
     "oil_metropolis": ("oil_tokens",),
+    # Catan: Frenemies. The guild hall spends favour tokens; with no bag to earn
+    # from there is nothing to redeem or exchange, so it needs the earn rule.
+    "guild_hall": ("favour_tokens",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2319,6 +2334,7 @@ PRESETS = [
         ),
         "rules": {
             "favour_tokens": True,
+            "guild_hall": True,
             "victory_target": 11,
         },
     },
