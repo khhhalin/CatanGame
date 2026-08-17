@@ -187,6 +187,9 @@ export const discardAmountSpan = document.getElementById('discard-amount');
 // Commodities count toward the limit a 7 enforces, so the dialog has a row for
 // them - shown only when the table plays them.
 export const discardCommodityRow = document.getElementById('discard-commodities');
+// Oil counts toward the limit a 7 enforces too, so the dialog has a row for it -
+// shown only on an Oil Springs table where the player is actually holding oil.
+export const discardOilRow = document.getElementById('discard-oil-row');
 // Both dialogs cover the aside the hand panel lives in, so each carries its own
 // copy of the hand. panels.js fills the `.resource-display` inside them.
 export const discardHandNote = document.getElementById('discard-hand');

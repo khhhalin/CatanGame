@@ -1156,6 +1156,15 @@
                 <label><span class="tile t-coin"><svg class="icon" aria-hidden="true"><use href="#i-coin"></use></svg></span> Coin: <input type="number" id="discard-coin" min="0" max="10" value="0"></label>
                 <label><span class="tile t-paper"><svg class="icon" aria-hidden="true"><use href="#i-paper"></use></svg></span> Paper: <input type="number" id="discard-paper" min="0" max="10" value="0"></label>
             </div>
+            <!-- Oil counts toward the hand limit a 7 enforces and the engine
+                 accepts it in a discard, back to its own supply. A player over
+                 the limit on oil could not otherwise choose to shed it — the
+                 engine auto-discarded it for them. Shown only on an Oil Springs
+                 table where the player actually holds oil: seven.js reads that
+                 off the running game's rules and hand, never from a mode. -->
+            <div id="discard-oil-row" class="resource-selector hidden">
+                <label><span class="oil-token" aria-hidden="true">Oil</span> Oil: <input type="number" id="discard-oil" min="0" max="10" value="0"></label>
+            </div>
             <button id="submit-discard-btn">Discard</button>
         </div>
     </div>

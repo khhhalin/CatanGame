@@ -6,7 +6,7 @@
 // top for that side effect.
 
 import { COMMODITY_TYPES } from './constants.js';
-import { discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, submitDiscardBtn, victimList, victimModal } from './dom.js';
+import { discardAmountSpan, discardCommodityRow, discardHandNote, discardModal, discardOilRow, submitDiscardBtn, victimList, victimModal } from './dom.js';
 import { renderDialogHands } from './hand.js';
 import { resourceName, resourceTile } from './icons.js';
 import { displayError } from './notices.js';
@@ -23,7 +23,14 @@ import { extraResourceTypes, getBoard, getDiscardAmount, getRobberVictims, resou
  * @returns {string[]}
  */
 function discardableCards() {
-    return [...resourceOrder(), ...COMMODITY_TYPES];
+    const cards = [...resourceOrder(), ...COMMODITY_TYPES];
+    // Oil is a card the limit counts on an Oil Springs table, and the engine
+    // takes it in a discard back to its own supply. Named so a player over the
+    // limit on oil can choose to shed it rather than have the engine do it.
+    if (getBoard()?.rules?.oil_tokens === true) {
+        cards.push('oil');
+    }
+    return cards;
 }
 
 /**
@@ -50,6 +57,11 @@ export function openDiscardModal(amount) {
     const commodities = getBoard()?.rules?.commodities === true;
     discardCommodityRow?.classList.toggle('hidden', !commodities);
 
+    // Oil only when the table plays it and this player is actually holding some:
+    // an empty oil row is a control that can do nothing, and the engine auto-
+    // discards oil a player has no way to reach.
+    discardOilRow?.classList.toggle('hidden', heldCount('oil') <= 0);
+
     renderDialogHands();
     syncDiscardState();
     discardModal.classList.add('show');
@@ -68,6 +80,11 @@ function heldCount(card) {
     const me = (getBoard()?.players || []).find(p => p.name === viewState.identity.name);
     if (!me) {
         return 0;
+    }
+    // Oil is not in the resources or commodities stores - it is its own count on
+    // the player, and only ever a card the limit counts on an Oil Springs table.
+    if (card === 'oil') {
+        return getBoard()?.rules?.oil_tokens === true ? (me.oil || 0) : 0;
     }
     const store = COMMODITY_TYPES.includes(card) ? me.commodities : me.resources;
     return (store || {})[card] || 0;
@@ -141,6 +158,9 @@ discardHandNote?.addEventListener('click', (event) => {
 discardableCards().forEach(card => {
     document.getElementById(`discard-${card}`)?.addEventListener('input', syncDiscardState);
 });
+// Oil's row is static in the template but `discardableCards()` omits it at load
+// (no board yet to read the rule off), so wire its input explicitly here.
+document.getElementById('discard-oil')?.addEventListener('input', syncDiscardState);
 
 // The hand chips are rebuilt on every board update; re-apply the lift after.
 if (discardHandNote) {

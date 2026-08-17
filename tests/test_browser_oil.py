@@ -100,6 +100,68 @@ def _join(browser, url):
     return alice
 
 
+def _oil_discard_game():
+    """An Oil Springs game where Alice is over the limit and holding oil.
+
+    Alice owes a two-card discard with oil in front of her; the engine would
+    otherwise auto-discard the oil, so the modal must give her the choice.
+    """
+    defn = maps.parse_map(map_store.read_map("oil-springs"))
+    rules = dict(rules_module.preset_rules("oil_springs"))
+    rules["turn_order"] = "lobby"
+    game = Game(["Alice", "Bob"], [], rng=random.Random(7), rules=rules,
+                map_definition=defn)
+    game.start()
+    game.game_phase = "playing"
+    game.current_player_index = 0
+    game.set_dice_rolled()
+    alice = game.get_player("Alice")
+    alice.oil = 3
+    alice.resources = {"wood": 5}
+    game.players_needing_discard = {"Alice": 2}
+    return game
+
+
+def test_oil_is_a_discardable_control_the_player_can_shed_through(browser, tmp_path):
+    game = _oil_discard_game()
+    persistence.save(game, os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = _join(browser, url)
+
+        # The discard modal opens on the owed discard, and it now carries an oil
+        # control - the row and its input were absent before this fix, so the
+        # player could not choose to shed oil at all.
+        alice.page.wait_for_selector("#discard-modal.show", timeout=8000)
+        assert alice.page.query_selector("#discard-oil-row:not(.hidden)") is not None, \
+            "the oil row did not appear in the discard modal"
+        assert alice.page.query_selector("#discard-oil") is not None, \
+            "the modal offered no oil input"
+
+        # Shed both owed cards as oil, through the control the player sees.
+        alice.page.fill("#discard-oil", "2")
+        alice.page.click("#submit-discard-btn")
+
+        # Two oil left the hand for the supply, and the discard is satisfied.
+        alice.page.wait_for_function(
+            """() => {
+                const b = window.__catanDebug.getBoard();
+                const me = (b.players || []).find(p => p.name === 'Alice');
+                return me && me.oil === 1;
+            }""",
+            timeout=8000,
+        )
+        board = alice.page.evaluate("() => window.__catanDebug.getBoard()")
+        me = next(p for p in board["players"] if p["name"] == "Alice")
+        assert me["oil"] == 1, me["oil"]
+        assert "Alice" not in (board.get("players_needing_discard") or {}), \
+            "Alice still owes a discard after shedding oil"
+
+        assert alice.noisy_errors() == [], alice.noisy_errors()
+    finally:
+        stop_server(proc)
+
+
 def test_the_oil_panel_shows_the_track_badges_the_springs_and_sequesters(browser, tmp_path):
     game = _oil_game()
     persistence.save(game, os.path.join(str(tmp_path), "game.json"))
