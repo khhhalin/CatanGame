@@ -34,6 +34,7 @@ from handlers import (  # noqa: F401  (imported for their side effects)
     commands,
     dev_cards,
     ep,
+    helpers,
     lobby,
     maps,
     robber,

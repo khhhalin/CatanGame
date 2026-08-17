@@ -21,6 +21,7 @@ from game.exploration import ExplorationRules
 from game.fishing import FishingRules
 from game.gold import GoldRules
 from game.harbor_settlements import HarborSettlementRules
+from game.helpers import HelpersRules
 from game.missions import MissionRules
 from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
@@ -50,7 +51,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
-           PirateIslandsRules, PendingChoiceRules, TurnClock):
+           PirateIslandsRules, HelpersRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -206,6 +207,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.pirate_fleet_index = 0
         self.pirate_fortresses = {}
         self.player_warships = {}
+        # CATAN - The Helpers: the face-up display the tiles are drawn from, the
+        # one tile each player holds (name -> {tile, side, received_turn}) and
+        # the per-turn record of who has already used their helper. All empty off
+        # the scenario. The pile is dealt once the board's RNG exists (below).
+        self.helper_pile = []
+        self.helper_held = {}
+        self.helper_used_this_turn = set()
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -469,6 +477,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # the dealt board. A no-op for a board that prints no oasis.
         self.setup_caravans_board()
 
+        # CATAN - The Helpers: shuffle the enabled advantages' tiles into the
+        # display. Needs no board of its own, only the RNG and the chosen rules.
+        # A no-op unless the helper subsystem is on.
+        if self.helpers_in_play():
+            self.setup_helper_pile()
+
         # Traders & Barbarians (Barbarian Attack): read the castle, the coast and
         # the un-conquerable hexes off the dealt board, seed the opening two
         # barbarians and shuffle the scenario deck. A no-op for a board that
@@ -645,6 +659,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # The wagon sits on its owner's starting city once set-up finishes
             # (expansions.md 701). A no-op without the wagon rule.
             self.place_starting_wagons()
+            # The Helpers: each player takes their first tile as set-up ends
+            # (the one point every seat has finished placing). A no-op off the
+            # scenario.
+            self.grant_starting_helpers()
             logger.debug("=== Setup complete! Starting normal play. ===")
             return True
         return False
@@ -1498,6 +1516,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # The Pirate Islands: the fleet's track and where it sits, the
             # fortresses and each player's warships. None off the scenario.
             'pirate_islands': self.pirate_islands_client_state(),
+            # CATAN - The Helpers: the display pile, each player's held tile and
+            # which side is up, and who has spent their helper this turn. None
+            # off the scenario.
+            'helpers': self.helpers_client_state(viewer),
             'must_move_robber': self.must_move_robber,
             # Main scenario: who owes a roaming-barbarian move after a 7, or None.
             'must_move_barbarian': self.must_move_barbarian,

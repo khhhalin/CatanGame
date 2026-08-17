@@ -66,6 +66,10 @@ class TurnClock:
         self.wagon_swift_journey = False
         self.barbarians_driven = set()
         self.must_move_barbarian = None
+        # A helper's advantage may be used once per turn (Helpers_Rules.pdf p. 4);
+        # the record of who has spent theirs starts empty each turn. Off the
+        # scenario this set never fills.
+        self.helper_used_this_turn = set()
 
     def movement_phase_block(self):
         """Refuse a build or trade once this turn's ship movement has begun.

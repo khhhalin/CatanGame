@@ -212,6 +212,12 @@ def serialize(game: Game) -> dict:
         'pirate_fleet_index': game.pirate_fleet_index,
         'pirate_fortresses': game.pirate_fortresses,
         'player_warships': game.player_warships,
+        # CATAN - The Helpers: the display pile and every player's held tile are
+        # dealt from the RNG and then mutated by play (exchanges), so unlike the
+        # map-derived scenarios they must be saved outright. The used-this-turn
+        # record is per-turn state that start_turn rebuilds, so it is not saved.
+        'helper_pile': game.helper_pile,
+        'helper_held': game.helper_held,
         'must_move_robber': game.must_move_robber,
         # Main scenario: a barbarian move owed after a 7 survives a save.
         'must_move_barbarian': game.must_move_barbarian,
@@ -436,7 +442,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'merchant_fleet_types', 'gift_points', 'held_gift_harbors',
                   'cloth_tokens', 'village_cloth', 'cloth_general_supply',
                   'wonder_choice', 'wonder_level',
-                  'pirate_fleet_index', 'pirate_fortresses', 'player_warships'):
+                  'pirate_fleet_index', 'pirate_fortresses', 'player_warships',
+                  'helper_pile', 'helper_held'):
         if field in data:
             setattr(game, field, data[field])
 

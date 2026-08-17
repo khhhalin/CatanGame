@@ -1200,6 +1200,103 @@ RULES += [
 ]
 
 
+# --- CATAN - The Helpers ------------------------------------------------
+# The scenario is twelve one-shot "helper" tiles, each a named character with an
+# activated advantage. Decomposed the way every other expansion is: the tile
+# framework (the display, the one tile each player holds, the exchange/sun-moon
+# lifecycle) is one container rule, and each of the twelve advantages is its own
+# switch. No advantage does anything without the framework, so each declares it
+# in DEPENDENCIES below; the framework defaults off, so a base game is
+# unchanged. No tile touches the victory target (Helpers_Rules.pdf p. 4), so the
+# preset keeps the 10-point game.
+RULES += [
+    _bool("helper_tiles", "Helper tiles", False,
+          "Helpers_Rules.pdf, 'The Helpers Overview and Set-up' and 'Using The "
+          "Helpers', pp. 2-4",
+          "CATAN - The Helpers: each player holds one helper tile with a "
+          "one-shot advantage, drawn from a shared face-up display. After using "
+          "a tile you exchange it for a new one or flip it from its sun side to "
+          "its moon side to use once more, then it is spent. Which advantages "
+          "are in play is set by the twelve switches below; a base game is "
+          "unchanged.",
+          group=EXPANSION),
+    _bool("helper_forced_trade", "Helper: Forced Trade (Asla)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Forced Trade (Asla), p. 6",
+          "Choose 1 resource type and request it from 1 or 2 players; each who "
+          "holds it gives you 1, and you give back 1 resource of your choice per "
+          "resource received.",
+          group=EXPANSION),
+    _bool("helper_makeshift_road", "Helper: Makeshift Road Building (Yngvi)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Makeshift Road Building "
+          "(Yngvi), p. 6",
+          "When you build a road you may substitute 1 lumber or 1 brick with any "
+          "1 other resource of your choice.",
+          group=EXPANSION),
+    _bool("helper_resource_compensation", "Helper: Resource Compensation (Hilda)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Resource Compensation "
+          "(Hilda), p. 8",
+          "Immediately after any production roll that is not a 7, if you received "
+          "no resources, take any 1 resource card of your choice from the supply.",
+          group=EXPANSION),
+    _bool("helper_move_road", "Helper: Move a Road (Hogni)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Move a Road (Hogni), p. 7",
+          "Remove 1 of your end roads and place it in another location following "
+          "normal placement rules.",
+          group=EXPANSION),
+    _bool("helper_protection_from_seven", "Helper: Protection from the 7 (Thorolf)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Protection from the 7 "
+          "(Thorolf), p. 9",
+          "When any player rolls a 7 you must use this: if over 7 cards, keep "
+          "them all instead of discarding half; if 7 or fewer, take any 1 "
+          "resource of your choice from the supply.",
+          group=EXPANSION),
+    _bool("helper_dev_card_choice", "Helper: Development Card Choice (Diara)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Development Card Choice "
+          "(Diara), p. 9",
+          "When you buy a development card you may substitute 1 of the 3 "
+          "resources, then look at the top 3 cards, keep 1 and shuffle the other "
+          "2 back.",
+          group=EXPANSION),
+    _bool("helper_take_from_leader", "Helper: Take Card from Leader (Ryan)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Take Card From Leader "
+          "(Ryan), p. 10",
+          "After your production roll is resolved, take 1 resource card of your "
+          "choice from an opponent who has more victory points than you.",
+          group=EXPANSION),
+    _bool("helper_knight_to_building", "Helper: Assign Knight to Building (Gregor)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Assign Knight to Building "
+          "(Gregor), p. 10",
+          "Discard 1 of your played knight cards (it no longer counts toward the "
+          "Largest Army) to build a settlement for 1 lumber + 1 brick or a city "
+          "for 2 ore + 1 grain.",
+          group=EXPANSION),
+    _bool("helper_trade_frenzy", "Helper: 2:1 Trade Frenzy (Stina)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', 2:1 Trade Frenzy (Stina), "
+          "p. 11",
+          "Choose 1 resource type and exchange it with the bank at 2:1 as many "
+          "times as you like, all at once.",
+          group=EXPANSION),
+    _bool("helper_chase_robber", "Helper: Chase Robber to Desert (Digur)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Chase Robber to Desert "
+          "(Digur), p. 10",
+          "Move the robber to the desert and take 1 resource of the type the hex "
+          "it left produced. Not playable if the robber is already in the desert.",
+          group=EXPANSION),
+    _bool("helper_take_robber_resource", "Helper: Take Robber's Resource (Kaja)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Take Robber's Resource "
+          "(Kaja), p. 11",
+          "Take 1 resource from the supply matching the terrain hex the robber "
+          "occupies; if it is in the desert, take a resource of your choice.",
+          group=EXPANSION),
+    _bool("helper_dev_card_swap", "Helper: Development Card Swap (Carla)", False,
+          "Helpers_Rules.pdf, 'The Helpers in Detail', Development Card Swap "
+          "(Carla), p. 11",
+          "Place 1 unplayed development card at the bottom of the stack and draw "
+          "1 from the top; the drawn card cannot be played this turn.",
+          group=EXPANSION),
+]
+
+
 RULES_BY_ID = {rule["id"]: rule for rule in RULES}
 
 
@@ -1300,6 +1397,21 @@ DEPENDENCIES = {
     "trade_caravans": ("gold_coins", "trade_dev_deck"),
     "baggage_train": ("trade_caravans",),
     "roaming_barbarians": ("trade_caravans",),
+    # CATAN - The Helpers. Every advantage acts through a tile a player holds,
+    # and the framework rule is what deals, holds and cycles those tiles; an
+    # advantage with no framework is a tile nobody ever draws, so each needs it.
+    "helper_forced_trade": ("helper_tiles",),
+    "helper_makeshift_road": ("helper_tiles",),
+    "helper_resource_compensation": ("helper_tiles",),
+    "helper_move_road": ("helper_tiles",),
+    "helper_protection_from_seven": ("helper_tiles",),
+    "helper_dev_card_choice": ("helper_tiles",),
+    "helper_take_from_leader": ("helper_tiles",),
+    "helper_knight_to_building": ("helper_tiles",),
+    "helper_trade_frenzy": ("helper_tiles",),
+    "helper_chase_robber": ("helper_tiles",),
+    "helper_take_robber_resource": ("helper_tiles",),
+    "helper_dev_card_swap": ("helper_tiles",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2063,6 +2175,33 @@ PRESETS = [
             "the pirate back off."
         ),
         "rules": dict(EXPLORERS_AND_PIRATES_RULES),
+    },
+    {
+        "id": "helpers_of_catan",
+        "name": "CATAN - The Helpers",
+        "source": "Helpers_Rules.pdf (catan.com), the whole scenario",
+        "summary": (
+            "The twelve helper tiles and the framework that deals, holds and "
+            "cycles them. Each player holds one one-shot helper, uses its "
+            "advantage on their turn, then exchanges or flips it. No tile touches "
+            "victory points, so it stays a 10-point game. Every advantage is a "
+            "separate switch you can untick."
+        ),
+        "rules": {
+            "helper_tiles": True,
+            "helper_forced_trade": True,
+            "helper_makeshift_road": True,
+            "helper_resource_compensation": True,
+            "helper_move_road": True,
+            "helper_protection_from_seven": True,
+            "helper_dev_card_choice": True,
+            "helper_take_from_leader": True,
+            "helper_knight_to_building": True,
+            "helper_trade_frenzy": True,
+            "helper_chase_robber": True,
+            "helper_take_robber_resource": True,
+            "helper_dev_card_swap": True,
+        },
     },
 ]
 

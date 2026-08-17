@@ -2233,6 +2233,48 @@ button:disabled {
     min-height: 1.4em;
 }
 
+/* CATAN - The Helpers panel (helper_tiles.js). */
+.helper-held {
+    margin: var(--space-1) 0 var(--space-2);
+}
+
+.helper-title {
+    font-weight: 600;
+}
+
+.helper-side {
+    display: inline-block;
+    margin: var(--space-1) 0;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm, 4px);
+    font-size: var(--text-xs, 0.75rem);
+    border: 1px solid var(--hairline);
+}
+
+.helper-side-sun {
+    color: var(--terrain-gold, #d9a441);
+}
+
+.helper-side-moon {
+    color: var(--text-muted, #8a9bb0);
+}
+
+.helper-summary {
+    color: var(--text-muted, #8a9bb0);
+    font-size: var(--text-xs, 0.75rem);
+    margin-top: var(--space-1);
+}
+
+.helper-resource {
+    margin-right: var(--space-1);
+}
+
+.helper-display-label {
+    margin-top: var(--space-2);
+    color: var(--text-muted, #8a9bb0);
+    font-size: var(--text-xs, 0.75rem);
+}
+
 .fish-token {
     display: inline-flex;
     align-items: center;
