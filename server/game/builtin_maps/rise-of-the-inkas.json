@@ -1,7 +1,7 @@
 {
   "author": "Catan",
   "frame": {
-    "radius": 3
+    "radius": 4
   },
   "harbours": {
     "mode": "bag",
@@ -17,7 +17,7 @@
   "id": "rise-of-the-inkas",
   "map_version": 2,
   "name": "Rise of the Inkas",
-  "notes": "Catan Histories: Rise of the Inkas (Teuber, 2018). Western South America: ocean/fishing to the west, jungle to the east, 27 producing hexes. Five resource terrains (wood, brick, sheep, wheat, ore) plus three goods dealt on the die: jungle feathers, plantation coca, fishing-ground fish. Fixed layout, so the 27 hexes are deterministic and asserted against the generated board. The bespoke official silhouette is approximated on the hex frame; the rulebook's Variable setup permits a variable layout.",
+  "notes": "Catan Histories: Rise of the Inkas (Teuber, 2018). Western South America: ocean/fishing to the west, jungle to the east, 27 producing hexes. Five resource terrains (wood, brick, sheep, wheat, ore) plus three goods dealt on the die: jungle feathers, plantation coca, fishing-ground fish. Fixed layout, so the 27 hexes are deterministic and asserted against the generated board. The bespoke official silhouette is approximated on the hex frame; the rulebook Variable setup permits it.",
   "regions": [
     {
       "color": "#8bb26a",
@@ -175,7 +175,7 @@
         "mode": "shuffled",
         "numbers": [],
         "terrain": {
-          "sea": 10
+          "sea": 34
         }
       }
     }

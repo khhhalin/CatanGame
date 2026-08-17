@@ -886,6 +886,35 @@ function drawCity(ctx, x, y, playerColor) {
     ctx.stroke();
 }
 
+/**
+ * Draw the thicket (vines/ruins) covering a declining building — Rise of the
+ * Inkas. A ring of leaves around the intersection so a covered settlement or
+ * city reads as overgrown at a glance, drawn *under* the building so the piece
+ * and its owner colour stay visible on top.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ */
+const THICKET_LEAF = '#2f7d4f';
+const THICKET_LEAF_DARK = '#1f5735';
+function drawThicket(ctx, x, y) {
+    const ring = 13;
+    const leaves = 8;
+    for (let i = 0; i < leaves; i++) {
+        const angle = (i / leaves) * Math.PI * 2;
+        const lx = x + Math.cos(angle) * ring;
+        const ly = y + Math.sin(angle) * ring;
+        ctx.fillStyle = (i % 2 === 0) ? THICKET_LEAF : THICKET_LEAF_DARK;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#12331f';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+}
+
 /* -------------------------------------------------------------------------
  * City walls (Cities & Knights)
  *
@@ -2497,6 +2526,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
         if (vertex.building) {
             const playerColor = playerColors[vertex.building.player] || null;
+            // Rise of the Inkas: a declining building is covered with a thicket,
+            // drawn under the piece so its owner colour still shows on top.
+            if (vertex.building.ruined) {
+                drawThicket(ctx, pos.x, pos.y);
+            }
             if (vertex.building.type === 'settlement') {
                 drawSettlement(ctx, pos.x, pos.y, playerColor);
             } else if (vertex.building.type === 'city') {

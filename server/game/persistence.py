@@ -100,6 +100,11 @@ def _player_state(player) -> dict:
         # Oil Springs: oil is a public currency worth nothing dropped, so a save
         # that lost it would hand a player back a smaller stockpile.
         'oil': player.oil,
+        # Rise of the Inkas: the tribe this player is developing and the culture
+        # markers they have placed across all their tribes. Additive: an old save
+        # restores tribe 1 and no markers, a game where the scenario is off.
+        'tribe': player.tribe,
+        'culture_points': player.culture_points,
         'settlers': player.settlers,
         'crews': player.crews,
     }
@@ -251,6 +256,12 @@ def serialize(game: Game) -> dict:
         'robber_victims': game.robber_victims,
         'players_needing_discard': game.players_needing_discard,
         'free_roads_remaining': game.free_roads_remaining,
+        # Rise of the Inkas: the player who owes a free founding settlement after
+        # a decline survives a restart, so a reloaded game does not lose the turn
+        # the decline was in the middle of. Each player's tribe and culture
+        # markers are saved on the player below. Additive: an old save restores
+        # None, a game where nobody owes a founding.
+        'founding_player': game.founding_player,
         'pending_invention': game.pending_invention,
         'pending_monopoly': game.pending_monopoly,
         # A restart in the middle of a decision must not deadlock the game, so
@@ -453,6 +464,9 @@ def deserialize(data: dict, config=None) -> Game:
         player.oil = saved.get('oil', 0)
         player.settlers = saved.get('settlers', 0)
         player.crews = saved.get('crews', 0)
+        # Rise of the Inkas; tribe 1 and no markers on a pre-Inkas save.
+        player.tribe = saved.get('tribe', 1)
+        player.culture_points = saved.get('culture_points', 0)
 
     # Turn and phase
     for field in ('current_player_index', 'game_state', 'game_phase', 'setup_turn',
@@ -474,7 +488,7 @@ def deserialize(data: dict, config=None) -> Game:
                   'favour_vp_markers', 'favour_vp_supply',
                   'wonder_choice', 'wonder_level',
                   'pirate_fleet_index', 'pirate_fortresses', 'player_warships',
-                  'helper_pile', 'helper_held'):
+                  'helper_pile', 'helper_held', 'founding_player'):
         if field in data:
             setattr(game, field, data[field])
 

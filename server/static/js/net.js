@@ -23,6 +23,7 @@ import { renderBarbarianAttack } from './barbarian_attack.js';
 import { renderPirateIslands } from './pirate_islands.js';
 import { renderOil } from './oil.js';
 import { renderFrenemies } from './frenemies.js';
+import { renderInkas } from './inkas.js';
 import { renderHelperTiles } from './helper_tiles.js';
 import { renderTbMain } from './tb_main.js';
 import { renderSeafarers } from './seafarers.js';
@@ -145,6 +146,7 @@ socket.on('game_started', (data) => {
     renderPirateIslands();
     renderOil();
     renderFrenemies();
+    renderInkas();
     renderHelperTiles();
     renderTbMain();
     renderPendingChoices();
@@ -209,6 +211,7 @@ socket.on('game_state', (data) => {
     renderPirateIslands();
     renderOil();
     renderFrenemies();
+    renderInkas();
     renderHelperTiles();
     renderTbMain();
         // A reload or a reconnect in the middle of a question: the snapshot
@@ -257,6 +260,7 @@ socket.on('turn_changed', (data) => {
     renderPirateIslands();
     renderOil();
     renderFrenemies();
+    renderInkas();
     renderHelperTiles();
     renderTbMain();
     console.log('Turn changed. Current player:', data.current_player);
@@ -391,6 +395,7 @@ socket.on('board_updated', (data) => {
     renderPirateIslands();
     renderOil();
     renderFrenemies();
+    renderInkas();
     renderHelperTiles();
     renderTbMain();
     renderPendingChoices();
@@ -431,6 +436,7 @@ socket.on('event_die', (data) => {
     renderPirateIslands();
     renderOil();
     renderFrenemies();
+    renderInkas();
     renderHelperTiles();
     renderTbMain();
 });
