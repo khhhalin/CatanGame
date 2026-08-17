@@ -351,12 +351,17 @@ class HexMeta:
     - `fishing_ground` — a Fishermen-scenario fishing-ground tile on this frame
       (sea) hex, carrying the production number that pays out fish to buildings
       on the coastal intersections it touches. None when the hex carries none.
+    - `oil_spring` — an Oil Springs tile printed on this hex; buildings on it
+      produce oil rather than the terrain's resource, and pollution hits it
+      differently (coilspringsgb_2015_web.pdf p. 1-2). False when the hex has
+      no tile.
     """
 
     docks: tuple = ()
     village: bool = False
     lair: bool = False
     fishing_ground: int | None = None
+    oil_spring: bool = False
 
     def to_json(self) -> dict:
         data = {}
@@ -368,6 +373,8 @@ class HexMeta:
             data['lair'] = True
         if self.fishing_ground is not None:
             data['fishing_ground'] = self.fishing_ground
+        if self.oil_spring:
+            data['oil_spring'] = True
         return data
 
 
@@ -714,7 +721,11 @@ def _parse_hex_meta(spec) -> HexMeta:
                 'INVALID_MAP', 'a fishing ground carries a production number (2..12, not 7)'
             )
 
-    return HexMeta(docks, village, lair, fishing_ground)
+    oil_spring = spec.get('oil_spring', False)
+    if not isinstance(oil_spring, bool):
+        raise InvalidPayload('INVALID_MAP', 'oil_spring is true or false')
+
+    return HexMeta(docks, village, lair, fishing_ground, oil_spring)
 
 
 def _parse_region(raw, version: int) -> tuple:

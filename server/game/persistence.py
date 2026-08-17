@@ -97,6 +97,9 @@ def _player_state(player) -> dict:
         # dropped them undercounted the score), gold currency, and the reserves.
         'harbor_settlements': player.harbor_settlements,
         'gold': player.gold,
+        # Oil Springs: oil is a public currency worth nothing dropped, so a save
+        # that lost it would hand a player back a smaller stockpile.
+        'oil': player.oil,
         'settlers': player.settlers,
         'crews': player.crews,
     }
@@ -199,6 +202,17 @@ def serialize(game: Game) -> dict:
         'village_traders': {vertex: sorted(players)
                             for vertex, players in game.village_traders.items()},
         'cloth_general_supply': game.cloth_general_supply,
+        # Catan: Oil Springs. The general oil supply, the shared disaster track,
+        # how many number tokens pollution has removed, the sequestered-oil
+        # totals, who holds the Champion of the Environment token, and which
+        # cities are metropolises. The oil-spring hexes are re-derived from the
+        # map when the board regenerates, so only what play changed is saved.
+        'oil_supply': game.oil_supply,
+        'disaster_track': game.disaster_track,
+        'oil_numbers_removed': game.oil_numbers_removed,
+        'oil_sequestered': game.oil_sequestered,
+        'oil_champion': game.oil_champion,
+        'oil_metropolises': game.oil_metropolises,
         # The Wonders of Catan: which Wonder each player started and how many of
         # its levels they finished. The marked intersections are re-derived from
         # the map when the board regenerates, so only the players' progress is
@@ -424,6 +438,7 @@ def deserialize(data: dict, config=None) -> Game:
         # Explorers & Pirates; absent ([]/0) on a pre-E&P save.
         player.harbor_settlements = list(saved.get('harbor_settlements', []))
         player.gold = saved.get('gold', 0)
+        player.oil = saved.get('oil', 0)
         player.settlers = saved.get('settlers', 0)
         player.crews = saved.get('crews', 0)
 
@@ -441,6 +456,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
                   'merchant_fleet_types', 'gift_points', 'held_gift_harbors',
                   'cloth_tokens', 'village_cloth', 'cloth_general_supply',
+                  'oil_supply', 'disaster_track', 'oil_numbers_removed',
+                  'oil_sequestered', 'oil_champion', 'oil_metropolises',
                   'wonder_choice', 'wonder_level',
                   'pirate_fleet_index', 'pirate_fortresses', 'player_warships',
                   'helper_pile', 'helper_held'):

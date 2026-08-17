@@ -693,6 +693,16 @@ RULES += [
           "point; an unpaired bolt scores nothing. Play it on the Cloth for Catan "
           "map.",
           group=EXPANSION),
+    _bool("oil_tokens", "Oil Springs: oil production", False,
+          "Catan: Oil Springs (Assadourian & Hansen), coilspringsgb_2015_web.pdf "
+          "p. 1 (\"Buildings on oil springs produce oil\")",
+          "Three hexes carry Oil Spring tiles. A building on one produces oil "
+          "when the hex's number is rolled — one for a settlement, two for a "
+          "city, three for a metropolis — handed out one token at a time from "
+          "the roller clockwise until everyone has what they made or the supply "
+          "of 15 runs out. You may hold at most 4 oil. Play it on the Oil "
+          "Springs map.",
+          group=EXPANSION),
     _bool("setup_third_settlement", "Start with a third settlement", False,
           "Seafarers rulebook, Scenario 6: Cloth for Catan, p. 22 "
           "(\"everyone can build a third settlement ... you receive your "
@@ -2029,6 +2039,31 @@ PRESETS = [
             "no_build_barren_islands": True,
             "robber_avoids_barren_islands": True,
             "victory_target": 14,
+        },
+    },
+    {
+        "id": "oil_springs",
+        "name": "Catan: Oil Springs",
+        "source": (
+            "Catan: Oil Springs (Erik Assadourian & Ty Hansen, 2011/2015), "
+            "coilspringsgb_2015_web.pdf, 3-4 player rules pp. 1-2"
+        ),
+        "summary": (
+            "Oil has been discovered on Catan. Three hexes carry Oil Spring "
+            "tiles whose buildings produce oil, a sixth commodity. Oil converts "
+            "into resources and upgrades cities into flood-proof metropolises, "
+            "but every fifth oil used triggers a disaster: a 7 floods the coasts, "
+            "otherwise a hex is polluted and loses its number, and the board dies "
+            "at five lost tokens. Sequestering oil scores victory points and the "
+            "Champion of the Environment token. The rulebook ends the race at 12, "
+            "so the target is suggested at 12; the lobby can still change it. "
+            "Pick the Oil Springs map."
+        ),
+        "rules": {
+            "board_layout": "custom",
+            "board_map": "oil-springs",
+            "oil_tokens": True,
+            "victory_target": 12,
         },
     },
     {

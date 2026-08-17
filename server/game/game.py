@@ -26,6 +26,7 @@ from game.missions import MissionRules
 from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
 from game.missions_spices import MissionSpicesRules
+from game.oil_springs import OIL_SUPPLY, OilSpringsRules
 from game.path_barbarians import PathBarbarianRules
 from game.pending_choice import PendingChoiceRules
 from game.pirate_islands import PirateIslandsRules
@@ -51,7 +52,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
-           PirateIslandsRules, HelpersRules, PendingChoiceRules, TurnClock):
+           PirateIslandsRules, HelpersRules, OilSpringsRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -190,6 +192,20 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.village_traders = {}
         self.cloth_tokens = {}
         self.cloth_general_supply = CLOTH_GENERAL_SUPPLY
+        # Catan: Oil Springs. The oil-spring hexes read off the dealt board, the
+        # general oil supply (15 tokens for 3-4 players), the shared disaster
+        # track (0-5, advanced as oil is used), how many number tokens pollution
+        # has removed (the board dies at 5), each player's total sequestered oil
+        # and who holds the Champion of the Environment token, and the cities
+        # upgraded into metropolises (vertex -> owner). All map-derived or
+        # play-derived, so a save keeps only what play changed.
+        self.oil_spring_hexes = set()
+        self.oil_supply = OIL_SUPPLY
+        self.disaster_track = 0
+        self.oil_numbers_removed = 0
+        self.oil_sequestered = {}
+        self.oil_champion = None
+        self.oil_metropolises = {}
         # The Wonders of Catan: which Wonder each player has started (player ->
         # wonder id) and how many of its four levels they have finished (player ->
         # level), and the marked intersections read off the map — the strait
@@ -469,6 +485,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Cloth for Catan: read the map's villages and the barren islands they
         # sit on into cloth state. A no-op for a board that prints no villages.
         self.setup_cloth_villages()
+
+        # Catan: Oil Springs: read the map's oil-spring hexes off the dealt
+        # board. A no-op for a board that prints none.
+        self.setup_oil_springs()
 
         # The Wonders of Catan: read the map's marked strait and wasteland
         # intersections. A no-op for a board that prints no markers.
@@ -1488,6 +1508,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 for vertex_key in sorted(self.village_number)
             },
             'cloth_tokens': self.cloth_tokens,
+            # Catan: Oil Springs — the oil springs to badge, the general supply,
+            # and each player's oil. None off the scenario.
+            'oil': self.oil_client_state(),
             # Only the total: the per-type breakdown is the deck order, and
             # knowing what is left turns a probabilistic draw into a certain one.
             'dev_cards_remaining': self.bank.total_dev_cards_remaining(),
@@ -1914,6 +1937,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # no-op without the villages rule.
         cloth = self.distribute_cloth(total)
 
+        # Oil Springs: buildings on an oil spring produce oil on the hex's
+        # number, handed out one token at a time from the roller clockwise. After
+        # the resource walk, like the fish and cloth, and kept apart from
+        # `gained` because oil is a currency, not a resource card. A no-op
+        # without the rule.
+        oil = self.distribute_oil(total, player_name)
+
         # Cloth for Catan is the one scenario a roll can end: its bolts move
         # victory points and empty villages, so both of its end conditions are
         # checked here, the instant that roll resolves. The primary 14-VP win
@@ -1955,6 +1985,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Cloth bolts the roll paid (player -> count). Empty when no village
             # matched the roll or every matching village was already empty.
             'cloth': cloth,
+            # Oil tokens the roll produced (player -> count). Empty on a 7, off
+            # the scenario, or when no oil spring matched the roll.
+            'oil': oil,
             # The Pirate Islands fleet's move this roll and the coasts it raided,
             # or None off the scenario: {'hex', 'steps', 'attacks'} where each
             # attack names the player, the outcome and what was lost or rewarded.

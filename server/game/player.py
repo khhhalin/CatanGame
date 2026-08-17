@@ -59,6 +59,11 @@ class Player:
         # because it buys different things and — unlike a commodity — does not
         # count toward the discard limit on a 7 (expansions.md 842, 960).
         self.gold = 0
+        # Catan: Oil Springs only: oil tokens produced by buildings on oil
+        # springs. Held in front of the player (always public), capped at 4, and
+        # kept apart from resources because it is spent on its own actions and
+        # cannot be traded at a harbour (coilspringsgb_2015_web.pdf p. 1).
+        self.oil = 0
 
     def set_color(self, color: str):
         """Set or update the player's color."""
@@ -126,6 +131,8 @@ class Player:
             'roads': self.roads,
             'ships': self.ships,
             'gold': self.gold,
+            # Oil Springs: public, so shown to every viewer, not just `is_you`.
+            'oil': self.oil,
             'settlers': self.settlers,
             'crews': self.crews,
             'victory_points': self.get_victory_points(longest_road_holder, largest_army_holder),

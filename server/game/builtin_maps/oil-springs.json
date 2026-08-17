@@ -1,0 +1,93 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 3
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "brick": 1,
+      "generic": 4,
+      "ore": 1,
+      "sheep": 1,
+      "wheat": 1,
+      "wood": 1
+    }
+  },
+  "id": "oil-springs",
+  "map_version": 2,
+  "name": "Oil Springs",
+  "notes": "Catan: Oil Springs (Assadourian & Hansen, 2011/2015; coilspringsgb_2015_web.pdf). The base-game island with three Oil Spring tiles: one on the desert, one on a forest (wood) hex numbered 9, one on a pasture (sheep) hex numbered 10, kept non-adjacent. Buildings on an oil spring produce oil. Fixed layout so the three springs are deterministic and can be asserted against the generated board; the 18 number tokens and 19 terrain hexes match the base game.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-6,0,6",
+        "-6,3,3",
+        "-6,6,0",
+        "-3,-3,6",
+        "-3,0,3",
+        "-3,3,0",
+        "-3,6,-3",
+        "0,-6,6",
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "0,6,-6",
+        "3,-6,3",
+        "3,-3,0",
+        "3,0,-3",
+        "3,3,-6",
+        "6,-6,0",
+        "6,-3,-3",
+        "6,0,-6"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "-6,0,6": {"number": 12, "terrain": "wood"},
+          "-6,3,3": {"number": 2, "terrain": "sheep"},
+          "-6,6,0": {"number": 11, "terrain": "wheat"},
+          "-3,-3,6": {"number": 3, "terrain": "ore"},
+          "-3,0,3": {"number": 8, "terrain": "brick"},
+          "-3,3,0": {"number": 6, "terrain": "wheat"},
+          "-3,6,-3": {"number": 5, "terrain": "sheep"},
+          "0,-6,6": {"number": 4, "terrain": "wood"},
+          "0,-3,3": {"number": 11, "terrain": "ore"},
+          "0,0,0": {"terrain": "desert"},
+          "0,3,-3": {"number": 9, "terrain": "brick"},
+          "0,6,-6": {"number": 9, "terrain": "wood"},
+          "3,-6,3": {"number": 3, "terrain": "wheat"},
+          "3,-3,0": {"number": 4, "terrain": "ore"},
+          "3,0,-3": {"number": 5, "terrain": "wood"},
+          "3,3,-6": {"number": 10, "terrain": "wheat"},
+          "6,-6,0": {"number": 10, "terrain": "sheep"},
+          "6,-3,-3": {"number": 6, "terrain": "brick"},
+          "6,0,-6": {"number": 8, "terrain": "sheep"}
+        }
+      },
+      "meta": {
+        "0,0,0": {"oil_spring": true},
+        "0,6,-6": {"oil_spring": true},
+        "6,-6,0": {"oil_spring": true}
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 18
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 12
+}
