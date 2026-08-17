@@ -27,7 +27,9 @@ export const viewState = {
         // ticks its rules and nothing records that it was used.
         // `exclusions` are groups where at most one member may be on; the picker
         // decorates those rows and auto-unchecks a rival when its partner ticks.
-        rules: { catalogue: [], presets: [], exclusions: [], selected: {}, locked: false }
+        // `categories` are the functional sections the picker trees the rules
+        // into, in the server's display order - the client hardcodes none of them.
+        rules: { catalogue: [], categories: [], presets: [], exclusions: [], selected: {}, locked: false }
     },
 
     // What this tab asked to join as. The name is what the player typed; the

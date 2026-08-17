@@ -42,6 +42,7 @@ socket.on('rules_changed', (data) => {
     }
 
     viewState.server.rules.catalogue = data.catalogue;
+    viewState.server.rules.categories = Array.isArray(data.categories) ? data.categories : [];
     viewState.server.rules.presets = Array.isArray(data.presets) ? data.presets : [];
     viewState.server.rules.exclusions = Array.isArray(data.exclusions) ? data.exclusions : [];
     viewState.server.rules.selected = data.selected || {};

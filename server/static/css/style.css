@@ -1183,8 +1183,8 @@ button:disabled {
 }
 
 /* Base-game numbers are the least interesting knob on the page */
-.rule-group[data-group="core"] .rule-summary,
-.rule-group[data-group="core"] .rule-source {
+.rule-group[data-category="base"] .rule-summary,
+.rule-group[data-category="base"] .rule-source {
     color: var(--text-faint);
 }
 

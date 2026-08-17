@@ -218,46 +218,44 @@ export function renderUserList() {
     roster.observers.forEach(name => appendName(observerList, name));
 }
 
-// The sections the lobby splits the catalogue into, in display order, keyed by
-// the `group` the server tags each rule with. Core is the box's fixed numbers -
-// collapsed by default, because expansions and variants are what a table
-// actually picks. A group the server invents later still shows up, under
-// "Other", rather than silently vanishing from the picker.
-const RULE_GROUPS = [
-    {
-        id: 'expansion',
-        label: 'Expansions',
-        hint: 'Whole published rule sets.',
-        open: true
-    },
-    {
-        id: 'variant',
-        label: 'Variants',
-        hint: 'Single published house rules.',
-        open: true
-    },
-    {
-        id: 'core',
-        label: 'Base game numbers',
-        hint: 'Piece supplies, deck composition, bank size - the numbers printed on the box.',
-        open: false
-    },
-    {
-        id: 'other',
-        label: 'Other',
-        hint: 'Rules this client has no section for yet.',
-        open: true
-    }
-];
+// The picker is treed by the functional `category` the server tags each rule
+// with, in the order the server lists its categories - so a category the engine
+// adds later shows up as a new section on its own, the same philosophy as the
+// rules themselves. Nothing about the set of categories is hardcoded here.
+// Every section is collapsed by default: with ~140 rules a flat open list is
+// the thing this replaces, and a table opens only the one it wants to touch.
+const UNCATEGORISED = {
+    id: 'other',
+    label: 'Other',
+    hint: 'Rules this client has no section for yet.'
+};
 
 /**
- * Which section a catalogue entry belongs in.
+ * The catalogue's categories, in the server's display order, with a trailing
+ * "Other" section only if some rule names a category the server did not send.
+ *
+ * @returns {Array<object>} - {id, label, hint} descriptors, in render order
+ */
+function ruleCategories() {
+    const listed = (viewState.server.rules.categories || []).filter(
+        category => category && typeof category.id === 'string');
+    const known = new Set(listed.map(category => category.id));
+    const orphaned = viewState.server.rules.catalogue.some(
+        rule => !known.has(categoryId(rule)));
+    return orphaned ? [...listed, UNCATEGORISED] : listed;
+}
+
+/**
+ * Which section a catalogue entry belongs in - its own category when the server
+ * sent a matching section, else the "Other" fallback.
  *
  * @param {object} rule - Catalogue entry
- * @returns {string} - A group id that RULE_GROUPS definitely contains
+ * @returns {string} - A category id
  */
-function ruleGroupId(rule) {
-    return RULE_GROUPS.some(group => group.id === rule.group) ? rule.group : 'other';
+function categoryId(rule) {
+    const known = new Set(
+        (viewState.server.rules.categories || []).map(category => category.id));
+    return known.has(rule.category) ? rule.category : UNCATEGORISED.id;
 }
 
 /**
@@ -365,32 +363,59 @@ function buildRuleRow(rule) {
 }
 
 /**
- * Build one collapsible section of the picker.
+ * Whether a rule reads as "on" for the section header's tally. A boolean rule
+ * counts when it is ticked; int and choice rules always carry a value and so
+ * are never counted here, which keeps "N on" meaning "N switches thrown".
+ *
+ * @param {object} rule - Catalogue entry
+ * @returns {boolean}
+ */
+function ruleIsOn(rule) {
+    if (rule.type !== 'bool') {
+        return false;
+    }
+    const selected = viewState.server.rules.selected[rule.id];
+    return (selected ?? rule.default) === true;
+}
+
+/**
+ * The text for a section header's count: how many rules it holds and, of the
+ * switches among them, how many are on.
+ */
+function categoryCountText(rules) {
+    const held = rules.length === 1 ? '1 rule' : `${rules.length} rules`;
+    return `${held} · ${rules.filter(ruleIsOn).length} on`;
+}
+
+/**
+ * Build one collapsible section of the picker, one per category.
  * <details> rather than a scripted toggle: it collapses, remembers nothing the
  * client has to track, and is keyboard and screen-reader operable for free.
+ * Collapsed on build - the whole point of the tree is that nothing is open
+ * until a table reaches for it.
  *
- * @param {object} group - An entry of RULE_GROUPS
- * @param {Array<object>} rules - The catalogue entries in that group
+ * @param {object} category - A {id, label, hint} descriptor from the server
+ * @param {Array<object>} rules - The catalogue entries in that category
  * @returns {HTMLElement} - The section, not yet attached
  */
-function buildRuleGroup(group, rules) {
+function buildRuleGroup(category, rules) {
     const section = document.createElement('details');
     section.className = 'rule-group';
-    section.dataset.group = group.id;
-    section.open = group.open;
+    section.dataset.category = category.id;
+    section.open = false;
 
     const summary = document.createElement('summary');
     const label = document.createElement('span');
-    label.textContent = group.label;
+    label.textContent = category.label;
     const count = document.createElement('span');
     count.className = 'rule-group-count';
-    count.textContent = rules.length === 1 ? '1 rule' : `${rules.length} rules`;
+    count.textContent = categoryCountText(rules);
     summary.appendChild(label);
     summary.appendChild(count);
 
     const hint = document.createElement('p');
     hint.className = 'rule-group-hint';
-    hint.textContent = group.hint;
+    hint.textContent = category.hint || '';
 
     const body = document.createElement('div');
     body.className = 'rule-group-body';
@@ -677,6 +702,26 @@ document.addEventListener('scenario-preview-received', (event) => {
 });
 
 /**
+ * Refresh each section header's "N on" tally from the current selection.
+ * The rows are rebuilt only when the catalogue changes, so ticking a switch
+ * does not re-run buildRuleGroup - the header count has to be repainted here
+ * on every broadcast instead, or it would freeze at its build-time value.
+ *
+ * @param {Array<object>} categories - The sections currently rendered
+ */
+function refreshCategoryCounts(categories) {
+    categories.forEach(category => {
+        const rules = viewState.server.rules.catalogue.filter(
+            rule => categoryId(rule) === category.id);
+        const count = rulesList.querySelector(
+            `.rule-group[data-category="${category.id}"] .rule-group-count`);
+        if (count) {
+            count.textContent = categoryCountText(rules);
+        }
+    });
+}
+
+/**
  * Render the lobby rules panel from the server's catalogue and selection.
  * The rows are rebuilt only when the catalogue itself changes, so a value
  * broadcast does not destroy focus or the caret in a number field.
@@ -686,22 +731,26 @@ export function renderRulesPanel() {
         return;
     }
 
-    // The group is part of the signature: a rule that moves section has to
-    // rebuild the DOM, exactly like one that changes type.
-    const signature = viewState.server.rules.catalogue
-        .map(rule => {
-            const base = `${rule.id}:${rule.type}:${ruleGroupId(rule)}`;
-            return rule.type === 'choice'
-                ? base + ':' + (rule.options || []).map(o => o.id).join(',')
-                : base;
-        })
-        .join('|');
+    // The category is part of the signature: a rule that moves section, or a
+    // category the server adds or reorders, has to rebuild the DOM, exactly like
+    // a rule that changes type.
+    const categories = ruleCategories();
+    const signature = categories.map(category => category.id).join('/') + '||'
+        + viewState.server.rules.catalogue
+            .map(rule => {
+                const base = `${rule.id}:${rule.type}:${categoryId(rule)}`;
+                return rule.type === 'choice'
+                    ? base + ':' + (rule.options || []).map(o => o.id).join(',')
+                    : base;
+            })
+            .join('|');
     if (signature !== viewState.renderedRulesSignature) {
         const fragment = document.createDocumentFragment();
-        RULE_GROUPS.forEach(group => {
-            const rules = viewState.server.rules.catalogue.filter(rule => ruleGroupId(rule) === group.id);
+        categories.forEach(category => {
+            const rules = viewState.server.rules.catalogue.filter(
+                rule => categoryId(rule) === category.id);
             if (rules.length > 0) {
-                fragment.appendChild(buildRuleGroup(group, rules));
+                fragment.appendChild(buildRuleGroup(category, rules));
             }
         });
         rulesList.innerHTML = '';
@@ -711,6 +760,7 @@ export function renderRulesPanel() {
 
     renderRulePresets();
     viewState.server.rules.catalogue.forEach(applyRuleValue);
+    refreshCategoryCounts(categories);
     syncBoardMapVisibility();
 
     if (rulesLockedNote) {

@@ -423,6 +423,7 @@ def emit_rules(to_sender_only=False):
     live = session()
     payload = {
         'catalogue': rules_module.catalogue(),
+        'categories': rules_module.categories(),
         'presets': rules_module.presets(),
         'exclusions': rules_module.exclusions(),
         'selected': live.lobby_rules,
