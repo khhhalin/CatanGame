@@ -673,6 +673,10 @@ socket.on('map_preview', (data) => {
     document.dispatchEvent(new CustomEvent('map-preview-received', { detail: data }));
 });
 
+socket.on('scenario_preview', (data) => {
+    document.dispatchEvent(new CustomEvent('scenario-preview-received', { detail: data }));
+});
+
 socket.on('map_data', (data) => {
     document.dispatchEvent(new CustomEvent('map-data-received', { detail: data }));
 });

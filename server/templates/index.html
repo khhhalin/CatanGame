@@ -202,14 +202,38 @@
                  catalogue, never here: a rule added server-side must appear
                  with no template change. -->
             <section id="rules-panel" class="panel rules-panel">
-                <h2 class="panel-title">House Rules</h2>
+                <h2 class="panel-title">Scenarios</h2>
                 <p id="rules-locked-note" class="rules-locked-note hidden">
                     A game is running - these are fixed until it ends.
                 </p>
-                <!-- The catalogue is past thirty switches; a preset is how a
-                     table gets to a published rule set without reading all of
-                     them. Built from the server's list, never here. -->
-                <div id="rule-presets" class="rule-presets"></div>
+                <!-- The scenario picker: a scrollable list of published rule
+                     sets on the left, a preview of the one selected on the
+                     right. Every row is built from the server's preset list,
+                     never here, and picking one applies that preset's rules
+                     through the same path the switches below use. -->
+                <div class="scenario-picker">
+                    <!-- Kept #rule-presets so a preset is still one clickable
+                         row per rule set; the list scrolls inside the picker. -->
+                    <div id="rule-presets" class="scenario-list" role="listbox"
+                         aria-label="Scenarios"></div>
+                    <div id="scenario-detail" class="scenario-detail">
+                        <div class="scenario-preview-frame">
+                            <canvas id="scenario-preview-canvas" width="240" height="180"
+                                    aria-label="Map preview"></canvas>
+                            <p id="scenario-preview-status" class="scenario-preview-status">
+                                Pick a scenario to preview its map.
+                            </p>
+                        </div>
+                        <h3 id="scenario-detail-name" class="scenario-detail-name"></h3>
+                        <div id="scenario-detail-rules" class="scenario-detail-rules"></div>
+                        <p id="scenario-detail-summary" class="scenario-detail-summary"></p>
+                        <p id="scenario-detail-source" class="scenario-detail-source hidden"></p>
+                    </div>
+                </div>
+                <!-- The individual switches every scenario ticks, left reachable
+                     so a table can tweak the picked scenario. Rows and their
+                     group sections are built from the server's catalogue. -->
+                <h3 class="scenario-rules-heading">Individual rules</h3>
                 <div id="rules-list" class="rules-list panel-body"></div>
             </section>
             <div class="lobby-actions">

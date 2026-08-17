@@ -2,7 +2,7 @@
 
 import { setHighlight } from './board.js';
 import { renderCitiesKnights } from './cities-knights.js';
-import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, mapsBtn, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerLimit, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
+import { activeRulesChipValue, activeRulesDiv, activeRulesPanel, diceDisplay, diceSetEl, discardModal, gameBoard, gameScreen, inventionModal, joinBtn, joinColorPicker, joinScreen, mapsBtn, monopolyModal, observerList, placeRoadBtn, placeSettlementBtn, playerCount, playerLimit, playerList, robberIndicator, rollDiceBtn, rulePresets, rulesList, rulesLockedNote, scenarioDetail, scenarioDetailName, scenarioDetailRules, scenarioDetailSource, scenarioDetailSummary, scenarioPreviewCanvas, scenarioPreviewStatus, startGameBtn, startReasonEl, tradeModal, upgradeCityBtn, userScreen, usernameInput, victimModal } from './dom.js';
 import { enterEditor } from './map-editor.js';
 import { requestLogCatchUp } from './event-log.js';
 import { displayError, showNotice } from './notices.js';
@@ -428,14 +428,41 @@ function applyRuleValue(rule) {
     }
 }
 
+// The scenario the picker is showing the detail panel for, and a token that
+// tells a preview reply apart from a stale one for a scenario clicked since.
+// Personal to this browser: picking a scenario is a shared decision (it sends
+// `set_rules`), but which one this player is *looking at* is not.
+let selectedScenarioId = null;
+let previewToken = 0;
+// The token whose board has actually painted, so a timeout can tell a preview
+// that arrived from one still in flight.
+let paintedToken = 0;
+// If a preview never comes back — the server refused it, or the round trip was
+// lost — the loading state settles to a placeholder rather than spinning
+// forever. Long enough for a real reply, short enough not to look hung.
+const PREVIEW_TIMEOUT_MS = 6000;
+
 /**
- * Render the preset shortcuts the server offers.
+ * The first sentence of a scenario's summary, for the one-line list blurb.
+ * The full summary is the detail panel's description; the row shows only its
+ * opening so a scannable list stays one line per scenario.
+ */
+function firstSentence(text) {
+    if (!text) {
+        return '';
+    }
+    const end = text.search(/\.\s|\.$/);
+    return end === -1 ? text : text.slice(0, end + 1);
+}
+
+/**
+ * Render the scenario list the server offers.
  *
  * The catalogue is past thirty switches now that Cities & Knights is eight
  * separate rules rather than one. Reading all of them to reach a published rule
- * set is the kind of thing nobody does, so each preset is one button - and
- * because a preset only ticks individual rules, every one of them stays
- * separately switchable underneath.
+ * set is the kind of thing nobody does, so each preset is one row in a
+ * scrollable list - and because a preset only ticks individual rules, every one
+ * of them stays separately switchable in the list below.
  */
 function renderRulePresets() {
     if (!rulePresets) {
@@ -447,32 +474,207 @@ function renderRulePresets() {
 
     const fragment = document.createDocumentFragment();
     presets.forEach(preset => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'rule-preset';
-        button.id = `preset-${preset.id}`;
-        button.dataset.presetId = preset.id;
-        button.textContent = preset.name;
-        button.title = preset.summary || '';
-        button.disabled = viewState.server.rules.locked;
-        fragment.appendChild(button);
+        // A button, kept id'd `preset-<id>` and role=option: it is one clickable
+        // row per rule set, and picking it applies that preset exactly as the
+        // shortcut buttons did before the list wrapped them.
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'scenario-row';
+        row.id = `preset-${preset.id}`;
+        row.dataset.presetId = preset.id;
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', String(preset.id === selectedScenarioId));
+        row.disabled = viewState.server.rules.locked;
+
+        const name = document.createElement('span');
+        name.className = 'scenario-row-name';
+        name.textContent = preset.name;
+
+        const blurb = document.createElement('span');
+        blurb.className = 'scenario-row-blurb';
+        blurb.textContent = firstSentence(preset.summary);
+
+        row.appendChild(name);
+        row.appendChild(blurb);
+        fragment.appendChild(row);
     });
 
     rulePresets.innerHTML = '';
     rulePresets.appendChild(fragment);
+
+    // A scenario picked before a re-render (a rule broadcast rebuilds the list)
+    // keeps its detail panel; one that vanished from the list clears it.
+    if (selectedScenarioId && !presets.some(p => p.id === selectedScenarioId)) {
+        selectedScenarioId = null;
+        clearScenarioDetail();
+    }
+}
+
+/**
+ * The non-default rules a rule set turns on, as readable "Name: value" lines.
+ * Read against the catalogue the server sent, so a rule added server-side is
+ * described the day it appears and never restated from a copy here.
+ *
+ * @param {object} source - A rules dict (a preset's, or a running board's)
+ * @returns {Array<string>} - One label per rule that differs from its default
+ */
+function describeRuleChanges(source) {
+    const parts = [];
+    viewState.server.rules.catalogue.forEach(rule => {
+        const value = source[rule.id];
+        if (value === undefined || value === rule.default) {
+            return;
+        }
+        if (rule.type === 'choice') {
+            const option = (rule.options || []).find(entry => entry.id === value);
+            parts.push(`${rule.name}: ${option ? option.name : value}`);
+        } else if (rule.type === 'int') {
+            parts.push(`${rule.name}: ${value}`);
+        } else {
+            parts.push(value ? rule.name : `${rule.name}: off`);
+        }
+    });
+    return parts;
+}
+
+/**
+ * Empty the detail panel back to its "pick a scenario" resting state.
+ */
+function clearScenarioDetail() {
+    if (!scenarioDetail) {
+        return;
+    }
+    scenarioDetailName.textContent = '';
+    scenarioDetailSummary.textContent = '';
+    scenarioDetailRules.innerHTML = '';
+    scenarioDetailSource.textContent = '';
+    scenarioDetailSource.classList.add('hidden');
+    showPreviewStatus('Pick a scenario to preview its map.');
+}
+
+/**
+ * Show a message over the preview canvas (loading, or a placeholder on failure)
+ * and blank the canvas so no earlier scenario's board lingers under it.
+ */
+function showPreviewStatus(message) {
+    if (!scenarioPreviewStatus) {
+        return;
+    }
+    scenarioPreviewStatus.textContent = message;
+    scenarioPreviewStatus.classList.remove('hidden');
+    const ctx = scenarioPreviewCanvas?.getContext('2d');
+    if (ctx) {
+        ctx.clearRect(0, 0, scenarioPreviewCanvas.width, scenarioPreviewCanvas.height);
+    }
+}
+
+/**
+ * Fill the detail panel for the scenario just picked: its rules-turned-on list,
+ * its description, and the rulebook it comes from. The map preview is a server
+ * round trip and lands separately.
+ */
+function renderScenarioDetail(preset) {
+    if (!scenarioDetail) {
+        return;
+    }
+    scenarioDetailName.textContent = preset.name;
+    scenarioDetailSummary.textContent = preset.summary || '';
+
+    scenarioDetailRules.innerHTML = '';
+    const changes = describeRuleChanges(preset.rules || {});
+    if (changes.length === 0) {
+        const none = document.createElement('span');
+        none.className = 'scenario-rule-chip scenario-rule-chip-none';
+        none.textContent = 'Base game rules';
+        scenarioDetailRules.appendChild(none);
+    } else {
+        changes.forEach(label => {
+            const chip = document.createElement('span');
+            chip.className = 'scenario-rule-chip';
+            chip.textContent = label;
+            scenarioDetailRules.appendChild(chip);
+        });
+    }
+
+    if (preset.source) {
+        scenarioDetailSource.textContent = `Rulebook: ${preset.source}`;
+        scenarioDetailSource.classList.remove('hidden');
+    } else {
+        scenarioDetailSource.textContent = '';
+        scenarioDetailSource.classList.add('hidden');
+    }
+}
+
+/**
+ * Ask the server to deal this scenario's board and paint the thumbnail.
+ *
+ * Reuses the server's `preview_map` deal path (a real `Game`, one board back),
+ * so what the picker shows is the board the table will play. The reply is
+ * matched to the token below: click faster than the round trip and only the
+ * board for the scenario still selected is drawn.
+ */
+function requestScenarioPreview(preset) {
+    const token = ++previewToken;
+    showPreviewStatus('Dealing the board…');
+    emitGame('preview_scenario', { preset: preset.id });
+
+    window.setTimeout(() => {
+        // Still the latest request and its board never painted: the server
+        // refused it or the reply was lost. Say so without breaking the lobby.
+        if (token === previewToken && paintedToken !== token) {
+            showPreviewStatus('Preview unavailable — the rest of the scenario still applies.');
+        }
+    }, PREVIEW_TIMEOUT_MS);
+}
+
+/**
+ * Select a scenario: apply its preset, show its detail, request its preview.
+ */
+function selectScenario(presetId) {
+    const preset = viewState.server.rules.presets.find(entry => entry.id === presetId);
+    if (!preset) {
+        return;
+    }
+    selectedScenarioId = presetId;
+
+    // The server owns what a preset means: it is sent by id and the reply is the
+    // rule set that came back, so the client keeps no copy of either. This is
+    // the same path the shortcut buttons used.
+    emitGame('set_rules', { preset: presetId });
+
+    rulePresets.querySelectorAll('[data-preset-id]').forEach(row => {
+        row.setAttribute('aria-selected', String(row.dataset.presetId === presetId));
+    });
+    renderScenarioDetail(preset);
+    requestScenarioPreview(preset);
 }
 
 if (rulePresets) {
-    // The server owns what a preset means: it is sent by id and the reply is
-    // the rule set that came back, so the client keeps no copy of either.
     rulePresets.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-preset-id]');
-        if (!button || button.disabled) {
+        const row = event.target.closest('[data-preset-id]');
+        if (!row || row.disabled) {
             return;
         }
-        emitGame('set_rules', { preset: button.dataset.presetId });
+        selectScenario(row.dataset.presetId);
     });
 }
+
+document.addEventListener('scenario-preview-received', (event) => {
+    const { preset, board } = event.detail || {};
+    // A reply for a scenario clicked away from is stale; only the board for the
+    // row still selected is painted.
+    if (!board || preset !== selectedScenarioId) {
+        return;
+    }
+    scenarioPreviewStatus.classList.add('hidden');
+    try {
+        window.BoardRenderer.render(board, 'scenario-preview-canvas', null, null, [], null);
+        paintedToken = previewToken;
+    } catch (error) {
+        console.error('Scenario preview render failed:', error);
+        showPreviewStatus('Preview unavailable — the rest of the scenario still applies.');
+    }
+});
 
 /**
  * Render the lobby rules panel from the server's catalogue and selection.
@@ -670,21 +872,7 @@ export function renderActiveRules() {
         return;
     }
 
-    const parts = [];
-    viewState.server.rules.catalogue.forEach(rule => {
-        const value = active[rule.id];
-        if (value === undefined || value === rule.default) {
-            return;
-        }
-        if (rule.type === 'choice') {
-            const option = (rule.options || []).find(entry => entry.id === value);
-            parts.push(`${rule.name}: ${option ? option.name : value}`);
-        } else if (rule.type === 'int') {
-            parts.push(`${rule.name}: ${value}`);
-        } else {
-            parts.push(value ? rule.name : `${rule.name}: off`);
-        }
-    });
+    const parts = describeRuleChanges(active);
 
     activeRulesDiv.textContent = parts.length > 0 ? parts.join(' · ') : 'Base game rules';
     activeRulesPanel.classList.remove('hidden');

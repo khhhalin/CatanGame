@@ -899,27 +899,158 @@ button:disabled {
     margin-bottom: 0.5rem;
 }
 
-/* One button per published rule set, above the thirty-odd switches they tick.
-   `flex: none` so the row never eats the space the picker itself needs. */
-.rule-presets {
+/* The scenario picker: a scrollable list of published rule sets beside a
+   preview of the one selected. `flex: none` so it never eats the space the
+   individual-rules list below it needs; it wraps to a single column when the
+   panel is narrow. */
+.scenario-picker {
     flex: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
+    display: grid;
+    grid-template-columns: minmax(9rem, 1fr) minmax(0, 1.3fr);
+    gap: 0.5rem;
     margin-bottom: 0.5rem;
 }
 
-.rule-preset {
-    padding: 0.35rem 0.6rem;
-    font-size: 0.78rem;
+@media (max-width: 60rem) {
+    .scenario-picker {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* The list scrolls inside its own box rather than growing the panel: with
+   twenty-odd scenarios the picker would otherwise push the rules list off the
+   bottom of the lobby. */
+.scenario-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-height: 16rem;
+    overflow-y: auto;
+    padding-right: 0.15rem;
+}
+
+.scenario-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+    text-align: left;
+    padding: 0.4rem 0.55rem;
     background-color: var(--surface-3);
     color: var(--text);
     border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
 }
 
-.rule-preset:hover:not(:disabled) {
+.scenario-row:hover:not(:disabled) {
     background-color: var(--accent-soft);
     border-color: var(--accent);
+}
+
+.scenario-row[aria-selected="true"] {
+    background-color: var(--accent-soft);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.scenario-row:disabled {
+    filter: grayscale(1);
+    cursor: not-allowed;
+}
+
+.scenario-row-name {
+    font-size: 0.82rem;
+    font-weight: bold;
+}
+
+.scenario-row-blurb {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The detail panel for the selected scenario: preview, rules, description. */
+.scenario-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+/* The map thumbnail's box. A fixed height gives the renderer a stable frame to
+   size the canvas against, and anchors the loading/placeholder message over it. */
+.scenario-preview-frame {
+    position: relative;
+    width: 100%;
+    height: 11rem;
+    background-color: var(--sunken);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#scenario-preview-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.scenario-preview-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.scenario-detail-name {
+    font-size: 0.95rem;
+    font-weight: bold;
+}
+
+.scenario-detail-rules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.scenario-rule-chip {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    background-color: var(--accent-soft);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+}
+
+.scenario-rule-chip-none {
+    background-color: var(--surface-3);
+    color: var(--text-muted);
+}
+
+.scenario-detail-summary {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.scenario-detail-source {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+}
+
+/* The heading over the individual-rules list, separating it from the picker. */
+.scenario-rules-heading {
+    flex: none;
+    font-size: 0.85rem;
+    font-weight: bold;
+    margin-top: 0.25rem;
 }
 
 .rules-list {

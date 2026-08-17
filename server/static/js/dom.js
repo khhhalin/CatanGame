@@ -25,6 +25,15 @@ export const startReasonEl = document.getElementById('start-reason');
 export const rulesList = document.getElementById('rules-list');
 export const rulePresets = document.getElementById('rule-presets');
 export const rulesLockedNote = document.getElementById('rules-locked-note');
+// The scenario picker's detail panel: a map thumbnail, the rules the chosen
+// scenario turns on, its description, and the rulebook it comes from.
+export const scenarioDetail = document.getElementById('scenario-detail');
+export const scenarioPreviewCanvas = document.getElementById('scenario-preview-canvas');
+export const scenarioPreviewStatus = document.getElementById('scenario-preview-status');
+export const scenarioDetailName = document.getElementById('scenario-detail-name');
+export const scenarioDetailSummary = document.getElementById('scenario-detail-summary');
+export const scenarioDetailRules = document.getElementById('scenario-detail-rules');
+export const scenarioDetailSource = document.getElementById('scenario-detail-source');
 export const activeRulesPanel = document.getElementById('active-rules-panel');
 export const activeRulesDiv = document.getElementById('active-rules');
 export const gamePlayersList = document.getElementById('game-players');

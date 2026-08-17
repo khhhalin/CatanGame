@@ -19,6 +19,7 @@ import state
 from extensions import socketio
 from flask_socketio import emit
 from game import buildings, map_store, maps, resources
+from game import rules as rules_module
 from game.game import Game
 from state import (
     bump_and_broadcast,
@@ -261,3 +262,52 @@ def handle_preview_map(data=None):
         'islands': sorted(islands.values(), reverse=True),
         'warnings': [warning.to_json() for warning in warnings],
     })
+
+
+@socketio.on('preview_scenario')
+def handle_preview_scenario(data=None):
+    """Deal one preset's board once and send it back for the lobby's picker.
+
+    The scenario picker previews a whole published rule set, which `preview_map`
+    cannot: a preset names its board by id — or names none, meaning the default
+    board — not the full map payload `preview_map` parses. This deals the preset
+    through the same `Game` the table would play, so the thumbnail is the board
+    the scenario deals rather than a second draw in JavaScript to drift from it.
+
+    A preset ticks individual rules and nothing more (see `preset_rules`); this
+    handler never learns which preset a running game came from, and refuses once
+    a game is running, like the rest of the lobby.
+    """
+    if rate_limited():
+        return
+    if not _in_lobby():
+        return
+
+    preset_id = (data or {}).get('preset')
+    chosen = rules_module.preset_rules(preset_id)
+    if chosen is None:
+        reject('UNKNOWN_PRESET', f'There is no "{preset_id}" preset')
+        return
+
+    # A preset with a custom board names its map by id; the default board (no
+    # board_map, or a non-custom layout) deals with no map definition at all.
+    map_definition = None
+    if chosen['board_layout'] == 'custom' and chosen.get('board_map'):
+        try:
+            map_definition = map_store.load_definition(chosen['board_map'])
+        except (map_store.UnknownMap, maps.InvalidPayload) as exc:
+            reject('UNKNOWN_MAP',
+                   f'The map "{chosen["board_map"]}" cannot be previewed: {exc}')
+            return
+
+    session = state.session()
+    try:
+        preview = Game(['Preview'], [], config=session.config, rules=chosen,
+                       rng=random.Random(), map_definition=map_definition)
+    except maps.MapUnplayable as exc:
+        reject('INVALID_MAP', str(exc))
+        return
+
+    # The preset rides back so the client can match the board to the row still
+    # selected, rather than paint a stale reply over a scenario clicked since.
+    emit('scenario_preview', {'preset': preset_id, 'board': preview.get_board_data()})
