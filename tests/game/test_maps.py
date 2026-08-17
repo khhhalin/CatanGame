@@ -137,6 +137,11 @@ class TestTheLatticeMatchesTheEngine:
             tuple(step) for step in Game.HEX_DIRECTIONS
         ]
 
+    def test_the_corner_steps_are_the_boards_own(self):
+        assert list(maps.VERTEX_OFFSETS) == [
+            tuple(step) for step in Game.VERTEX_DIRECTIONS
+        ]
+
     @pytest.mark.parametrize('radius', [1, 2, 3, 6])
     def test_the_frame_is_the_boards_own_hexagon(self, radius):
         assert maps.frame_hex_keys(radius) == [
@@ -280,6 +285,25 @@ class TestValidationRefusesMapsThatMeanNothing:
     def test_a_robber_starting_in_the_sea(self):
         document = make_map(robber_start='6,-6,0')
         assert 'ROBBER_START' in problems(document)[0]
+
+    def test_a_plaza_on_a_hex_the_map_does_not_hold(self):
+        """The explicit-adjacency board-fact check: a plaza must sit on a real
+        board hex, which `parse_map` cannot see until the regions are known."""
+        document = make_map(map_version=2,
+                            frame={'radius': 3, 'excluded': ['9,-9,0']},
+                            plaza_vertices={
+            'plaza:9,-9,0': {'hexes': ['9,-9,0'], 'vertices': [], 'edges': []},
+        })
+        assert 'PLAZA_OFF_BOARD' in problems(document)[0]
+
+    def test_a_plaza_corner_that_is_not_a_corner_of_its_hex(self):
+        """A plaza names its land corners; a vertex that is not a corner of the
+        plaza's hex is off the board however well-formed its key is."""
+        document = make_map(map_version=2, plaza_vertices={
+            # 1,-2,1 is a corner of 0,0,0; 4,-5,1 is not.
+            'plaza:0,0,0': {'hexes': ['0,0,0'], 'vertices': ['4,-5,1'], 'edges': []},
+        })
+        assert 'PLAZA_OFF_BOARD' in problems(document)[0]
 
 
 class TestWarningsDoNotBlock:

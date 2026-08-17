@@ -1527,6 +1527,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             vertex_data = {'building': vertex_obj.building, 'neighbors': vertex_obj.neighbors}
             if vertex_obj.port:
                 vertex_data['port'] = vertex_obj.port
+            # A non-standard piece (a trade-hex plaza) is tagged so the renderer
+            # can draw it as a plaza rather than a plain intersection. Absent on
+            # every standard vertex, so a board with no such pieces is unchanged.
+            if vertex_obj.kind != 'standard':
+                vertex_data['kind'] = vertex_obj.kind
             vertices[key] = vertex_data
 
         edges = {}
@@ -1545,6 +1550,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # also carry it, which is where the renderer still reads it from.
             if edge_obj.port:
                 edge_data['port'] = edge_obj.port
+            # A non-standard side (a trade-hex interior spoke) is tagged so the
+            # renderer can draw the interior path even before a road sits on it.
+            # Absent on every standard edge, so a board with no such pieces is
+            # unchanged.
+            if edge_obj.kind != 'standard':
+                edge_data['kind'] = edge_obj.kind
             edges[key] = edge_data
 
         # Clean up expired trades

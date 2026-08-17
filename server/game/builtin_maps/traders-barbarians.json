@@ -22,30 +22,83 @@
   "id": "traders-barbarians",
   "map_version": 2,
   "name": "Traders & Barbarians",
-  "notes": "Traders & Barbarians main scenario: drive wagons between the castle, quarry and glassworks trade hexes to deliver commodities for gold and victory points. The desert, one pasture and one fields hex are removed, as are the 2 and 12 tokens; three barbarians roam the central paths. expansions.md 677-755.",
+  "notes": "Traders & Barbarians main scenario: drive wagons between the castle, quarry and glassworks trade hexes to deliver commodities for gold and victory points. The desert, one pasture and one fields hex are removed, as are the 2 and 12 tokens; three barbarians roam the central paths. Each trade hex sits at an island corner: a central plaza at the hex centre, four interior spoke paths to its land corners, and three sea-border paths. expansions.md 677-755.",
+  "plaza_vertices": {
+    "plaza:-6,0,6": {
+      "edges": [
+        "spoke:-6,0,6|-4,-1,5",
+        "spoke:-6,0,6|-5,-2,7",
+        "spoke:-6,0,6|-5,1,4",
+        "spoke:-6,0,6|-7,2,5"
+      ],
+      "hexes": [
+        "-6,0,6"
+      ],
+      "vertices": [
+        "-4,-1,5",
+        "-5,-2,7",
+        "-5,1,4",
+        "-7,2,5"
+      ]
+    },
+    "plaza:0,6,-6": {
+      "edges": [
+        "spoke:0,6,-6|-1,5,-4",
+        "spoke:0,6,-6|-2,7,-5",
+        "spoke:0,6,-6|1,4,-5",
+        "spoke:0,6,-6|2,5,-7"
+      ],
+      "hexes": [
+        "0,6,-6"
+      ],
+      "vertices": [
+        "-1,5,-4",
+        "-2,7,-5",
+        "1,4,-5",
+        "2,5,-7"
+      ]
+    },
+    "plaza:6,-6,0": {
+      "edges": [
+        "spoke:6,-6,0|4,-5,1",
+        "spoke:6,-6,0|5,-4,-1",
+        "spoke:6,-6,0|5,-7,2",
+        "spoke:6,-6,0|7,-5,-2"
+      ],
+      "hexes": [
+        "6,-6,0"
+      ],
+      "vertices": [
+        "4,-5,1",
+        "5,-4,-1",
+        "5,-7,2",
+        "7,-5,-2"
+      ]
+    }
+  },
   "regions": [
     {
       "color": "#c9a24b",
       "hexes": [
-        "0,0,0",
-        "-3,0,3",
-        "0,-3,3",
-        "3,-3,0",
-        "3,0,-3",
-        "0,3,-3",
-        "-3,3,0",
         "-6,0,6",
         "-6,3,3",
         "-6,6,0",
+        "-3,-3,6",
+        "-3,0,3",
+        "-3,3,0",
         "-3,6,-3",
-        "0,6,-6",
-        "3,3,-6",
-        "6,0,-6",
-        "6,-3,-3",
-        "6,-6,0",
-        "3,-6,3",
         "0,-6,6",
-        "-3,-3,6"
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "0,6,-6",
+        "3,-6,3",
+        "3,-3,0",
+        "3,0,-3",
+        "3,3,-6",
+        "6,-6,0",
+        "6,-3,-3",
+        "6,0,-6"
       ],
       "id": "mainland",
       "kind": "main",
@@ -53,84 +106,103 @@
         "mode": "fixed",
         "placements": {
           "-3,-3,6": {
-            "number": 3,
+            "number": 5,
             "terrain": "wheat"
           },
           "-3,0,3": {
+            "number": 3,
+            "terrain": "sheep"
+          },
+          "-3,3,0": {
+            "number": 11,
+            "terrain": "sheep"
+          },
+          "-3,6,-3": {
+            "number": 6,
+            "terrain": "brick"
+          },
+          "-6,0,6": {
+            "terrain": "quarry"
+          },
+          "-6,3,3": {
             "number": 5,
             "terrain": "wood"
           },
-          "-3,3,0": {
-            "number": 3,
-            "terrain": "wood"
-          },
-          "-3,6,-3": {
-            "number": 8,
+          "-6,6,0": {
+            "number": 11,
             "terrain": "wheat"
           },
-          "-6,0,6": {
-            "number": 11,
-            "terrain": "sheep"
-          },
-          "-6,3,3": {
-            "terrain": "quarry"
-          },
-          "-6,6,0": {
-            "number": 6,
-            "terrain": "brick"
-          },
           "0,-3,3": {
-            "number": 6,
-            "terrain": "sheep"
+            "number": 10,
+            "terrain": "ore"
           },
           "0,-6,6": {
-            "number": 11,
-            "terrain": "brick"
+            "number": 4,
+            "terrain": "ore"
           },
           "0,0,0": {
             "number": 8,
-            "terrain": "ore"
+            "terrain": "brick"
           },
           "0,3,-3": {
             "number": 10,
-            "terrain": "ore"
-          },
-          "0,6,-6": {
-            "number": 5,
             "terrain": "wood"
           },
+          "0,6,-6": {
+            "terrain": "castle"
+          },
           "3,-3,0": {
-            "number": 9,
-            "terrain": "wheat"
+            "number": 3,
+            "terrain": "wood"
           },
           "3,-6,3": {
-            "terrain": "glassworks"
+            "number": 9,
+            "terrain": "ore"
           },
           "3,0,-3": {
-            "number": 4,
+            "number": 9,
             "terrain": "brick"
           },
           "3,3,-6": {
-            "terrain": "castle"
-          },
-          "6,-3,-3": {
-            "number": 4,
+            "number": 8,
             "terrain": "sheep"
           },
-          "6,-6,0": {
-            "number": 10,
+          "6,-3,-3": {
+            "number": 6,
             "terrain": "wood"
           },
+          "6,-6,0": {
+            "terrain": "glassworks"
+          },
           "6,0,-6": {
-            "number": 9,
-            "terrain": "ore"
+            "number": 4,
+            "terrain": "wheat"
           }
         }
       }
     },
     {
       "color": "#3b6ea5",
-      "hexes": "remaining",
+      "hexes": [
+        "-9,0,9",
+        "-9,3,6",
+        "-9,6,3",
+        "-9,9,0",
+        "-6,-3,9",
+        "-6,9,-3",
+        "-3,-6,9",
+        "-3,9,-6",
+        "0,-9,9",
+        "0,9,-9",
+        "3,-9,6",
+        "3,6,-9",
+        "6,-9,3",
+        "6,3,-9",
+        "9,-9,0",
+        "9,-6,-3",
+        "9,-3,-6",
+        "9,0,-9"
+      ],
       "id": "ocean",
       "kind": "sea",
       "pool": {
@@ -142,6 +214,128 @@
       }
     }
   ],
-  "robber_start": "3,3,-6",
+  "robber_start": "0,6,-6",
+  "spoke_edges": {
+    "spoke:-6,0,6|-4,-1,5": {
+      "edges": [],
+      "hexes": [
+        "-6,0,6"
+      ],
+      "vertices": [
+        "plaza:-6,0,6",
+        "-4,-1,5"
+      ]
+    },
+    "spoke:-6,0,6|-5,-2,7": {
+      "edges": [],
+      "hexes": [
+        "-6,0,6"
+      ],
+      "vertices": [
+        "plaza:-6,0,6",
+        "-5,-2,7"
+      ]
+    },
+    "spoke:-6,0,6|-5,1,4": {
+      "edges": [],
+      "hexes": [
+        "-6,0,6"
+      ],
+      "vertices": [
+        "plaza:-6,0,6",
+        "-5,1,4"
+      ]
+    },
+    "spoke:-6,0,6|-7,2,5": {
+      "edges": [],
+      "hexes": [
+        "-6,0,6"
+      ],
+      "vertices": [
+        "plaza:-6,0,6",
+        "-7,2,5"
+      ]
+    },
+    "spoke:0,6,-6|-1,5,-4": {
+      "edges": [],
+      "hexes": [
+        "0,6,-6"
+      ],
+      "vertices": [
+        "plaza:0,6,-6",
+        "-1,5,-4"
+      ]
+    },
+    "spoke:0,6,-6|-2,7,-5": {
+      "edges": [],
+      "hexes": [
+        "0,6,-6"
+      ],
+      "vertices": [
+        "plaza:0,6,-6",
+        "-2,7,-5"
+      ]
+    },
+    "spoke:0,6,-6|1,4,-5": {
+      "edges": [],
+      "hexes": [
+        "0,6,-6"
+      ],
+      "vertices": [
+        "plaza:0,6,-6",
+        "1,4,-5"
+      ]
+    },
+    "spoke:0,6,-6|2,5,-7": {
+      "edges": [],
+      "hexes": [
+        "0,6,-6"
+      ],
+      "vertices": [
+        "plaza:0,6,-6",
+        "2,5,-7"
+      ]
+    },
+    "spoke:6,-6,0|4,-5,1": {
+      "edges": [],
+      "hexes": [
+        "6,-6,0"
+      ],
+      "vertices": [
+        "plaza:6,-6,0",
+        "4,-5,1"
+      ]
+    },
+    "spoke:6,-6,0|5,-4,-1": {
+      "edges": [],
+      "hexes": [
+        "6,-6,0"
+      ],
+      "vertices": [
+        "plaza:6,-6,0",
+        "5,-4,-1"
+      ]
+    },
+    "spoke:6,-6,0|5,-7,2": {
+      "edges": [],
+      "hexes": [
+        "6,-6,0"
+      ],
+      "vertices": [
+        "plaza:6,-6,0",
+        "5,-7,2"
+      ]
+    },
+    "spoke:6,-6,0|7,-5,-2": {
+      "edges": [],
+      "hexes": [
+        "6,-6,0"
+      ],
+      "vertices": [
+        "plaza:6,-6,0",
+        "7,-5,-2"
+      ]
+    }
+  },
   "suggested_victory_target": 13
 }

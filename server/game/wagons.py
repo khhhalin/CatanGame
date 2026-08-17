@@ -25,14 +25,15 @@ The mechanics (expansions.md 696-748):
 - The scenario's own development deck (game/tb_decks.py) replaces the base deck.
 
 The "central plaza" of the printed trade hex — a vertex at the hex's centre
-reached by four interior paths — is modelled here as one designated land corner
-of the trade hex (its `plaza`), so no new board topology is needed: the wagon
-delivers when it stops on that corner. This is the one deliberate simplification
-of the printed board; the delivery, movement-point and scoring mechanics are
-faithful.
+carrying the trade building, reached by four interior spoke paths from the hex's
+land corners — is the printed topology, injected through the explicit-adjacency
+channel (game/board.py `_apply_explicit_pieces`): the map declares a tagged
+`plaza:<hex>` vertex and four `spoke:<hex>|<corner>` edges, and the wagon
+delivers when it stops on that plaza vertex. The three sea-border sides take no
+road; the four spokes are road-buildable interior paths.
 """
 
-from game import tb_decks
+from game import maps, tb_decks
 from game.results import refused
 
 # The baggage-train ladder (expansions.md 720-726). Five cards; each upgrade
@@ -79,9 +80,10 @@ class WagonRules:
 
         A no-op without `trade_caravans` or a state container, and for every board
         that prints no trade hex, so the base game is untouched. Each trade hex's
-        plaza (a land corner where the wagon delivers) and its sea-border paths
-        (where no road may sit) are derived from the board geometry; its face-down
-        commodity stack is built from what the hex exports (game/tb_decks.py).
+        plaza (the tagged `plaza:<hex>` vertex the map injects, where the wagon
+        delivers) and its three sea-border paths (where no road may sit) are read
+        off the generated board; its face-down commodity stack is built from what
+        the hex exports (game/tb_decks.py).
         """
         self.trade_plazas = set()
         self.trade_sea_paths = set()
@@ -121,28 +123,33 @@ class WagonRules:
                     self.tb.path_barbarians.add(canonical)
 
     def _trade_plaza_vertex(self, hex_key: str):
-        """The land corner of a trade hex a wagon delivers on.
+        """The central plaza intersection of a trade hex a wagon delivers on.
 
-        The printed plaza is at the hex's centre; modelled here as one corner
-        deterministically chosen so delivery has a real board vertex. A fully
-        inland corner (no sea neighbour) is preferred so a delivery point is never
-        a coastal build spot; failing that, the sorted-first corner is used.
+        The printed plaza sits at the hex's centre (expansions.md 697) — a
+        position the %3 lattice reserves for the hex, never a corner — so the map
+        injects it through the explicit-adjacency channel as the tagged
+        `plaza:<hex>` vertex (game/board.py `_apply_explicit_pieces`). The wagon
+        delivers when it stops on that vertex. None when the map declares no plaza
+        for the hex, so a variant board that omits one is simply skipped.
         """
-        corners = sorted(
-            key for key, vertex in self.vertices.items()
-            if hex_key in vertex.neighbors.get('hexes', [])
-        )
-        for corner in corners:
-            neighbours = self.vertices[corner].neighbors.get('hexes', [])
-            if len(neighbours) == 3 and not any(
-                    self._is_sea_hex(k) for k in neighbours):
-                return corner
-        return corners[0] if corners else None
+        plaza_key = maps.PLAZA_PREFIX + hex_key
+        vertex = self.vertices.get(plaza_key)
+        if vertex is not None and vertex.kind == 'plaza':
+            return plaza_key
+        return None
 
     def _trade_sea_paths(self, hex_key: str) -> list:
-        """The trade hex's paths that border the sea — no road may sit on them."""
+        """The trade hex's three paths that border the sea — no road may sit on them.
+
+        The perimeter sides where the only other hex is open water (expansions.md
+        700). The interior spokes injected at the plaza border this hex from
+        inside, with no other hex at all, so they are excluded explicitly: they
+        are road-buildable interior paths, never sea borders.
+        """
         sea_paths = []
         for edge_key, edge in self.edges.items():
+            if edge.kind != 'standard':
+                continue
             hexes = edge.neighbors.get('hexes', [])
             if hex_key not in hexes:
                 continue

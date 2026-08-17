@@ -84,6 +84,14 @@ HEX_NEIGHBOURS = (
     (3, -3, 0), (3, 0, -3), (0, 3, -3), (-3, 3, 0), (-3, 0, 3), (0, -3, 3),
 )
 
+# The six steps from a hex centre to its corners, the same six as
+# `BoardBuilder.VERTEX_DIRECTIONS`. Repeated for the same reason as
+# `HEX_NEIGHBOURS`; a test asserts the two lists agree. Used to tell whether a
+# vertex a plaza names is genuinely a corner of the plaza's hex.
+VERTEX_OFFSETS = (
+    (1, -2, 1), (2, -1, -1), (1, 1, -2), (-1, 2, -1), (-2, 1, 1), (-1, -1, 2),
+)
+
 # A map id is also its filename, so this regex is the path-traversal guard.
 # Nothing else may ever build a path out of client input.
 SLUG = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
@@ -1356,6 +1364,8 @@ def validate_map(defn: MapDefinition) -> tuple:
             'UNREACHABLE_LAND', 'no shipping route could reach every island on this map',
         ))
 
+    errors.extend(_explicit_pieces_off_board(defn, claimed))
+
     if defn.robber_start != AUTO:
         if defn.robber_start not in defn.land_capable():
             errors.append(MapProblem(
@@ -1399,6 +1409,64 @@ def validate_map(defn: MapDefinition) -> tuple:
             ))
 
     return errors, warnings
+
+
+def _is_corner_of(vertex_key: str, hex_key: str) -> bool:
+    """Whether a vertex is genuinely one of a hex's six corners.
+
+    A corner sits one vertex-step out from a hex centre, so the difference of
+    their coordinates is one of the six `VERTEX_OFFSETS`. Shape-level: it says a
+    plaza's declared corner really touches its hex, never that the corner is land.
+    """
+    corner = parse_vertex_key(vertex_key)
+    centre = parse_hex_key(hex_key)
+    if corner is None or centre is None:
+        return False
+    step = tuple(c - h for c, h in zip(corner, centre, strict=True))
+    return step in VERTEX_OFFSETS
+
+
+def _explicit_pieces_off_board(defn: MapDefinition, claimed: dict) -> list:
+    """The plaza/spoke board-fact check the explicit-adjacency channel defers.
+
+    `parse_map` bounds a plaza or spoke to the frame but cannot see the dealt
+    board; this checks, once the regions are known, that each piece's hex is one
+    the map actually holds and each corner it names is a true corner of that hex.
+    Shape-level, like the other map-field validators — it never asks whether a
+    corner is land, only whether the geometry the piece claims exists.
+    """
+    problems = []
+    for key, _hexes, vertices, _edges in defn.plaza_vertices:
+        hex_key = key[len(PLAZA_PREFIX):]
+        if hex_key not in claimed:
+            problems.append(MapProblem(
+                'PLAZA_OFF_BOARD', f'{key} sits on {hex_key}, which the map does not hold',
+                None, hex_key,
+            ))
+        for corner in vertices:
+            if not _is_corner_of(corner, hex_key):
+                problems.append(MapProblem(
+                    'PLAZA_OFF_BOARD',
+                    f'{key} names {corner}, which is not a corner of {hex_key}',
+                    None, hex_key,
+                ))
+    for key, _hexes, vertices, _edges in defn.spoke_edges:
+        hex_key = key[len(SPOKE_PREFIX):].partition('|')[0]
+        if hex_key not in claimed:
+            problems.append(MapProblem(
+                'SPOKE_OFF_BOARD', f'{key} sits on {hex_key}, which the map does not hold',
+                None, hex_key,
+            ))
+        for corner in vertices:
+            if corner.startswith(PLAZA_PREFIX):
+                continue
+            if not _is_corner_of(corner, hex_key):
+                problems.append(MapProblem(
+                    'SPOKE_OFF_BOARD',
+                    f'{key} reaches {corner}, which is not a corner of {hex_key}',
+                    None, hex_key,
+                ))
+    return problems
 
 
 def start_problems(defn: MapDefinition, chosen: dict) -> list:
