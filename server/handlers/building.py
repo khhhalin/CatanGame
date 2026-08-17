@@ -8,6 +8,7 @@ from game.validation import (
     InvalidPayload,
     require_str,
 )
+from game.wonders import WONDERS
 from state import (
     bump_and_broadcast,
     log_event,
@@ -96,6 +97,38 @@ def handle_place_road(data):
     bump_and_broadcast()
     # A road wins through Longest Road, which is worth 2 points. Every other
     # placement announced its win; this one left the table to notice.
+    announce_victory(name)
+
+@socketio.on('build_wonder_level')
+def handle_build_wonder_level(data):
+    session = state.session()
+    if rate_limited():
+        return
+    if session.game is None or session.game.game_state != "started":
+        return
+
+    name = require_actor(data)
+    if name is None:
+        return
+
+    # The Wonder to start, on the first level; ignored once one is under way.
+    wonder = data.get('wonder')
+    if wonder is not None and not isinstance(wonder, str):
+        return
+
+    if blocked_by_phase(name):
+        return
+
+    result = session.game.build_wonder_level(name, wonder)
+    if not result['success']:
+        reject(result['code'], result['error'])
+        return
+
+    wonder_name = WONDERS[result['wonder']]['name']
+    logger.info("wonder player=%s wonder=%s level=%s", name, result['wonder'], result['level'])
+    log_event('build', f"{name} built the {wonder_name} to level {result['level']}", player=name)
+
+    bump_and_broadcast()
     announce_victory(name)
 
 @socketio.on('upgrade_city')

@@ -711,6 +711,28 @@ RULES += [
           "five. Each owed player picks their own, and the roll waits on them. "
           "Distinct from the Explorers & Pirates gold currency, which pays coins.",
           group=EXPANSION),
+    _bool("wonders", "Wonders of Catan", False,
+          "Seafarers rulebook, Scenario 8: The Wonders of Catan, pp. 26-29",
+          "Each player may build one Wonder chosen from five — Cathedral, Great "
+          "Bridge, Great Wall, Monument, Theater. A Wonder can only be started "
+          "once its printed requirement is met (a city and 6 points, a settlement "
+          "at the strait, settlements at the wasteland, a harbour city with a "
+          "5-long trade route, or two cities), and once you start one no other "
+          "player may build the same Wonder. Each Wonder has four levels, every "
+          "level costing the five resources on its card. You win by finishing a "
+          "Wonder, or by reaching the target with a strictly higher wonder level "
+          "than every opponent. Play it on the Wonders of Catan map.",
+          group=EXPANSION),
+    _bool("wonder_island_points", "Special points for small islands", False,
+          "Seafarers rulebook, Scenario 8: The Wonders of Catan, p. 27 "
+          "(\"If you build a settlement on one of the smaller islands ... you "
+          "receive a special victory point\")",
+          "Every one of your settlements on a small island is worth 1 special "
+          "victory point — each settlement, not the first on a new island, so two "
+          "on one island score two. An island is worked out from the board, so "
+          "the rule fits any map; on a board with no small islands it changes "
+          "nothing.",
+          group=EXPANSION),
 ]
 
 
@@ -1194,6 +1216,13 @@ DEPENDENCIES = {
     # route; with no ships there is no route to reach one, so cloth can never be
     # earned.
     "cloth_villages": ("ships",),
+    # The Wonders of Catan is a Seafarers scenario: its board is a main island
+    # ringed by small islands out at sea, the Monument's requirement counts a
+    # trade route of ships, and the small-island bonus is scored by sailing to
+    # them, so the whole scenario needs ships. The small-island bonus can be
+    # ticked on its own map, but it too is only reachable by sea.
+    "wonders": ("ships",),
+    "wonder_island_points": ("ships",),
     # Explorers & Pirates. Transport ships are built and moved from harbor
     # settlements, so nothing in the transport system means anything without
     # them; the pirate charges its tribute in gold; missions need their tracks
@@ -1608,6 +1637,27 @@ TB_MAIN_RULES = {
 }
 
 
+# Seafarers, The Wonders of Catan. Ticks ships and moving them, the two wonder
+# rules and the small-island bonus, keeps the pirate off (the scenario does not
+# use it, p. 28), restricts starting settlements to the main island, drops the
+# roads-only Longest Road for the Longest Trade Route the sea game awards, and
+# points the table at the built-in Wonders board. The alternate win is 10 points
+# with the highest wonder level, so the target is suggested at 10; the lobby can
+# still change it.
+WONDERS_OF_CATAN_RULES = {
+    "ships": True,
+    "ship_movement": True,
+    "longest_road_card": False,
+    "longest_trade_route": True,
+    "wonders": True,
+    "wonder_island_points": True,
+    "start_on_main_land": True,
+    "board_layout": "custom",
+    "board_map": "wonders-of-catan",
+    "victory_target": 10,
+}
+
+
 PRESETS = [
     {
         "id": "base_game",
@@ -1811,6 +1861,27 @@ PRESETS = [
             "robber_avoids_barren_islands": True,
             "victory_target": 14,
         },
+    },
+    {
+        "id": "wonders_of_catan",
+        "name": "Seafarers: The Wonders of Catan",
+        "source": (
+            "Seafarers 2021 rulebook, Scenario 8 'The Wonders of Catan', "
+            "pp. 26-29; catan-expansions-research.md §2.1"
+        ),
+        "summary": (
+            "The Seafarers scenario built around a race to raise a Wonder: each "
+            "player picks one of five — Cathedral, Great Bridge, Great Wall, "
+            "Monument or Theater — starts it once its requirement is met, and no "
+            "two players may build the same one. Every Wonder has four levels, "
+            "each costing five resources. Win by finishing a Wonder or by reaching "
+            "10 points with a strictly higher wonder level than every opponent. A "
+            "settlement on a small island is worth a special point, the pirate is "
+            "not used, and starting settlements go on the main land. The rulebook "
+            "ends the race at 10, so the target is suggested at 10; the lobby can "
+            "still change it. Pick the Wonders of Catan map."
+        ),
+        "rules": dict(WONDERS_OF_CATAN_RULES),
     },
     {
         "id": "traders_and_barbarians",

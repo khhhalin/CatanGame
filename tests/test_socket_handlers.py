@@ -10,10 +10,10 @@ import random
 import pytest
 import state
 from extensions import socketio
-from game import buildings, rate_limit, resources
+from game import buildings, map_store, maps, rate_limit, resources
 from game import rules as rules_module
 from game.game import Game
-from seafarers_board import build_ships_along, ship_path
+from seafarers_board import build_ships_along, give_building, ship_path
 
 
 @pytest.fixture
@@ -2144,3 +2144,85 @@ class TestRegistryImport:
 
         assert last_error(author)['code'] == 'INVALID_REGISTRY'
         assert not os.path.exists(buildings._PATH)
+
+
+def _wonders_socket_game():
+    """A started Wonders game with Alice on the turn, dice rolled, ready to build.
+
+    Alice already holds two cities, so the Theater's requirement is met; the
+    hand is set per test. Turn order is the lobby's, so Alice sits in seat 0 and
+    the sockets seated as Alice and Bob keep acting for themselves.
+    """
+    defn = maps.parse_map(map_store.read_map('wonders-of-catan'))
+    chosen = dict(rules_module.preset_rules('wonders_of_catan'))
+    chosen['turn_order'] = 'lobby'
+    chosen['board_layout'] = 'custom'
+    chosen['board_map'] = 'wonders-of-catan'
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=chosen,
+                map_definition=defn)
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0  # Alice
+    game.start_turn()
+    game.set_dice_rolled()
+    cities = [key for key in sorted(game.vertices)
+              if game.vertices[key].neighbors['hexes']
+              and not game.is_wonder_marker(key)][:2]
+    for vertex_key in cities:
+        give_building(game, 'Alice', vertex_key, 'city')
+    return game
+
+
+class TestBuildingAWonderOverTheWire:
+    """`build_wonder_level` reached through the real handler: the boundary a
+    browser talks to. The engine's own correctness is tests/game/test_wonders.py."""
+
+    @pytest.fixture
+    def wonders_clients(self, clients):
+        alice, bob = clients
+        state.session().game = _wonders_socket_game()
+        alice.get_received()
+        bob.get_received()
+        return alice, bob
+
+    def test_starting_a_wonder_pays_the_hand_and_broadcasts(self, wonders_clients):
+        alice, _ = wonders_clients
+        state.session().game.get_player('Alice').resources = {
+            'sheep': 3, 'brick': 1, 'wood': 1}
+
+        alice.emit('build_wonder_level', {'name': 'Alice', 'wonder': 'theater'})
+        received = alice.get_received()
+
+        assert not [m for m in received if m['name'] == 'error'], 'the build errored'
+        assert [m for m in received if m['name'] == 'board_updated'], \
+            'a successful build did not broadcast the board'
+        game = state.session().game
+        assert game.wonder_choice['Alice'] == 'theater'
+        assert game.wonder_level_of('Alice') == 1
+        assert game.get_player('Alice').resources.get('sheep', 0) == 0
+
+    def test_an_unaffordable_wonder_is_refused_by_the_engine(self, wonders_clients):
+        alice, _ = wonders_clients
+        state.session().game.get_player('Alice').resources = {}
+
+        alice.emit('build_wonder_level', {'name': 'Alice', 'wonder': 'theater'})
+
+        error = last_error(alice)
+        assert error is not None and error['code'] == 'INSUFFICIENT_RESOURCES', error
+        assert 'Alice' not in state.session().game.wonder_choice
+
+    def test_a_player_cannot_build_on_another_players_turn(self, wonders_clients):
+        _, bob = wonders_clients
+        # Bob's socket cannot act for Alice's seat: it is refused as not his turn,
+        # so a Wonder is never started off-turn from another connection.
+        bob.emit('build_wonder_level', {'name': 'Bob', 'wonder': 'cathedral'})
+
+        error = last_error(bob)
+        assert error is not None and error['code'] == 'NOT_YOUR_TURN', error
+        assert state.session().game.wonder_choice == {}
+
+    def test_the_base_game_refuses_the_wonder_build(self, clients):
+        alice, _ = clients
+        alice.emit('build_wonder_level', {'name': 'Alice', 'wonder': 'theater'})
+        error = last_error(alice)
+        assert error is not None, 'a base game accepted a Wonder build'

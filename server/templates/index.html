@@ -545,6 +545,17 @@
                         <div class="ep-actions hidden" id="caravans-vote"></div>
                     </div>
 
+                    <!-- The Wonders of Catan: the five Wonders with their
+                         per-level cost and start requirement, who holds each and
+                         how high, and a Build button on the one this seat may
+                         raise. Hidden until a board payload carries the wonders
+                         rule; wonders.js fills it from `board.wonders`. -->
+                    <div class="right-fish hidden" id="right-wonders">
+                        <div class="right-eyebrow">The Wonders of Catan</div>
+                        <div class="ep-supply" id="wonders-status"></div>
+                        <div class="ep-players" id="wonders-list"></div>
+                    </div>
+
                     <!-- Barbarian Attack: the coastal war at a glance —
                          barbarians on the coast and in the supply, your knights,
                          your prisoners and the cards left — plus Buy card and the

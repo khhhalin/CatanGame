@@ -114,6 +114,13 @@ MAX_CLOTH_VILLAGES = 16
 # The three gift kinds a marked coast edge can carry (Seafarers 2021, Scenario 5,
 # p. 20). A harbour gift also names the harbour it hands over.
 GIFT_KINDS = ('victory_point', 'dev_card', 'harbor')
+# The Wonders of Catan marked intersections (Seafarers 2021, Scenario 8, p. 27):
+# the printed board marks the strait (purple squares) and the wasteland (brown
+# squares), and a settlement standing on one gates a wonder. The printed board
+# marks two of the first and five of the second; the cap is generous room for a
+# variant and bounds the payload.
+WONDER_MARKER_KINDS = ('strait', 'wasteland')
+MAX_WONDER_MARKERS = 24
 MAX_NAME = 64
 MAX_NOTES = 512
 
@@ -436,6 +443,12 @@ class MapDefinition:
     # A map-level field like `bridge_sites`, because a village is owned by an
     # intersection, not a hex. Empty on every map that prints none.
     cloth_villages: tuple = ()
+    # The Wonders of Catan marked intersections: sorted (vertex_key, kind) pairs,
+    # kind one of WONDER_MARKER_KINDS. A settlement on a 'strait' marker gates the
+    # Great Bridge, one on a 'wasteland' marker the Great Wall. A map-level field
+    # like `bridge_sites`, because a marker is owned by an intersection, not a
+    # hex. Empty on every map that prints none.
+    wonder_markers: tuple = ()
 
     def to_json(self) -> dict:
         """The definition as a map file. `parse_map(defn.to_json()) == defn`."""
@@ -471,6 +484,10 @@ class MapDefinition:
         if self.cloth_villages:
             data['cloth_villages'] = {
                 vertex_key: number for vertex_key, number in self.cloth_villages
+            }
+        if self.wonder_markers:
+            data['wonder_markers'] = {
+                vertex_key: kind for vertex_key, kind in self.wonder_markers
             }
         return data
 
@@ -831,6 +848,8 @@ def parse_map(data: dict) -> MapDefinition:
 
     cloth_tuple = _parse_cloth_villages(data.get('cloth_villages'), radius)
 
+    wonder_tuple = _parse_wonder_markers(data.get('wonder_markers'), radius)
+
     return MapDefinition(
         map_version=version, id=map_id, name=name, author=author, notes=notes,
         radius=radius, regions=tuple(regions), harbours=bag,
@@ -838,6 +857,7 @@ def parse_map(data: dict) -> MapDefinition:
         excluded_hexes=excluded_tuple, bridge_sites=bridge_tuple,
         oasis_arrows=oasis_tuple, barbarian_paths=barbarian_tuple,
         gift_edges=gift_tuple, cloth_villages=cloth_tuple,
+        wonder_markers=wonder_tuple,
     )
 
 
@@ -870,6 +890,37 @@ def _parse_cloth_villages(raw, radius: int) -> tuple:
         villages[key] = number
 
     return tuple((key, villages[key]) for key in sort_hex_keys(villages))
+
+
+def _parse_wonder_markers(raw, radius: int) -> tuple:
+    """The Wonders of Catan marked intersections as sorted (vertex_key, kind) pairs.
+
+    Shape only, like the other map-level fields: each key names an intersection
+    on the lattice and each value is one of WONDER_MARKER_KINDS. Which land the
+    intersection sits on is a board fact, checked no more than the cloth villages
+    or gift edges are. Empty when the map prints none.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or len(raw) > MAX_WONDER_MARKERS:
+        raise InvalidPayload(
+            'INVALID_MAP',
+            f'wonder_markers maps at most {MAX_WONDER_MARKERS} intersections to a kind')
+
+    markers = {}
+    for key in sort_hex_keys(raw):
+        coords = parse_vertex_key(key)
+        if coords is None:
+            raise InvalidPayload('INVALID_MAP', f'{key!r} does not name an intersection')
+        if any(abs(value) > 3 * radius for value in coords):
+            raise InvalidPayload('INVALID_MAP', f'wonder marker {key!r} is outside the frame')
+        kind = raw[key]
+        if kind not in WONDER_MARKER_KINDS:
+            raise InvalidPayload(
+                'INVALID_MAP', f'a wonder marker is one of: {", ".join(WONDER_MARKER_KINDS)}')
+        markers[key] = kind
+
+    return tuple((key, markers[key]) for key in sort_hex_keys(markers))
 
 
 def _parse_gift_edges(raw, radius: int, harbour_bag) -> tuple:

@@ -38,6 +38,7 @@ from game.trade_rules import TradeRules
 from game.transport import TransportShipRules
 from game.turn_clock import TurnClock
 from game.wagons import WagonRules
+from game.wonders import WonderRules
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            MissionLairsRules, MissionFishRules, MissionSpicesRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
-           CoastGiftRules, ClothForCatanRules, PendingChoiceRules, TurnClock):
+           CoastGiftRules, ClothForCatanRules, WonderRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -184,6 +186,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.village_traders = {}
         self.cloth_tokens = {}
         self.cloth_general_supply = CLOTH_GENERAL_SUPPLY
+        # The Wonders of Catan: which Wonder each player has started (player ->
+        # wonder id) and how many of its four levels they have finished (player ->
+        # level), and the marked intersections read off the map — the strait
+        # squares the Great Bridge is built against and the wasteland squares the
+        # Great Wall is. All empty off the Wonders board.
+        self.wonder_choice = {}
+        self.wonder_level = {}
+        self.wonder_strait = set()
+        self.wonder_wasteland = set()
         self.must_move_robber = False  # Set to true when 7 is rolled
         self.must_choose_victim = False  # Set to true when need to pick victim
         self.robber_victims = []  # List of players with settlements near robber hex
@@ -434,6 +445,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # sit on into cloth state. A no-op for a board that prints no villages.
         self.setup_cloth_villages()
 
+        # The Wonders of Catan: read the map's marked strait and wasteland
+        # intersections. A no-op for a board that prints no markers.
+        self.setup_wonders_board()
+
         # Traders & Barbarians (Caravans): read the oasis and its arrow paths off
         # the dealt board. A no-op for a board that prints no oasis.
         self.setup_caravans_board()
@@ -637,6 +652,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # The old boot raises only its holder's threshold by 1 (expansions.md
         # 518); everyone else wins on the table's target. Zero without the rule.
         target = self.victory_points_to_win + self.personal_target_delta(player_name)
+        # The Wonders of Catan replaces the plain threshold win with its own two
+        # ends: finishing a Wonder, or reaching the target with a strictly higher
+        # wonder level than every opponent (p. 28). Reaching ten points alone is
+        # not a win here, so the threshold path is gated out entirely when the
+        # rule is on rather than run alongside.
+        if self.rules['wonders']:
+            if not self.wonder_victory(player_name, points, target):
+                return None
+            self.game_state = "finished"
+            return points
         if points < target:
             return None
         self.game_state = "finished"
@@ -761,6 +786,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         ):
             return refused(
                 'INVALID_PLACEMENT', 'Starting settlements go on the main land'
+            )
+        # The Wonders of Catan: the marked strait and wasteland squares carry no
+        # *starting* settlement (p. 26) — they are settled later, in play, to gate
+        # a Wonder. A no-op without the rule and away from a marked intersection.
+        if in_setup and self.rules['wonders'] and self.is_wonder_marker(vertex_key):
+            return refused(
+                'INVALID_PLACEMENT', 'This marked intersection cannot take a starting settlement'
             )
         if vertex.building is not None:
             return refused('OCCUPIED', 'This location already has a building')
@@ -1133,6 +1165,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.rules['cloth_villages']:
             points += self.cloth_victory_points(player_name)
 
+        # The Wonders of Catan: +1 for each of this player's buildings on a small
+        # island (p. 27). Read live off the board like the cloth points above, so
+        # a point lands the moment a small-island settlement does. A no-op without
+        # the rule.
+        if self.rules['wonder_island_points']:
+            points += self.wonder_island_victory_points(player_name)
+
         # "The player controlling the merchant scores 1 victory point for as
         # long as they control it" — and control passes the moment somebody
         # else plays a Merchant card, so this is read rather than banked.
@@ -1428,6 +1467,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'pirate_hex': self.pirate_hex,
             'ship_moved_this_turn': self.ship_moved_this_turn,
             'island_points': self.island_points,
+            # The Wonders of Catan: the catalogue, each player's Wonder and level,
+            # and the marked intersections. None off the scenario.
+            'wonders': self.wonders_client_state(),
             'must_move_robber': self.must_move_robber,
             # Main scenario: who owes a roaming-barbarian move after a 7, or None.
             'must_move_barbarian': self.must_move_barbarian,

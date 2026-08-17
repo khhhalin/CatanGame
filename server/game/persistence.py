@@ -198,6 +198,12 @@ def serialize(game: Game) -> dict:
         'village_traders': {vertex: sorted(players)
                             for vertex, players in game.village_traders.items()},
         'cloth_general_supply': game.cloth_general_supply,
+        # The Wonders of Catan: which Wonder each player started and how many of
+        # its levels they finished. The marked intersections are re-derived from
+        # the map when the board regenerates, so only the players' progress is
+        # saved.
+        'wonder_choice': game.wonder_choice,
+        'wonder_level': game.wonder_level,
         'must_move_robber': game.must_move_robber,
         # Main scenario: a barbarian move owed after a 7 survives a save.
         'must_move_barbarian': game.must_move_barbarian,
@@ -419,7 +425,8 @@ def deserialize(data: dict, config=None) -> Game:
                   'player_settlements', 'pirate_hex', 'ship_moved_this_turn',
                   'player_islands', 'island_points', 'merchant_hex', 'merchant_holder',
                   'merchant_fleet_types', 'gift_points', 'held_gift_harbors',
-                  'cloth_tokens', 'village_cloth', 'cloth_general_supply'):
+                  'cloth_tokens', 'village_cloth', 'cloth_general_supply',
+                  'wonder_choice', 'wonder_level'):
         if field in data:
             setattr(game, field, data[field])
 

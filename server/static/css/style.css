@@ -2337,6 +2337,50 @@ button:disabled {
     outline-offset: 1px;
 }
 
+/* The Wonders of Catan: one block per Wonder — name and its per-level cost on a
+   line, the requirement and holder beneath, the Build button trailing. */
+.wonders-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 2px var(--space-2);
+    padding: var(--space-1) 0;
+    border-top: 1px solid var(--hairline);
+}
+
+.wonders-name {
+    font-weight: 600;
+    color: var(--text-strong, inherit);
+}
+
+.wonders-cost {
+    grid-column: 2;
+    grid-row: 1;
+    display: inline-flex;
+    gap: 1px;
+    justify-self: end;
+}
+
+.wonders-cost .tile {
+    width: 16px;
+    height: 16px;
+}
+
+.wonders-req,
+.wonders-holder {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-xs, 0.75rem);
+}
+
+.wonders-build {
+    grid-column: 1 / -1;
+    flex: none;
+    justify-self: start;
+    margin-top: 2px;
+}
+
 /* Gold trades: the two buttons on one row, the resource pick revealed beneath. */
 .ep-gold {
     display: flex;
