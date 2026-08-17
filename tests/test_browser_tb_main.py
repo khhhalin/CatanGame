@@ -99,6 +99,38 @@ def _drive_off_game():
     return game, barb_edge, dest_edge
 
 
+def _plaza_render_game():
+    """A started main-scenario game where Alice's wagon sits on a land corner of
+    the castle trade hex, one interior spoke carries her road, and the plaza is a
+    step away. Everything needed to prove the printed plaza renders and the wagon
+    can reach it — the gold plaza diamond and a red road on a spoke, both against
+    the castle's grey terrain."""
+    chosen = dict(rules_module.TB_MAIN_RULES)
+    chosen['turn_order'] = 'lobby'
+    defn = maps.parse_map(map_store.read_map('traders-barbarians'))
+    game = Game(['Alice', 'Bob'], [], rng=random.Random(5), rules=chosen,
+                map_definition=defn)
+    game.start()
+    game.game_phase = 'playing'
+    game.current_player_index = 0
+    game.set_dice_rolled()
+
+    castle = game._trade_hex_of_type('castle')
+    plaza = maps.PLAZA_PREFIX + castle
+    corners = game.vertices[plaza].neighbors['vertices']
+    road_corner, wagon_corner = corners[0], corners[1]
+    spoke = game._edge_between(road_corner, plaza)
+    assert spoke is not None and game.edges[spoke].kind == 'spoke'
+    # A red road on the spoke, anchored by Alice's settlement on its land corner.
+    game.vertices[road_corner].building = {'type': 'settlement', 'player': 'Alice'}
+    game.get_player('Alice').settlements.append(road_corner)
+    game.edges[spoke].road = {'player': 'Alice'}
+    # Alice's wagon on the neighbouring land corner, a step from the plaza.
+    game.tb.wagons['Alice'] = wagon_corner
+    game.wagon_points_left = 4
+    return game, plaza, spoke
+
+
 def _base_game():
     game = Game(['Alice', 'Bob'], [], rng=random.Random(5))
     game.start()
@@ -163,6 +195,67 @@ _BADGE_PAINT = """
     return dark;
 }
 """
+
+# Gold pixels in a window centred on a vertex — the plaza diamond is drawn in the
+# trade-hex gold (#c9a24b: r high, b low), which stands apart from the castle's
+# grey terrain (#8a8f99) it sits on, so counting gold pixels isolates the plaza.
+_GOLD_VERTEX_PAINT = """
+([vertexKey, radius]) => {
+    const canvas = document.getElementById('board-canvas');
+    const board = window.__catanDebug.getBoard();
+    const layout = window.BoardRenderer.computeLayout(board);
+    const pos = layout.vertexPositions[vertexKey];
+    if (!pos) { return -1; }
+    const client = window.BoardRenderer.boardToClient(
+        canvas, pos.x + layout.offsetX, pos.y + layout.offsetY
+    );
+    const rect = canvas.getBoundingClientRect();
+    const dpr = canvas.width / rect.width;
+    const x = Math.round((client.x - rect.left) * dpr);
+    const y = Math.round((client.y - rect.top) * dpr);
+    const data = canvas.getContext('2d')
+        .getImageData(x - radius, y - radius, radius * 2, radius * 2).data;
+    let gold = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] > 0 && data[i] > 170 && data[i + 1] > 120
+            && data[i + 1] < 200 && data[i + 2] < 120) {
+            gold += 1;
+        }
+    }
+    return gold;
+}
+"""
+
+
+# Red pixels in a window centred on an edge — Alice's road (#e74c3c: r high, g/b
+# low) painted on the spoke stands apart from the castle's grey terrain, so
+# counting red pixels proves the spoke renders a road.
+_RED_EDGE_PAINT = """
+([edgeKey, radius]) => {
+    const canvas = document.getElementById('board-canvas');
+    const board = window.__catanDebug.getBoard();
+    const layout = window.BoardRenderer.computeLayout(board);
+    const pos = layout.edgePositions[edgeKey];
+    if (!pos) { return -1; }
+    const client = window.BoardRenderer.boardToClient(
+        canvas, pos.centerX + layout.offsetX, pos.centerY + layout.offsetY
+    );
+    const rect = canvas.getBoundingClientRect();
+    const dpr = canvas.width / rect.width;
+    const x = Math.round((client.x - rect.left) * dpr);
+    const y = Math.round((client.y - rect.top) * dpr);
+    const data = canvas.getContext('2d')
+        .getImageData(x - radius, y - radius, radius * 2, radius * 2).data;
+    let red = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] > 0 && data[i] > 170 && data[i + 1] < 110 && data[i + 2] < 110) {
+            red += 1;
+        }
+    }
+    return red;
+}
+"""
+
 
 # The text of every rendered game-log line, newest last.
 _LOG_TEXTS = """
@@ -262,6 +355,35 @@ def test_driving_off_a_barbarian_from_the_board(browser, tmp_path):
             # The roll failed: the barbarian is spent for the turn but stays put.
             assert after > before / 2, \
                 f"the barbarian vanished on a failed roll ({before} -> {after})"
+    finally:
+        stop_server(proc)
+
+
+def test_the_plaza_and_a_spoke_render_and_the_wagon_reaches_the_plaza(browser, tmp_path):
+    game, plaza, spoke = _plaza_render_game()
+    persistence.save(game, os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = _join(browser, url)
+
+        # The central plaza is painted as its gold diamond on the castle hex.
+        gold = alice.page.evaluate(_GOLD_VERTEX_PAINT, [plaza, 9])
+        assert gold > 12, f"no plaza diamond painted at the hex centre (gold px {gold})"
+
+        # A road built on an interior spoke is visible in the owner's colour.
+        red = alice.page.evaluate(_RED_EDGE_PAINT, [spoke, 10])
+        assert red > 12, f"no road painted on the interior spoke (red px {red})"
+
+        # The wagon reaches the plaza: arm the move and tap the plaza intersection.
+        alice.page.click("#tb-move-wagon")
+        click_vertex(alice, plaza)
+        alice.page.wait_for_function(
+            "d => window.__catanDebug.getBoard().tb.wagons.Alice === d",
+            arg=plaza, timeout=8000,
+        )
+        next_frame(alice.page)
+        moved = alice.page.evaluate(_VERTEX_PAINT, [plaza, 12])
+        assert moved > 15, f"the wagon did not draw on the plaza (paint {moved})"
     finally:
         stop_server(proc)
 

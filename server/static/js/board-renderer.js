@@ -1662,6 +1662,71 @@ function drawBarbarianAttackState(ctx, tb, hexPositions, edgePositions,
  * colour) and the three roaming barbarians on their paths (a dark badge across
  * the path, the way a conquered-hex cross reads at a glance).
  */
+/**
+ * The Traders & Barbarians trade-hex plaza: the interior spoke paths and the
+ * central plaza that carries the trade building. The pieces are tagged in the
+ * board payload (`kind === 'spoke'` / `'plaza'`), injected through the
+ * explicit-adjacency channel. Spokes are drawn faintly under the roads so a road
+ * built on one shows on top; the plaza is a small trade-post diamond at the hex
+ * centre, distinct from a player's settlement.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} vertices - Vertex payload keyed by vertex key
+ * @param {object} edges - Edge payload keyed by edge key
+ * @param {object} vertexPositions - Pixel positions per vertex key
+ * @param {object} edgePositions - Pixel positions per edge key
+ */
+function drawTradePlazas(ctx, vertices, edges, vertexPositions, edgePositions) {
+    // The interior spokes: a dashed guide line for an as-yet-unbuilt path, so the
+    // plaza's four paths read even before any road sits on them. A built spoke is
+    // painted over by the road loop that runs after this.
+    for (const key in edges) {
+        if (edges[key].kind !== 'spoke') {
+            continue;
+        }
+        const pos = edgePositions[key];
+        if (!pos || edges[key].road) {
+            continue;
+        }
+        ctx.save();
+        ctx.strokeStyle = 'rgba(201, 162, 75, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pos.x1, pos.y1);
+        ctx.lineTo(pos.x2, pos.y2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // The central plaza: a filled diamond in the trade-hex gold, the trade
+    // building the wagon delivers to.
+    for (const key in vertices) {
+        if (vertices[key].kind !== 'plaza') {
+            continue;
+        }
+        const pos = vertexPositions[key];
+        if (!pos) {
+            continue;
+        }
+        const r = 7;
+        ctx.save();
+        ctx.translate(pos.x, pos.y);
+        ctx.beginPath();
+        ctx.moveTo(0, -r);
+        ctx.lineTo(r, 0);
+        ctx.lineTo(0, r);
+        ctx.lineTo(-r, 0);
+        ctx.closePath();
+        ctx.fillStyle = '#c9a24b';
+        ctx.fill();
+        ctx.strokeStyle = '#5a4415';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
 function drawWagonState(ctx, tb, vertexPositions, edgePositions, playerColors) {
     if (!tb || !tb.wagons) {
         return;
@@ -2460,6 +2525,11 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
         drawMerchant(ctx, merchantPos.x + hexRadius * 0.5, merchantPos.y + hexRadius * 0.4);
     }
 
+
+    // The trade-hex plazas and their interior spokes, under the roads so a road
+    // on a spoke paints over its guide line. A no-op off the Traders & Barbarians
+    // board, where no piece is tagged.
+    drawTradePlazas(ctx, vertices, edges, vertexPositions, edgePositions);
 
     // Draw roads first so buildings appear on top
     // Note: Empty edges are not drawn (only clickable)
