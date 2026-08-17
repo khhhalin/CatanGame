@@ -134,8 +134,14 @@ body {
        the tester called "too small". Left edge, below the changelog pill (top:0
        would sit under it) down to a generous bottom clearance that keeps it off
        the bottom-left build tray stacked beneath it — see .action-tray, capped
-       to 15rem so a tall trade tray can never rise into the rail. The rail
-       scrolls internally (overflow-y below). */
+       to 15rem so a tall trade tray can never rise into the rail.
+
+       top + bottom fix the rail's height to the viewport, and `overflow: hidden`
+       below makes that a hard cap: the rail never grows a scrollbar of its own.
+       A tester on v3.7.0 found the WHOLE rail scrolled on a crowded C&K table —
+       uncomfortable, because reaching the log meant scrolling past the bank and
+       folds. The fixed sections now always sit whole inside this box and only
+       #log-entries shrinks and scrolls (see #side-tabs and .chat-panel below). */
     top: 3.5rem;
     left: 0;
     right: auto;
@@ -146,12 +152,12 @@ body {
        hand, not behind it — the two share --z-sticky and the hand, later in the
        DOM, would otherwise intercept the click. */
     z-index: var(--z-dropdown);
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     background: color-mix(in srgb, var(--surface-1) 92%, transparent);
     border: 1px solid var(--glass-line);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-2);
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 /* The seam parted the board from a docked panel; in game the panel floats. */
@@ -2103,17 +2109,74 @@ button:disabled {
 
 /* In a running game the rail carries the fixed sections (bank, titles, folds)
    AND the log/chat. On a four-player table with an expansion on, those add up to
-   more than the column is tall. The panel keeps its content's full height rather
-   than being squeezed until the log collapses to nothing and the fixed sections
-   spill and clip (the #side-tabs overflow bug); its bottom is held inside the
-   viewport so the off-screen sweep still passes, and the aside — which sits
-   outside the swept region — scrolls to reach whatever falls below the fold. The
-   log itself yields first (its own list scrolls), so the always-visible sections
-   stay whole. */
+   more than the column is tall. The panel fills the rail and no more (it inherits
+   the rail's capped height, `overflow: hidden` above), so the always-visible
+   sections stay whole and one thing yields: the log message list shrinks and
+   scrolls inside its own box (see .chat-panel and #log-entries below). This
+   replaces the earlier behaviour where the panel kept its full content height and
+   the whole rail scrolled to reach the log — the tester's discomfort. */
 .container:has(#game-screen:not(.hidden)) #side-tabs {
-    flex-grow: 1;
-    flex-shrink: 0;
-    max-height: calc(100dvh - 9rem);
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+}
+
+/* The chat/log tab is the one region that gives up space. It grows to take the
+   room the fixed sections leave and shrinks past its content when they need it,
+   so #log-entries below it is what scrolls — never the rail. (The base rule caps
+   it to a reading strip in the lobby; in game it owns the leftover.) */
+.container:has(#game-screen:not(.hidden)) #side-tabs .chat-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+}
+
+/* A floor so the log never collapses to an unusable sliver: even on the tallest
+   fixed stack it keeps a few lines and scrolls within them. Small enough that the
+   fixed sections still fit the rail whole at 1600x1000 (measured), so this never
+   forces the rail to clip them. */
+.container:has(#game-screen:not(.hidden)) #side-tabs #log-entries {
+    min-height: 3.5rem;
+}
+
+/* The fixed sections must all fit above the log inside a rail no taller than the
+   viewport. On a crowded four-player C&K table the fold chips — a tall single
+   column — were the biggest block, so in game they lay out two-up like the bank
+   and the scoreboard cards, and the section spacing is pulled in a notch. This
+   reclaims the room the log needs without shrinking any text below the compact
+   sizes the rail already uses. */
+.container:has(#game-screen:not(.hidden)) .fold-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-3);
+    align-content: start;
+}
+
+.container:has(#game-screen:not(.hidden)) .right-bank {
+    padding: var(--space-1) 0 var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.container:has(#game-screen:not(.hidden)) .right-titles,
+.container:has(#game-screen:not(.hidden)) .right-details {
+    padding-bottom: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.container:has(#game-screen:not(.hidden)) .right-eyebrow {
+    margin-bottom: var(--space-1);
+}
+
+.container:has(#game-screen:not(.hidden)) .fold-chip {
+    padding: 2px var(--space-1);
+}
+
+.container:has(#game-screen:not(.hidden)) .bank-big .bank-row {
+    gap: var(--space-1) var(--space-3);
+}
+
+.container:has(#game-screen:not(.hidden)) .turn-banner {
+    padding: var(--space-1);
 }
 
 .tab-bar {
