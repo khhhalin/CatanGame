@@ -1823,6 +1823,29 @@ function drawChoiceRing(ctx, x, y) {
 }
 
 /**
+ * Trace a path a pending choice is offering, the edge counterpart of the vertex
+ * ring. Two strokes, dark under bright, for the same reason: a path can run over
+ * any terrain in either theme, and one colour alone is invisible on some of it.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {object} edge - Edge position {x1, y1, x2, y2}
+ */
+function drawChoiceEdge(ctx, edge) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(edge.x1, edge.y1);
+    ctx.lineTo(edge.x2, edge.y2);
+    ctx.strokeStyle = 'rgba(10, 16, 24, 0.85)';
+    ctx.lineWidth = 9;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd54a';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.restore();
+}
+
+/**
  * Compute the full board geometry from board data.
  * Pure: reads only boardData, touches no canvas and no module state, so hit
  * detection works before the first frame has been drawn.
@@ -2580,12 +2603,18 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     // Catan: Oil Springs: an oil-drop badge on each Oil Spring tile.
     drawOilState(ctx, boardData.oil, hexPositions, hexRadius);
 
-    // The intersections a pending choice is asking about. Over the pieces,
-    // because the thing being chosen is usually one of them.
+    // The intersections and paths a pending choice is asking about. Over the
+    // pieces, because the thing being chosen is usually one of them. A key that
+    // names an intersection is ringed; one that names a path is traced.
     for (const key of choiceKeys || []) {
-        const pos = vertexPositions[key];
-        if (pos) {
-            drawChoiceRing(ctx, pos.x, pos.y);
+        const vertexPos = vertexPositions[key];
+        if (vertexPos) {
+            drawChoiceRing(ctx, vertexPos.x, vertexPos.y);
+            continue;
+        }
+        const edgePos = edgePositions[key];
+        if (edgePos) {
+            drawChoiceEdge(ctx, edgePos);
         }
     }
 

@@ -520,6 +520,11 @@ class HelpersRules:
         `build_road` deducts the ordinary road cost and the net paid is the
         substitute plus the other base card (Helpers_Rules.pdf, Makeshift Road
         Building, p. 6).
+
+        The road's edge may arrive in `params` (the engine and its tests name it
+        directly) or, when the player is picking on the board, be left out - then
+        the legal road sides are opened as a pending choice and the build is
+        deferred to its answer. Either way the swap and `build_road` are the same.
         """
         edge = params.get("edge")
         drop = params.get("drop")
@@ -541,15 +546,59 @@ class HelpersRules:
         me.resources[pay] -= 1
         self.bank.return_resources(pay, 1)
 
+        if edge is not None:
+            return self._yngvi_build(player_name, edge, drop, pay)
+
+        options = self._helper_road_targets(player_name)
+        if not options:
+            self._yngvi_unswap(player_name, drop, pay)
+            return refused("NO_ROAD_SPOT", "You have nowhere to build a road right now")
+        self.open_choice("helper_makeshift_road", player_name, options, drop=drop, pay=pay)
+        return {"defer_resolution": True, "dropped": drop, "paid": pay}
+
+    def _yngvi_build(self, player_name: str, edge: str, drop: str, pay: str) -> dict:
+        """Build the makeshift road, undoing the swap if the placement is refused."""
         result = self.build_road(player_name, edge)
         if not result["success"]:
-            # Undo the swap so a refused placement costs nothing.
-            me.resources[drop] -= 1
-            self.bank.return_resources(drop, 1)
-            me.resources[pay] += 1
-            self.bank.take(pay)
+            self._yngvi_unswap(player_name, drop, pay)
             return result
         return {"edge": edge, "dropped": drop, "paid": pay}
+
+    def _yngvi_unswap(self, player_name: str, drop: str, pay: str) -> None:
+        """Reverse the lend-and-pay so a refused road costs nothing."""
+        me = self.get_player(player_name)
+        me.resources[drop] -= 1
+        self.bank.return_resources(drop, 1)
+        me.resources[pay] += 1
+        self.bank.take(pay)
+
+    def _choice_helper_makeshift_road(self, choice: dict, option: str) -> dict:
+        """Lay Yngvi's road on the side the player tapped, then owe exchange-or-flip."""
+        context = choice["context"]
+        result = self._yngvi_build(choice["player"], option, context["drop"], context["pay"])
+        self._open_helper_resolution(choice["player"])
+        return result
+
+    def _helper_road_targets(self, player_name: str) -> list:
+        """The sides a road of this player's could legally be built on, sorted.
+
+        The base-game road checks `build_road` makes: an empty land side, off any
+        river bridge site, that touches the player's own network. Sorted so an
+        abandoned choice auto-resolves deterministically. Scenario-specific road
+        refusals (a conquered coast, a locked lair) are left to `build_road`
+        itself; a Helpers table with those rules on is the documented edge.
+        """
+        targets = []
+        for edge_key, edge in self.edges.items():
+            if edge.road is not None or edge.ship is not None:
+                continue
+            if not self.land_hexes_of_edge(edge_key):
+                continue
+            if self.is_bridge_site(edge_key):
+                continue
+            if self._road_connects(player_name, edge_key):
+                targets.append(edge_key)
+        return sorted(targets)
 
     def _is_end_road(self, player_name: str, edge_key: str) -> bool:
         """Whether one end of this road touches none of the player's own pieces."""
@@ -581,16 +630,40 @@ class HelpersRules:
         granted free road, so the new spot has to obey every normal placement
         rule and the Longest Road is recomputed (Helpers_Rules.pdf, Move a Road,
         p. 7).
+
+        Both edges may arrive in `params` (the engine and its tests name them),
+        or the player picks on the board: with neither given, the end roads are
+        opened as a first pending choice, and its answer opens a second listing
+        where the lifted road may go. The lift-then-build below is what both the
+        direct call and the two-step board flow run.
         """
         from_edge = params.get("from_edge")
         to_edge = params.get("to_edge")
+        if from_edge is not None and to_edge is not None:
+            problem = self._hogni_lift_refusal(player_name, from_edge)
+            if problem is not None:
+                return problem
+            return self._hogni_move(player_name, from_edge, to_edge)
+
+        options = self._helper_end_roads(player_name)
+        if not options:
+            return refused("NOT_END_ROAD", "You have no end road to move")
+        self.open_choice("helper_move_road_from", player_name, options)
+        return {"defer_resolution": True}
+
+    def _hogni_lift_refusal(self, player_name: str, from_edge: str):
+        """Refuse a from-edge that is not one of the player's own end roads."""
         edge = self.edges.get(from_edge)
-        me = self.get_player(player_name)
         if edge is None or edge.road is None or edge.road.get("player") != player_name:
             return refused("NOT_YOUR_PIECE", "That is not one of your roads")
         if not self._is_end_road(player_name, from_edge):
             return refused("NOT_END_ROAD", "You may only move a road with a free end")
+        return None
 
+    def _hogni_move(self, player_name: str, from_edge: str, to_edge: str) -> dict:
+        """Lift the end road and lay it on `to_edge`, restoring it if refused."""
+        me = self.get_player(player_name)
+        edge = self.edges.get(from_edge)
         edge.road = None
         if from_edge in me.roads:
             me.roads.remove(from_edge)
@@ -606,6 +679,61 @@ class HelpersRules:
                 me.roads.append(from_edge)
             return result
         return {"from": from_edge, "to": to_edge}
+
+    def _choice_helper_move_road_from(self, choice: dict, option: str) -> dict:
+        """Lift the tapped end road, then open where it may be laid.
+
+        The road is picked up now so the free side it vacates counts as a legal
+        destination when the second choice is built; if nothing is legal even
+        after the lift, the road is set straight back down and the tile still
+        owes its exchange-or-flip.
+        """
+        player_name = choice["player"]
+        me = self.get_player(player_name)
+        edge = self.edges.get(option)
+        edge.road = None
+        if option in me.roads:
+            me.roads.remove(option)
+        self.free_roads_remaining += 1
+
+        targets = self._helper_road_targets(player_name)
+        if not targets:
+            if self.free_roads_remaining > 0:
+                self.free_roads_remaining -= 1
+            edge.road = {"player": player_name}
+            if option not in me.roads:
+                me.roads.append(option)
+            self._open_helper_resolution(player_name)
+            return {"from": option, "to": None}
+        self.open_choice("helper_move_road_to", player_name, targets, from_edge=option)
+        return {"from": option}
+
+    def _choice_helper_move_road_to(self, choice: dict, option: str) -> dict:
+        """Lay the already-lifted road on the tapped side, then owe exchange-or-flip."""
+        player_name = choice["player"]
+        from_edge = choice["context"]["from_edge"]
+        result = self.build_road(player_name, option)
+        if not result["success"]:
+            # The road is still lifted: set it back where it came from.
+            if self.free_roads_remaining > 0:
+                self.free_roads_remaining -= 1
+            edge = self.edges.get(from_edge)
+            edge.road = {"player": player_name}
+            me = self.get_player(player_name)
+            if from_edge not in me.roads:
+                me.roads.append(from_edge)
+            self._open_helper_resolution(player_name)
+            return {"from": from_edge, "to": from_edge}
+        self._open_helper_resolution(player_name)
+        return {"from": from_edge, "to": option}
+
+    def _helper_end_roads(self, player_name: str) -> list:
+        """This player's roads that have a free end, sorted; Hogni may move any."""
+        me = self.get_player(player_name)
+        return sorted(
+            edge_key for edge_key in me.roads
+            if self._is_end_road(player_name, edge_key)
+        )
 
     def _lend(self, player_name: str, resources) -> list:
         """Lend the player one of each named resource from the bank, if it can.
@@ -655,17 +783,77 @@ class HelpersRules:
         # Gregor's is 2 ore + 1 wheat, so one of each is lent.
         waived = ["wheat", "sheep"] if build == "settlement" else ["ore", "wheat"]
         lent = self._lend(player_name, waived)
+
+        if vertex is not None:
+            return self._gregor_build(player_name, build, vertex, lent)
+
+        # No intersection named: the player picks on the board. Only open the
+        # choice if the reduced price is actually payable and a legal spot
+        # exists, so a resolver that must succeed is never handed an impossible
+        # build (a refused build inside a resolver is silently masked).
+        if not self.can_afford(player_name, build):
+            self._gregor_return_knight(player_name, lent)
+            return refused("CANNOT_AFFORD", f"You cannot pay Gregor's price for a {build}")
+        options = self._helper_build_targets(player_name, build)
+        if not options:
+            self._gregor_return_knight(player_name, lent)
+            return refused("NO_BUILD_SPOT", f"You have nowhere to build a {build} right now")
+        self.open_choice("helper_knight_to_building", player_name, options,
+                         build=build, lent=lent)
+        return {"defer_resolution": True, "build": build}
+
+    def _gregor_build(self, player_name: str, build: str, vertex: str, lent: list) -> dict:
+        """Raise Gregor's cut-price building, restoring the knight if refused."""
         if build == "settlement":
             result = self.place_settlement(player_name, vertex)
         else:
             result = self.upgrade_city(player_name, vertex)
-
         if not result["success"]:
-            self._reclaim(player_name, lent)
-            me.knights_played += 1
-            self.update_largest_army()
+            self._gregor_return_knight(player_name, lent)
             return result
         return {"built": build, "vertex": vertex}
+
+    def _gregor_return_knight(self, player_name: str, lent: list) -> None:
+        """Undo the lend and hand the discarded knight back after a failed build."""
+        self._reclaim(player_name, lent)
+        me = self.get_player(player_name)
+        me.knights_played += 1
+        self.update_largest_army()
+
+    def _choice_helper_knight_to_building(self, choice: dict, option: str) -> dict:
+        """Build at the tapped intersection with Gregor, then owe exchange-or-flip."""
+        context = choice["context"]
+        result = self._gregor_build(
+            choice["player"], context["build"], option, list(context["lent"])
+        )
+        self._open_helper_resolution(choice["player"])
+        return result
+
+    def _helper_build_targets(self, player_name: str, build: str) -> list:
+        """The intersections Gregor could raise this building on, sorted.
+
+        A city goes on one of the player's own settlements; a settlement on any
+        empty intersection that keeps the distance rule and touches the player's
+        own network, the same tests `place_settlement` makes.
+        """
+        if build == "city":
+            return sorted(
+                vertex_key for vertex_key, vertex in self.vertices.items()
+                if vertex.building and vertex.building.get("player") == player_name
+                and vertex.building.get("type") == "settlement"
+            )
+        targets = []
+        for vertex_key, vertex in self.vertices.items():
+            if vertex.building or not vertex.neighbors.get("hexes"):
+                continue
+            if self.knight_holds(vertex_key):
+                continue
+            if not self._respects_distance_rule(vertex_key):
+                continue
+            if not self._touches_own_route(player_name, vertex_key):
+                continue
+            targets.append(vertex_key)
+        return sorted(targets)
 
     # --- Client / persistence view -------------------------------------
 

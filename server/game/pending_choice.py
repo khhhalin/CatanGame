@@ -51,6 +51,10 @@ KINDS = {
     'pirate_repel_reward': 'choose a resource to take for driving off the pirate fleet',
     'helper_resolution': 'exchange your used helper for a new one, or flip it to reuse it',
     'helper_keep_dev': 'choose which of the three development cards to keep',
+    'helper_makeshift_road': 'choose where to build your makeshift road',
+    'helper_move_road_from': 'choose which of your end roads to move',
+    'helper_move_road_to': 'choose where to lay the moved road',
+    'helper_knight_to_building': 'choose where to build with the knight',
 }
 
 # The safety net on draining the queue: a resolver may open a follow-up choice

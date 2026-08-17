@@ -1,6 +1,6 @@
 // The board: one render loop, and the taps and gestures that reach it.
 
-import { choiceHighlightVertices, handleChoiceTap } from './choices.js';
+import { choiceHighlightKeys, handleChoiceTap } from './choices.js';
 import { boardCanvas } from './dom.js';
 import { handleKnightTap, updateKnightOverlay } from './knight-overlay.js';
 import { displayError } from './notices.js';
@@ -44,7 +44,7 @@ function frame() {
             if (getBoard() && window.BoardRenderer) {
                 window.BoardRenderer.render(
                     getBoard(), 'board-canvas', viewState.render.highlightNumber,
-                    currentPreview(), choiceHighlightVertices()
+                    currentPreview(), choiceHighlightKeys()
                 );
                 updateBoardLabel();
             }

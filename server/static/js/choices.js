@@ -28,7 +28,16 @@ import { getBoard, viewState } from './state.js';
 // The kinds whose options are vertex keys. A raw "3,-3,0" means nothing to a
 // player, so these are highlighted on the board and described by the terrain
 // they stand on instead of being listed as keys.
-const VERTEX_KINDS = ['barbarian_city', 'deserter', 'deserter_placement'];
+const VERTEX_KINDS = ['barbarian_city', 'deserter', 'deserter_placement',
+    'helper_knight_to_building'];
+
+// The kinds whose options are edge keys and are answered by tapping a ringed
+// path on the board, the way the vertex kinds are answered by tapping a ringed
+// intersection. A raw edge key means nothing to a player, so - like the vertex
+// kinds - these are highlighted on the board and their buttons describe the
+// terrain the path runs between instead of listing a coordinate.
+const EDGE_CHOICE_KINDS = ['helper_makeshift_road', 'helper_move_road_from',
+    'helper_move_road_to'];
 
 // What each kind is about, as a heading. The sentence under it is the server's
 // own `prompt`: the wording lives in `game/pending_choice.py` so a refusal, a
@@ -49,6 +58,10 @@ const CHOICE_TITLES = {
     treason_destination: 'Treason',
     gold_field_choice: 'Gold field',
     gift_harbor: 'Place your gift harbour',
+    helper_makeshift_road: 'Makeshift road',
+    helper_move_road_from: 'Move a road',
+    helper_move_road_to: 'Move a road',
+    helper_knight_to_building: 'Assign a knight',
 };
 
 // The line icon that leads each heading, keyed by what the choice is about, not
@@ -71,6 +84,10 @@ const CHOICE_ICONS = {
     treason_destination: 'harbormaster',
     gold_field_choice: 'hand',
     gift_harbor: 'harbormaster',
+    helper_makeshift_road: 'road',
+    helper_move_road_from: 'road',
+    helper_move_road_to: 'road',
+    helper_knight_to_building: 'knight',
 };
 
 // The kinds whose options are a coastal hex key. Like the camel's path, a raw
@@ -83,6 +100,7 @@ const VERTEX_NOUNS = {
     barbarian_city: 'City',
     deserter: 'Knight',
     deserter_placement: 'Stand',
+    helper_knight_to_building: 'Build',
 };
 
 // The piece a vertex option stands for, so its button leads with that piece's
@@ -91,6 +109,7 @@ const VERTEX_ICONS = {
     barbarian_city: 'city',
     deserter: 'knight',
     deserter_placement: 'knight',
+    helper_knight_to_building: 'settlement',
 };
 
 // The kinds whose options are a held card - a resource or a commodity. Their
@@ -137,12 +156,15 @@ export function myPendingChoice() {
  *
  * @returns {Array<string>} - Vertex keys
  */
-export function choiceHighlightVertices() {
+export function choiceHighlightKeys() {
     const mine = myPendingChoice();
-    if (!mine || !VERTEX_KINDS.includes(mine.kind) || !Array.isArray(mine.options)) {
+    if (!mine || !Array.isArray(mine.options)) {
         return [];
     }
-    return mine.options;
+    if (VERTEX_KINDS.includes(mine.kind) || EDGE_CHOICE_KINDS.includes(mine.kind)) {
+        return mine.options;
+    }
+    return [];
 }
 
 /**
@@ -172,14 +194,23 @@ function sendChoice(option) {
  * @returns {boolean} - Whether the tap was an answer
  */
 export function handleChoiceTap(clientX, clientY) {
-    const options = choiceHighlightVertices();
-    if (options.length === 0) {
+    const mine = myPendingChoice();
+    if (!mine || !Array.isArray(mine.options)) {
+        return false;
+    }
+    const isVertex = VERTEX_KINDS.includes(mine.kind);
+    const isEdge = EDGE_CHOICE_KINDS.includes(mine.kind);
+    if (!isVertex && !isEdge) {
         return false;
     }
     const canvas = document.getElementById('board-canvas');
     const position = window.BoardRenderer.clientToBoard(canvas, clientX, clientY);
-    const key = window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
-    if (!key || !options.includes(key)) {
+    // An edge kind snaps to the nearest path, a vertex kind to the nearest
+    // intersection - the same two hit-tests placement uses.
+    const key = isEdge
+        ? window.BoardRenderer.findNearestEdge(getBoard(), position.x, position.y)
+        : window.BoardRenderer.findNearestVertex(getBoard(), position.x, position.y);
+    if (!key || !mine.options.includes(key)) {
         // Still swallowed: while a choice is open the server refuses every
         // build anyway, so falling through to placement would only raise a
         // ghost that can never be confirmed.
@@ -268,7 +299,8 @@ function optionLabel(choice, option) {
         const card = getBoard()?.cities_knights?.progress_cards?.[option];
         return card?.name || option;
     }
-    if (choice.kind === 'camel_placement' || choice.kind === 'gift_harbor') {
+    if (choice.kind === 'camel_placement' || choice.kind === 'gift_harbor'
+        || EDGE_CHOICE_KINDS.includes(choice.kind)) {
         return describeEdge(option);
     }
     if (HEX_KINDS.includes(choice.kind)) {
@@ -458,6 +490,11 @@ function renderMyChoice(choice) {
         const hint = document.createElement('div');
         hint.className = 'choice-hint';
         hint.textContent = 'Tap a ringed intersection on the board, or use a button below.';
+        fragment.appendChild(hint);
+    } else if (EDGE_CHOICE_KINDS.includes(choice.kind)) {
+        const hint = document.createElement('div');
+        hint.className = 'choice-hint';
+        hint.textContent = 'Tap a ringed path on the board, or use a button below.';
         fragment.appendChild(hint);
     }
 

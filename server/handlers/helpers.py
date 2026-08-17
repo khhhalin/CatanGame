@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # The parameter keys any advantage may carry, each a bounded scalar. The engine
 # re-validates every one against real state; this only keeps a payload sane.
 _STR_PARAMS = ('resource', 'resource_out', 'target', 'from_edge', 'to_edge',
-               'edge', 'dev_card', 'build', 'vertex',
+               'edge', 'drop', 'dev_card', 'build', 'vertex',
                'substitute_from', 'substitute_with')
 # List-valued parameters (e.g. Stina's several 2:1 receipts, Asla's two
 # requests), each a short list of short strings.

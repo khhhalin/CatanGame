@@ -488,6 +488,34 @@ class TestYngvi:
         assert alice.resources.get("sheep", 0) == 0
         assert alice.resources.get("brick", 0) == 0
 
+    def test_yngvi_without_an_edge_opens_a_board_choice_of_legal_sides(self):
+        # A player who names no edge is picking on the board: the engine offers
+        # the legal road sides as a pending choice, and its answer lays the road.
+        game = playing_game()
+        _hold(game, "Alice", "yngvi")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        alice = game.get_player("Alice")
+        alice.settlements.append(home)
+        alice.resources = {"wood": 1, "sheep": 1}
+
+        opened = game.activate_helper("Alice", "yngvi", {"drop": "brick", "resource": "sheep"})
+        assert opened["success"], opened
+        choice = game.pending_choice_for("Alice")
+        assert choice["kind"] == "helper_makeshift_road"
+        edge = _edges_at(game, home)[0]
+        assert edge in choice["options"]
+        # No side is offered that already carries a road or floats out at sea.
+        for offered in choice["options"]:
+            assert game.edges[offered].road is None
+            assert game.land_hexes_of_edge(offered)
+
+        game.resolve_choice("Alice", "helper_makeshift_road", edge)
+        assert game.edges[edge].road == {"player": "Alice"}
+        assert alice.resources.get("wood", 0) == 0
+        assert alice.resources.get("sheep", 0) == 0
+        assert game.pending_choice_for("Alice")["kind"] == "helper_resolution"
+
     def test_yngvi_refuses_without_the_substitute_in_hand(self):
         game = playing_game()
         _hold(game, "Alice", "yngvi")
@@ -524,6 +552,38 @@ class TestHogni:
         assert game.edges[to_edge].road == {"player": "Alice"}
         assert from_edge not in alice.roads
         assert to_edge in alice.roads
+
+    def test_hogni_without_edges_lifts_then_lays_by_two_board_taps(self):
+        # With no edges named the move is two board taps: a first choice of the
+        # player's end roads, then a second of where the lifted road may go.
+        game = playing_game()
+        _hold(game, "Alice", "hogni")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        alice = game.get_player("Alice")
+        alice.settlements.append(home)
+        edges = _edges_at(game, home)
+        from_edge, to_edge = edges[0], edges[1]
+        game.edges[from_edge].road = {"player": "Alice"}
+        alice.roads.append(from_edge)
+
+        opened = game.activate_helper("Alice", "hogni", {})
+        assert opened["success"], opened
+        first = game.pending_choice_for("Alice")
+        assert first["kind"] == "helper_move_road_from"
+        assert from_edge in first["options"]
+
+        game.resolve_choice("Alice", "helper_move_road_from", from_edge)
+        assert game.edges[from_edge].road is None
+        second = game.pending_choice_for("Alice")
+        assert second["kind"] == "helper_move_road_to"
+        assert to_edge in second["options"]
+
+        game.resolve_choice("Alice", "helper_move_road_to", to_edge)
+        assert game.edges[to_edge].road == {"player": "Alice"}
+        assert to_edge in alice.roads
+        assert from_edge not in alice.roads
+        assert game.pending_choice_for("Alice")["kind"] == "helper_resolution"
 
     def test_hogni_refuses_a_road_that_is_not_an_end(self):
         game = playing_game()
@@ -568,6 +628,33 @@ class TestGregor:
         assert alice.resources.get("wheat", 0) == 0
         # The discarded knight no longer counts toward the Largest Army.
         assert alice.knights_played == 2
+
+    def test_gregor_without_a_vertex_opens_a_board_choice_of_build_spots(self):
+        # A player who names no intersection is picking on the board: the engine
+        # offers the legal build spots (their settlements, for a city) and its
+        # answer raises the building at Gregor's reduced price.
+        game = playing_game()
+        _hold(game, "Alice", "gregor")
+        home = next(iter(sorted(game.vertices)))
+        game.vertices[home].building = {"type": "settlement", "player": "Alice"}
+        alice = game.get_player("Alice")
+        alice.settlements.append(home)
+        alice.knights_played = 3
+        game.largest_army_holder = "Alice"
+        alice.resources = {"ore": 2, "wheat": 1}
+
+        opened = game.activate_helper("Alice", "gregor", {"build": "city"})
+        assert opened["success"], opened
+        choice = game.pending_choice_for("Alice")
+        assert choice["kind"] == "helper_knight_to_building"
+        assert home in choice["options"]
+
+        game.resolve_choice("Alice", "helper_knight_to_building", home)
+        assert game.vertices[home].building["type"] == "city"
+        assert alice.resources.get("ore", 0) == 0
+        assert alice.resources.get("wheat", 0) == 0
+        assert alice.knights_played == 2
+        assert game.pending_choice_for("Alice")["kind"] == "helper_resolution"
 
     def test_gregor_refuses_without_a_played_knight(self):
         game = playing_game()
