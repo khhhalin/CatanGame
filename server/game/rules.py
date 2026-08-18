@@ -2050,6 +2050,10 @@ PRESETS = [
             "is raised to 14 as 'Heading for New Shores' asks."
         ),
         "rules": {
+            # 'Heading for New Shores' deals a sea board, not the landlocked
+            # standard one — bind it so picking Seafarers plays a Seafarers board.
+            "board_layout": "custom",
+            "board_map": "large-island",
             "ships": True,
             "ship_movement": True,
             "pirate": True,
@@ -2078,6 +2082,8 @@ PRESETS = [
             "larger 4-Player variant at a four-player table."
         ),
         "rules": {
+            "board_layout": "custom",
+            "board_map": "four-islands",
             "ships": True,
             "ship_movement": True,
             "pirate": True,
@@ -2105,6 +2111,8 @@ PRESETS = [
             "lobby can still change it. Pick the Fog Islands map."
         ),
         "rules": {
+            "board_layout": "custom",
+            "board_map": "fog-islands",
             "ships": True,
             "ship_movement": True,
             "pirate": True,
@@ -2132,6 +2140,8 @@ PRESETS = [
             "the Desert map."
         ),
         "rules": {
+            "board_layout": "custom",
+            "board_map": "through-the-desert",
             "ships": True,
             "ship_movement": True,
             "pirate": True,
@@ -2161,6 +2171,8 @@ PRESETS = [
             "change it. Pick the Forgotten Tribe map."
         ),
         "rules": {
+            "board_layout": "custom",
+            "board_map": "forgotten-tribe",
             "ships": True,
             "ship_movement": True,
             "pirate": True,
@@ -2192,6 +2204,8 @@ PRESETS = [
             "change it. Pick the Cloth for Catan map."
         ),
         "rules": {
+            "board_layout": "custom",
+            "board_map": "cloth-for-catan",
             "ships": True,
             "ship_movement": True,
             "pirate": True,
