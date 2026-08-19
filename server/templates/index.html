@@ -1399,6 +1399,24 @@
                 them back without touching the look above.
             </p>
 
+            <!-- Phase C: the HUD builder. In Edit layout, each readout below can
+                 be dragged to a free spot or onto a custom panel, and unticked to
+                 hide it. New panel adds an empty container to drop readouts into;
+                 Reset HUD restores the default rail without touching the look or
+                 the Phase-B panel offsets. Persists under catan.customize -> hud. -->
+            <div class="customize-field">
+                <span class="customize-label">Widgets</span>
+                <div id="cz-widget-list" class="cz-widget-list"></div>
+            </div>
+            <div class="customize-actions">
+                <button type="button" id="cz-hud-add-panel" class="customize-btn">New panel</button>
+                <button type="button" id="cz-reset-hud" class="customize-btn">Reset HUD</button>
+            </div>
+            <p class="customize-note">
+                In Edit layout, drag a readout to move it, or onto a panel to dock
+                it. Untick one to hide it. Reset HUD restores the default readouts.
+            </p>
+
             <label class="customize-field">
                 <span class="customize-label">Custom CSS</span>
                 <textarea id="cz-custom" class="customize-input customize-textarea"

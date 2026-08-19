@@ -759,6 +759,114 @@ body.layout-edit #incoming-offers {
     touch-action: none;
 }
 
+/* Phase C: the HUD builder. A registered readout is a grabbable, outlined tile
+   in edit mode; outside edit mode a composed widget is a plain part of the HUD,
+   so a browser with no composition is byte-identical. */
+body.layout-edit .hud-widget {
+    outline: 2px dashed var(--accent);
+    outline-offset: 3px;
+    cursor: move;
+    touch-action: none;
+}
+/* The lifted widget while it follows the pointer. */
+.hud-widget.hud-dragging {
+    box-shadow: var(--shadow-2);
+    opacity: 0.92;
+}
+/* A hidden readout, layered over its own visibility so a widget the game has
+   already hidden (a fold whose rule is off) is unaffected. */
+.hud-hidden {
+    display: none !important;
+}
+
+/* A custom panel: a glass surface in the overlay layer, themeable by the same
+   Phase-A tokens as every other float — --glass carries the opacity, tint and
+   gradient the Customize panel sets, so a composed panel restyles with them. */
+.hud-panel {
+    position: absolute;
+    z-index: var(--z-board-overlay);
+    min-width: 9rem;
+    max-width: 22rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+    pointer-events: auto;
+}
+body.layout-edit .hud-panel {
+    outline: 2px dashed var(--accent-hover);
+    outline-offset: 3px;
+}
+/* The panel a widget is about to drop onto. */
+.hud-panel.hud-drop {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.hud-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    cursor: default;
+}
+body.layout-edit .hud-panel-head {
+    cursor: move;
+}
+.hud-panel-title {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+.hud-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+/* The delete button is an edit-mode affordance only. */
+.hud-panel-del {
+    display: none;
+}
+body.layout-edit .hud-panel-del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-lg);
+    line-height: 1;
+}
+body.layout-edit .hud-panel-del:hover {
+    color: var(--text);
+    background: var(--accent-soft);
+}
+
+/* The per-widget show/hide checklist in the Customize panel. */
+.cz-widget-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+.cz-widget-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
 .customize-io-note {
     margin: 0;
     min-height: 1em;

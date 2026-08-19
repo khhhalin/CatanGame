@@ -234,3 +234,134 @@ def test_edit_layout_drags_the_scoreboard_and_it_survives_a_reload(browser, serv
     assert reset["y"] == pytest.approx(before["y"], abs=6), (before, reset)
     assert page.evaluate(title_color) == "rgb(20, 200, 40)", "Reset layout wiped the accent"
     assert host.noisy_errors() == [], host.noisy_errors()
+
+
+# --- Phase C: the HUD builder ---------------------------------------------
+#
+# The readouts are pulled out of the rail and composed into the player's own
+# HUD. These assert on what a player sees change - a readout gone, a readout
+# moved out of the rail and still showing its live value - and, as ever here,
+# that the composition survives the reload it is applied from before paint.
+
+
+def parent_id(page, selector):
+    return page.eval_on_selector(
+        selector, "el => (el.parentElement && el.parentElement.id) || ''"
+    )
+
+
+def rejoin_running_game(page):
+    """Reload and rejoin the seat, so the aside readouts come back on screen."""
+    page.on("dialog", lambda d: d.accept())
+    page.reload(wait_until="networkidle")
+    page.click("#join-btn")
+    page.wait_for_selector("#game-screen:not(.hidden)", timeout=10000)
+
+
+def hide_widget(page, widget_id, shown):
+    """Tick/untick a widget's checklist row (ticked = shown)."""
+    page.eval_on_selector(
+        f'#cz-widget-list input[data-widget-id="{widget_id}"]',
+        "(el, show) => { if (el.checked !== show) { el.checked = show;"
+        "                el.dispatchEvent(new Event('change', {bubbles: true})); } }",
+        shown,
+    )
+
+
+def test_hud_hides_a_readout_and_it_stays_hidden_across_a_reload(browser, server):
+    """A widget unticked in the HUD builder leaves the screen, and - the load-
+    bearing half - is still gone after a reload, because the composition is
+    applied from localStorage before the body paints.
+
+    Catches a HUD that forgets what the player hid the moment the tab reloads,
+    and proves the hide is real (the Bank is on screen by default first).
+    """
+    host, _ = start_game(browser, server)
+    page = host.page
+    page.wait_for_selector("#right-bank", timeout=5000)
+    assert page.is_visible("#right-bank"), "the Bank readout is not on screen by default"
+
+    open_customize(page)
+    hide_widget(page, "right-bank", shown=False)
+    assert not page.is_visible("#right-bank"), "unticking the Bank did not hide it"
+
+    rejoin_running_game(page)
+    assert not page.is_visible("#right-bank"), "the Bank came back after a reload"
+    # And the checklist reflects the stored state when the panel reopens.
+    open_customize(page)
+    assert page.eval_on_selector(
+        '#cz-widget-list input[data-widget-id="right-bank"]', "el => el.checked"
+    ) is False
+    assert host.noisy_errors() == [], host.noisy_errors()
+
+
+def test_hud_free_drags_a_readout_out_and_reset_hud_restores_it(browser, server):
+    """A readout dragged out of the rail is re-parented into the board overlay
+    layer, keeps showing its live value there (it is the same live element, not
+    a copy), survives a reload, and Reset HUD returns it to the rail while a
+    Phase-A appearance override (the accent) is left untouched.
+
+    The live-value assertion is the one that matters: a moved widget the renderer
+    can no longer find would sit there empty. And Reset HUD's scoping is the
+    other: it must clear the composition without touching the look.
+    """
+    host, _ = start_game(browser, server)
+    page = host.page
+    page.on("dialog", lambda d: d.accept())
+    page.wait_for_selector("#right-bank", timeout=5000)
+    # The Bank renders its live tiles into #bank-display; capture that it is
+    # non-empty so we can prove it is still live after the move.
+    def bank_filled():
+        return page.eval_on_selector("#bank-display", "el => el.textContent.trim().length") > 0
+    page.wait_for_function(
+        "() => document.querySelector('#bank-display').textContent.trim().length > 0",
+        timeout=5000,
+    )
+    assert parent_id(page, "#right-bank") == "side-tabs", "the Bank did not start in the rail"
+
+    # A Phase-A override first, so we can prove Reset HUD does not clear it.
+    open_customize(page)
+    set_range(page, "#cz-accent", "#14c828")  # rgb(20, 200, 40)
+    title_color = "() => getComputedStyle(document.getElementById('game-title')).color"
+    assert page.evaluate(title_color) == "rgb(20, 200, 40)"
+
+    # Enter edit mode, close the dropdown so it is clear of the rail, and drag
+    # the Bank onto the board (any drop off a custom panel free-floats it).
+    page.check("#cz-layout-edit")
+    page.click("#customize-close")
+    page.wait_for_selector("#customize-body.hidden", state="attached", timeout=5000)
+
+    before = box(page, "#right-bank")
+    overlays = box(page, "#board-overlays")
+    target_x = overlays["x"] + overlays["width"] / 2
+    target_y = overlays["y"] + overlays["height"] / 2
+    cx = before["x"] + before["width"] / 2
+    cy = before["y"] + before["height"] / 2
+    page.mouse.move(cx, cy)
+    page.mouse.down()
+    page.mouse.move(target_x, target_y, steps=10)
+    page.mouse.up()
+
+    assert parent_id(page, "#right-bank") == "board-overlays", (
+        "the Bank was not re-parented into the overlay layer"
+    )
+    moved = box(page, "#right-bank")
+    assert abs(moved["x"] - before["x"]) > 40 or abs(moved["y"] - before["y"]) > 40, (
+        f"the Bank did not move: {before} -> {moved}"
+    )
+    assert bank_filled(), "the Bank stopped showing its live value after the move"
+
+    # Persistence: rejoin the running game and the Bank must return already in
+    # the overlay layer, not back in the rail.
+    rejoin_running_game(page)
+    assert parent_id(page, "#right-bank") == "board-overlays", (
+        "the moved Bank fell back to the rail after a reload"
+    )
+    assert bank_filled(), "the reloaded Bank shows no live value"
+
+    # Reset HUD returns the Bank to the rail WITHOUT wiping the accent.
+    open_customize(page)
+    page.click("#cz-reset-hud")
+    assert parent_id(page, "#right-bank") == "side-tabs", "Reset HUD did not restore the Bank"
+    assert page.evaluate(title_color) == "rgb(20, 200, 40)", "Reset HUD wiped the accent"
+    assert host.noisy_errors() == [], host.noisy_errors()

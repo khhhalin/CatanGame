@@ -43,6 +43,39 @@
     // dragging can never lose a panel off an edge (Reset layout also recovers).
     const KEEP_ON_SCREEN = 40;
 
+    // Phase C: the readout "widgets" a player may pull out of the rail and
+    // compose into their own HUD. Keyed by the id of an EXISTING rail element —
+    // no new readout is invented; each is wrapped where it already lives. The
+    // value is the label shown in the Widgets checklist.
+    //
+    // The choice of element matters: every renderer here writes into a child by
+    // id (bank.js -> #bank-display inside #right-bank, scoreboard.js ->
+    // #award-summary inside #right-titles, panels.js -> #build-costs inside
+    // #costs-panel, and so on), never into the container itself, so moving the
+    // container leaves the live update path intact — getElementById still finds
+    // the child wherever the container is re-parented to. #turn-banner is the one
+    // whose renderer rewrites its own innerHTML, which is why the hide affordance
+    // is a checklist in the panel and not a tag injected into the widget: an
+    // injected child would be wiped on the next board update.
+    //
+    // The Phase-B floats (scoreboard, dice, tray, settings, offers) are NOT
+    // listed here on purpose: they already carry a whole-panel transform drag,
+    // and a second drag owner on the same element would fight it.
+    const WIDGETS = {
+        'turn-banner': 'Turn & round',
+        'right-bank': 'Bank',
+        'right-titles': 'Titles',
+        'costs-panel': 'Costs',
+        'dev-cards-panel': 'Dev cards',
+        'knights-panel': 'Knights',
+        'chat-panel': 'Game log',
+    };
+
+    // The fixed overlay layer the HUD composes into: custom panels and any
+    // free-positioned widget are absolutely placed inside it, so they track the
+    // board box (overlays.js pins it) exactly as the Phase-B floats do.
+    const HUD_LAYER_ID = 'board-overlays';
+
     // The bundled faces (fonts.css) plus a few safe system stacks. The value is
     // dropped straight into --font-ui; the empty value means "leave the theme's
     // own font", which keeps the default byte-identical.
@@ -66,7 +99,31 @@
             accent: null,         // '#rrggbb'
             customCss: '',        // raw CSS, injected verbatim
             layout: {},           // Phase B: {panelId: {x, y}} drag offsets, px
+            hud: emptyHud(),      // Phase C: the composed HUD (widgets + panels)
         };
+    }
+
+    // Phase C composition. `widgets` carries per-widget overrides for widgets
+    // NOT placed in a custom panel: {hidden} takes a readout off screen, {x, y}
+    // free-positions it in the overlay layer. `panels` is the ordered list of
+    // custom panels, each owning the widgets dropped into it. A widget listed in
+    // a panel's `widgets` array lives there; its entry in `widgets` (if any) only
+    // still governs whether it is hidden. An empty hud injects and re-parents
+    // nothing, so an unconfigured browser is byte-identical.
+    function emptyHud() {
+        return {
+            widgets: {},   // {widgetId: {hidden?: bool, x?: num, y?: num}}
+            panels: [],    // [{id, x, y, widgets: [widgetId, ...]}]
+        };
+    }
+
+    function hudIsEmpty(hud) {
+        if (!hud) {
+            return true;
+        }
+        const panels = hud.panels || [];
+        const widgets = hud.widgets || {};
+        return panels.length === 0 && Object.keys(widgets).length === 0;
     }
 
     function loadConfig() {
@@ -168,6 +225,139 @@
         return lines.join('\n');
     }
 
+    // --- Phase C: compose the readouts into the HUD. -----------------------
+    //
+    // Where each widget started, so it can always be put back: its original
+    // parent and the sibling it sat before. Recorded once, the first time the
+    // DOM is ready — the elements do not exist when this file first runs in
+    // <head>, so recording is deferred to the first applyHud after load.
+    const widgetHomes = {};
+
+    function recordHomes() {
+        for (const id of Object.keys(WIDGETS)) {
+            if (widgetHomes[id]) {
+                continue;
+            }
+            const element = document.getElementById(id);
+            if (element) {
+                widgetHomes[id] = { parent: element.parentNode, next: element.nextSibling };
+            }
+        }
+    }
+
+    // Return a widget to exactly where it was in the template, stripped of every
+    // HUD placement style. Used as the teardown before each re-apply and by both
+    // resets, so applyHud is a pure function of the config, not of prior state.
+    function restoreHome(id) {
+        const element = document.getElementById(id);
+        const home = widgetHomes[id];
+        if (!element || !home) {
+            return;
+        }
+        element.classList.remove('hud-hidden');
+        element.style.position = '';
+        element.style.left = '';
+        element.style.top = '';
+        element.style.zIndex = '';
+        const next = home.next && home.next.parentNode === home.parent ? home.next : null;
+        if (element.parentNode !== home.parent || element.nextSibling !== next) {
+            home.parent.insertBefore(element, next);
+        }
+    }
+
+    // Build one custom panel's element (its widgets are moved in by applyHud).
+    // The delete button and the move handle are inert outside edit mode (CSS),
+    // so a composed panel is a plain glass surface during play.
+    function createHudPanel(panel) {
+        const section = document.createElement('section');
+        section.className = 'hud-panel';
+        section.dataset.panelId = panel.id;
+        section.style.left = (panel.x || 0) + 'px';
+        section.style.top = (panel.y || 0) + 'px';
+
+        const head = document.createElement('div');
+        head.className = 'hud-panel-head';
+        const title = document.createElement('span');
+        title.className = 'hud-panel-title';
+        title.textContent = 'Panel';
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'hud-panel-del';
+        del.dataset.delPanel = panel.id;
+        del.setAttribute('aria-label', 'Delete panel');
+        del.textContent = '×';
+        head.append(title, del);
+
+        const body = document.createElement('div');
+        body.className = 'hud-panel-body';
+
+        section.append(head, body);
+        return section;
+    }
+
+    // The single HUD apply path. Idempotent: it first tears the composition back
+    // to the default DOM (restore every widget, drop every custom panel), then
+    // rebuilds from the config. Null-safe, so the early <head> call (when the
+    // overlay layer does not exist yet) is a harmless no-op and the real apply
+    // runs from initHud once the body is parsed.
+    function applyHud(config) {
+        const overlays = document.getElementById(HUD_LAYER_ID);
+        if (!overlays) {
+            return;
+        }
+        recordHomes();
+
+        // Teardown to the default DOM.
+        for (const stale of overlays.querySelectorAll('.hud-panel')) {
+            stale.remove();
+        }
+        for (const id of Object.keys(WIDGETS)) {
+            restoreHome(id);
+        }
+
+        const hud = config.hud || emptyHud();
+        if (hudIsEmpty(hud)) {
+            return;   // byte-identical default: nothing is moved or styled.
+        }
+
+        const inPanel = new Set();
+        for (const panel of hud.panels || []) {
+            const section = createHudPanel(panel);
+            overlays.appendChild(section);
+            const body = section.querySelector('.hud-panel-body');
+            for (const widgetId of panel.widgets || []) {
+                const element = document.getElementById(widgetId);
+                if (element && WIDGETS[widgetId]) {
+                    element.style.position = '';
+                    element.style.left = '';
+                    element.style.top = '';
+                    element.style.zIndex = '';
+                    body.appendChild(element);
+                    inPanel.add(widgetId);
+                }
+            }
+        }
+
+        for (const [id, state] of Object.entries(hud.widgets || {})) {
+            const element = document.getElementById(id);
+            if (!element || !WIDGETS[id]) {
+                continue;
+            }
+            if (state.hidden) {
+                element.classList.add('hud-hidden');
+                continue;
+            }
+            // A free position only applies while the widget is not in a panel.
+            if (!inPanel.has(id) && state.x != null && state.y != null) {
+                overlays.appendChild(element);
+                element.style.position = 'absolute';
+                element.style.left = state.x + 'px';
+                element.style.top = state.y + 'px';
+                element.style.zIndex = 'var(--z-board-overlay)';
+            }
+        }
+    }
+
     function ensureStyle(id) {
         let element = document.getElementById(id);
         if (!element) {
@@ -187,6 +377,7 @@
         ensureStyle(OVERRIDE_STYLE_ID).textContent = buildOverrideCss(config);
         ensureStyle(CUSTOM_CSS_STYLE_ID).textContent = config.customCss || '';
         ensureStyle(LAYOUT_STYLE_ID).textContent = buildLayoutCss(config);
+        applyHud(config);
     }
 
     // --- Apply immediately, before the body paints. -------------------------
@@ -265,6 +456,58 @@
             if (layoutEdit) {
                 layoutEdit.checked = document.body.classList.contains('layout-edit');
             }
+            buildWidgetChecklist();
+        }
+
+        // Keep the HUD config well-formed before an edit touches it.
+        function ensureHud() {
+            if (!config.hud || typeof config.hud !== 'object') {
+                config.hud = emptyHud();
+            }
+            if (!config.hud.widgets || typeof config.hud.widgets !== 'object') {
+                config.hud.widgets = {};
+            }
+            if (!Array.isArray(config.hud.panels)) {
+                config.hud.panels = [];
+            }
+        }
+
+        // The per-widget show/hide checklist: one row per registered readout,
+        // ticked while it is shown. A checklist rather than a tag injected into
+        // each widget because #turn-banner's renderer rewrites its own innerHTML
+        // and would wipe an injected control on the next board update.
+        function buildWidgetChecklist() {
+            const list = el('cz-widget-list');
+            if (!list) {
+                return;
+            }
+            list.textContent = '';
+            const widgets = (config.hud && config.hud.widgets) || {};
+            for (const [id, label] of Object.entries(WIDGETS)) {
+                const row = document.createElement('label');
+                row.className = 'cz-widget-row';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.dataset.widgetId = id;
+                checkbox.checked = !(widgets[id] && widgets[id].hidden);
+                checkbox.addEventListener('change', () => {
+                    ensureHud();
+                    const state = config.hud.widgets[id] || (config.hud.widgets[id] = {});
+                    if (checkbox.checked) {
+                        delete state.hidden;
+                        if (Object.keys(state).length === 0) {
+                            delete config.hud.widgets[id];
+                        }
+                    } else {
+                        state.hidden = true;
+                    }
+                    commit();
+                });
+                const name = document.createElement('span');
+                name.textContent = label;
+                row.append(checkbox, name);
+                list.appendChild(row);
+            }
         }
 
         opacity.addEventListener('input', () => {
@@ -340,6 +583,7 @@
         }
 
         wireDrag(commit);
+        wireHud(commit);
 
         el('cz-reset').addEventListener('click', () => {
             config = emptyConfig();
@@ -452,6 +696,223 @@
                     element.addEventListener('pointercancel', up);
                 });
             }
+        }
+
+        // --- Phase C: the HUD builder. --------------------------------------
+        // Tag the registered readouts, compose the saved HUD on load, and wire
+        // the edit-mode affordances: drag a widget to a free spot or onto a
+        // panel, create/move/delete panels, and hide/show via the checklist.
+        function wireHud(commit) {
+            for (const id of Object.keys(WIDGETS)) {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.classList.add('hud-widget');
+                    wireWidgetDrag(element, id, commit);
+                }
+            }
+            recordHomes();
+            // Compose whatever was saved, now that the DOM (and the overlay
+            // layer) exists — the early <head> apply could not reach it.
+            applyHud(config);
+
+            const overlays = document.getElementById(HUD_LAYER_ID);
+            if (overlays) {
+                wirePanelControls(overlays, commit);
+            }
+
+            const addPanelBtn = el('cz-hud-add-panel');
+            if (addPanelBtn) {
+                addPanelBtn.addEventListener('click', () => {
+                    ensureHud();
+                    const id = 'p' + Date.now().toString(36);
+                    // In a little from the corner so its header is easy to grab.
+                    config.hud.panels.push({ id, x: 24, y: 24, widgets: [] });
+                    commit();
+                    // Reveal the fresh panel by turning edit mode on.
+                    document.body.classList.add('layout-edit');
+                    if (layoutEdit) {
+                        layoutEdit.checked = true;
+                    }
+                    if (ioNote) {
+                        ioNote.textContent = 'Panel added — drag readouts into it.';
+                    }
+                });
+            }
+
+            const resetHudBtn = el('cz-reset-hud');
+            if (resetHudBtn) {
+                resetHudBtn.addEventListener('click', () => {
+                    // Scoped to the composition only: the Phase-A appearance and
+                    // the Phase-B panel offsets are left exactly as they are.
+                    config.hud = emptyHud();
+                    commit();
+                    buildWidgetChecklist();
+                    if (ioNote) {
+                        ioNote.textContent = 'HUD returned to the default readouts.';
+                    }
+                });
+            }
+        }
+
+        // Grab a whole readout in edit mode and either drop it onto a custom
+        // panel (it docks) or onto free board space (it floats there). The same
+        // live element is moved — never a copy — so its renderer keeps writing
+        // into it by id exactly as before.
+        function wireWidgetDrag(element, id, commit) {
+            element.addEventListener('pointerdown', (event) => {
+                if (!document.body.classList.contains('layout-edit')) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                ensureHud();
+
+                const startRect = element.getBoundingClientRect();
+                const grabX = event.clientX - startRect.left;
+                const grabY = event.clientY - startRect.top;
+
+                // Lift it onto the viewport so it follows the pointer over
+                // everything, clear of the overlay layer's overflow clip.
+                element.classList.add('hud-dragging');
+                element.style.position = 'fixed';
+                element.style.width = startRect.width + 'px';
+                element.style.left = startRect.left + 'px';
+                element.style.top = startRect.top + 'px';
+                element.style.zIndex = '9999';
+                element.style.pointerEvents = 'none';
+                document.body.appendChild(element);
+
+                let dropPanel = null;
+                const move = (moveEvent) => {
+                    element.style.left = (moveEvent.clientX - grabX) + 'px';
+                    element.style.top = (moveEvent.clientY - grabY) + 'px';
+                    const under = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+                    const panelEl = under && under.closest ? under.closest('.hud-panel') : null;
+                    if (panelEl !== dropPanel) {
+                        if (dropPanel) {
+                            dropPanel.classList.remove('hud-drop');
+                        }
+                        dropPanel = panelEl;
+                        if (dropPanel) {
+                            dropPanel.classList.add('hud-drop');
+                        }
+                    }
+                };
+                const up = (upEvent) => {
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', up);
+                    if (dropPanel) {
+                        dropPanel.classList.remove('hud-drop');
+                    }
+
+                    // Out of any panel it currently sits in, first.
+                    for (const panel of config.hud.panels) {
+                        panel.widgets = (panel.widgets || []).filter((w) => w !== id);
+                    }
+                    const state = config.hud.widgets[id] || (config.hud.widgets[id] = {});
+
+                    if (dropPanel && dropPanel.dataset.panelId) {
+                        const target = config.hud.panels.find(
+                            (p) => p.id === dropPanel.dataset.panelId,
+                        );
+                        if (target) {
+                            target.widgets = target.widgets || [];
+                            target.widgets.push(id);
+                        }
+                        delete state.x;
+                        delete state.y;
+                    } else {
+                        // Free position, in overlay-relative pixels.
+                        const overlays = document.getElementById(HUD_LAYER_ID);
+                        const rect = overlays
+                            ? overlays.getBoundingClientRect()
+                            : { left: 0, top: 0 };
+                        state.x = Math.round(Math.max(0, upEvent.clientX - grabX - rect.left));
+                        state.y = Math.round(Math.max(0, upEvent.clientY - grabY - rect.top));
+                    }
+                    if (Object.keys(state).length === 0) {
+                        delete config.hud.widgets[id];
+                    }
+
+                    // Drop the lift styles; applyHud (via commit) re-places it.
+                    element.classList.remove('hud-dragging');
+                    element.style.pointerEvents = '';
+                    element.style.width = '';
+                    element.style.position = '';
+                    element.style.left = '';
+                    element.style.top = '';
+                    element.style.zIndex = '';
+                    commit();
+                };
+                window.addEventListener('pointermove', move);
+                window.addEventListener('pointerup', up);
+            });
+        }
+
+        // Delete and move for custom panels, by delegation on the overlay layer:
+        // panels are rebuilt on every applyHud, so a per-element listener would
+        // not survive. Inert outside edit mode.
+        function wirePanelControls(overlays, commit) {
+            overlays.addEventListener('click', (event) => {
+                if (!document.body.classList.contains('layout-edit')) {
+                    return;
+                }
+                const del = event.target.closest
+                    ? event.target.closest('.hud-panel-del')
+                    : null;
+                if (!del) {
+                    return;
+                }
+                event.preventDefault();
+                ensureHud();
+                const panelId = del.dataset.delPanel;
+                config.hud.panels = config.hud.panels.filter((p) => p.id !== panelId);
+                commit();
+            });
+
+            overlays.addEventListener('pointerdown', (event) => {
+                if (!document.body.classList.contains('layout-edit')) {
+                    return;
+                }
+                const target = event.target;
+                if (target.closest && target.closest('.hud-panel-del')) {
+                    return;
+                }
+                const head = target.closest ? target.closest('.hud-panel-head') : null;
+                if (!head) {
+                    return;
+                }
+                const section = head.closest('.hud-panel');
+                if (!section) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                ensureHud();
+                const panel = config.hud.panels.find(
+                    (p) => p.id === section.dataset.panelId,
+                );
+                if (!panel) {
+                    return;
+                }
+                const startX = event.clientX;
+                const startY = event.clientY;
+                const baseX = panel.x || 0;
+                const baseY = panel.y || 0;
+                const move = (moveEvent) => {
+                    panel.x = baseX + (moveEvent.clientX - startX);
+                    panel.y = baseY + (moveEvent.clientY - startY);
+                    section.style.left = panel.x + 'px';
+                    section.style.top = panel.y + 'px';
+                };
+                const up = () => {
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', up);
+                    commit();
+                };
+                window.addEventListener('pointermove', move);
+                window.addEventListener('pointerup', up);
+            });
         }
 
         // --- open / close: a disclosure, like the changelog pill. ------------
