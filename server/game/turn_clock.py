@@ -83,6 +83,8 @@ class TurnClock:
         # fresh turn has done neither. Inert off the scenario.
         self.power_plant_built_this_turn = False
         self.fossil_demolished_this_turn = False
+        # New Energies: a fresh turn's Event Phase has not run yet.
+        self.event_phase_done = False
         # Catan for Two: a fresh turn may again trade one face-up knight for
         # trade tokens (rulebook "Once during your turn"). Inert off the variant.
         self.trade_token_knight_discarded = False

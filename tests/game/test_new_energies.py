@@ -300,6 +300,143 @@ class TestEnergyProduction:
         assert game.get_player('Alice').energy == 0
 
 
+def _set_lf(game, player_name, towns=0, cities=0, fossil=0, renewable=0):
+    """Give a player an exact local footprint by placing pieces on the board.
+
+    Towns and cities are placed on free intersections; plants are recorded
+    directly. Used by the event tests, which turn on the footprint comparisons.
+    """
+    for _ in range(towns):
+        building_on(game, player_name, 'settlement')
+    for _ in range(cities):
+        building_on(game, player_name, 'city')
+    for i in range(fossil):
+        game.power_plants[(f'{player_name}-f{i}', sorted(game.hexes)[i])] = {
+            'player': player_name, 'kind': 'fossil'}
+    for i in range(renewable):
+        game.power_plants[(f'{player_name}-r{i}', sorted(game.hexes)[-(i + 1)])] = {
+            'player': player_name, 'kind': 'renewable'}
+
+
+class TestEventBag:
+    def test_the_bag_starts_with_forty_three_brown_discs(self):
+        game = ne_game()
+        assert len(game.event_bag) == 43
+        assert sorted(game.event_bag) == sorted(
+            t for t, n in ne_bag_expected().items() for _ in range(n))
+
+    def test_each_player_holds_nine_green_discs(self):
+        game = ne_game()
+        assert all(len(stack) == 9 for stack in game.green_discs.values())
+
+    def test_building_a_renewable_feeds_a_green_disc_into_the_bag(self):
+        game = ne_game()
+        city_v, hex_key = building_on(game, 'Alice', 'city')
+        game.get_player('Alice').commodities['science'] = 3
+        before = len(game.event_bag)
+        green_before = len(game.green_discs['Alice'])
+        assert game.build_power_plant('Alice', city_v, hex_key, 'renewable')['success']
+        assert len(game.event_bag) == before + 1
+        assert len(game.green_discs['Alice']) == green_before - 1
+
+
+def ne_bag_expected():
+    from game.new_energies import BROWN_DISCS
+    return BROWN_DISCS
+
+
+class TestDrawCount:
+    def test_the_draw_scales_with_the_footprint(self):
+        """Four-player anchors from the rulebook: the game starts drawing 1 (the
+        12 space), space 21 draws 2, the low reward band draws extra, and the top
+        of the track draws 3."""
+        game = ne_game(players=('A', 'B', 'C', 'D'))
+        assert game.discs_to_draw(12) == 1   # the starting space
+        assert game.discs_to_draw(21) == 2   # rulebook example, p. 9
+        assert game.discs_to_draw(5) == 2    # below 6: the reward band
+        assert game.discs_to_draw(27) == 3   # approaching catastrophe
+
+
+class TestEventEffects:
+    def test_climate_conference_rewards_the_greenest_and_taxes_the_dirtiest(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', towns=1)          # LF 1 — the greenest
+        _set_lf(game, 'Bob', towns=1, cities=1)  # LF 3 — the dirtiest
+        game.get_player('Bob').resources = {'wood': 1}
+        outcome = game._event_climate_conference('Alice')
+        assert outcome['takers'] == ['Alice'] and outcome['discarders'] == ['Bob']
+        # Alice is offered a card to take; Bob a card to discard.
+        assert game.pending_choice_for('Alice')['kind'] == 'new_energies_take_card'
+        assert game.pending_choice_for('Bob')['kind'] == 'new_energies_discard_card'
+        game.resolve_choice('Alice', 'new_energies_take_card', 'wheat')
+        assert game.get_player('Alice').resources.get('wheat') == 1
+        game.resolve_choice('Bob', 'new_energies_discard_card', 'wood')
+        assert game.get_player('Bob').resources.get('wood', 0) == 0
+
+    def test_when_every_footprint_ties_nothing_happens(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', towns=1)
+        _set_lf(game, 'Bob', towns=1)
+        outcome = game._event_climate_conference('Alice')
+        assert outcome['takers'] == [] and outcome['discarders'] == []
+        assert game.pending_choices == []
+
+    def test_sustainable_production_rewards_the_most_renewables(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', renewable=2)
+        _set_lf(game, 'Bob', renewable=1)
+        outcome = game._event_sustainable_production('Alice')
+        assert outcome['takers'] == ['Alice']
+        assert game.pending_choice_for('Alice')['kind'] == 'new_energies_take_card'
+
+    def test_sustainable_production_does_nothing_with_no_renewables(self):
+        game = ne_game()
+        outcome = game._event_sustainable_production('Alice')
+        assert outcome['takers'] == []
+
+    def test_government_funding_hands_the_greenest_a_development_card(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', towns=1)          # greenest
+        _set_lf(game, 'Bob', towns=1, cities=1)
+        before = game.get_player('Alice').total_dev_cards()
+        outcome = game._event_government_funding('Alice')
+        assert outcome['takers'] == ['Alice']
+        assert game.get_player('Alice').total_dev_cards() == before + 1
+
+
+class TestEventPhase:
+    def test_the_phase_draws_the_footprint_number_of_discs(self):
+        game = ne_game()
+        game.event_bag = ['sustainable_production'] * 5
+        # Two players each with a town and a city: GF 6, which draws 1 on the
+        # two-player track.
+        _set_lf(game, 'Alice', towns=1, cities=1)
+        _set_lf(game, 'Bob', towns=1, cities=1)
+        result = game.run_event_phase('Alice')
+        assert len(result['drawn']) == game.discs_to_draw(6)
+        assert len(game.event_bag) == 5 - game.discs_to_draw(6)
+
+    def test_the_phase_runs_only_once_a_turn(self):
+        game = ne_game()
+        game.event_bag = ['sustainable_production'] * 5
+        game.run_event_phase('Alice')
+        second = game.run_event_phase('Alice')
+        assert second['drawn'] == []
+
+    def test_an_empty_bag_reports_itself(self):
+        game = ne_game()
+        game.event_bag = []
+        result = game.run_event_phase('Alice')
+        assert result['bag_empty'] is True
+
+    def test_rolling_runs_the_event_phase_first(self):
+        game = ne_game()
+        game.event_bag = ['government_funding'] * 10
+        assert game.event_phase_done is False
+        game.roll_dice('Alice')
+        assert game.event_phase_done is True
+
+
 class TestEnergyUses:
     def test_two_energy_buys_one_resource_of_choice(self):
         game = ne_game()

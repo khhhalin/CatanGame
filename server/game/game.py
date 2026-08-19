@@ -228,6 +228,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.hazard_hexes = set()
         self.power_plant_built_this_turn = False
         self.fossil_demolished_this_turn = False
+        # The event-disc bag (a flat list of disc-type strings) and each player's
+        # face-down stack of green discs, dealt under their renewable-plant spaces
+        # and fed into the bag as those plants are built. `event_phase_done` is
+        # the per-turn flag that this turn's discs have been drawn. All empty off
+        # the scenario.
+        self.event_bag = []
+        self.green_discs = {}
+        self.event_phase_done = False
         # Seafarers, the Krakatoa/Volcano variant: the volcano hexes read off the
         # dealt board. Map-derived, so a save re-reads them; empty off the rule.
         self.volcano_hexes = set()
@@ -537,6 +545,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Catan: Oil Springs: read the map's oil-spring hexes off the dealt
         # board. A no-op for a board that prints none.
         self.setup_oil_springs()
+
+        # CATAN: New Energies: fill the event-disc bag with the 43 brown discs
+        # and deal each player their nine green discs. A no-op off the rule.
+        self.setup_event_discs()
 
         # Seafarers, the Krakatoa/Volcano variant: read the map's volcano hexes
         # off the dealt board. A no-op for a board that prints none.
@@ -2090,6 +2102,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if self.has_rolled_dice:
             return refused('ALREADY_ROLLED', 'You have already rolled this turn')
 
+        # New Energies runs an Event Phase before production: the active player
+        # draws the footprint-scaled number of event discs and resolves them
+        # (rulebook, 'Turn Overview' p. 9). Run here, once a turn (the phase
+        # guards itself), so the events land before the roll pays out. The card
+        # events may leave a pending choice, which freezes the table until it is
+        # answered, exactly as any other choice does. A no-op off the rule.
+        event_phase = self.run_event_phase(player_name)
+
         dice1, dice2 = self.next_dice()
         total = dice1 + dice2
 
@@ -2225,6 +2245,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # New Energies energy the roll produced (player -> count). Empty on a
             # 7, off the scenario, or when no power plant matched the roll.
             'energy': energy,
+            # New Energies Event Phase this turn: the discs drawn, the events they
+            # triggered, and whether the bag ran empty (the second end condition).
+            # None off the scenario.
+            'event_phase': event_phase if self.rules['event_discs'] else None,
             # Krakatoa eruptions this roll: one record per volcano that erupted,
             # {'hex', 'die', 'vertex', 'player', 'was', 'now'}, the victim fields
             # None when the lava destroyed nothing. Empty on a 7, off the rule,

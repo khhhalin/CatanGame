@@ -55,6 +55,8 @@ KINDS = {
     'helper_move_road_from': 'choose which of your end roads to move',
     'helper_move_road_to': 'choose where to lay the moved road',
     'helper_knight_to_building': 'choose where to build with the knight',
+    'new_energies_take_card': 'choose a resource or science card to take from the supply',
+    'new_energies_discard_card': 'choose a resource or science card to discard',
 }
 
 # The safety net on draining the queue: a resolver may open a follow-up choice

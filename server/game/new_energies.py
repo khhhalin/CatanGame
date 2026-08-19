@@ -71,6 +71,27 @@ LF_PER_RENEWABLE = -1
 GF_MAX_PER_PLAYER = 7
 GF_START_PER_PLAYER = 3
 
+# The brown event discs the bag starts with (rulebook, 'Components' p. 2 and
+# 'Event details' p. 10): 43 in all. Fixed whatever the player count.
+BROWN_DISCS = {
+    'climate_conference': 9,
+    'environmental_pollution': 8,
+    'air_pollution': 9,
+    'production_increase': 9,
+    'rain_and_flooding': 8,
+}
+
+# The green event discs — 9 per player, dealt face-down under the renewable-plant
+# spaces and added to the bag as those plants are built (rulebook, 'Preparing
+# your player board' p. 8). The 4-player game uses 36 (4 climate / 16
+# sustainable / 16 government), the 3-player game 27 (3/12/12) — nine per player
+# each way, which the per-player weights below reproduce for any seat count.
+GREEN_DISCS_PER_PLAYER = {
+    'climate_conference': 1,
+    'sustainable_production': 4,
+    'government_funding': 4,
+}
+
 
 class NewEnergiesRules:
     """Power plants, the science economy, and energy. The global footprint
@@ -162,6 +183,11 @@ class NewEnergiesRules:
         self.power_plants[(vertex_key, hex_key)] = {'player': player_name, 'kind': kind}
         if not free:
             self.power_plant_built_this_turn = True
+        # Building a renewable reveals the green disc under its space and adds it
+        # to the bag, so a table that invests in renewables gives the game more
+        # turns (rulebook, 'Renewable power plants', p. 15). A no-op off events.
+        if kind == 'renewable':
+            self.add_green_disc_to_bag(player_name)
 
         return {'success': True, 'error': '', 'kind': kind,
                 'vertex': vertex_key, 'hex': hex_key, 'science': player.commodities['science']}
@@ -248,6 +274,209 @@ class NewEnergiesRules:
         self.fossil_demolished_this_turn = True
         return {'success': True, 'error': '', 'vertex': vertex_key, 'hex': hex_key,
                 'energy': player.energy, 'global_footprint': self.global_footprint_level()}
+
+    # --- The event-disc bag ------------------------------------------------
+
+    def setup_event_discs(self):
+        """Fill the bag with the 43 brown discs and deal each player their green.
+
+        The brown discs go in the bag; the green discs sit face-down under a
+        player's renewable-plant spaces (9 each) and enter the bag one at a time
+        as those plants are built (rulebook, 'Preparing your player board' p. 8
+        and 'Renewable power plants' p. 15). A no-op off the `event_discs` rule,
+        so a table not drawing discs is untouched. Deterministic through the
+        game's own generator.
+        """
+        if not self.rules['event_discs']:
+            return
+        bag = []
+        for disc_type, count in BROWN_DISCS.items():
+            bag.extend([disc_type] * count)
+        self.rng.shuffle(bag)
+        self.event_bag = bag
+
+        for player in self.players:
+            stack = []
+            for disc_type, count in GREEN_DISCS_PER_PLAYER.items():
+                stack.extend([disc_type] * count)
+            self.rng.shuffle(stack)
+            self.green_discs[player.name] = stack
+
+    def add_green_disc_to_bag(self, player_name: str):
+        """Reveal the green disc under a built renewable plant and bag it (p. 15).
+
+        Called when a renewable plant is built. The disc's type was decided when
+        the stacks were dealt, so which green event a renewable feeds is fixed at
+        setup, not at build time. A no-op off the rule or when the stack is spent.
+        """
+        if not self.rules['event_discs']:
+            return
+        stack = self.green_discs.get(player_name)
+        if stack:
+            self.event_bag.append(stack.pop())
+
+    def discs_to_draw(self, gf_level: int) -> int:
+        """How many discs the event phase draws at this global-footprint level.
+
+        The count is printed in bands on the physical global-footprint track and
+        is NOT transcribed in the official rules text — the rulebook gives only
+        two fixed points (the game starts drawing 1, and space 21 draws 2, p. 9)
+        and the note that dropping the footprint below 6 draws extra discs
+        (mostly green, a reward, p. 15). The bands below are the most defensible
+        reading consistent with those anchors, scaled to the track's ends per
+        seat count (0-28 for four players, 0-21 for three), and kept in this one
+        function so a corrected reading is a one-line change:
+
+        * below 6 (scaled): 2 — the low reward band the note describes;
+        * the steady band: 1 — where the 12-/9-space start sits;
+        * the elevated band: 2 — where space 21 sits;
+        * the top band: 3 — approaching catastrophe.
+        """
+        players = len(self.players)
+        low = round(6 * players / 4)
+        elevated = round(15 * players / 4)
+        top = round(24 * players / 4)
+        if gf_level < low:
+            return 2
+        if gf_level >= top:
+            return 3
+        if gf_level >= elevated:
+            return 2
+        return 1
+
+    def run_event_phase(self, player_name: str) -> dict:
+        """Draw and resolve this turn's event discs (rulebook, 'Event Phase' p. 9).
+
+        Draws the footprint-scaled number of discs and resolves each in turn.
+        The draw count is fixed at the start of the phase — an event that moves
+        the footprint mid-phase does not change how many more are drawn this turn
+        (p. 9). If the bag empties while a disc is still owed, the game's second
+        end condition fires: `bag_empty` is set, and the caller (chunk 4) scores
+        by the fossil/renewable balance. A no-op off the rule and once the phase
+        has already run this turn.
+        """
+        if not self.rules['event_discs'] or self.event_phase_done:
+            return {'drawn': [], 'events': [], 'bag_empty': False}
+        self.event_phase_done = True
+
+        to_draw = self.discs_to_draw(self.global_footprint_level())
+        drawn = []
+        events = []
+        bag_empty = False
+        for _ in range(to_draw):
+            if not self.event_bag:
+                bag_empty = True
+                break
+            disc = self.event_bag.pop(self.rng.randrange(len(self.event_bag)))
+            drawn.append(disc)
+            events.append(self._resolve_event(disc, player_name))
+        return {'drawn': drawn, 'events': events, 'bag_empty': bag_empty}
+
+    # --- Event effects -----------------------------------------------------
+
+    def _lf_extreme_players(self, highest: bool) -> list:
+        """Players tied at the highest (or lowest) local footprint, or [].
+
+        Ordered from the current player clockwise, which is the order the
+        rulebook resolves a tie in (p. 17). Empty when every player ties, since
+        "if all players tie, no action is taken" (p. 9).
+        """
+        lfs = {p.name: self.local_footprint(p.name) for p in self.players}
+        target = max(lfs.values()) if highest else min(lfs.values())
+        if all(value == target for value in lfs.values()):
+            return []
+        order = [p.name for p in self.players]
+        start = self.current_player_index
+        order = order[start:] + order[:start]
+        return [name for name in order if lfs[name] == target]
+
+    def _resolve_event(self, disc_type: str, active_player: str) -> dict:
+        """Dispatch one drawn disc to its effect (rulebook, pp. 17, 20)."""
+        handler = getattr(self, f'_event_{disc_type}', None)
+        if handler is None:
+            return {'event': disc_type, 'resolved': False}
+        return handler(active_player)
+
+    def _event_climate_conference(self, _active_player: str) -> dict:
+        """Lowest LF may take a card of choice; highest LF must discard one (p. 17)."""
+        takers = self._lf_extreme_players(highest=False)
+        discarders = self._lf_extreme_players(highest=True)
+        for name in takers:
+            self._open_take_card(name)
+        for name in discarders:
+            self._open_discard_card(name)
+        return {'event': 'climate_conference', 'resolved': True,
+                'takers': takers, 'discarders': discarders}
+
+    def _event_sustainable_production(self, _active_player: str) -> dict:
+        """The players with the most renewable plants take a card of choice (p. 17)."""
+        counts = {p.name: self._plant_counts(p.name)['renewable'] for p in self.players}
+        most = max(counts.values())
+        # Nobody has built one, or everybody ties: no action (p. 9).
+        winners = [] if most == 0 or all(v == most for v in counts.values()) else [
+            name for name in self._clockwise_names() if counts[name] == most
+        ]
+        for name in winners:
+            self._open_take_card(name)
+        return {'event': 'sustainable_production', 'resolved': True, 'takers': winners}
+
+    def _event_government_funding(self, _active_player: str) -> dict:
+        """The lowest-LF players each take 1 development card from the deck (p. 17)."""
+        takers = self._lf_extreme_players(highest=False)
+        granted = []
+        for name in takers:
+            card = self.bank.draw_dev_card()
+            if card is None:
+                break
+            player = self.get_player(name)
+            player.dev_cards[card]['count'] += 1
+            player.dev_cards[card]['purchase_turn'] = self.turn_count
+            granted.append(name)
+        return {'event': 'government_funding', 'resolved': True, 'takers': granted}
+
+    def _clockwise_names(self) -> list:
+        """Player names from the current player clockwise."""
+        order = [p.name for p in self.players]
+        start = self.current_player_index
+        return order[start:] + order[:start]
+
+    def _open_take_card(self, player_name: str):
+        """Ask a player which resource or science card to take from the supply."""
+        self.open_choice('new_energies_take_card', player_name,
+                         self.in_play_card_types())
+
+    def _open_discard_card(self, player_name: str):
+        """Ask a player which held card to discard to the supply."""
+        player = self.get_player(player_name)
+        held = sorted(card for card, count in player.all_cards().items() if count > 0)
+        if held:
+            self.open_choice('new_energies_discard_card', player_name, held)
+
+    def _choice_new_energies_take_card(self, choice: dict, option: str) -> dict:
+        """Grant the card a player chose off a New Energies event."""
+        result = self._grant_event_card(choice['player'], option)
+        return {'card': option, 'granted': result}
+
+    def _choice_new_energies_discard_card(self, choice: dict, option: str) -> dict:
+        """Discard the card a player chose off a New Energies event."""
+        player = self.get_player(choice['player'])
+        hand = player.hand_for(option)
+        if hand.get(option, 0) > 0:
+            hand[option] -= 1
+            if option not in {'cloth', 'coin', 'paper', 'science'}:
+                self.bank.return_resources(option, 1)
+        return {'card': option}
+
+    def _grant_event_card(self, player_name: str, card_type: str) -> bool:
+        """Give one resource (from the bank) or science card to a player."""
+        player = self.get_player(player_name)
+        if card_type == 'science':
+            player.commodities['science'] = player.commodities.get('science', 0) + 1
+            return True
+        if card_type in self.in_play_resource_types() and self.bank.take(card_type):
+            player.resources[card_type] = player.resources.get(card_type, 0) + 1
+            return True
+        return False
 
     # --- Energy production -------------------------------------------------
 
@@ -359,5 +588,18 @@ class NewEnergiesRules:
                 'max': GF_MAX_PER_PLAYER * len(self.players),
                 'start': GF_START_PER_PLAYER * len(self.players),
                 'demolished_this_turn': self.fossil_demolished_this_turn,
+            }
+        # The event-disc bag: how many discs are left, how many green discs each
+        # player still has to feed it, and how many this turn's footprint draws.
+        # A count only — the disc identities are the bag's secret, the way the
+        # dev deck's order is (knowing them turns a random draw into a certain
+        # one). Absent off the event rule.
+        if self.rules['event_discs']:
+            state['events'] = {
+                'bag': len(self.event_bag),
+                'green_remaining': {name: len(stack)
+                                    for name, stack in self.green_discs.items()},
+                'draw_count': self.discs_to_draw(self.global_footprint_level()),
+                'phase_done': self.event_phase_done,
             }
         return state

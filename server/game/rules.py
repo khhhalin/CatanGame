@@ -1197,6 +1197,19 @@ RULES += [
           "fossil plant for 1 energy, moves it back. It is the pollution meter "
           "the event discs scale off.",
           group=EXPANSION),
+    _bool("event_discs", "scenario", "New Energies: event discs", False,
+          "CATAN: New Energies rulebook, 'Event Phase' pp. 9-10 and 'Event "
+          "descriptions' pp. 17, 20",
+          "The pollution engine. At the start of your turn you draw event discs "
+          "from a bag of 43 — more of them the higher the global footprint — and "
+          "each triggers an event keyed to the table's footprints: a Climate "
+          "Conference lets the greenest player take a card while the dirtiest "
+          "discards one, Government Funding hands the greenest a development "
+          "card, Sustainable Production rewards whoever has built the most "
+          "renewables. Building renewables adds green (rewarding) discs to the "
+          "bag; when the bag empties the game ends. (The hazard-placing events "
+          "and the environmental inspector land in a later wave.)",
+          group=EXPANSION),
 ]
 
 
@@ -1677,6 +1690,9 @@ DEPENDENCIES = {
     # not already fix, and the demolish-for-footprint action has no plant to
     # remove, so the track needs the power-plant rule.
     "global_footprint": ("power_plants",),
+    # The event-disc draw count is read off the global footprint, so the bag
+    # needs the footprint track (and, through it, the power plants).
+    "event_discs": ("global_footprint",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2427,6 +2443,7 @@ PRESETS = [
             # power plants, not the terrain, which is the base game's.
             "power_plants": True,
             "global_footprint": True,
+            "event_discs": True,
             # Each player opens with a town and a city, and the city yields its
             # adjacent resources (one per hex) plus a flat science.
             "setup_second_city": True,
