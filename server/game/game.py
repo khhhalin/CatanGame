@@ -44,6 +44,7 @@ from game.trade_rules import TradeRules
 from game.trade_tokens import TradeTokenRules
 from game.transport import TransportShipRules
 from game.turn_clock import TurnClock
+from game.volcano import VolcanoRules
 from game.wagons import WagonRules
 from game.wonders import WonderRules
 
@@ -56,7 +57,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            FishingRules, TBGoldRules, RiversRules, CaravansRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
-           PirateIslandsRules, HelpersRules, OilSpringsRules,
+           PirateIslandsRules, HelpersRules, OilSpringsRules, VolcanoRules,
            InkasRules, FavourRules, NeutralPlayersRules, TradeTokenRules,
            PendingChoiceRules, TurnClock):
     """
@@ -216,6 +217,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.oil_sequestered = {}
         self.oil_champion = None
         self.oil_metropolises = {}
+        # Seafarers, the Krakatoa/Volcano variant: the volcano hexes read off the
+        # dealt board. Map-derived, so a save re-reads them; empty off the rule.
+        self.volcano_hexes = set()
         # Per-turn: how much oil this turn's player has used, and whether they
         # have sequestered, reset each turn. Using oil and sequestering are
         # mutually exclusive within a turn (p. 2).
@@ -522,6 +526,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # Catan: Oil Springs: read the map's oil-spring hexes off the dealt
         # board. A no-op for a board that prints none.
         self.setup_oil_springs()
+
+        # Seafarers, the Krakatoa/Volcano variant: read the map's volcano hexes
+        # off the dealt board. A no-op for a board that prints none.
+        self.setup_volcano_hexes()
 
         # The Wonders of Catan: read the map's marked strait and wasteland
         # intersections. A no-op for a board that prints no markers.
@@ -2133,6 +2141,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # without the rule.
         oil = self.distribute_oil(total, player_name)
 
+        # Krakatoa: a volcano whose number came up erupts, destroying or
+        # downgrading a building on one of its corners. After the resource walk
+        # so the building produced (resources of choice) before it was hit, which
+        # is the order the variant sets. A no-op without the rule or a volcano.
+        eruption = self.erupt_volcanoes(total)
+
         # Cloth for Catan is the one scenario a roll can end: its bolts move
         # victory points and empty villages, so both of its end conditions are
         # checked here, the instant that roll resolves. The primary 14-VP win
@@ -2177,6 +2191,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Oil tokens the roll produced (player -> count). Empty on a 7, off
             # the scenario, or when no oil spring matched the roll.
             'oil': oil,
+            # Krakatoa eruptions this roll: one record per volcano that erupted,
+            # {'hex', 'die', 'vertex', 'player', 'was', 'now'}, the victim fields
+            # None when the lava destroyed nothing. Empty on a 7, off the rule,
+            # or when no volcano matched the roll.
+            'eruption': eruption,
             # The Pirate Islands fleet's move this roll and the coasts it raided,
             # or None off the scenario: {'hex', 'steps', 'attacks'} where each
             # attack names the player, the outcome and what was lost or rewarded.

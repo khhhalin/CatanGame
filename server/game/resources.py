@@ -56,6 +56,14 @@ DEFAULT_RESOURCES = {
     "feathers": {"name": "Feathers", "color": "#d9a441", "symbol": "", "pattern": "dots"},
     "coca":     {"name": "Coca",     "color": "#2f7d4f", "symbol": "", "pattern": "pines"},
     "fishery":  {"name": "Fish",     "color": "#2f8fb0", "symbol": "", "pattern": "dots"},
+    # Seafarers, the "Krakatoa"/Volcano variant (game/tiles.py, game/volcano.py):
+    # the volcano hex. It carries a number token and, with the Seafarers gold-of-
+    # choice variant on, pays resources of the owner's choice like a gold field —
+    # so like gold and the desert it deals no fixed card and carries no harbour
+    # glyph (symbol empty). A dark volcanic red with a chevron of lava streaks so
+    # a volcano reads apart from every resource hex, and unmistakably as the tile
+    # that erupts.
+    "volcano": {"name": "Volcano", "color": "#b5361f", "symbol": "", "pattern": "chevron"},
     # Traders & Barbarians (Fishermen): the lake that replaces the desert. It
     # deals no resource card (symbol empty, like the desert), and takes a watery
     # blue so it reads as open water inside the island rather than a resource hex.

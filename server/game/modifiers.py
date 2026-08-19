@@ -237,8 +237,15 @@ def _gold_field_choice(value, _rules, context):
     the two are mutually exclusive (EXCLUSIONS), so only one is ever live. The
     robber (40) returns a fresh value without `gold_choice`, so a robber on the
     field still blocks it, exactly as it blocks a resource hex.
+
+    A Krakatoa volcano pays out the same way — "each settlement adjacent to the
+    Volcano may produce any one of the five resources ... each city any two"
+    (the Volcano variant, played with the gold variant) — so the volcano terrain
+    is handled here too rather than duplicating the choice machinery. The
+    eruption that follows is a separate effect (game/volcano.py); this only pays
+    the production that comes first.
     """
-    if context['terrain'] != 'gold':
+    if context['terrain'] not in ('gold', 'volcano'):
         return value
     owed = 2 if context['building_type'] == 'city' else 1
     return {**value, 'resources': 0, 'commodity': None, 'gold_choice': owed}

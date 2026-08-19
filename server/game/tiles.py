@@ -174,6 +174,15 @@ register(Terrain("gold", "gold", produces=None, v2=True, token=True))
 register(Terrain("fish", "fish", produces=None, v2=True))
 register(Terrain("spice", "spice", produces=None, v2=True))
 
+# Seafarers, the "Krakatoa"/Volcano variant (game/volcano.py). A volcano pays out
+# on its roll — a number token sits on it — but its yield is the owner's choice,
+# paid through the same gold-of-choice mechanism the Seafarers gold field uses
+# (game/modifiers.py), so `produces` stays None and `token` is set explicitly,
+# exactly like gold. What sets it apart is the eruption: when its number is
+# rolled it also destroys or downgrades an adjacent building (game/volcano.py).
+# Refused in a v1 map file, like the other post-base terrains.
+register(Terrain("volcano", "volcano", produces=None, v2=True, token=True))
+
 # Traders & Barbarians, The Fishermen of Catan: the lake replaces the desert.
 # It pays no resource card, so `produces` is None, and it carries no single
 # number token — it draws fish on any of 2/3/11/12 — so `token` is False and its

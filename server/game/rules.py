@@ -847,6 +847,32 @@ RULES += [
 ]
 
 
+# --- Seafarers: the "Krakatoa"/Volcano variant --------------------------
+# A volcano hex pays each adjacent building resources of choice on its number
+# (the shared gold-of-choice production, ticked through `gold_field_choice`) and
+# then erupts. This rule governs the eruption alone; the production is the gold
+# field's, so a table can run one without the other. Off by default, so a base
+# game is unchanged.
+RULES += [
+    _bool("volcano_hex", "scenario", "Volcanoes erupt", False,
+          "Seafarers, the Volcano variant and its 'Krakatoa' sub-variant "
+          "(ultraboardgames.com/catan/the-volcano.php; "
+          "catan-expansions-research.md, 'The Volcano'). Sourcing is fan-level: "
+          "the modern volcano tiles are third-party and the origin is "
+          "unverified, so this is offered as a variant, not a boxed rule.",
+          "When a volcano's number is rolled it erupts: a die picks one of the "
+          "hex's six corners, and the building standing there is struck — a "
+          "settlement is destroyed and returned to its owner, a city is reduced "
+          "to a settlement. Nobody chooses the victim; the die decides, and an "
+          "empty corner is spared. The volcano still pays first (with the "
+          "Seafarers gold variant on, resources of your choice, as a gold field "
+          "does), and the robber stops that production but never the eruption. "
+          "Play it on the Krakatoa map, where three volcanoes make an island on "
+          "the 4, 5 and 6.",
+          group=EXPANSION),
+]
+
+
 # --- Explorers & Pirates, one mechanic at a time ------------------------
 # The expansion decomposed the same way Cities & Knights and Seafarers are.
 # Every switch is off by default so the base game is unchanged, and the few
@@ -2290,6 +2316,37 @@ PRESETS = [
             "oil_sequester_vp": True,
             "oil_metropolis": True,
             "victory_target": 12,
+        },
+    },
+    {
+        "id": "krakatoa",
+        "name": "Seafarers: Krakatoa",
+        "source": (
+            "Seafarers, the Volcano variant and its 'Krakatoa' sub-variant "
+            "(ultraboardgames.com/catan/the-volcano.php; "
+            "catan-expansions-research.md, 'The Volcano'). Fan-level sourcing."
+        ),
+        "summary": (
+            "Three volcanoes make an island out at sea on the 4, 5 and 6. When a "
+            "volcano's number is rolled every adjacent building takes resources "
+            "of choice — the Seafarers gold field — and then the volcano erupts: "
+            "a die picks a corner and the building there is destroyed (a "
+            "settlement) or downgraded (a city). Sail out with ships, and score "
+            "extra points for reaching the new islands. The rulebook races to "
+            "13, so the target is suggested at 13; the lobby can still change it. "
+            "Pick the Krakatoa map. Every switch it ticks stays one you can "
+            "untick."
+        ),
+        "rules": {
+            "board_layout": "custom",
+            "board_map": "krakatoa",
+            "ships": True,
+            "ship_movement": True,
+            "pirate": True,
+            "gold_field_choice": True,
+            "volcano_hex": True,
+            "island_victory_points": True,
+            "victory_target": 13,
         },
     },
     {

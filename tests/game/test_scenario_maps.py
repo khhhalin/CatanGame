@@ -22,6 +22,7 @@ SCENARIO_BOARDS = {
     "through_the_desert": "through-the-desert",
     "forgotten_tribe": "forgotten-tribe",
     "cloth_for_catan": "cloth-for-catan",
+    "krakatoa": "krakatoa",
 }
 
 

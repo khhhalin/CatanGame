@@ -1,0 +1,85 @@
+{
+  "author": "Catan",
+  "frame": {
+    "radius": 4
+  },
+  "harbours": {
+    "mode": "bag",
+    "types": {
+      "generic": 3,
+      "ore": 1,
+      "wood": 1
+    }
+  },
+  "id": "krakatoa",
+  "map_version": 2,
+  "name": "Krakatoa",
+  "notes": "Seafarers 'Krakatoa' volcano variant (ultraboardgames.com/catan/the-volcano.php; research: The Volcano/Krakatoa). Three volcano hexes make a small island out at sea on fixed tokens 4, 5 and 6, so they can be asserted against the generated board. Played with the Seafarers gold variant: a volcano's number pays each adjacent building resources of choice, then the volcano erupts — a die picks one of its six corners and destroys the settlement there (or downgrades a city). Needs Ships. Win at 13.",
+  "regions": [
+    {
+      "color": "#8bb26a",
+      "hexes": [
+        "-3,0,3",
+        "-3,3,0",
+        "0,-3,3",
+        "0,0,0",
+        "0,3,-3",
+        "3,-3,0",
+        "3,0,-3"
+      ],
+      "id": "mainland",
+      "kind": "main",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [
+          3,
+          4,
+          5,
+          6,
+          9,
+          10
+        ],
+        "terrain": {
+          "brick": 1,
+          "desert": 1,
+          "sheep": 1,
+          "wheat": 2,
+          "wood": 2
+        }
+      }
+    },
+    {
+      "color": "#b5361f",
+      "hexes": [
+        "9,-9,0",
+        "9,-6,-3",
+        "9,-3,-6"
+      ],
+      "id": "krakatoa",
+      "kind": "island",
+      "pool": {
+        "mode": "fixed",
+        "placements": {
+          "9,-9,0": {"number": 4, "terrain": "volcano"},
+          "9,-6,-3": {"number": 5, "terrain": "volcano"},
+          "9,-3,-6": {"number": 6, "terrain": "volcano"}
+        }
+      }
+    },
+    {
+      "color": "#3b6ea5",
+      "hexes": "remaining",
+      "id": "ocean",
+      "kind": "sea",
+      "pool": {
+        "mode": "shuffled",
+        "numbers": [],
+        "terrain": {
+          "sea": 51
+        }
+      }
+    }
+  ],
+  "robber_start": "auto",
+  "suggested_victory_target": 13
+}
