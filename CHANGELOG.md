@@ -26,6 +26,11 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.12.0 — 2026-08-19 22:20
+
+- **New** Customize can now rearrange the screen: switch on Edit layout and drag the scoreboard, dice, build tray and the other floating panels wherever you want them — your positions are saved in your browser.
+- **New** You can also pull individual readouts — the bank, titles, costs, development cards, knights, the log — out of the side rail, hide the ones you never look at, and drop them into your own panels that you place and restyle yourself.
+
 ## v3.11.0 — 2026-08-19 17:02
 
 - **New** CATAN: New Energies — the climate game. Build cheap fossil or costlier renewable power plants, spend science, and watch a shared global footprint rise with every fossil and fall with every renewable.
