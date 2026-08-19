@@ -38,6 +38,7 @@ from handlers import (  # noqa: F401  (imported for their side effects)
     helpers,
     lobby,
     maps,
+    new_energies,
     oil,
     robber,
     ships,

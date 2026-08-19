@@ -1597,6 +1597,39 @@ function drawOilState(ctx, oil, hexPositions, hexRadius) {
 }
 
 /**
+ * Draw the CATAN: New Energies power plants on `board.new_energies`: a small
+ * badge on each hex that carries a plant, green for a renewable and dark amber
+ * for a fossil, so a player can see the pollution on the map. Several plants can
+ * face one hex, so they fan out around the hex centre. A no-op off the scenario.
+ */
+function drawNewEnergiesState(ctx, ne, hexPositions, hexRadius) {
+    if (!ne || !ne.plants) {
+        return;
+    }
+    const badge = hexRadius * 0.24;
+    // Group plants by the hex they sit on so several around one hex spread out.
+    const byHex = {};
+    for (const plant of Object.values(ne.plants)) {
+        (byHex[plant.hex] = byHex[plant.hex] || []).push(plant);
+    }
+    for (const [hexKey, plants] of Object.entries(byHex)) {
+        const pos = hexPositions[hexKey];
+        if (!pos) {
+            continue;
+        }
+        plants.forEach((plant, i) => {
+            const angle = (Math.PI * 2 * i) / plants.length - Math.PI / 2;
+            const spread = plants.length > 1 ? hexRadius * 0.42 : 0;
+            const x = pos.x + Math.cos(angle) * spread;
+            const y = pos.y + Math.sin(angle) * spread;
+            const fill = plant.kind === 'renewable' ? '#1f7a3f' : '#7a4a16';
+            const glyph = plant.kind === 'renewable' ? '⏛' : '⚑';
+            drawHexBadge(ctx, x, y, badge, fill, glyph, '#eafff0');
+        });
+    }
+}
+
+/**
  * Draw the Barbarian Attack state on `board.tb`: the barbarian figures on each
  * coastal hex (a dark-red badge with the count), the conquered hexes (a dim
  * cross over the tile), and each player's knight pieces on their paths (a small
@@ -2697,6 +2730,9 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
 
     // Catan: Oil Springs: an oil-drop badge on each Oil Spring tile.
     drawOilState(ctx, boardData.oil, hexPositions, hexRadius);
+
+    // CATAN: New Energies: a power-plant badge on each hex carrying one.
+    drawNewEnergiesState(ctx, boardData.new_energies, hexPositions, hexRadius);
 
     // The intersections and paths a pending choice is asking about. Over the
     // pieces, because the thing being chosen is usually one of them. A key that

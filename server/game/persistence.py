@@ -100,6 +100,8 @@ def _player_state(player) -> dict:
         # Oil Springs: oil is a public currency worth nothing dropped, so a save
         # that lost it would hand a player back a smaller stockpile.
         'oil': player.oil,
+        # New Energies: energy is a public currency, saved like oil.
+        'energy': player.energy,
         # Rise of the Inkas: the tribe this player is developing and the culture
         # markers they have placed across all their tribes. Additive: an old save
         # restores tribe 1 and no markers, a game where the scenario is off.
@@ -218,6 +220,18 @@ def serialize(game: Game) -> dict:
         'oil_sequestered': game.oil_sequestered,
         'oil_champion': game.oil_champion,
         'oil_metropolises': game.oil_metropolises,
+        # CATAN: New Energies. The power plants on the board (keyed by a (vertex,
+        # hex) tuple on the game, flattened to a list for JSON), each player's
+        # face-down green-disc stack, and the event-disc bag. All play state,
+        # mutated as plants are built and discs drawn, so they are saved outright
+        # rather than re-derived. Empty on a pre-New-Energies save.
+        'power_plants': [
+            {'vertex': vertex, 'hex': hex_key, 'player': plant['player'],
+             'kind': plant['kind']}
+            for (vertex, hex_key), plant in game.power_plants.items()
+        ],
+        'green_discs': game.green_discs,
+        'event_bag': game.event_bag,
         # Catan: Frenemies. The favour-token bag is dealt from the RNG and then
         # mutated by play (draws and, later, exchanges), so like the Helpers pile
         # it must be saved outright rather than re-derived. Usable and locked
@@ -462,6 +476,7 @@ def deserialize(data: dict, config=None) -> Game:
         player.harbor_settlements = list(saved.get('harbor_settlements', []))
         player.gold = saved.get('gold', 0)
         player.oil = saved.get('oil', 0)
+        player.energy = saved.get('energy', 0)
         player.settlers = saved.get('settlers', 0)
         player.crews = saved.get('crews', 0)
         # Rise of the Inkas; tribe 1 and no markers on a pre-Inkas save.
@@ -484,6 +499,7 @@ def deserialize(data: dict, config=None) -> Game:
                   'cloth_tokens', 'village_cloth', 'cloth_general_supply',
                   'oil_supply', 'disaster_track', 'oil_numbers_removed',
                   'oil_sequestered', 'oil_champion', 'oil_metropolises',
+                  'green_discs', 'event_bag',
                   'favour_bag', 'favour_usable', 'favour_locked',
                   'favour_vp_markers', 'favour_vp_supply',
                   'wonder_choice', 'wonder_level',
@@ -491,6 +507,16 @@ def deserialize(data: dict, config=None) -> Game:
                   'helper_pile', 'helper_held', 'founding_player'):
         if field in data:
             setattr(game, field, data[field])
+
+    # New Energies power plants: a list of records in the save, a dict keyed by
+    # the (vertex, hex) tuple on the game. Rebuilt so a saved plant paints and
+    # produces energy after a reload.
+    if 'power_plants' in data:
+        game.power_plants = {
+            (record['vertex'], record['hex']):
+                {'player': record['player'], 'kind': record['kind']}
+            for record in data['power_plants']
+        }
 
     # A set on the game, a list in the save: spent gift edges must not be
     # reclaimable after a reload.

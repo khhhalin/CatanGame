@@ -22,6 +22,7 @@ import { renderWonders } from './wonders.js';
 import { renderBarbarianAttack } from './barbarian_attack.js';
 import { renderPirateIslands } from './pirate_islands.js';
 import { renderOil } from './oil.js';
+import { renderNewEnergies } from './new_energies.js';
 import { renderFrenemies } from './frenemies.js';
 import { renderInkas } from './inkas.js';
 import { renderHelperTiles } from './helper_tiles.js';
@@ -146,6 +147,7 @@ socket.on('game_started', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderNewEnergies();
     renderFrenemies();
     renderInkas();
     renderHelperTiles();
@@ -211,6 +213,7 @@ socket.on('game_state', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderNewEnergies();
     renderFrenemies();
     renderInkas();
     renderHelperTiles();
@@ -260,6 +263,7 @@ socket.on('turn_changed', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderNewEnergies();
     renderFrenemies();
     renderInkas();
     renderHelperTiles();
@@ -411,6 +415,7 @@ socket.on('board_updated', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderNewEnergies();
     renderFrenemies();
     renderInkas();
     renderHelperTiles();
@@ -452,6 +457,7 @@ socket.on('event_die', (data) => {
     renderBarbarianAttack();
     renderPirateIslands();
     renderOil();
+    renderNewEnergies();
     renderFrenemies();
     renderInkas();
     renderHelperTiles();
