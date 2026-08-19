@@ -79,9 +79,10 @@ class TurnClock:
         self.oil_used_this_turn = 0
         self.oil_sequestered_this_turn = False
         # New Energies: only one power plant may be built per turn (a triggered
-        # event may add one on top). A fresh turn has built none. Inert off the
-        # scenario.
+        # event may add one on top), and only one fossil plant demolished. A
+        # fresh turn has done neither. Inert off the scenario.
         self.power_plant_built_this_turn = False
+        self.fossil_demolished_this_turn = False
         # Catan for Two: a fresh turn may again trade one face-up knight for
         # trade tokens (rulebook "Once during your turn"). Inert off the variant.
         self.trade_token_knight_discarded = False

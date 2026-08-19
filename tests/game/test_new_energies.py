@@ -174,6 +174,104 @@ class TestPowerPlantBuild:
         assert game.build_power_plant('Alice', v2, h2, 'fossil')['success']
 
 
+def _city_with_two_numbered_hexes(game, player_name):
+    """A city and two of its adjacent numbered hexes, for two-plant tests."""
+    for vertex_key, vertex in game.vertices.items():
+        if vertex.building:
+            continue
+        numbered = [h for h in vertex.neighbors.get('hexes', [])
+                    if game.hexes.get(h) and game.hexes[h].number]
+        if len(numbered) >= 2:
+            vertex.building = {'type': 'city', 'player': player_name}
+            game.get_player(player_name).cities.append(vertex_key)
+            return vertex_key, numbered[0], numbered[1]
+    pytest.skip("no city site touching two numbered hexes")
+
+
+class TestGlobalFootprint:
+    def test_local_footprint_weighs_town_city_and_plants(self):
+        game = ne_game()
+        town_v, town_h = building_on(game, 'Alice', 'settlement')
+        city_v, _ = building_on(game, 'Alice', 'city')
+        assert game.local_footprint('Alice') == 1 + 2  # a town and a city
+        game.power_plants[(town_v, town_h)] = {'player': 'Alice', 'kind': 'fossil'}
+        assert game.local_footprint('Alice') == 3 + 1  # a fossil plant adds one
+        game.power_plants[(city_v, next(
+            h for h in game.vertices[city_v].neighbors['hexes']
+            if game.hexes.get(h) and game.hexes[h].number))] = {
+            'player': 'Alice', 'kind': 'renewable'}
+        assert game.local_footprint('Alice') == 4 - 1  # a renewable subtracts one
+
+    def test_the_global_footprint_is_the_sum_of_local_footprints(self):
+        game = ne_game()
+        building_on(game, 'Alice', 'city')
+        building_on(game, 'Bob', 'settlement')
+        assert game.global_footprint_level() == (
+            game.local_footprint('Alice') + game.local_footprint('Bob')
+        )
+
+    def test_a_fossil_plant_raises_and_a_renewable_lowers_the_footprint(self):
+        game = ne_game()
+        city_v, h1, h2 = _city_with_two_numbered_hexes(game, 'Alice')
+        game.get_player('Alice').commodities['science'] = 4
+        before = game.global_footprint_level()
+        assert game.build_power_plant('Alice', city_v, h1, 'fossil')['success']
+        assert game.global_footprint_level() == before + 1
+        game.power_plant_built_this_turn = False
+        assert game.build_power_plant('Alice', city_v, h2, 'renewable')['success']
+        assert game.global_footprint_level() == before  # back down one
+
+    def test_the_footprint_never_drops_below_zero(self):
+        game = ne_game()
+        city_v, _ = building_on(game, 'Alice', 'city')  # LF 2
+        # Six renewables would take the sum to 2 - 6 = -4; the track stops at 0.
+        for i, hex_key in enumerate(sorted(game.hexes)[:6]):
+            game.power_plants[(f'{city_v}#{i}', hex_key)] = {
+                'player': 'Alice', 'kind': 'renewable'}
+        assert game.local_footprint('Alice') < 0
+        assert game.global_footprint_level() == 0
+
+    def test_start_is_three_per_player(self):
+        game = ne_game()
+        building_on(game, 'Alice', 'settlement')
+        building_on(game, 'Alice', 'city')
+        building_on(game, 'Bob', 'settlement')
+        building_on(game, 'Bob', 'city')
+        assert game.global_footprint_level() == 3 * len(game.players)
+
+    def test_demolishing_a_fossil_lowers_the_footprint_for_one_energy(self):
+        game = ne_game()
+        city_v, hex_key = building_on(game, 'Alice', 'city')
+        game.power_plants[(city_v, hex_key)] = {'player': 'Alice', 'kind': 'fossil'}
+        alice = game.get_player('Alice')
+        alice.energy = 1
+        before = game.global_footprint_level()
+        result = game.demolish_fossil_plant('Alice', city_v, hex_key)
+        assert result['success']
+        assert (city_v, hex_key) not in game.power_plants
+        assert alice.energy == 0
+        assert game.global_footprint_level() == before - 1
+
+    def test_only_one_fossil_demolished_a_turn(self):
+        game = ne_game()
+        c1, h1 = building_on(game, 'Alice', 'city')
+        c2, h2 = building_on(game, 'Alice', 'settlement')
+        game.power_plants[(c1, h1)] = {'player': 'Alice', 'kind': 'fossil'}
+        game.power_plants[(c2, h2)] = {'player': 'Alice', 'kind': 'fossil'}
+        game.get_player('Alice').energy = 5
+        assert game.demolish_fossil_plant('Alice', c1, h1)['success']
+        again = game.demolish_fossil_plant('Alice', c2, h2)
+        assert not again['success'] and again['code'] == 'ALREADY_DEMOLISHED'
+
+    def test_only_a_fossil_may_be_demolished(self):
+        game = ne_game()
+        city_v, hex_key = building_on(game, 'Alice', 'city')
+        game.power_plants[(city_v, hex_key)] = {'player': 'Alice', 'kind': 'renewable'}
+        game.get_player('Alice').energy = 5
+        result = game.demolish_fossil_plant('Alice', city_v, hex_key)
+        assert not result['success'] and result['code'] == 'INVALID_TARGET'
+
+
 class TestEnergyProduction:
     def test_a_plant_pays_one_energy_when_its_hex_produces(self):
         game = ne_game()

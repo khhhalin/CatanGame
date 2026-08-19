@@ -1186,6 +1186,17 @@ RULES += [
           "resource or science of your choice. Fossil plants raise the global "
           "footprint and renewables lower it, which the footprint rule tracks.",
           group=EXPANSION),
+    _bool("global_footprint", "scenario", "New Energies: global footprint", False,
+          "CATAN: New Energies rulebook, 'Global footprint track' pp. 12-13 and "
+          "'Fossil fuel / Renewable power plants' p. 15",
+          "The shared pollution track. Every player has a local footprint — a "
+          "town adds 1, a city 2, a fossil plant 1, a renewable plant subtracts "
+          "1 — and the global footprint is the sum across the table, starting at "
+          "3 per player (12 for four, 9 for three). Building a town, a city or a "
+          "fossil plant moves it forward; a renewable plant, or demolishing a "
+          "fossil plant for 1 energy, moves it back. It is the pollution meter "
+          "the event discs scale off.",
+          group=EXPANSION),
 ]
 
 
@@ -1659,6 +1670,13 @@ DEPENDENCIES = {
     # without the decline machinery, so each needs it.
     "overbuild_ruins": ("tribe_decline",),
     "third_tribe_victory": ("tribe_decline",),
+    # New Energies. The global footprint is the sum of every player's local
+    # footprint, and the local footprint counts power plants (a fossil plant
+    # raises it, a renewable lowers it) alongside towns and cities. With no power
+    # plants there is nothing for the footprint to track that towns and cities do
+    # not already fix, and the demolish-for-footprint action has no plant to
+    # remove, so the track needs the power-plant rule.
+    "global_footprint": ("power_plants",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2408,6 +2426,7 @@ PRESETS = [
             # New Energies distinctiveness is the town+city start, science and
             # power plants, not the terrain, which is the base game's.
             "power_plants": True,
+            "global_footprint": True,
             # Each player opens with a town and a city, and the city yields its
             # adjacent resources (one per hex) plus a flat science.
             "setup_second_city": True,

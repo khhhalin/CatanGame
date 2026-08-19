@@ -50,6 +50,27 @@ MAX_ENERGY = 5
 # choice." (rulebook, 'Energy uses', p. 15.)
 ENERGY_PER_CARD = 2
 
+# Demolishing a fossil fuel power plant costs 1 energy (rulebook, 'Demolish a
+# fossil fuel power plant', p. 15), and only one may be demolished a turn.
+ENERGY_PER_DEMOLISH = 1
+
+# The local-footprint weight of each piece (rulebook, 'Local environmental
+# footprint' p. 12 and the plant pages p. 15): a town +1, a city +2, a fossil
+# plant +1, a renewable plant -1.
+LF_PER_TOWN = 1
+LF_PER_CITY = 2
+LF_PER_FOSSIL = 1
+LF_PER_RENEWABLE = -1
+
+# The global-footprint track runs from 0 to 7 per player — 0 to 28 for four
+# players, 0 to 21 for three (rulebook p. 13: the marker "remains there until the
+# total LF ... drops below 28 for 4 players (21 for 3 players)"). The marker
+# starts at 3 per player, which is where each seat's opening town and city put
+# it. Both scale with the seat count, which is how a 3- and a 4-player game read
+# off one track, so they are derived rather than two literals.
+GF_MAX_PER_PLAYER = 7
+GF_START_PER_PLAYER = 3
+
 
 class NewEnergiesRules:
     """Power plants, the science economy, and energy. The global footprint
@@ -158,6 +179,76 @@ class NewEnergiesRules:
             return refused('MUST_MOVE_ROBBER', 'You must move the robber first')
         return None
 
+    # --- The global footprint track ---------------------------------------
+
+    def local_footprint(self, player_name: str) -> int:
+        """One player's local footprint (LF) — the pollution they contribute.
+
+        A town adds 1, a city 2, a fossil plant 1, a renewable plant subtracts 1
+        (rulebook, 'Local environmental footprint', p. 12). Read live off the
+        board and this player's plants, so it moves the instant a piece is built
+        or demolished. Zero off the scenario, since a base game builds none of
+        the plants and the caller gates on the rule.
+        """
+        player = self.get_player(player_name)
+        if player is None:
+            return 0
+        counts = self._plant_counts(player_name)
+        return (
+            len(player.settlements) * LF_PER_TOWN
+            + len(player.cities) * LF_PER_CITY
+            + counts['fossil'] * LF_PER_FOSSIL
+            + counts['renewable'] * LF_PER_RENEWABLE
+        )
+
+    def global_footprint_level(self) -> int:
+        """The shared global footprint (GF): the table's local footprints summed.
+
+        "Add the LF of all players together and track it on the global footprint
+        track" (rulebook, p. 13). Derived from the live pieces rather than a
+        running marker, which is exactly how the rulebook says to check it — "add
+        up the visible + and - icons on all player boards" — and clamped to the
+        track's ends (0 to 7 per player), where the physical marker also stops.
+        """
+        total = sum(self.local_footprint(player.name) for player in self.players)
+        return max(0, min(total, GF_MAX_PER_PLAYER * len(self.players)))
+
+    def demolish_fossil_plant(self, player_name: str, vertex_key: str,
+                              hex_key: str) -> dict:
+        """Demolish one of your fossil plants for 1 energy, lowering the footprint.
+
+        "Once during your Action phase, you may demolish 1 fossil fuel power
+        plant that you have already built. Pay 1 energy and return 1 fossil fuel
+        power plant to your player board. Your LF decreases by one." (rulebook,
+        p. 15.) The footprint is derived from the pieces, so removing the plant
+        moves the global marker back on its own.
+        """
+        if not self.rules['global_footprint']:
+            return refused('RULE_OFF', 'The footprint track is not in play')
+
+        block = self._new_energies_action_block(player_name)
+        if block is not None:
+            return block
+
+        if self.fossil_demolished_this_turn:
+            return refused('ALREADY_DEMOLISHED',
+                           'You may demolish only one fossil plant per turn')
+
+        plant = self.power_plants.get((vertex_key, hex_key))
+        if plant is None or plant['player'] != player_name or plant['kind'] != 'fossil':
+            return refused('INVALID_TARGET', 'Choose one of your own fossil plants')
+
+        player = self.get_player(player_name)
+        if player.energy < ENERGY_PER_DEMOLISH:
+            return refused('NOT_ENOUGH_ENERGY',
+                           f'Demolishing costs {ENERGY_PER_DEMOLISH} energy')
+
+        player.energy -= ENERGY_PER_DEMOLISH
+        del self.power_plants[(vertex_key, hex_key)]
+        self.fossil_demolished_this_turn = True
+        return {'success': True, 'error': '', 'vertex': vertex_key, 'hex': hex_key,
+                'energy': player.energy, 'global_footprint': self.global_footprint_level()}
+
     # --- Energy production -------------------------------------------------
 
     def distribute_energy(self, dice_total: int) -> dict:
@@ -247,7 +338,7 @@ class NewEnergiesRules:
                 'fossil': FOSSIL_PLANT_SUPPLY - counts['fossil'],
                 'renewable': RENEWABLE_PLANT_SUPPLY - counts['renewable'],
             }
-        return {
+        state = {
             'plants': plants,
             'energy': {player.name: player.energy for player in self.players},
             'plant_reserves': reserves,
@@ -256,3 +347,17 @@ class NewEnergiesRules:
             'energy_per_card': ENERGY_PER_CARD,
             'built_this_turn': self.power_plant_built_this_turn,
         }
+        # The global footprint track: the shared level, each player's local
+        # footprint for the readout, the track's ends, and whether this turn's
+        # once-only fossil demolition has been spent. Absent off the track rule,
+        # so a table running power plants without the footprint sees no meter.
+        if self.rules['global_footprint']:
+            state['global_footprint'] = {
+                'level': self.global_footprint_level(),
+                'local': {player.name: self.local_footprint(player.name)
+                          for player in self.players},
+                'max': GF_MAX_PER_PLAYER * len(self.players),
+                'start': GF_START_PER_PLAYER * len(self.players),
+                'demolished_this_turn': self.fossil_demolished_this_turn,
+            }
+        return state

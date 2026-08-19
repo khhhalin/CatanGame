@@ -227,6 +227,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.power_plants = {}
         self.hazard_hexes = set()
         self.power_plant_built_this_turn = False
+        self.fossil_demolished_this_turn = False
         # Seafarers, the Krakatoa/Volcano variant: the volcano hexes read off the
         # dealt board. Map-derived, so a save re-reads them; empty off the rule.
         self.volcano_hexes = set()
