@@ -26,6 +26,12 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.9.0 — 2026-08-19 10:18
+
+- **New** The lobby opens with a scrollable list of scenarios: pick one and it sets up its whole game — rules, board and points — in a click, with a preview of the board it deals and a note on the rulebook it comes from.
+- **New** The individual rules are sorted into collapsible tabs — Board & Setup, Victory, Trade & Money, Sea & Ships, Knights & Barbarians, and more — so you can find and change one without scrolling a wall of switches.
+- **Fixed** Picking a Seafarers scenario — The Four Islands, The Fog Islands, Through the Desert, The Forgotten Tribe or Cloth for Catan — now deals its own board, instead of an ordinary one that left its islands, fog, desert or villages with nothing to do.
+
 ## v3.8.0 — 2026-08-17 16:14
 
 - **Fixed** A trade offer now shows, per player, who has accepted and who has denied — and everyone at the table sees it, not just the person who made the offer.
