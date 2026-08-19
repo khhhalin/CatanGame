@@ -356,6 +356,22 @@ socket.on('dice_rolled', (data) => {
 
     // Clear highlight after 2 seconds
     setTimeout(() => setHighlight(null), 2000);
+
+    // Krakatoa: a volcano that came up erupts, destroying or downgrading a
+    // building. The board broadcast that follows carries the change itself; this
+    // says it out loud so a building vanishing is read as an eruption, not a bug.
+    // The log keeps the authoritative record — this is only the nudge.
+    if (Array.isArray(data.eruption)) {
+        for (const record of data.eruption) {
+            if (!record || record.player === null || record.player === undefined) {
+                continue;
+            }
+            const struck = record.was === 'city'
+                ? `${record.player}'s city is reduced to a settlement`
+                : `${record.player}'s settlement is destroyed`;
+            showNotice(`A volcano erupts! ${struck}.`, 'error');
+        }
+    }
 });
 
 socket.on('board_updated', (data) => {

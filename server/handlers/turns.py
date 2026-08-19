@@ -224,6 +224,26 @@ def _announce_production(total, gained):
     log_event('dice', text, total=total, gained=gained)
 
 
+def _announce_eruption(eruptions):
+    """Say what a Krakatoa volcano's eruption struck, one entry per volcano.
+
+    Public like production: `get_board_data` sends every building with its owner
+    and every hex, and the roll is broadcast, so the whole table can already see
+    a building vanish — this only names it as an eruption rather than leaving the
+    disappearance to be read as a bug. Logged under `robber`, the category the
+    other board-disruption events use.
+    """
+    for record in eruptions:
+        player = record.get('player')
+        if player is None:
+            text = "A volcano erupts — the lava reaches open ground and spares every building."
+        elif record.get('was') == 'city':
+            text = f"A volcano erupts! {player}'s city is reduced to a settlement."
+        else:
+            text = f"A volcano erupts! {player}'s settlement is destroyed."
+        log_event('robber', text, eruption=record)
+
+
 def _announce_dice_roll(name, result):
     """Report a roll the engine has already applied. Caller holds session.lock."""
     dice1, dice2, total = result['dice1'], result['dice2'], result['total']
@@ -240,6 +260,11 @@ def _announce_dice_roll(name, result):
     if total != 7:
         _announce_production(total, result.get('gained') or {})
 
+    # Krakatoa: a volcano that came up erupts after production, so it is
+    # announced after the production line — the building produced, then was
+    # struck. A no-op off the rule or when no volcano matched.
+    _announce_eruption(result.get('eruption') or [])
+
     if result['event']:
         _announce_event_die(result['event'])
 
@@ -248,7 +273,8 @@ def _announce_dice_roll(name, result):
     for player_name, amount in result['discards'].items():
         socketio.emit('discard_required', {'player': player_name, 'amount': amount})
 
-    socketio.emit('dice_rolled', {'player': name, 'dice1': dice1, 'dice2': dice2, 'total': total})
+    socketio.emit('dice_rolled', {'player': name, 'dice1': dice1, 'dice2': dice2, 'total': total,
+                                  'eruption': result.get('eruption') or []})
 
     # A barbarian attack can stop the game on a question — which city is lost,
     # which deck a joint defender draws from — so whoever owes an answer is
