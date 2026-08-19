@@ -26,6 +26,12 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.11.0 — 2026-08-19 17:02
+
+- **New** CATAN: New Energies — the climate game. Build cheap fossil or costlier renewable power plants, spend science, and watch a shared global footprint rise with every fossil and fall with every renewable.
+- **New** New Energies draws event discs each turn — the dirtier the world, the more you draw — triggering pollution, funding and production events; the game ends at 10 points or when the disc bag runs out, then the cleanest energy balance wins.
+- **New** A Customize panel (the gear at the top): restyle your own view — panel see-through, font and text size, a solid or gradient panel background, the accent colour, or paste your own CSS. It saves in your browser and changes only your screen; reset any time.
+
 ## v3.10.0 — 2026-08-19 11:25
 
 - **New** Catan for Two: a real two-player game. Two neutral colours grow across the board and block space as you build, and a pool of trade tokens — earned at the desert, on the coast, or by spending a knight — lets the player who is behind act for less than the one in front.
