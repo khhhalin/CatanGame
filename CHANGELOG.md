@@ -26,6 +26,11 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.10.0 — 2026-08-19 11:25
+
+- **New** Catan for Two: a real two-player game. Two neutral colours grow across the board and block space as you build, and a pool of trade tokens — earned at the desert, on the coast, or by spending a knight — lets the player who is behind act for less than the one in front.
+- **New** Krakatoa, a Seafarers volcano variant: three volcano hexes pay resources of your choice on their number, then erupt — a die picks one of the hex's six corners and topples the building there, a city dropping back to a settlement.
+
 ## v3.9.0 — 2026-08-19 10:18
 
 - **New** The lobby opens with a scrollable list of scenarios: pick one and it sets up its whole game — rules, board and points — in a click, with a preview of the board it deals and a note on the rulebook it comes from.
