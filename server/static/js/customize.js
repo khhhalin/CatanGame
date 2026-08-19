@@ -307,12 +307,14 @@
         }
         recordHomes();
 
-        // Teardown to the default DOM.
-        for (const stale of overlays.querySelectorAll('.hud-panel')) {
-            stale.remove();
-        }
+        // Teardown to the default DOM. Restore the widgets home FIRST — while
+        // they are still in the document — then drop the now-empty panels; a
+        // docked widget removed with its panel could no longer be found by id.
         for (const id of Object.keys(WIDGETS)) {
             restoreHome(id);
+        }
+        for (const stale of overlays.querySelectorAll('.hud-panel')) {
+            stale.remove();
         }
 
         const hud = config.hud || emptyHud();
@@ -725,8 +727,19 @@
                 addPanelBtn.addEventListener('click', () => {
                     ensureHud();
                     const id = 'p' + Date.now().toString(36);
-                    // In a little from the corner so its header is easy to grab.
-                    config.hud.panels.push({ id, x: 24, y: 24, widgets: [] });
+                    // Toward the middle of the board, clear of the corner floats
+                    // (scoreboard, dice, tray, hand) which are pointer-active in
+                    // edit mode and would otherwise sit over a corner-spawned
+                    // panel and swallow the grab.
+                    const overlays = document.getElementById(HUD_LAYER_ID);
+                    let x = 40;
+                    let y = 40;
+                    if (overlays) {
+                        const rect = overlays.getBoundingClientRect();
+                        x = Math.round(rect.width * 0.35);
+                        y = Math.round(rect.height * 0.28);
+                    }
+                    config.hud.panels.push({ id, x, y, widgets: [] });
                     commit();
                     // Reveal the fresh panel by turning edit mode on.
                     document.body.classList.add('layout-edit');

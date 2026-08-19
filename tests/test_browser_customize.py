@@ -365,3 +365,103 @@ def test_hud_free_drags_a_readout_out_and_reset_hud_restores_it(browser, server)
     assert parent_id(page, "#right-bank") == "side-tabs", "Reset HUD did not restore the Bank"
     assert page.evaluate(title_color) == "rgb(20, 200, 40)", "Reset HUD wiped the accent"
     assert host.noisy_errors() == [], host.noisy_errors()
+
+
+def widget_panel(page, selector):
+    """The data-panel-id of the custom panel a widget sits in, or '' if none."""
+    return page.eval_on_selector(
+        selector,
+        "el => { const p = el.closest('.hud-panel'); return p ? p.dataset.panelId : ''; }",
+    )
+
+
+def drag_between(page, from_box, to_x, to_y):
+    """Grab a box at its centre and drop it at an absolute point, stepped."""
+    cx = from_box["x"] + from_box["width"] / 2
+    cy = from_box["y"] + from_box["height"] / 2
+    page.mouse.move(cx, cy)
+    page.mouse.down()
+    page.mouse.move(to_x, to_y, steps=10)
+    page.mouse.up()
+
+
+def test_hud_docks_a_readout_in_a_custom_panel_that_persists_and_resets(browser, server):
+    """The composition layer end to end: create an empty custom panel, drag a
+    readout into it (DOM parentage + on-screen position, still showing its live
+    value), move the panel, reload and find the whole composition intact, and
+    Reset HUD take it all back to the default rail.
+
+    The reload is the load-bearing assertion - a builder whose panels evaporate
+    on reload is useless - and it is checked on DOM parentage, not a class, so a
+    widget that merely looks docked but is no longer the panel's child fails.
+    """
+    host, _ = start_game(browser, server)
+    page = host.page
+    page.on("dialog", lambda d: d.accept())
+    page.wait_for_selector("#right-bank", timeout=5000)
+    page.wait_for_function(
+        "() => document.querySelector('#bank-display').textContent.trim().length > 0",
+        timeout=5000,
+    )
+
+    def bank_filled():
+        return page.eval_on_selector("#bank-display", "el => el.textContent.trim().length") > 0
+
+    # Create an empty panel (this also turns Edit layout on), then close the
+    # dropdown so it is clear of the board.
+    open_customize(page)
+    page.click("#cz-hud-add-panel")
+    page.wait_for_selector(".hud-panel", timeout=5000)
+    panel_id = page.eval_on_selector(".hud-panel", "el => el.dataset.panelId")
+    page.click("#customize-close")
+    page.wait_for_selector("#customize-body.hidden", state="attached", timeout=5000)
+
+    # Drag the Bank onto the panel; it must become the panel's child and stay live.
+    panel_box = box(page, ".hud-panel")
+    bank_box = box(page, "#right-bank")
+    drag_between(
+        page, bank_box,
+        panel_box["x"] + panel_box["width"] / 2,
+        panel_box["y"] + panel_box["height"] / 2,
+    )
+
+    assert widget_panel(page, "#right-bank") == panel_id, (
+        "the Bank was not docked inside the custom panel"
+    )
+    docked = box(page, "#right-bank")
+    outer = box(page, ".hud-panel")
+    # On-screen: the Bank sits within the panel it was dropped on.
+    assert outer["x"] - 4 <= docked["x"] and docked["x"] <= outer["x"] + outer["width"] + 4, (
+        f"the docked Bank is not within the panel horizontally: {docked} vs {outer}"
+    )
+    assert docked["y"] >= outer["y"] - 4, (
+        f"the docked Bank sits above its panel: {docked} vs {outer}"
+    )
+    assert bank_filled(), "the docked Bank stopped showing its live value"
+
+    # Move the panel by its header and confirm it actually moved.
+    head_box = box(page, ".hud-panel-head")
+    before_panel = box(page, ".hud-panel")
+    drag_between(page, head_box, head_box["x"] + head_box["width"] / 2 + 70,
+                 head_box["y"] + head_box["height"] / 2 + 120)
+    after_panel = box(page, ".hud-panel")
+    assert abs(after_panel["x"] - before_panel["x"]) > 30 or (
+        abs(after_panel["y"] - before_panel["y"]) > 30), (
+        f"the panel did not move: {before_panel} -> {after_panel}"
+    )
+
+    # The reload: rejoin the running game and the panel and its docked Bank must
+    # both come back, from localStorage, before the body paints.
+    rejoin_running_game(page)
+    page.wait_for_selector(".hud-panel", timeout=5000)
+    assert widget_panel(page, "#right-bank") == panel_id, (
+        "the docked Bank was lost after a reload"
+    )
+    assert bank_filled(), "the reloaded docked Bank shows no live value"
+
+    # Reset HUD dissolves the panel and returns the Bank to the rail.
+    open_customize(page)
+    page.click("#cz-reset-hud")
+    assert page.query_selector(".hud-panel") is None, "Reset HUD left a custom panel behind"
+    assert parent_id(page, "#right-bank") == "side-tabs", "Reset HUD did not restore the Bank"
+    assert host.noisy_errors() == [], host.noisy_errors()

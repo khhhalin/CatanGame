@@ -768,10 +768,16 @@ body.layout-edit .hud-widget {
     cursor: move;
     touch-action: none;
 }
-/* The lifted widget while it follows the pointer. */
+/* The lifted widget while it follows the pointer. The whole subtree is made
+   transparent to pointers so elementFromPoint sees the panel (or board) beneath
+   it and the drop target is read correctly, not a button inside the widget. */
 .hud-widget.hud-dragging {
     box-shadow: var(--shadow-2);
     opacity: 0.92;
+}
+.hud-widget.hud-dragging,
+.hud-widget.hud-dragging * {
+    pointer-events: none !important;
 }
 /* A hidden readout, layered over its own visibility so a widget the game has
    already hidden (a fold whose rule is off) is unaffected. */
