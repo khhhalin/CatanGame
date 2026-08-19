@@ -1455,6 +1455,17 @@ RULES += [
           "switched off while this is on. Needs Tribe decline, which is what "
           "gives a player a third tribe to complete.",
           group=EXPANSION, suggests_victory_target=11),
+    _bool("neutral_players", "board", "Neutral players (Catan for Two)", False,
+          "Traders & Barbarians 2020 rulebook, 'Catan for Two', pp. 6-7 "
+          "(catan-t_b_2020_rule_book_200820.pdf)",
+          "Catan for Two. Two non-producing neutral colours occupy the board "
+          "beside the two real players: each opens with one settlement, and "
+          "every time you build a road or a settlement you must also build one "
+          "free neutral piece — a settlement where one can legally go, "
+          "otherwise a road. The neutrals never take a turn and never receive "
+          "resources; they exist to block space so a two-player game stays "
+          "tight. Pair it with Trade tokens for the full variant.",
+          group=EXPANSION),
 ]
 
 

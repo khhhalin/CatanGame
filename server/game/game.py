@@ -28,6 +28,7 @@ from game.missions import MissionRules
 from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
 from game.missions_spices import MissionSpicesRules
+from game.neutral_players import NeutralPlayersRules
 from game.oil_springs import OIL_SUPPLY, OilSpringsRules
 from game.path_barbarians import PathBarbarianRules
 from game.pending_choice import PendingChoiceRules
@@ -55,7 +56,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
            PirateIslandsRules, HelpersRules, OilSpringsRules,
-           InkasRules, FavourRules, PendingChoiceRules, TurnClock):
+           InkasRules, FavourRules, NeutralPlayersRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -569,6 +570,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             offer_expiry_seconds=self.rules['trade_offer_seconds'],
         )
 
+        # Catan for Two: seat the two non-producing neutral colours and place
+        # their opening settlements. A no-op unless `neutral_players` is on, and
+        # deliberately last so the board, its vertices and the distance rule the
+        # opening placement reads are all in place. `neutral_players` stays the
+        # empty list off the rule, so every neutral method downstream no-ops.
+        self.neutral_players = []
+        self.setup_neutral_players()
+
     def has_piece_available(self, player_name: str, piece: str) -> bool:
         """Whether the player still has an unplaced piece of this type.
 
@@ -1026,6 +1035,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if not in_setup:
             tribe_decline = self.check_tribe_transition(player_name)
 
+        # Catan for Two: a real player building in play forces one free neutral
+        # piece onto the board (rulebook "Building Progress of the Neutral
+        # Players"). A no-op off the rule and during setup, where the neutral
+        # openings are seeded once instead.
+        neutral_expansion = None
+        if not in_setup and self.rules['neutral_players']:
+            neutral_expansion = self.expand_neutral_players(player_name)
+
         return {
             'success': True,
             'error': '',
@@ -1034,6 +1051,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'river_gold': river_gold,
             'barbarian_attack': attack,
             'tribe_decline': tribe_decline,
+            'neutral_expansion': neutral_expansion,
         }
 
     def build_road(self, player_name: str, edge_key: str) -> dict:
@@ -1163,8 +1181,16 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # from a face-down hex.
         revealed = self.discover_from_build(player_name, edge.neighbors['hexes'])
 
+        # Catan for Two: a real player's road in play forces one free neutral
+        # piece too (rulebook "Building Progress of the Neutral Players"). A
+        # no-op off the rule and during setup.
+        neutral_expansion = None
+        if not in_setup and self.rules['neutral_players']:
+            neutral_expansion = self.expand_neutral_players(player_name)
+
         return {'success': True, 'error': '', 'used_free_road': used_free_road,
-                'river_gold': river_gold, 'revealed': revealed}
+                'river_gold': river_gold, 'revealed': revealed,
+                'neutral_expansion': neutral_expansion}
 
     def upgrade_city(self, player_name: str, vertex_key: str) -> dict:
         """Turn one of the player's own settlements into a city."""
@@ -1611,6 +1637,10 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # own fish hand is included in full; every other hand is a count
             # only, redacted inside `to_dict` the way a resource hand is.
             'tb': self.tb.to_dict(viewer) if self.tb else None,
+            # Catan for Two: the two non-producing neutral colours and their
+            # pieces. The renderer draws each neutral settlement and road in its
+            # colour off this; empty off the rule, so a normal board is unchanged.
+            'neutrals': self.neutral_board_state(),
             'harbormaster_holder': self.harbormaster_holder,
             'harbor_points': self.harbor_points,
             # The Rivers of Catan bridge sites: the paths a bridge may span. The
