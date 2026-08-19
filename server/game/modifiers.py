@@ -190,6 +190,24 @@ def _commodity_instead(value, rules, context):
     return {'resources': 1, 'commodity': commodity}
 
 
+def _new_energies_science(value, _rules, context):
+    """A city produces one science card as well as its resource (New Energies).
+
+    New Energies rulebook, 'Production Phase': "Cities: Players receive 1
+    corresponding resource card PLUS 1 science card for each city on the hex."
+    A town (settlement) produces no science. Science fills the single commodity
+    slot, so this runs after `commodities` (20) — the two are mutually exclusive
+    (a city produces one commodity, cloth/coin/paper or science, never both), so
+    only one is ever live. The resource share is left untouched: the New
+    Energies preset sets `city_production` to 1, so a city takes one resource and
+    one science, which the fold above (`city_production`, order 10) has already
+    settled by the time this runs.
+    """
+    if context['building_type'] != 'city':
+        return value
+    return {**value, 'commodity': 'science'}
+
+
 def _epidemic(value, _rules, context):
     """On a 6 or an 8 a city collects one card, however much it normally would."""
     if context['building_type'] != 'city' or context['dice_total'] not in (6, 8):
@@ -280,6 +298,8 @@ register(Modifier('harbor_settlement_yield', PRODUCTION, 15,
                   _rule_is_on('harbor_settlements'), _harbor_settlement_yield))
 register(Modifier('commodities', PRODUCTION, 20,
                   _rule_is_on('commodities'), _commodity_instead))
+register(Modifier('power_plants', PRODUCTION, 22,
+                  _rule_is_on('power_plants'), _new_energies_science))
 register(Modifier('gold_field', PRODUCTION, 25, _rule_is_on('gold'), _gold_field))
 register(Modifier('gold_field_choice', PRODUCTION, 26,
                   _rule_is_on('gold_field_choice'), _gold_field_choice))

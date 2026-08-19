@@ -29,6 +29,7 @@ from game.missions_fish import MissionFishRules
 from game.missions_lairs import MissionLairsRules
 from game.missions_spices import MissionSpicesRules
 from game.neutral_players import NeutralPlayersRules
+from game.new_energies import NewEnergiesRules
 from game.oil_springs import OIL_SUPPLY, OilSpringsRules
 from game.path_barbarians import PathBarbarianRules
 from game.pending_choice import PendingChoiceRules
@@ -59,7 +60,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
            PirateIslandsRules, HelpersRules, OilSpringsRules, VolcanoRules,
            InkasRules, FavourRules, NeutralPlayersRules, TradeTokenRules,
-           PendingChoiceRules, TurnClock):
+           NewEnergiesRules, PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -217,6 +218,15 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.oil_sequestered = {}
         self.oil_champion = None
         self.oil_metropolises = {}
+        # CATAN: New Energies. The power plants on the board, keyed by the
+        # (building vertex, hex) cutout they face -> {'player', 'kind'}; the
+        # hexes carrying a hazard token (event chunk), which block production and
+        # energy; and the per-turn flag that one plant has been built (a
+        # triggered event may build one on top of it). All empty off the
+        # scenario, so a base game is unchanged.
+        self.power_plants = {}
+        self.hazard_hexes = set()
+        self.power_plant_built_this_turn = False
         # Seafarers, the Krakatoa/Volcano variant: the volcano hexes read off the
         # dealt board. Map-derived, so a save re-reads them; empty off the rule.
         self.volcano_hexes = set()
@@ -1535,11 +1545,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         In-play resources first, then the commodities the table plays. A board
         without cotton never offers it, so a standard Cities & Knights table sees
         exactly the eight it always has — the five resources and the three
-        commodities.
+        commodities. Science is offered only when New Energies is in play, the
+        same way: a picker follows what the table can actually hold.
         """
         cards = self.in_play_resource_types()
         if self.rules['commodities']:
-            cards = cards + list(validation.COMMODITY_TYPES)
+            cards = cards + ['cloth', 'coin', 'paper']
+        if self.rules['power_plants']:
+            cards = cards + ['science']
         return cards
 
     def get_board_data(self, viewer: str = None) -> dict:
@@ -1700,6 +1713,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Catan: Oil Springs — the oil springs to badge, the general supply,
             # and each player's oil. None off the scenario.
             'oil': self.oil_client_state(),
+            # CATAN: New Energies — the power plants on the board, each player's
+            # energy and remaining plant supply. None off the scenario.
+            'new_energies': self.new_energies_client_state(viewer),
             # Catan: Frenemies — the favour-token bag count, each player's token
             # count, and the viewer's own tokens by guild. None off the scenario.
             'frenemies': self.frenemies_client_state(viewer),
@@ -1952,6 +1968,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                         player.commodities[commodity] = player.commodities.get(commodity, 0) + 1
                         gained[commodity] = gained.get(commodity, 0) + 1
 
+        # New Energies: "Each player also takes 1 science card for their city."
+        # A single flat science for the starting city, not one per hex (rulebook,
+        # 'Collect your starting hand', p. 7). A no-op off the rule and for a
+        # starting settlement, since the New Energies opening building is a city.
+        if self.rules['power_plants'] and is_city:
+            player.commodities['science'] = player.commodities.get('science', 0) + 1
+            gained['science'] = gained.get('science', 0) + 1
+
         if gained:
             logger.debug(f"Starter resources for {player_name} from {vertex_key}: {gained}")
 
@@ -2141,6 +2165,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # without the rule.
         oil = self.distribute_oil(total, player_name)
 
+        # New Energies: a power plant on a hex that produced pays its owner 1
+        # energy, capped at 5. After the resource walk, like the fish and oil,
+        # and kept apart from `gained` because energy is a currency, not a card.
+        # A no-op without the rule or a matching plant.
+        energy = self.distribute_energy(total)
+
         # Krakatoa: a volcano whose number came up erupts, destroying or
         # downgrading a building on one of its corners. After the resource walk
         # so the building produced (resources of choice) before it was hit, which
@@ -2191,6 +2221,9 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             # Oil tokens the roll produced (player -> count). Empty on a 7, off
             # the scenario, or when no oil spring matched the roll.
             'oil': oil,
+            # New Energies energy the roll produced (player -> count). Empty on a
+            # 7, off the scenario, or when no power plant matched the roll.
+            'energy': energy,
             # Krakatoa eruptions this roll: one record per volcano that erupted,
             # {'hex', 'die', 'vertex', 'player', 'was', 'now'}, the victim fields
             # None when the lava destroyed nothing. Empty on a 7, off the rule,

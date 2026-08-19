@@ -16,9 +16,14 @@ BASE_RESOURCE_TYPES = ("wood", "brick", "sheep", "wheat", "ore")
 # moves nothing, because no player holds it and the bank stocks none.
 RESOURCE_TYPES = BASE_RESOURCE_TYPES + ("cotton",)
 
-# Cities & Knights commodities. Kept here rather than imported from
+# Commodity cards: held in hand, counted toward the discard limit on a 7, and
+# tradeable, but a distinct card type from the five resources. The first three
+# are Cities & Knights commodities; `science` is the CATAN: New Energies
+# commodity a city produces alongside its resource (New Energies rulebook,
+# 'Production Phase' — "1 corresponding resource card PLUS 1 science card for
+# each city on the hex"). Kept here rather than imported from
 # `game.cities_knights` so this module stays free of game-state imports.
-COMMODITY_TYPES = ("cloth", "coin", "paper")
+COMMODITY_TYPES = ("cloth", "coin", "paper", "science")
 
 # What a player can be made to hand over on a 7: commodities count toward the
 # hand limit, so they have to be expressible in a discard.

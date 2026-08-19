@@ -1167,6 +1167,28 @@ RULES += [
 ]
 
 
+# --- CATAN: New Energies, one mechanic at a time ------------------------
+# The 2024 game (Klaus & Benjamin Teuber, CN3207) decomposed the way the other
+# expansions are — every switch off by default so a base game is unchanged. This
+# is the first rule of it: power plants, the science commodity a city produces,
+# and energy. The shared global-footprint track, the event-disc bag and the dual
+# end condition are the later rules of the scenario, landing in their own chunks.
+RULES += [
+    _bool("power_plants", "scenario", "New Energies: power plants", False,
+          "CATAN: New Energies rulebook (CN3207 New Energies rules 240409), "
+          "'Build/buy' pp. 14-15 and 'Production Phase' p. 11",
+          "The heart of New Energies. A city produces 1 science card as well as "
+          "its resource, and players build power plants on the numbered land "
+          "hexes beside their towns and cities — a town may host one, a city up "
+          "to three. A cheap fossil plant costs 1 science and a costlier "
+          "renewable plant 3; both output the same energy, 1 whenever their hex "
+          "produces (capped at 5 held). Energy buys cards — 2 energy for 1 "
+          "resource or science of your choice. Fossil plants raise the global "
+          "footprint and renewables lower it, which the footprint rule tracks.",
+          group=EXPANSION),
+]
+
+
 # --- Traders & Barbarians: The Caravans ---------------------------------
 # Camels grow out of the central oasis in up to three non-branching caravans.
 # One container rule: the camel piece, the oasis-arrow geometry, the voting round
@@ -1776,6 +1798,21 @@ EXCLUSIONS = [
             "wagons. Pick one."
         ),
     },
+    # New Energies power plants make a city produce `science` in the single
+    # commodity slot of the production fold; Cities & Knights `commodities` makes
+    # a city produce cloth/coin/paper in that same slot. A city produces one
+    # commodity, not both, so the two production modifiers cannot both be live —
+    # a table picks one economy.
+    {
+        "id": "city_commodity_system",
+        "rules": ("power_plants", "commodities"),
+        "kind": "hard",
+        "reason": (
+            "New Energies cities produce science and Cities & Knights cities "
+            "produce cloth, coin or paper — both fill the one commodity a city "
+            "makes on its roll, so a table plays one economy, not both."
+        ),
+    },
 ]
 
 EXCLUSIONS_BY_RULE = {
@@ -2347,6 +2384,38 @@ PRESETS = [
             "volcano_hex": True,
             "island_victory_points": True,
             "victory_target": 13,
+        },
+    },
+    {
+        "id": "new_energies",
+        "name": "CATAN: New Energies",
+        "source": (
+            "CATAN: New Energies (Klaus & Benjamin Teuber, 2024), CN3207 New "
+            "Energies rules 240409, 3-4 player rules"
+        ),
+        "summary": (
+            "The modern-day island. Each player starts with a town and a city, "
+            "and cities produce a science card as well as their resource. Build "
+            "cheap fossil or costlier renewable power plants for energy — fossils "
+            "raise the shared global footprint and renewables lower it. Plays on "
+            "the standard terrain to 10 points. Every switch it ticks stays one "
+            "you can untick. (The footprint track, the event-disc bag and the "
+            "empty-bag end condition are added as their rules land.)"
+        ),
+        "rules": {
+            # The standard terrain set (19 hexes, 4 forest / 3 hills / 4 pasture
+            # / 4 fields / 3 mountains / 1 desert), so no board is bound — the
+            # New Energies distinctiveness is the town+city start, science and
+            # power plants, not the terrain, which is the base game's.
+            "power_plants": True,
+            # Each player opens with a town and a city, and the city yields its
+            # adjacent resources (one per hex) plus a flat science.
+            "setup_second_city": True,
+            "starting_city_yield": "resource_and_commodity",
+            # A New Energies city takes 1 resource (plus 1 science) per hex, not
+            # the base game's 2 (rulebook, 'Production Phase' p. 11).
+            "city_production": 1,
+            "victory_target": 10,
         },
     },
     {
