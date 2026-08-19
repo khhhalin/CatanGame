@@ -437,6 +437,47 @@ class TestEventPhase:
         assert game.event_phase_done is True
 
 
+class TestEndConditions:
+    def test_reaching_ten_points_still_wins_the_ordinary_way(self):
+        game = ne_game()
+        for _ in range(5):
+            building_on(game, 'Alice', 'city')  # 5 cities = 10 VP
+        assert game.claim_victory('Alice') == 10
+        assert game.game_state == 'finished'
+
+    def test_the_empty_bag_scores_by_the_renewable_surplus(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', renewable=2)   # balance +2
+        _set_lf(game, 'Bob', renewable=1)     # balance +1
+        result = game.energy_balance_winner()
+        assert result['winner'] == 'Alice'
+        assert result['reason'] == 'bag_empty'
+        assert result['balance'] == 2
+
+    def test_a_balance_tie_is_broken_by_points(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', renewable=1)
+        _set_lf(game, 'Bob', renewable=1, cities=2)  # same balance, more points
+        assert game.energy_balance_winner()['winner'] == 'Bob'
+
+    def test_if_nobody_is_net_renewable_everybody_loses(self):
+        game = ne_game()
+        _set_lf(game, 'Alice', fossil=2)   # balance -2
+        _set_lf(game, 'Bob', fossil=1)     # balance -1
+        result = game.energy_balance_winner()
+        assert result['winner'] is None
+        assert result['reason'] == 'bag_empty_all_lose'
+
+    def test_rolling_on_an_empty_bag_ends_the_game(self):
+        game = ne_game()
+        game.event_bag = []
+        _set_lf(game, 'Alice', renewable=1)
+        result = game.roll_dice('Alice')
+        assert result['game_over'] is not None
+        assert result['game_over']['reason'] in ('bag_empty', 'bag_empty_all_lose')
+        assert game.game_state == 'finished'
+
+
 class TestEnergyUses:
     def test_two_energy_buys_one_resource_of_choice(self):
         game = ne_game()

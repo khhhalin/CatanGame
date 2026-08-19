@@ -542,6 +542,54 @@ class NewEnergiesRules:
         player.energy -= ENERGY_PER_CARD
         return {'success': True, 'error': '', 'card': card_type, 'energy': player.energy}
 
+    # --- The end of the game ----------------------------------------------
+
+    def energy_balance(self, player_name: str) -> int:
+        """A player's renewable-minus-fossil balance (rulebook, 'Winning' p. 16)."""
+        counts = self._plant_counts(player_name)
+        return counts['renewable'] - counts['fossil']
+
+    def energy_balance_winner(self) -> dict:
+        """Score the empty-bag end by the fossil/renewable balance (p. 16).
+
+        "Only players who have built more renewable power plants than fossil fuel
+        plants may win. The winner is the player with the greatest positive
+        difference between the number of renewable and fossil fuel power plants.
+        In the event of a tie, the player with the most points wins. If no one
+        has built more renewable power plants than fossil fuel plants, then all
+        players lose."
+
+        Returns {'winner', 'reason', 'balance', 'victory_points'}: `winner` is
+        None when everybody loses. A points tie after the balance tie is broken
+        by seat order, deterministically, so a seeded game ends the same way.
+        """
+        eligible = [p.name for p in self.players if self.energy_balance(p.name) > 0]
+        if not eligible:
+            return {'winner': None, 'reason': 'bag_empty_all_lose',
+                    'balance': None, 'victory_points': 0}
+
+        def key(name):
+            # Best balance first, then most points; seat order breaks the rest.
+            return (self.energy_balance(name), self.victory_points_for(name))
+
+        winner = max(eligible, key=key)
+        return {'winner': winner, 'reason': 'bag_empty',
+                'balance': self.energy_balance(winner),
+                'victory_points': self.victory_points_for(winner)}
+
+    def end_on_empty_bag(self) -> dict | None:
+        """Finish the game when the bag has emptied, or None if it has not.
+
+        The second end condition (rulebook, 'Empty bag?' p. 9 and 'Winning' p.
+        16): the game ends the moment a disc is needed and the bag is empty.
+        Gated on the balance-end rule, so a table that plays the discs without
+        the empty-bag end (or without the scenario at all) is untouched.
+        """
+        if not self.rules['energy_end_balance']:
+            return None
+        self.game_state = 'finished'
+        return self.energy_balance_winner()
+
     # --- Client state ------------------------------------------------------
 
     def new_energies_client_state(self, viewer=None) -> dict | None:

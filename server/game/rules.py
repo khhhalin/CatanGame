@@ -1210,6 +1210,18 @@ RULES += [
           "bag; when the bag empties the game ends. (The hazard-placing events "
           "and the environmental inspector land in a later wave.)",
           group=EXPANSION),
+    _bool("energy_end_balance", "victory", "New Energies: empty-bag balance win",
+          False,
+          "CATAN: New Energies rulebook, 'Winning the Game' p. 16",
+          "The scenario's second end condition, beside the ordinary 10-point "
+          "win. The moment the event-disc bag empties, the game ends and is "
+          "scored not on points but on energy balance: only a player who has "
+          "built more renewable than fossil plants can win, and the one with the "
+          "greatest renewable-minus-fossil surplus takes it (a tie broken by "
+          "points). If nobody is net-renewable, everybody loses — the island was "
+          "wrecked. The 10-point win still ends the game the usual way if it "
+          "comes first.",
+          group=EXPANSION),
 ]
 
 
@@ -1693,6 +1705,10 @@ DEPENDENCIES = {
     # The event-disc draw count is read off the global footprint, so the bag
     # needs the footprint track (and, through it, the power plants).
     "event_discs": ("global_footprint",),
+    # The empty-bag end fires when the disc bag runs out, and scores by the
+    # plant balance, so it needs both the bag and the plants (the bag brings the
+    # plants in through its own chain).
+    "energy_end_balance": ("event_discs",),
 }
 
 # Rules that contradict or subsume one another: at most one member of a group
@@ -2444,6 +2460,7 @@ PRESETS = [
             "power_plants": True,
             "global_footprint": True,
             "event_discs": True,
+            "energy_end_balance": True,
             # Each player opens with a town and a city, and the city yields its
             # adjacent resources (one per hex) plus a flat science.
             "setup_second_city": True,
@@ -2451,6 +2468,10 @@ PRESETS = [
             # A New Energies city takes 1 resource (plus 1 science) per hex, not
             # the base game's 2 (rulebook, 'Production Phase' p. 11).
             "city_production": 1,
+            # New Energies has no Largest Army — its development deck holds no
+            # soldiers — but it keeps the Longest Trade Route, which is the base
+            # Longest Road card (5+ roads, 2 VP) under the scenario's name.
+            "largest_army_card": False,
             "victory_target": 10,
         },
     },

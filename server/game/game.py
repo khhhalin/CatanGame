@@ -2217,6 +2217,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             else:
                 game_over = self.cloth_alternate_end()
 
+        # New Energies' second end condition: the bag ran empty when a disc was
+        # needed this turn. Scored by the fossil/renewable balance, not points.
+        # The 10-VP threshold win is the primary end and is reached the ordinary
+        # way (claim_victory after a build), so this only fires when the bag
+        # empties first. A no-op off the rule or when discs remained.
+        if event_phase and event_phase.get('bag_empty'):
+            game_over = self.end_on_empty_bag()
+
         return {
             'success': True,
             'error': '',
