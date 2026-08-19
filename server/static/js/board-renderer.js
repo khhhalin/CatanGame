@@ -2450,6 +2450,15 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
             playerColors[player.name] = player.color;
         }
     }
+    // Catan for Two: the neutral colours are not seats, so they are absent from
+    // `players`, but their settlements and roads carry their name on the board
+    // like any other piece. Register their colours here so the renderer draws
+    // them; empty off the variant, so a normal board is unchanged.
+    for (const neutral of (boardData.neutrals || [])) {
+        if (neutral.name && neutral.color) {
+            playerColors[neutral.name] = neutral.color;
+        }
+    }
 
     const layout = getLayout(boardData);
     const { hexPositions, vertexPositions, edgePositions, offsetX, offsetY, width, height } = layout;

@@ -112,6 +112,15 @@ function scoreChipsFor(board, entry) {
         });
     }
 
+    // Catan for Two: the trade tokens ("Catan chits") a player holds. Public, so
+    // every card shows it; the count is what tells a player whether they can
+    // afford a token-action this turn.
+    if (board.rules?.trade_tokens === true) {
+        chips.push({
+            concept: 'trade_token', value: entry.trade_tokens ?? 0, label: 'trade tokens'
+        });
+    }
+
     // The card counts pieces and hands; a title's progress - a longest road's
     // length, harbour points, the holder of each - is award news and lives in
     // the titles panel below, not as a chip here. Keeping it off the card is

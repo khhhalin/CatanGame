@@ -6,7 +6,7 @@ import { isCkMode, shortfallReason, syncCkModeButtons } from './cities-knights.j
 import { getContrastColor } from './contrast.js';
 import { renderDevCards } from './dev-cards.js';
 import { icon, resourceTile } from './icons.js';
-import { activeRulesChipValue, buildCosts, buyDevCardBtn, colorPicker, costsChipValue, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, turnControls, upgradeCityBtn } from './dom.js';
+import { activeRulesChipValue, buildCosts, buyDevCardBtn, colorPicker, costsChipValue, discardModal, endGameBtn, gameBoard, gameConsole, nextTurnBtn, placeRoadBtn, placeSettlementBtn, proposeTradeBtn, robberIndicator, rollDiceBtn, spendTokenRobberBtn, tokenActions, turnControls, upgradeCityBtn } from './dom.js';
 import { renderBank, renderDialogHands, renderResourcePanel } from './hand.js';
 import { displayError } from './notices.js';
 import { findMyPlayer } from './player-view.js';
@@ -57,6 +57,17 @@ endGameBtn.addEventListener('click', () => {
 rollDiceBtn.addEventListener('click', () => {
     emitGame('roll_dice', { name: viewState.identity.name });
 });
+
+/**
+ * Catan for Two: spend trade tokens to move the robber to the desert. The
+ * server prices it (1 for the trailing player, 2 for the leader) and refuses if
+ * the purse is short, so the button only has to name the action.
+ */
+if (spendTokenRobberBtn) {
+    spendTokenRobberBtn.addEventListener('click', () => {
+        emitGame('spend_trade_token', { name: viewState.identity.name, action: 'move_robber' });
+    });
+}
 
 /**
  * Handle color picker change - emit set_color event
@@ -343,6 +354,13 @@ export function updateGameUI(boardData) {
     rollDiceBtn.disabled = gamePhase === 'setup' || !isMyTurn() || hasRolledDice();
     if (!hasRolledDice()) {
         rollDiceBtn.textContent = 'Roll Dice';
+    }
+
+    // Catan for Two: the trade-token actions belong to the current player in
+    // play. Hidden off the variant, off setup, and on everyone else's screen.
+    if (tokenActions) {
+        const tokensOn = boardData.rules?.trade_tokens === true;
+        tokenActions.hidden = !(tokensOn && gamePhase === 'playing' && isMyTurn());
     }
 
     updateAffordability();

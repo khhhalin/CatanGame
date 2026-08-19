@@ -42,6 +42,7 @@ from handlers import (  # noqa: F401  (imported for their side effects)
     robber,
     ships,
     tb,
+    trade_tokens,
     trading,
     turns,
 )

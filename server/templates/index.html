@@ -995,6 +995,12 @@
                      propose button trade.js builds into this slot. It collapses
                      while no card is gathered. -->
                 <div class="tray-trade"></div>
+                <!-- Catan for Two: the trade-token action affordances. Hidden
+                     unless the table plays with trade tokens; panels.js shows
+                     them on the current player's turn and labels the cost. -->
+                <div class="console-group token-actions" id="token-actions" hidden>
+                    <button id="spend-token-robber-btn">Move robber to desert</button>
+                </div>
                 <!-- The turn controls sit as small buttons at the foot of the
                      tray (v2.1 phase 2). The dice footer in the right panel has
                      no spare row at a short viewport, so advancing and ending the

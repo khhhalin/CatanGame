@@ -166,6 +166,9 @@ export const STATUS_ICON = {
     // Cloth for Catan bolts: the cloth commodity's own glyph, since a bolt is
     // that same fabric even though it is scored, not spent like a C&K commodity.
     cloth: 'i-cloth',
+    // Catan for Two trade tokens ("Catan chits"): the coin glyph stands in for a
+    // token held in front of a player, the way it does for a commodity count.
+    trade_token: 'i-coin',
 };
 
 /**
