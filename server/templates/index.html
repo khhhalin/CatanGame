@@ -9,6 +9,11 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Customize (client-only look). A CLASSIC script in <head> on purpose: it
+         applies this browser's stored overrides synchronously before the body
+         paints, so a customized view renders customized on the first frame with
+         no flash of the default. Its panel wiring waits for DOMContentLoaded. -->
+    <script src="{{ url_for('static', filename='js/customize.js') }}"></script>
 </head>
 <body>
     <!-- Icon sprite. Defined once here; every panel references a glyph with
@@ -148,7 +153,15 @@
                      by scoreboard.js; hidden in the lobby via CSS. -->
                 <div id="turn-indicator" class="turn-indicator">—</div>
             </div>
-            <div id="connection-status" class="connection-status connection-connecting">Connecting…</div>
+            <div class="app-header-actions">
+                <div id="connection-status" class="connection-status connection-connecting">Connecting…</div>
+                <!-- Customize gear. In the header so it is reachable in the lobby
+                     and in a running game alike; opens the customize panel below.
+                     A disclosure: one button carrying aria-expanded/-controls. -->
+                <button type="button" id="customize-toggle" class="customize-toggle"
+                        aria-expanded="false" aria-controls="customize-body"
+                        aria-label="Customize appearance" title="Customize appearance">⚙</button>
+            </div>
         </header>
 
         <div id="join-screen">
@@ -1300,6 +1313,96 @@
             <!-- Built by changelog.js from the server's parsed CHANGELOG.md.
                  No entry is written in this file or in JavaScript. -->
             <div id="changelog-releases" class="changelog-releases"></div>
+        </div>
+    </div>
+
+    <!-- Customize appearance. A fixed dropdown under the header gear; the toggle
+         lives in .app-header (lobby + game). Every structured control redefines a
+         :root token that the panels already read, driven by customize.js; nothing
+         here reaches the server. -->
+    <div id="customize-panel" class="customize-panel">
+        <div id="customize-body" class="customize-body hidden" role="dialog"
+             aria-modal="false" aria-label="Customize appearance">
+            <div class="customize-head">
+                <span>Customize appearance</span>
+                <button type="button" id="customize-close" class="popover-close"
+                        aria-label="Close">×</button>
+            </div>
+            <p class="customize-note">
+                Affects only this browser — nothing here is sent to the table. A
+                bad Custom CSS rule breaks only your own view; Reset restores the
+                default look.
+            </p>
+
+            <label class="customize-field">
+                <span class="customize-label">Panel opacity</span>
+                <span class="customize-row">
+                    <input type="range" id="cz-opacity" min="0.1" max="1" step="0.02">
+                    <output id="cz-opacity-out" class="customize-out"></output>
+                </span>
+            </label>
+
+            <label class="customize-field">
+                <span class="customize-label">Font</span>
+                <select id="cz-font" class="customize-input">
+                    <option value="">Theme default</option>
+                    <option value="space">Space Grotesk (bundled)</option>
+                    <option value="mono">JetBrains Mono (bundled)</option>
+                    <option value="system">System UI</option>
+                    <option value="serif">Serif</option>
+                    <option value="monospace">Monospace</option>
+                </select>
+            </label>
+
+            <label class="customize-field">
+                <span class="customize-label">Text size</span>
+                <span class="customize-row">
+                    <input type="range" id="cz-scale" min="0.8" max="1.4" step="0.05">
+                    <output id="cz-scale-out" class="customize-out"></output>
+                </span>
+            </label>
+
+            <label class="customize-field">
+                <span class="customize-label">Panel background</span>
+                <select id="cz-bg-mode" class="customize-input">
+                    <option value="solid">Solid colour</option>
+                    <option value="gradient">Gradient</option>
+                </select>
+            </label>
+            <span id="cz-solid-row" class="customize-row">
+                <span class="customize-sub">Colour</span>
+                <input type="color" id="cz-bg-color">
+            </span>
+            <span id="cz-grad-row" class="customize-row hidden">
+                <span class="customize-sub">Angle</span>
+                <input type="range" id="cz-grad-angle" min="0" max="360" step="5">
+                <output id="cz-grad-angle-out" class="customize-out"></output>
+                <input type="color" id="cz-grad-c1">
+                <input type="color" id="cz-grad-c2">
+            </span>
+
+            <label class="customize-field">
+                <span class="customize-label">Accent colour</span>
+                <input type="color" id="cz-accent">
+            </label>
+
+            <label class="customize-field">
+                <span class="customize-label">Custom CSS</span>
+                <textarea id="cz-custom" class="customize-input customize-textarea"
+                          rows="4" spellcheck="false"
+                          placeholder="/* Any rule you like, e.g.  .players-float { outline: 2px solid red } */"></textarea>
+            </label>
+
+            <div class="customize-actions">
+                <button type="button" id="cz-reset" class="customize-btn">Reset</button>
+                <button type="button" id="cz-export" class="customize-btn">Export</button>
+                <button type="button" id="cz-import" class="customize-btn">Import</button>
+            </div>
+            <textarea id="cz-io" class="customize-input customize-textarea" rows="3"
+                      spellcheck="false"
+                      aria-label="Config JSON for export or import"
+                      placeholder="Export writes the config here; paste one in and press Import."></textarea>
+            <p id="cz-io-note" class="customize-io-note" role="status" aria-live="polite"></p>
         </div>
     </div>
 

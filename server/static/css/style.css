@@ -587,6 +587,160 @@ body:has(#game-screen:not(.hidden)) #dice-footer {
     }
 }
 
+/* Connection chip + the customize gear share the header's right end. */
+.app-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex: none;
+}
+
+/* The customize gear: a quiet round button, sized to the header row. */
+.customize-toggle {
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-lg);
+    line-height: 1;
+    color: var(--text-muted);
+    background: var(--surface-quiet);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease);
+}
+
+.customize-toggle:hover,
+.customize-toggle[aria-expanded="true"] {
+    color: var(--accent);
+    border-color: var(--border-strong);
+}
+
+/* The panel is a fixed dropdown under the header gear, top-right, above the
+   modal layer so it is usable over a game. Its own body scrolls; the page never
+   does. */
+.customize-panel {
+    position: fixed;
+    top: var(--space-6);
+    right: var(--space-3);
+    z-index: var(--z-modal);
+    pointer-events: none;
+}
+
+.customize-body {
+    pointer-events: auto;
+    width: min(20rem, calc(100vw - 2 * var(--space-3)));
+    max-height: min(80vh, 42rem);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
+}
+
+.customize-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+}
+
+.customize-note {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+    line-height: var(--leading-normal);
+}
+
+.customize-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.customize-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.customize-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.customize-row input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+
+.customize-sub {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.customize-out {
+    flex: none;
+    min-width: 2.75rem;
+    text-align: right;
+    font-family: var(--font-num);
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+}
+
+.customize-input {
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    color: var(--text);
+    background: var(--well);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: var(--text-sm);
+}
+
+.customize-textarea {
+    font-family: var(--font-num);
+    resize: vertical;
+}
+
+.customize-actions {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.customize-btn {
+    flex: 1;
+    padding: var(--space-1) var(--space-2);
+    color: var(--text);
+    background: var(--well-strong);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.customize-btn:hover {
+    border-color: var(--border-strong);
+    color: var(--accent);
+}
+
+.customize-io-note {
+    margin: 0;
+    min-height: 1em;
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+}
+
 h1 {
     color: var(--accent);
     font-size: var(--text-xl);
