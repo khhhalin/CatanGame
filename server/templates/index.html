@@ -1386,6 +1386,19 @@
                 <input type="color" id="cz-accent">
             </label>
 
+            <!-- Phase B: drag the floating overlays (scoreboard, build tray, dice,
+                 trade offers, settings chip) to reposition them. On = each float
+                 outlines and can be dragged (mouse or touch); off = normal play.
+                 Positions persist under catan.customize -> layout. -->
+            <label class="customize-field customize-check">
+                <span class="customize-label">Edit layout</span>
+                <input type="checkbox" id="cz-layout-edit">
+            </label>
+            <p class="customize-note">
+                While on, drag the floating panels to move them. Reset layout puts
+                them back without touching the look above.
+            </p>
+
             <label class="customize-field">
                 <span class="customize-label">Custom CSS</span>
                 <textarea id="cz-custom" class="customize-input customize-textarea"
@@ -1395,6 +1408,7 @@
 
             <div class="customize-actions">
                 <button type="button" id="cz-reset" class="customize-btn">Reset</button>
+                <button type="button" id="cz-reset-layout" class="customize-btn">Reset layout</button>
                 <button type="button" id="cz-export" class="customize-btn">Export</button>
                 <button type="button" id="cz-import" class="customize-btn">Import</button>
             </div>

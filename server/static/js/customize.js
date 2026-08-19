@@ -23,6 +23,25 @@
     const STORAGE_KEY = 'catan.customize';
     const OVERRIDE_STYLE_ID = 'user-overrides';
     const CUSTOM_CSS_STYLE_ID = 'user-custom-css';
+    const LAYOUT_STYLE_ID = 'user-layout';
+
+    // Phase B: the floating board overlays a player may drag to reposition.
+    // Keyed by element id; the value is the panel's default in-game `transform`,
+    // which the drag offset composes onto so a centred float stays centred as it
+    // moves. Each is position:absolute inside #board-overlays, so an offset is
+    // pure geometry — no token work. The docked left-rail asides (bank, log) are
+    // grid cells, not floats, so they are deliberately not draggable here.
+    const DRAGGABLE = {
+        'players-panel': '',            // scoreboard float, top-right in game
+        'action-tray': '',              // build & trade tray (holds #game-console)
+        'dice-footer': '',              // the dice float, bottom-right
+        'settings-float': 'translateX(-50%)', // colour/YOLO/mute chip, top-centre
+        'incoming-offers': '',          // incoming trade-offer cards
+    };
+
+    // A dragged panel is clamped so at least this much of it stays on screen —
+    // dragging can never lose a panel off an edge (Reset layout also recovers).
+    const KEEP_ON_SCREEN = 40;
 
     // The bundled faces (fonts.css) plus a few safe system stacks. The value is
     // dropped straight into --font-ui; the empty value means "leave the theme's
@@ -46,6 +65,7 @@
             panelBg: null,        // {mode:'solid', color} | {mode:'gradient', angle, c1, c2}
             accent: null,         // '#rrggbb'
             customCss: '',        // raw CSS, injected verbatim
+            layout: {},           // Phase B: {panelId: {x, y}} drag offsets, px
         };
     }
 
@@ -124,6 +144,30 @@
         return lines.length ? `:root {\n  ${lines.join('\n  ')}\n}` : '';
     }
 
+    // Phase B: the per-panel drag offsets, as id-selector transform rules. A
+    // panel never dragged emits nothing, so an unconfigured browser's layout is
+    // byte-identical. `!important` because the in-game floats are placed by
+    // `body:has(...)` rules whose specificity outranks a bare id selector; the
+    // rule is injected in <head>, so a saved offset paints on the first frame the
+    // panel appears with no flash. The default transform (e.g. the centred chip's
+    // translateX(-50%)) is composed in front so the offset adds to it, not
+    // replaces it.
+    function buildLayoutCss(config) {
+        const layout = config.layout || {};
+        const lines = [];
+        for (const id of Object.keys(DRAGGABLE)) {
+            const pos = layout[id];
+            if (!pos || (!pos.x && !pos.y)) {
+                continue;
+            }
+            const base = DRAGGABLE[id] ? DRAGGABLE[id] + ' ' : '';
+            lines.push(
+                `#${id} { transform: ${base}translate(${pos.x}px, ${pos.y}px) !important; }`
+            );
+        }
+        return lines.join('\n');
+    }
+
     function ensureStyle(id) {
         let element = document.getElementById(id);
         if (!element) {
@@ -142,6 +186,7 @@
     function applyConfig(config) {
         ensureStyle(OVERRIDE_STYLE_ID).textContent = buildOverrideCss(config);
         ensureStyle(CUSTOM_CSS_STYLE_ID).textContent = config.customCss || '';
+        ensureStyle(LAYOUT_STYLE_ID).textContent = buildLayoutCss(config);
     }
 
     // --- Apply immediately, before the body paints. -------------------------
@@ -176,6 +221,7 @@
         const custom = el('cz-custom');
         const io = el('cz-io');
         const ioNote = el('cz-io-note');
+        const layoutEdit = el('cz-layout-edit');
 
         // The effective value of a token right now, for seeding a control that
         // has no override yet — so a slider does not lie about where the UI sits.
@@ -216,6 +262,9 @@
 
             accent.value = config.accent || (computed('--accent') || '#f18a4b');
             custom.value = config.customCss || '';
+            if (layoutEdit) {
+                layoutEdit.checked = document.body.classList.contains('layout-edit');
+            }
         }
 
         opacity.addEventListener('input', () => {
@@ -267,6 +316,31 @@
             commit();
         });
 
+        // --- Edit layout mode + drag machinery. ------------------------------
+        // The toggle is transient (not persisted): it turns the panels into
+        // draggable outlined tiles while on, and hands normal play back the
+        // moment it is off. Only the resulting offsets persist.
+        if (layoutEdit) {
+            layoutEdit.addEventListener('change', () => {
+                document.body.classList.toggle('layout-edit', layoutEdit.checked);
+            });
+        }
+
+        const resetLayoutBtn = el('cz-reset-layout');
+        if (resetLayoutBtn) {
+            resetLayoutBtn.addEventListener('click', () => {
+                // Scoped to the layout field only — the Phase-A appearance config
+                // (accent, opacity, custom CSS…) is left exactly as it is.
+                config.layout = {};
+                commit();
+                if (ioNote) {
+                    ioNote.textContent = 'Panels returned to their default positions.';
+                }
+            });
+        }
+
+        wireDrag(commit);
+
         el('cz-reset').addEventListener('click', () => {
             config = emptyConfig();
             try {
@@ -309,6 +383,76 @@
                 ioNote.textContent = 'That is not a valid config — check the JSON.';
             }
         });
+
+        // Make each floating overlay draggable while Edit layout mode is on. The
+        // listeners are attached once but do nothing unless the body carries the
+        // `layout-edit` class, so play outside edit mode is untouched. Pointer
+        // events cover mouse and touch with one path.
+        function wireDrag(commitOffset) {
+            for (const id of Object.keys(DRAGGABLE)) {
+                const element = document.getElementById(id);
+                if (!element) {
+                    continue;
+                }
+                element.addEventListener('pointerdown', (event) => {
+                    if (!document.body.classList.contains('layout-edit')) {
+                        return;
+                    }
+                    // The grab must not double as a click on the control beneath.
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (!config.layout || typeof config.layout !== 'object') {
+                        config.layout = {};
+                    }
+                    const startRect = element.getBoundingClientRect();
+                    const startX = event.clientX;
+                    const startY = event.clientY;
+                    const current = config.layout[id] || {};
+                    const baseX = current.x || 0;
+                    const baseY = current.y || 0;
+
+                    // Clamp the pointer delta so KEEP_ON_SCREEN px of the panel
+                    // stays inside every viewport edge — never lost off-screen.
+                    const viewWidth = window.innerWidth;
+                    const viewHeight = window.innerHeight;
+                    const clampDx = (dx) => Math.max(
+                        KEEP_ON_SCREEN - startRect.right,
+                        Math.min(viewWidth - KEEP_ON_SCREEN - startRect.left, dx),
+                    );
+                    const clampDy = (dy) => Math.max(
+                        KEEP_ON_SCREEN - startRect.bottom,
+                        Math.min(viewHeight - KEEP_ON_SCREEN - startRect.top, dy),
+                    );
+
+                    const move = (moveEvent) => {
+                        const dx = clampDx(moveEvent.clientX - startX);
+                        const dy = clampDy(moveEvent.clientY - startY);
+                        config.layout[id] = { x: baseX + dx, y: baseY + dy };
+                        applyConfig(config);
+                    };
+                    const up = () => {
+                        element.removeEventListener('pointermove', move);
+                        element.removeEventListener('pointerup', up);
+                        element.removeEventListener('pointercancel', up);
+                        try {
+                            element.releasePointerCapture(event.pointerId);
+                        } catch (error) {
+                            // Capture already released; nothing to undo.
+                        }
+                        commitOffset();
+                    };
+                    try {
+                        element.setPointerCapture(event.pointerId);
+                    } catch (error) {
+                        // No pointer capture here; move/up still reach the element.
+                    }
+                    element.addEventListener('pointermove', move);
+                    element.addEventListener('pointerup', up);
+                    element.addEventListener('pointercancel', up);
+                });
+            }
+        }
 
         // --- open / close: a disclosure, like the changelog pill. ------------
         const isOpen = () => toggle.getAttribute('aria-expanded') === 'true';

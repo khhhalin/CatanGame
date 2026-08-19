@@ -734,6 +734,31 @@ body:has(#game-screen:not(.hidden)) #dice-footer {
     color: var(--accent);
 }
 
+/* Phase B: the Edit layout checkbox reads as a row, label and box side by side,
+   unlike the stacked slider/select fields above it. */
+.customize-check {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Edit layout mode: each draggable float becomes a grabbable, outlined tile so a
+   player can see what moves and drag it. Scoped to body.layout-edit, so a browser
+   not in edit mode is byte-identical. `!important` on pointer-events because the
+   scoreboard and offer floats are pointer-transparent by default (they let the
+   board vertices under them stay clickable); the outline marks the drag target. */
+body.layout-edit #players-panel,
+body.layout-edit #action-tray,
+body.layout-edit #dice-footer,
+body.layout-edit #settings-float,
+body.layout-edit #incoming-offers {
+    pointer-events: auto !important;
+    cursor: move;
+    outline: 2px dashed var(--accent);
+    outline-offset: 3px;
+    touch-action: none;
+}
+
 .customize-io-note {
     margin: 0;
     min-height: 1em;
