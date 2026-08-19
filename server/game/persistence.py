@@ -232,6 +232,8 @@ def serialize(game: Game) -> dict:
         ],
         'green_discs': game.green_discs,
         'event_bag': game.event_bag,
+        'hazard_hexes': sorted(game.hazard_hexes),
+        'hazard_buildings': sorted(game.hazard_buildings),
         # Catan: Frenemies. The favour-token bag is dealt from the RNG and then
         # mutated by play (draws and, later, exchanges), so like the Helpers pile
         # it must be saved outright rather than re-derived. Usable and locked
@@ -517,6 +519,12 @@ def deserialize(data: dict, config=None) -> Game:
                 {'player': record['player'], 'kind': record['kind']}
             for record in data['power_plants']
         }
+
+    # New Energies hazard tokens: sets on the game, lists in the save.
+    if 'hazard_hexes' in data:
+        game.hazard_hexes = set(data['hazard_hexes'])
+    if 'hazard_buildings' in data:
+        game.hazard_buildings = set(data['hazard_buildings'])
 
     # A set on the game, a list in the save: spent gift edges must not be
     # reclaimable after a reload.

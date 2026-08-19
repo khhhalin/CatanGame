@@ -1602,8 +1602,27 @@ function drawOilState(ctx, oil, hexPositions, hexRadius) {
  * for a fossil, so a player can see the pollution on the map. Several plants can
  * face one hex, so they fan out around the hex centre. A no-op off the scenario.
  */
-function drawNewEnergiesState(ctx, ne, hexPositions, hexRadius) {
-    if (!ne || !ne.plants) {
+function drawNewEnergiesState(ctx, ne, hexPositions, vertexPositions, hexRadius) {
+    if (!ne) {
+        return;
+    }
+    // A hazard token on a hex or a building — a dark disc with a warning glyph,
+    // so a player can see the production a pollution event has blocked.
+    for (const hexKey of ne.hazard_hexes || []) {
+        const pos = hexPositions[hexKey];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.5, hexRadius * 0.26,
+                         '#8a1c1c', '☣', '#ffe0e0');
+        }
+    }
+    for (const vertexKey of ne.hazard_buildings || []) {
+        const pos = vertexPositions[vertexKey];
+        if (pos) {
+            drawHexBadge(ctx, pos.x, pos.y - hexRadius * 0.3, hexRadius * 0.22,
+                         '#8a1c1c', '☣', '#ffe0e0');
+        }
+    }
+    if (!ne.plants) {
         return;
     }
     const badge = hexRadius * 0.24;
@@ -2731,8 +2750,9 @@ function renderBoard(boardData, canvasId, highlightNumber = null, preview = null
     // Catan: Oil Springs: an oil-drop badge on each Oil Spring tile.
     drawOilState(ctx, boardData.oil, hexPositions, hexRadius);
 
-    // CATAN: New Energies: a power-plant badge on each hex carrying one.
-    drawNewEnergiesState(ctx, boardData.new_energies, hexPositions, hexRadius);
+    // CATAN: New Energies: power-plant badges and hazard tokens.
+    drawNewEnergiesState(ctx, boardData.new_energies, hexPositions,
+                         vertexPositions, hexRadius);
 
     // The intersections and paths a pending choice is asking about. Over the
     // pieces, because the thing being chosen is usually one of them. A key that

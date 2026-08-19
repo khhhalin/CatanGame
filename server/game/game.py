@@ -225,7 +225,11 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # triggered event may build one on top of it). All empty off the
         # scenario, so a base game is unchanged.
         self.power_plants = {}
+        # Hazard tokens placed by pollution events: on hexes and on buildings
+        # (by their vertex key). Both block production and energy for what they
+        # sit on until a Production phase clears them. Empty off the scenario.
         self.hazard_hexes = set()
+        self.hazard_buildings = set()
         self.power_plant_built_this_turn = False
         self.fossil_demolished_this_turn = False
         # The event-disc bag (a flat list of disc-type strings) and each player's
@@ -1883,6 +1887,13 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
                 if hex_obj.number != dice_total or not tiles.takes_token(hex_obj.type):
                     continue
 
+                # New Energies: a hazard token on the hex or on this building
+                # blocks its production entirely — resources, science and energy
+                # (rulebook, 'Hazards from events' p. 10). Both sets are empty off
+                # the scenario, so base production is untouched.
+                if hex_key in self.hazard_hexes or _vertex_key in self.hazard_buildings:
+                    continue
+
                 produced = self.production_for(
                     vertex, hex_obj, dice_total, hex_key == self.robber_hex
                 )
@@ -1931,6 +1942,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         # owed resource, after the walk so every owed player is known and the
         # bank supply the choices are gated on reflects the whole roll's payout.
         self.open_gold_field_choices(gold_field_choices_owed)
+
+        # New Energies: clear the hazards this roll would have blocked (rulebook,
+        # 'Removing hazards' p. 11: at the end of the Production phase, remove
+        # every hazard on a hex, town or city that did not produce this turn
+        # because of it). A no-op off the scenario.
+        self.clear_blocking_hazards(dice_total)
 
         if gained_resources:
             logger.debug(f"Resources distributed (rolled {dice_total}):")

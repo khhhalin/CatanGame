@@ -478,6 +478,142 @@ class NewEnergiesRules:
             return True
         return False
 
+    # --- Hazards -----------------------------------------------------------
+
+    def clear_blocking_hazards(self, dice_total: int):
+        """Remove the hazards this roll blocked with (rulebook, p. 11).
+
+        A hazard is spent the turn it stops production — the hex whose number
+        came up, or a building beside such a hex — so it is cleared here, at the
+        end of the Production phase. Hazards on hexes and buildings the roll did
+        not touch stay. A no-op when nothing is hazarded, which is every board
+        off the scenario.
+        """
+        if not self.hazard_hexes and not self.hazard_buildings:
+            return
+        for hex_key in list(self.hazard_hexes):
+            hex_obj = self.hexes.get(hex_key)
+            if hex_obj is not None and hex_obj.number == dice_total:
+                self.hazard_hexes.discard(hex_key)
+        for vertex_key in list(self.hazard_buildings):
+            if any(self.hexes.get(h) and self.hexes[h].number == dice_total
+                   for h in self._building_hexes(vertex_key)):
+                self.hazard_buildings.discard(vertex_key)
+
+    def _building_hexes(self, vertex_key: str) -> list:
+        """The numbered hexes a building touches."""
+        vertex = self.vertices.get(vertex_key)
+        if vertex is None:
+            return []
+        return [h for h in vertex.neighbors.get('hexes', [])
+                if self.hexes.get(h) and self.hexes[h].number]
+
+    def _own_buildings(self, player_name: str, of_type=None) -> list:
+        """This player's building vertices, optionally filtered to one type,
+        sorted for a deterministic auto-pick."""
+        found = []
+        for vertex_key in sorted(self.vertices):
+            building = self.vertices[vertex_key].building
+            if not building or building.get('player') != player_name:
+                continue
+            if of_type is not None and building.get('type') != of_type:
+                continue
+            found.append(vertex_key)
+        return found
+
+    # --- Hazard events -----------------------------------------------------
+
+    def _event_environmental_pollution(self, active_player: str) -> dict:
+        """The active player rolls; hazard every hex showing that number (p. 17).
+
+        A 7 is rerolled until a different number comes up. The hex under the
+        environmental inspector (the robber piece in this scenario) is spared.
+        """
+        total = 7
+        while total == 7:
+            total = self.rng.randint(1, 6) + self.rng.randint(1, 6)
+        hazarded = []
+        for hex_key in sorted(self.hexes):
+            hex_obj = self.hexes[hex_key]
+            if hex_obj.number != total or hex_obj.type in ('ocean', 'desert'):
+                continue
+            if hex_key == self.robber_hex:
+                continue
+            self.hazard_hexes.add(hex_key)
+            hazarded.append(hex_key)
+        return {'event': 'environmental_pollution', 'resolved': True,
+                'roll': total, 'hexes': hazarded}
+
+    def _event_air_pollution(self, _active_player: str) -> dict:
+        """Highest-LF players hazard one of their cities (a town if none) (p. 17)."""
+        placed = {}
+        for name in self._lf_extreme_players(highest=True):
+            cities = [v for v in self._own_buildings(name, 'city')
+                      if v not in self.hazard_buildings]
+            towns = [v for v in self._own_buildings(name, 'settlement')
+                     if v not in self.hazard_buildings]
+            target = cities[0] if cities else (towns[0] if towns else None)
+            if target is not None:
+                self.hazard_buildings.add(target)
+                placed[name] = target
+        return {'event': 'air_pollution', 'resolved': True, 'hazards': placed}
+
+    def _event_rain_and_flooding(self, _active_player: str) -> dict:
+        """Every player hazards one of their towns or cities (p. 17)."""
+        placed = {}
+        for name in self._clockwise_names():
+            buildings = [v for v in self._own_buildings(name)
+                         if v not in self.hazard_buildings]
+            if buildings:
+                self.hazard_buildings.add(buildings[0])
+                placed[name] = buildings[0]
+        return {'event': 'rain_and_flooding', 'resolved': True, 'hazards': placed}
+
+    def _event_production_increase(self, _active_player: str) -> dict:
+        """Highest-LF players build a free fossil plant and take its hex's card (p. 17).
+
+        "The player(s) with the highest LF may build 1 fossil fuel power plant
+        for free. If they do, they also take 1 resource card from the hex where
+        they placed their power plant (even if that hex currently has a hazard
+        token on it). If they do not have a location to build the power plant,
+        then nothing happens." Auto-placed at a deterministic legal cutout.
+        """
+        built = {}
+        for name in self._lf_extreme_players(highest=True):
+            placement = self._place_free_fossil_plant(name)
+            if placement is None:
+                continue
+            _vertex, hex_key = placement
+            resource = self.hexes[hex_key].type
+            if self.bank.take(resource):
+                player = self.get_player(name)
+                player.resources[resource] = player.resources.get(resource, 0) + 1
+            built[name] = hex_key
+        return {'event': 'production_increase', 'resolved': True, 'plants': built}
+
+    def _place_free_fossil_plant(self, player_name: str):
+        """Place a free fossil plant at the first legal cutout, or None.
+
+        A legal cutout is a numbered land hex beside one of the player's towns or
+        cities, not already carrying that player's plant, within the building's
+        plant limit and the fossil supply. Deterministic (sorted), so a seeded
+        game replays identically.
+        """
+        if self._plant_counts(player_name)['fossil'] >= FOSSIL_PLANT_SUPPLY:
+            return None
+        for vertex_key in self._own_buildings(player_name):
+            building = self.vertices[vertex_key].building
+            limit = PLANTS_PER_CITY if building.get('type') == 'city' else PLANTS_PER_TOWN
+            if self._plants_on_building(vertex_key) >= limit:
+                continue
+            for hex_key in sorted(self._building_hexes(vertex_key)):
+                if (vertex_key, hex_key) in self.power_plants:
+                    continue
+                self.power_plants[(vertex_key, hex_key)] = {
+                    'player': player_name, 'kind': 'fossil'}
+                return vertex_key, hex_key
+        return None
+
     # --- Energy production -------------------------------------------------
 
     def distribute_energy(self, dice_total: int) -> dict:
@@ -496,13 +632,15 @@ class NewEnergiesRules:
             return {}
 
         gained = {}
-        for (_vertex_key, hex_key), plant in self.power_plants.items():
+        for (vertex_key, hex_key), plant in self.power_plants.items():
             hex_obj = self.hexes.get(hex_key)
             if hex_obj is None or hex_obj.number != dice_total:
                 continue
             if hex_key == self.robber_hex:
                 continue
-            if hex_key in self.hazard_hexes:
+            # A hazard on the hex or on the building the plant is attached to
+            # blocks its energy, exactly as it blocks that building's resources.
+            if hex_key in self.hazard_hexes or vertex_key in self.hazard_buildings:
                 continue
             player = self.get_player(plant['player'])
             if player is None or player.energy >= MAX_ENERGY:
@@ -650,4 +788,9 @@ class NewEnergiesRules:
                 'draw_count': self.discs_to_draw(self.global_footprint_level()),
                 'phase_done': self.event_phase_done,
             }
+        # The hazard tokens events have placed: on hexes and on buildings. The
+        # board badges these so a player can see which of their production is
+        # blocked. Sorted for a stable payload.
+        state['hazard_hexes'] = sorted(self.hazard_hexes)
+        state['hazard_buildings'] = sorted(self.hazard_buildings)
         return state

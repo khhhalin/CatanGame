@@ -1206,9 +1206,11 @@ RULES += [
           "Conference lets the greenest player take a card while the dirtiest "
           "discards one, Government Funding hands the greenest a development "
           "card, Sustainable Production rewards whoever has built the most "
-          "renewables. Building renewables adds green (rewarding) discs to the "
-          "bag; when the bag empties the game ends. (The hazard-placing events "
-          "and the environmental inspector land in a later wave.)",
+          "renewables. Other events place hazard tokens that block a hex's or a "
+          "building's production, force a free fossil plant on the dirtiest "
+          "player, or pollute every hex of a rolled number. Building renewables "
+          "adds green (rewarding) discs to the bag; when the bag empties the "
+          "game ends.",
           group=EXPANSION),
     _bool("energy_end_balance", "victory", "New Energies: empty-bag balance win",
           False,
@@ -2447,10 +2449,12 @@ PRESETS = [
             "The modern-day island. Each player starts with a town and a city, "
             "and cities produce a science card as well as their resource. Build "
             "cheap fossil or costlier renewable power plants for energy — fossils "
-            "raise the shared global footprint and renewables lower it. Plays on "
-            "the standard terrain to 10 points. Every switch it ticks stays one "
-            "you can untick. (The footprint track, the event-disc bag and the "
-            "empty-bag end condition are added as their rules land.)"
+            "raise the shared global footprint and renewables lower it. The "
+            "higher the footprint, the more event discs the active player draws "
+            "each turn — pollution events, until enough renewables turn them "
+            "green — and when the bag empties the game ends on the best energy "
+            "balance. Plays on the standard terrain to 10 points. Every switch it "
+            "ticks stays one you can untick."
         ),
         "rules": {
             # The standard terrain set (19 hexes, 4 forest / 3 hills / 4 pasture

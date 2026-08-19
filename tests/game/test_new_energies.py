@@ -13,6 +13,7 @@ Source: CATAN: New Energies rulebook (CN3207 New Energies rules 240409), the
 import random
 
 import pytest
+from conftest import ScriptedRandom
 from game import rules as rules_module
 from game.game import Game
 
@@ -435,6 +436,84 @@ class TestEventPhase:
         assert game.event_phase_done is False
         game.roll_dice('Alice')
         assert game.event_phase_done is True
+
+
+class TestHazards:
+    def test_a_hazard_on_a_hex_blocks_its_production_then_clears(self):
+        game = ne_game()
+        vertex_key, hex_key = building_on(game, 'Alice', 'city')
+        number = game.hexes[hex_key].number
+        game.robber_hex = None
+        game.hazard_hexes.add(hex_key)
+        gained = game.distribute_resources(number)
+        # The hazarded hex paid Alice nothing, and the hazard is spent.
+        assert game.hexes[hex_key].type not in gained.get('Alice', {})
+        assert hex_key not in game.hazard_hexes
+
+    def test_a_hazard_on_a_building_blocks_it(self):
+        game = ne_game()
+        vertex_key, hex_key = building_on(game, 'Alice', 'city')
+        number = game.hexes[hex_key].number
+        game.robber_hex = None
+        game.hazard_buildings.add(vertex_key)
+        gained = game.distribute_resources(number)
+        assert 'Alice' not in gained
+        assert vertex_key not in game.hazard_buildings
+
+    def test_a_hazard_on_an_unrolled_hex_stays(self):
+        game = ne_game()
+        numbers = {game.hexes[h].number for h in game.hexes if game.hexes[h].number}
+        rolled, other = sorted(numbers)[0], sorted(numbers)[1]
+        hazarded = next(h for h in game.hexes if game.hexes[h].number == other)
+        game.hazard_hexes.add(hazarded)
+        game.distribute_resources(rolled)
+        assert hazarded in game.hazard_hexes  # its number never came up
+
+    def test_a_hazard_blocks_a_plants_energy(self):
+        game = ne_game()
+        vertex_key, hex_key = building_on(game, 'Alice', 'settlement')
+        game.power_plants[(vertex_key, hex_key)] = {'player': 'Alice', 'kind': 'fossil'}
+        game.robber_hex = None
+        game.hazard_hexes.add(hex_key)
+        assert game.distribute_energy(game.hexes[hex_key].number) == {}
+
+
+class TestHazardEvents:
+    def test_environmental_pollution_hazards_every_hex_of_a_rolled_number(self):
+        game = ne_game()
+        game.robber_hex = None
+        game.rng = ScriptedRandom([3, 3])  # forces a total of 6
+        outcome = game._event_environmental_pollution('Alice')
+        assert outcome['roll'] == 6
+        sixes = {h for h in game.hexes
+                 if game.hexes[h].number == 6 and game.hexes[h].type not in ('ocean', 'desert')}
+        assert set(outcome['hexes']) == sixes
+        assert sixes <= game.hazard_hexes
+
+    def test_air_pollution_hazards_the_dirtiest_players_city(self):
+        game = ne_game()
+        city_v, _ = building_on(game, 'Alice', 'city')  # Alice LF 2, Bob 0
+        outcome = game._event_air_pollution('Alice')
+        assert outcome['hazards'] == {'Alice': city_v}
+        assert city_v in game.hazard_buildings
+
+    def test_rain_and_flooding_hazards_a_building_of_every_player(self):
+        game = ne_game()
+        a_v, _ = building_on(game, 'Alice', 'settlement')
+        b_v, _ = building_on(game, 'Bob', 'settlement')
+        outcome = game._event_rain_and_flooding('Alice')
+        assert set(outcome['hazards']) == {'Alice', 'Bob'}
+        assert a_v in game.hazard_buildings and b_v in game.hazard_buildings
+
+    def test_production_increase_gives_the_dirtiest_a_free_fossil_plant(self):
+        game = ne_game()
+        building_on(game, 'Alice', 'city')  # Alice dirtiest, has a build site
+        before = game._plant_counts('Alice')['fossil']
+        held = sum(game.get_player('Alice').resources.values())
+        outcome = game._event_production_increase('Alice')
+        assert 'Alice' in outcome['plants']
+        assert game._plant_counts('Alice')['fossil'] == before + 1
+        assert sum(game.get_player('Alice').resources.values()) == held + 1
 
 
 class TestEndConditions:
