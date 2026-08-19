@@ -78,6 +78,9 @@ class TurnClock:
         # records reset.
         self.oil_used_this_turn = 0
         self.oil_sequestered_this_turn = False
+        # Catan for Two: a fresh turn may again trade one face-up knight for
+        # trade tokens (rulebook "Once during your turn"). Inert off the variant.
+        self.trade_token_knight_discarded = False
         # Catan: Frenemies: the tokens this player drew last turn have now waited
         # a turn and become usable, and a fresh turn may gift a resource again.
         self.start_favour_turn()

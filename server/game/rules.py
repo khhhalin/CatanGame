@@ -1466,6 +1466,18 @@ RULES += [
           "resources; they exist to block space so a two-player game stays "
           "tight. Pair it with Trade tokens for the full variant.",
           group=EXPANSION),
+    _bool("trade_tokens", "trade", "Trade tokens (Catan for Two)", False,
+          "Traders & Barbarians 2020 rulebook, 'Catan for Two', pp. 6-7 "
+          "(catan-t_b_2020_rule_book_200820.pdf)",
+          "Catan for Two. A catch-up economy of trade tokens ('Catan chits'): "
+          "each player starts with 5 and earns more by building a settlement by "
+          "the desert (+2), on the coast (+1) or by both (+3), or by discarding "
+          "a face-up knight (+2). Tokens buy two actions — a Forced Trade (draw "
+          "2 random cards from your opponent, give 2 of your choice) and moving "
+          "the robber to the desert. An action costs the trailing or level "
+          "player 1 token and the leader 2, keeping the game close. Pair it with "
+          "Neutral players for the full variant.",
+          group=EXPANSION),
 ]
 
 
@@ -2032,6 +2044,26 @@ PRESETS = [
             "13. Every one of them stays a separate switch you can untick."
         ),
         "rules": dict(CITIES_AND_KNIGHTS_RULES),
+    },
+    {
+        "id": "catan_for_two",
+        "name": "Catan for Two",
+        "source": (
+            "Traders & Barbarians 2020 rulebook, 'Catan for Two', pp. 6-7 "
+            "(catan-t_b_2020_rule_book_200820.pdf)"
+        ),
+        "summary": (
+            "The official two-player variant: two non-producing neutral colours "
+            "block space, and a trade-token economy where the trailing player "
+            "pays half price keeps the game close. Plays on the standard board "
+            "to 10 points. Both halves stay separate switches you can untick."
+        ),
+        "rules": {
+            # The variant plays on the standard board (the rulebook's "white
+            # area" is the ordinary terrain set), so no board is bound here.
+            "neutral_players": True,
+            "trade_tokens": True,
+        },
     },
     {
         "id": "knights_only",

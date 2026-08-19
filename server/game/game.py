@@ -41,6 +41,7 @@ from game.seafarers import SeafarersRules
 from game.tb_gold import TBGoldRules
 from game.trade import TradeManager
 from game.trade_rules import TradeRules
+from game.trade_tokens import TradeTokenRules
 from game.transport import TransportShipRules
 from game.turn_clock import TurnClock
 from game.wagons import WagonRules
@@ -56,7 +57,8 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
            BarbarianAttackRules, WagonRules, PathBarbarianRules,
            CoastGiftRules, ClothForCatanRules, WonderRules,
            PirateIslandsRules, HelpersRules, OilSpringsRules,
-           InkasRules, FavourRules, NeutralPlayersRules, PendingChoiceRules, TurnClock):
+           InkasRules, FavourRules, NeutralPlayersRules, TradeTokenRules,
+           PendingChoiceRules, TurnClock):
     """
     Represents a Catan game session.
 
@@ -578,6 +580,12 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         self.neutral_players = []
         self.setup_neutral_players()
 
+        # Catan for Two: give every real seat its opening five trade tokens. A
+        # no-op off the `trade_tokens` rule. The once-per-turn flag for trading a
+        # knight for tokens is cleared here and reset by `start_turn`.
+        self.trade_token_knight_discarded = False
+        self.seed_trade_tokens()
+
     def has_piece_available(self, player_name: str, piece: str) -> bool:
         """Whether the player still has an unplaced piece of this type.
 
@@ -1004,6 +1012,14 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
         if building_type != 'city':
             river_gold = self.grant_river_settlement_gold(player_name, vertex_key)
 
+        # Catan for Two: a new settlement earns trade tokens for its builder —
+        # 2 by the desert, 1 on the coast, 3 by both — in set-up and in play
+        # alike, but never for a city. A no-op off the `trade_tokens` rule and
+        # for a neutral colour, which earns nothing.
+        trade_tokens_earned = 0
+        if building_type != 'city':
+            trade_tokens_earned = self.grant_settlement_trade_tokens(player_name, vertex_key)
+
         # The Fishermen of Catan: a second setup settlement beside a fishing
         # ground draws 1 fish at set-up (497). Only the second — the first draws
         # nothing — and only a settlement, so a starting city (setup_second_city)
@@ -1052,6 +1068,7 @@ class Game(BoardBuilder, TradeRules, RobberRules, SeafarersRules, DevCardRules,
             'barbarian_attack': attack,
             'tribe_decline': tribe_decline,
             'neutral_expansion': neutral_expansion,
+            'trade_tokens_earned': trade_tokens_earned,
         }
 
     def build_road(self, player_name: str, edge_key: str) -> dict:

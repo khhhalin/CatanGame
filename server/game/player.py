@@ -72,6 +72,12 @@ class Player:
         # decremented, shown on the Inkas panel. Both inert off the scenario.
         self.tribe = 1
         self.culture_points = 0
+        # Catan for Two only: trade tokens (Catan chits) held in front of the
+        # player. Always public, kept apart from resources because they are not
+        # a resource card — they buy token-actions, not buildings, and are never
+        # traded at a harbour (T&B 2020 rulebook, "Catan for Two", pp. 6-7). Zero
+        # off the variant.
+        self.trade_tokens = 0
 
     def set_color(self, color: str):
         """Set or update the player's color."""
@@ -141,6 +147,8 @@ class Player:
             'gold': self.gold,
             # Oil Springs: public, so shown to every viewer, not just `is_you`.
             'oil': self.oil,
+            # Catan for Two: public chits, shown to every viewer.
+            'trade_tokens': self.trade_tokens,
             'settlers': self.settlers,
             'crews': self.crews,
             'victory_points': self.get_victory_points(longest_road_holder, largest_army_holder),
