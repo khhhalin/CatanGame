@@ -1196,7 +1196,7 @@ function requestPreview() {
             renderSidebar();
         }
     }
-    const wire = mapDocToWire();
+    const wire = mapDocToWire(true);
     if (!wire) return;
     emitGame('preview_map', { map: wire });
 }
@@ -1472,14 +1472,20 @@ function poolToWire(r) {
     return { mode: poolMode(r), terrain, numbers: [...r.pool.numbers] };
 }
 
-function mapDocToWire() {
-    if (!mapDoc.id) {
+function mapDocToWire(previewOnly) {
+    // Saving needs a real, persisted id (it becomes the filename). Preview does
+    // not persist anything, so it may run before the first save on an id derived
+    // from the name — without which Preview was dead until you saved, and failed
+    // with a notice about the name it could not act on. Do not mutate mapDoc.id
+    // here: a preview must not silently fix the id a later rename would change.
+    const id = mapDoc.id || (previewOnly ? slugify(mapDoc.name) : '');
+    if (!id) {
         showNotice('Enter a map name first', 'error');
         return null;
     }
     return {
         map_version: mapVersion(),
-        id: mapDoc.id,
+        id,
         name: mapDoc.name,
         frame: mapDoc.frame.excluded?.length
             ? { radius: mapDoc.frame.radius, excluded: sortHexKeys([...mapDoc.frame.excluded]) }
