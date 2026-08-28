@@ -105,6 +105,7 @@ let selectedRegionId = null;
 let undoStack = [];
 let mapList = [];               // last map_list from server
 let previewBoard = null;        // board data from map_preview; null = authored view
+let pendingMapAction = 'load';  // what the next request_map reply should do: load or duplicate
 let screenAbort = null;         // AbortController for screen-scoped listeners
 let painting = false;           // pointer is down in paint/erase mode
 
@@ -535,7 +536,19 @@ function changeRadius() {
 
 function regionHasProblem(region) {
     if (region.hexes === 'remaining') return false;
-    return poolCounts(region).tiles !== region.hexes.length;
+    const counts = poolCounts(region);
+    // Both must match, and the status strip already counts both — checking only
+    // tiles here left a token-count mismatch un-badged and skipped the
+    // pre-preview auto-fill prompt, so Preview died on a raw server rejection.
+    return counts.tiles !== region.hexes.length || counts.tokens !== counts.tokenRequired;
+}
+
+// The dealt preview is a snapshot of one draw; any edit to the document makes it
+// stale, so drop back to the authored view. A no-op when no preview is showing.
+function invalidatePreview() {
+    if (!previewBoard) return;
+    previewBoard = null;
+    renderEditor();
 }
 
 function renderSidebar() {
@@ -563,7 +576,7 @@ function renderSidebar() {
             const warn = document.createElement('span');
             warn.className = 'editor-region-warn';
             warn.textContent = '!';
-            warn.title = 'Tile count does not match hex count — open ⚙ and Auto-fill';
+            warn.title = 'Tile or token count does not match — open ⚙ and Auto-fill';
             item.appendChild(warn);
         }
 
@@ -700,6 +713,7 @@ function buildRegionPopover(region) {
             mapDoc = { ...mapDoc };
             renderSidebar();
             buildRegionPopover(region);
+            invalidatePreview();
         });
         swatches.appendChild(sw);
     }
@@ -724,6 +738,7 @@ function buildRegionPopover(region) {
     kindSelect.addEventListener('change', () => {
         region.kind = kindSelect.value;
         mapDoc = { ...mapDoc };
+        invalidatePreview();
     });
     kindRow.appendChild(kindLbl);
     kindRow.appendChild(kindSelect);
@@ -752,6 +767,7 @@ function buildRegionPopover(region) {
         mapDoc = { ...mapDoc };
         buildRegionPopover(region);   // the terrain/token columns switch on mode
         renderSidebar();
+        invalidatePreview();
     });
     modeRow.appendChild(modeLbl);
     modeRow.appendChild(modeSelect);
@@ -835,6 +851,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             inc.addEventListener('click', () => {
                 region.pool.terrain[terrain] = (region.pool.terrain[terrain] || 0) + 1;
@@ -842,6 +859,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             row.appendChild(lbl);
             row.appendChild(dec);
@@ -881,6 +899,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             inc.addEventListener('click', () => {
                 region.pool.numbers.push(val);
@@ -889,6 +908,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             row.appendChild(lbl);
             row.appendChild(dec);
@@ -1204,7 +1224,11 @@ function requestPreview() {
 function onMapDataReceived(e) {
     const { map, builtin } = e.detail || {};
     if (!map) return;
-    if (builtin) {
+    const action = pendingMapAction;
+    pendingMapAction = 'load';
+    // A built-in can only be duplicated (it is read-only); a custom map is
+    // loaded unless Dup asked for a copy.
+    if (builtin || action === 'duplicate') {
         duplicateMap(map);
     } else {
         loadMap(map);
@@ -1309,7 +1333,13 @@ function rebuildMapList() {
         if (!m.builtin) {
             const dupBtn = document.createElement('button');
             dupBtn.textContent = 'Dup';
-            dupBtn.addEventListener('click', () => duplicateMap(m));
+            dupBtn.addEventListener('click', () => {
+                // List rows are summaries (regions is a count, no frame/pool),
+                // so duplicateMap can't work off `m`. Fetch the full definition
+                // first — like Load — but remember to duplicate it, not load it.
+                pendingMapAction = 'duplicate';
+                emitGame('request_map', { id: m.id });
+            });
             li.appendChild(dupBtn);
 
             const delBtn = document.createElement('button');
@@ -1397,10 +1427,12 @@ function buildHarbourCounters() {
             if (cur <= 0) return;
             mapDoc.harbours.types[type] = cur - 1;
             cnt.textContent = String(mapDoc.harbours.types[type]);
+            invalidatePreview();
         });
         inc.addEventListener('click', () => {
             mapDoc.harbours.types[type] = (mapDoc.harbours.types[type] || 0) + 1;
             cnt.textContent = String(mapDoc.harbours.types[type]);
+            invalidatePreview();
         });
 
         row.appendChild(lbl);
