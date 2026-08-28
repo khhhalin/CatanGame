@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.13.1 — 2026-08-29 00:55
+
+- **Fixed** In the map editor, the Preview button now works before you have saved a map — a fresh or just-loaded map previews straight away instead of quietly doing nothing.
+- **Fixed** The Dup button on one of your saved maps now actually makes a copy, instead of silently failing.
+- **Fixed** Duplicating a scenario map (like The Fishermen of Catan) keeps its special tiles — fishing grounds and the like are no longer lost when you save the copy, and their terrain stays selectable.
+- **Fixed** A region whose number-token count doesn't match its tiles now shows the same warning as a mismatched tile count, and adjusting a pool or harbour after a Preview drops back to your own layout instead of leaving the preview on screen.
+
 ## v3.13.0 — 2026-08-28 20:34
 
 - **New** A first-visit hint now points at the ⚙ gear — the place where you drag panels into position and hide the ones you never use. It appears once, clears when you dismiss it or open the gear, and never comes back; the gear and the panel now say "layout" too, so there is a reason to open it.
