@@ -26,6 +26,10 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.13.0 — 2026-08-28 20:34
+
+- **New** A first-visit hint now points at the ⚙ gear — the place where you drag panels into position and hide the ones you never use. It appears once, clears when you dismiss it or open the gear, and never comes back; the gear and the panel now say "layout" too, so there is a reason to open it.
+
 ## v3.12.0 — 2026-08-19 22:20
 
 - **New** Customize can now rearrange the screen: switch on Edit layout and drag the scoreboard, dice, build tray and the other floating panels wherever you want them — your positions are saved in your browser.
