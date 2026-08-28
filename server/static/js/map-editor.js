@@ -646,7 +646,8 @@ function hexMetaOf(region, hexKey) {
 // serialises an empty entry.
 function pruneHexMeta(region, hexKey) {
     const meta = region.meta?.[hexKey];
-    if (meta && meta.docks.length === 0 && !meta.village) {
+    if (meta && meta.docks.length === 0 && !meta.village
+        && !meta.lair && meta.fishing_ground == null && !meta.oil_spring) {
         delete region.meta[hexKey];
     }
 }
@@ -1380,8 +1381,18 @@ function duplicateMap(m) {
             const pool = r.pool
                 ? { ...r.pool, terrain: { ...(r.pool.terrain || {}) }, numbers: [...(r.pool.numbers || [])] }
                 : { mode: 'shuffled', terrain: {}, numbers: [] };
-            const stub = { kind: r.kind || 'island', pool };
-            pool.resources = inferResources(stub);
+            if (pool.mode === 'fixed') {
+                // A fixed pool has no terrain map to infer from; its selectable
+                // terrains are whatever it places, so a lake/gold/fish tile stays
+                // selectable after a duplicate instead of dropping to blank.
+                const placed = [...new Set(
+                    Object.values(pool.placements || {})
+                        .map(p => p && p.terrain).filter(Boolean),
+                )];
+                pool.resources = placed.length ? placed : [...LAND_TERRAINS];
+            } else {
+                pool.resources = inferResources({ kind: r.kind || 'island', pool });
+            }
             return {
                 ...r,
                 color: r.color || REGION_PALETTE[0],
@@ -1465,6 +1476,11 @@ function metaToWire(region) {
         const entry = {};
         if (m.docks?.length) entry.docks = [...m.docks].sort((a, b) => a - b);
         if (m.village) entry.village = true;
+        // Carried through untouched — the inspect UI edits only docks/village,
+        // but a duplicated scenario must not lose the meta it can't yet edit.
+        if (m.lair) entry.lair = true;
+        if (m.fishing_ground != null) entry.fishing_ground = m.fishing_ground;
+        if (m.oil_spring) entry.oil_spring = true;
         if (Object.keys(entry).length) out[key] = entry;
     }
     return out;
@@ -1570,6 +1586,9 @@ function serverMapToDoc(m) {
                 meta[key] = {
                     docks: Array.isArray(spec.docks) ? [...spec.docks] : [],
                     village: !!spec.village,
+                    lair: !!spec.lair,
+                    fishing_ground: spec.fishing_ground ?? null,
+                    oil_spring: !!spec.oil_spring,
                 };
             }
             return {
