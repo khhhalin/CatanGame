@@ -284,6 +284,17 @@ class TestSpendLadder:
         assert result['success']
         assert game.tb.held_fish('Alice') == 0
 
+    def test_an_overspending_offer_is_trimmed_to_the_minimum(self):
+        """A greedy client offering [1, 3] for a 3-fish steal must not burn the
+        1: the server spends the smallest subset that still reaches the price and
+        leaves the rest in hand. (Excess is lost only when no smaller subset pays
+        — see test_overpaying_loses_the_excess.)"""
+        game = self._ready([1, 3])
+        result = game.spend_fish('Alice', 'steal', [1, 3], target='Bob')
+        assert result['success']
+        assert result['spent'] == [3]
+        assert game.tb.hand('Alice') == [1]
+
     def test_spending_tokens_you_do_not_hold_is_refused(self):
         game = self._ready([1, 1])
         result = game.spend_fish('Alice', 'steal', [3], target='Bob')

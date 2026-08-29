@@ -479,6 +479,16 @@ class RobberRules:
         # may not push them past it.
         if self.rules['oil_tokens'] and victim.oil > 0 and thief.oil < MAX_OIL_HELD:
             available_resources = available_resources + ['oil']
+        # Cities & Knights: "Commodities may be stolen by the robber and by
+        # progress cards in the same way as resources" (expansions.md:328). They
+        # live in a separate dict, so add them explicitly — sorted, so the
+        # candidate list (and thus the seeded rng.choice) is process-stable.
+        commodity_pool = []
+        if self.rules['commodities']:
+            commodity_pool = sorted(
+                c for c, count in victim.commodities.items() if count > 0
+            )
+            available_resources = available_resources + commodity_pool
         if not available_resources:
             return None
 
@@ -490,6 +500,10 @@ class RobberRules:
         if stolen == 'oil':
             victim.oil -= 1
             thief.oil += 1
+            return stolen
+        if stolen in commodity_pool:
+            victim.commodities[stolen] = victim.commodities[stolen] - 1
+            thief.commodities[stolen] = thief.commodities.get(stolen, 0) + 1
             return stolen
         victim.resources[stolen] = victim.resources[stolen] - 1
         thief.resources[stolen] = thief.resources.get(stolen, 0) + 1
