@@ -1575,6 +1575,43 @@ function drawFishermenState(ctx, tb, hexPositions, hexRadius) {
             drawHexBadge(ctx, pos.x, pos.y, badge, '#0e3a2a', ground.number, '#dff0f6');
         }
     }
+    // The lake pays fish on any of 2/3/11/12 (expansions.md:500) but carries no
+    // number token, so nothing on it told the player which rolls produce. Draw
+    // those numbers as a pill, matching the fishing-ground badge colours.
+    if (tb.lake_hex) {
+        const pos = hexPositions[tb.lake_hex];
+        if (pos) {
+            drawLakeNumbers(ctx, pos.x, pos.y, hexRadius);
+        }
+    }
+}
+
+// LAKE_NUMBERS mirrors server/game/fishing.py's LAKE_NUMBERS.
+function drawLakeNumbers(ctx, x, y, hexRadius) {
+    const text = '2·3·11·12';
+    ctx.save();
+    ctx.font = `700 ${Math.round(hexRadius * 0.34)}px "Space Grotesk", system-ui, sans-serif`;
+    const pad = hexRadius * 0.2;
+    const w = ctx.measureText(text).width + pad * 2;
+    const h = hexRadius * 0.5;
+    const left = x - w / 2, top = y - h / 2, radius = h / 2;
+    ctx.beginPath();
+    ctx.moveTo(left + radius, top);
+    ctx.arcTo(left + w, top, left + w, top + h, radius);
+    ctx.arcTo(left + w, top + h, left, top + h, radius);
+    ctx.arcTo(left, top + h, left, top, radius);
+    ctx.arcTo(left, top, left + w, top, radius);
+    ctx.closePath();
+    ctx.fillStyle = '#0e3a2a';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = SHIP_OUTLINE;
+    ctx.stroke();
+    ctx.fillStyle = '#dff0f6';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + h * 0.04);
+    ctx.restore();
 }
 
 /**
