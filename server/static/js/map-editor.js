@@ -105,6 +105,7 @@ let selectedRegionId = null;
 let undoStack = [];
 let mapList = [];               // last map_list from server
 let previewBoard = null;        // board data from map_preview; null = authored view
+let pendingMapAction = 'load';  // what the next request_map reply should do: load or duplicate
 let screenAbort = null;         // AbortController for screen-scoped listeners
 let painting = false;           // pointer is down in paint/erase mode
 
@@ -535,7 +536,19 @@ function changeRadius() {
 
 function regionHasProblem(region) {
     if (region.hexes === 'remaining') return false;
-    return poolCounts(region).tiles !== region.hexes.length;
+    const counts = poolCounts(region);
+    // Both must match, and the status strip already counts both — checking only
+    // tiles here left a token-count mismatch un-badged and skipped the
+    // pre-preview auto-fill prompt, so Preview died on a raw server rejection.
+    return counts.tiles !== region.hexes.length || counts.tokens !== counts.tokenRequired;
+}
+
+// The dealt preview is a snapshot of one draw; any edit to the document makes it
+// stale, so drop back to the authored view. A no-op when no preview is showing.
+function invalidatePreview() {
+    if (!previewBoard) return;
+    previewBoard = null;
+    renderEditor();
 }
 
 function renderSidebar() {
@@ -563,7 +576,7 @@ function renderSidebar() {
             const warn = document.createElement('span');
             warn.className = 'editor-region-warn';
             warn.textContent = '!';
-            warn.title = 'Tile count does not match hex count — open ⚙ and Auto-fill';
+            warn.title = 'Tile or token count does not match — open ⚙ and Auto-fill';
             item.appendChild(warn);
         }
 
@@ -633,7 +646,8 @@ function hexMetaOf(region, hexKey) {
 // serialises an empty entry.
 function pruneHexMeta(region, hexKey) {
     const meta = region.meta?.[hexKey];
-    if (meta && meta.docks.length === 0 && !meta.village) {
+    if (meta && meta.docks.length === 0 && !meta.village
+        && !meta.lair && meta.fishing_ground == null && !meta.oil_spring) {
         delete region.meta[hexKey];
     }
 }
@@ -700,6 +714,7 @@ function buildRegionPopover(region) {
             mapDoc = { ...mapDoc };
             renderSidebar();
             buildRegionPopover(region);
+            invalidatePreview();
         });
         swatches.appendChild(sw);
     }
@@ -724,6 +739,7 @@ function buildRegionPopover(region) {
     kindSelect.addEventListener('change', () => {
         region.kind = kindSelect.value;
         mapDoc = { ...mapDoc };
+        invalidatePreview();
     });
     kindRow.appendChild(kindLbl);
     kindRow.appendChild(kindSelect);
@@ -752,6 +768,7 @@ function buildRegionPopover(region) {
         mapDoc = { ...mapDoc };
         buildRegionPopover(region);   // the terrain/token columns switch on mode
         renderSidebar();
+        invalidatePreview();
     });
     modeRow.appendChild(modeLbl);
     modeRow.appendChild(modeSelect);
@@ -835,6 +852,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             inc.addEventListener('click', () => {
                 region.pool.terrain[terrain] = (region.pool.terrain[terrain] || 0) + 1;
@@ -842,6 +860,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             row.appendChild(lbl);
             row.appendChild(dec);
@@ -881,6 +900,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             inc.addEventListener('click', () => {
                 region.pool.numbers.push(val);
@@ -889,6 +909,7 @@ function buildRegionPopover(region) {
                 mapDoc = { ...mapDoc };
                 refreshPoolBadges(region, tilesUsed, tokensBadge);
                 updateStatusStrip();
+                invalidatePreview();
             });
             row.appendChild(lbl);
             row.appendChild(dec);
@@ -1196,7 +1217,7 @@ function requestPreview() {
             renderSidebar();
         }
     }
-    const wire = mapDocToWire();
+    const wire = mapDocToWire(true);
     if (!wire) return;
     emitGame('preview_map', { map: wire });
 }
@@ -1204,7 +1225,11 @@ function requestPreview() {
 function onMapDataReceived(e) {
     const { map, builtin } = e.detail || {};
     if (!map) return;
-    if (builtin) {
+    const action = pendingMapAction;
+    pendingMapAction = 'load';
+    // A built-in can only be duplicated (it is read-only); a custom map is
+    // loaded unless Dup asked for a copy.
+    if (builtin || action === 'duplicate') {
         duplicateMap(map);
     } else {
         loadMap(map);
@@ -1309,7 +1334,13 @@ function rebuildMapList() {
         if (!m.builtin) {
             const dupBtn = document.createElement('button');
             dupBtn.textContent = 'Dup';
-            dupBtn.addEventListener('click', () => duplicateMap(m));
+            dupBtn.addEventListener('click', () => {
+                // List rows are summaries (regions is a count, no frame/pool),
+                // so duplicateMap can't work off `m`. Fetch the full definition
+                // first — like Load — but remember to duplicate it, not load it.
+                pendingMapAction = 'duplicate';
+                emitGame('request_map', { id: m.id });
+            });
             li.appendChild(dupBtn);
 
             const delBtn = document.createElement('button');
@@ -1350,8 +1381,18 @@ function duplicateMap(m) {
             const pool = r.pool
                 ? { ...r.pool, terrain: { ...(r.pool.terrain || {}) }, numbers: [...(r.pool.numbers || [])] }
                 : { mode: 'shuffled', terrain: {}, numbers: [] };
-            const stub = { kind: r.kind || 'island', pool };
-            pool.resources = inferResources(stub);
+            if (pool.mode === 'fixed') {
+                // A fixed pool has no terrain map to infer from; its selectable
+                // terrains are whatever it places, so a lake/gold/fish tile stays
+                // selectable after a duplicate instead of dropping to blank.
+                const placed = [...new Set(
+                    Object.values(pool.placements || {})
+                        .map(p => p && p.terrain).filter(Boolean),
+                )];
+                pool.resources = placed.length ? placed : [...LAND_TERRAINS];
+            } else {
+                pool.resources = inferResources({ kind: r.kind || 'island', pool });
+            }
             return {
                 ...r,
                 color: r.color || REGION_PALETTE[0],
@@ -1397,10 +1438,12 @@ function buildHarbourCounters() {
             if (cur <= 0) return;
             mapDoc.harbours.types[type] = cur - 1;
             cnt.textContent = String(mapDoc.harbours.types[type]);
+            invalidatePreview();
         });
         inc.addEventListener('click', () => {
             mapDoc.harbours.types[type] = (mapDoc.harbours.types[type] || 0) + 1;
             cnt.textContent = String(mapDoc.harbours.types[type]);
+            invalidatePreview();
         });
 
         row.appendChild(lbl);
@@ -1433,6 +1476,11 @@ function metaToWire(region) {
         const entry = {};
         if (m.docks?.length) entry.docks = [...m.docks].sort((a, b) => a - b);
         if (m.village) entry.village = true;
+        // Carried through untouched — the inspect UI edits only docks/village,
+        // but a duplicated scenario must not lose the meta it can't yet edit.
+        if (m.lair) entry.lair = true;
+        if (m.fishing_ground != null) entry.fishing_ground = m.fishing_ground;
+        if (m.oil_spring) entry.oil_spring = true;
         if (Object.keys(entry).length) out[key] = entry;
     }
     return out;
@@ -1472,14 +1520,20 @@ function poolToWire(r) {
     return { mode: poolMode(r), terrain, numbers: [...r.pool.numbers] };
 }
 
-function mapDocToWire() {
-    if (!mapDoc.id) {
+function mapDocToWire(previewOnly) {
+    // Saving needs a real, persisted id (it becomes the filename). Preview does
+    // not persist anything, so it may run before the first save on an id derived
+    // from the name — without which Preview was dead until you saved, and failed
+    // with a notice about the name it could not act on. Do not mutate mapDoc.id
+    // here: a preview must not silently fix the id a later rename would change.
+    const id = mapDoc.id || (previewOnly ? slugify(mapDoc.name) : '');
+    if (!id) {
         showNotice('Enter a map name first', 'error');
         return null;
     }
     return {
         map_version: mapVersion(),
-        id: mapDoc.id,
+        id,
         name: mapDoc.name,
         frame: mapDoc.frame.excluded?.length
             ? { radius: mapDoc.frame.radius, excluded: sortHexKeys([...mapDoc.frame.excluded]) }
@@ -1532,6 +1586,9 @@ function serverMapToDoc(m) {
                 meta[key] = {
                     docks: Array.isArray(spec.docks) ? [...spec.docks] : [],
                     village: !!spec.village,
+                    lair: !!spec.lair,
+                    fishing_ground: spec.fishing_ground ?? null,
+                    oil_spring: !!spec.oil_spring,
                 };
             }
             return {

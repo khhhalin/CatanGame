@@ -136,6 +136,19 @@ def handle_move_knight(data):
     else:
         log_event('build', f"{name} moved a knight", player=name)
 
+@socketio.on('chase_robber')
+def handle_chase_robber(data):
+    if rate_limited():
+        return
+    # Moves the robber and sets up the victim choice; the acting player then
+    # completes it through the ordinary `steal` handler, exactly as after a
+    # rolled-7 robber move.
+    outcome = _ck_action(data, 'knights', 'chase_robber_with_knight',
+                         'knight_vertex', 'to_hex')
+    if outcome:
+        name, _result = outcome
+        log_event('build', f"{name}'s knight chased the robber", player=name)
+
 @socketio.on('build_city_wall')
 def handle_build_city_wall(data):
     if rate_limited():

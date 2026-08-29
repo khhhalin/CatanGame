@@ -21,6 +21,11 @@
     'use strict';
 
     const STORAGE_KEY = 'catan.customize';
+    // The first-run coach keys: one seen-flag that outlives reloads, and a force
+    // flag a browser sets to opt back into the hint after we suppress it for an
+    // automated one — the same init-script trick the YOLO fixture uses.
+    const COACH_KEY = 'catan.customize.coach';
+    const COACH_FORCE_KEY = 'catan.customize.coach.force';
     const OVERRIDE_STYLE_ID = 'user-overrides';
     const CUSTOM_CSS_STYLE_ID = 'user-custom-css';
     const LAYOUT_STYLE_ID = 'user-layout';
@@ -934,6 +939,9 @@
             syncControls();
             body.classList.remove('hidden');
             toggle.setAttribute('aria-expanded', 'true');
+            // Opening the gear *is* the discovery, so the hint has done its job
+            // — clear it rather than leave it lingering over the open panel.
+            dismissCoach();
         }
         function close(restoreFocus) {
             body.classList.add('hidden');
@@ -954,6 +962,56 @@
                 close(true);
             }
         });
+
+        // --- First-run coach: a one-time nudge toward the gear. -------------
+        // Testers played the default screen, disliked the arrangement, and never
+        // found that the gear is where panels are dragged and hidden. A bubble
+        // points at it once and names the layout, then remembers it was seen so
+        // it never nags again. Like the panel, it is inert to the screen beneath
+        // (pointer-events:none) so only its own button takes a click — that is
+        // what keeps it from ever disturbing play. It is suppressed for an
+        // automated browser so it does not intrude on the browser suites, unless
+        // that browser opts back in with the force flag before the page loads.
+        function dismissCoach() {
+            const bubble = document.querySelector('.customize-coach');
+            if (bubble) {
+                bubble.remove();
+            }
+            toggle.classList.remove('coach-pulse');
+            try {
+                window.localStorage.setItem(COACH_KEY, '1');
+            } catch (err) {
+                // Storage denied only means the hint may reappear next visit;
+                // it is a nicety, never worth taking the panel down over.
+            }
+        }
+        function maybeShowCoach() {
+            if (window.localStorage.getItem(COACH_KEY) === '1') {
+                return;
+            }
+            const forced =
+                window.localStorage.getItem(COACH_FORCE_KEY) === '1';
+            if (navigator.webdriver && !forced) {
+                return;
+            }
+            const bubble = document.createElement('div');
+            bubble.className = 'customize-coach';
+            bubble.setAttribute('role', 'status');
+            const text = document.createElement('p');
+            text.className = 'customize-coach-text';
+            text.textContent =
+                'New here? Open the gear to drag panels into place and hide ' +
+                'the ones you never use — it is where your layout lives.';
+            const gotIt = document.createElement('button');
+            gotIt.type = 'button';
+            gotIt.className = 'customize-coach-btn';
+            gotIt.textContent = 'Got it';
+            gotIt.addEventListener('click', dismissCoach);
+            bubble.append(text, gotIt);
+            document.body.appendChild(bubble);
+            toggle.classList.add('coach-pulse');
+        }
+        maybeShowCoach();
     }
 
     if (document.readyState === 'loading') {

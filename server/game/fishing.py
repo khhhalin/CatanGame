@@ -37,6 +37,32 @@ FISH_BENEFITS = {
 LAKE_NUMBERS = (2, 3, 11, 12)
 
 
+def minimal_fish_spend(tokens: list, price: int) -> list:
+    """The cheapest subset of `tokens` whose total still reaches `price`.
+
+    Excess fish are lost with no change given (521), so a client that offered
+    more than it needed — e.g. [1, 3] for a 3-fish benefit, a greedy pick that
+    would burn the 1 — must not be charged the surplus. Spend the least that
+    pays, fewest tokens to break ties. Token values are only 1/2/3, so a bounded
+    triple loop is exact and cheap.
+    """
+    threes = sum(1 for t in tokens if t == 3)
+    twos = sum(1 for t in tokens if t == 2)
+    ones = sum(1 for t in tokens if t == 1)
+    best = None
+    for n3 in range(threes + 1):
+        for n2 in range(twos + 1):
+            for n1 in range(ones + 1):
+                total = 3 * n3 + 2 * n2 + n1
+                if total >= price and (best is None
+                                       or (total, n3 + n2 + n1) < best[0]):
+                    best = ((total, n3 + n2 + n1), n3, n2, n1)
+    if best is None:
+        return list(tokens)
+    _, n3, n2, n1 = best
+    return [3] * n3 + [2] * n2 + [1] * n1
+
+
 class FishingRules:
     """Fish production, the spend ladder, and the old boot."""
 
@@ -230,6 +256,10 @@ class FishingRules:
                 working.remove(token)
             else:
                 return refused('NOT_ENOUGH_FISH', 'You do not hold those fish tokens')
+
+        # Trim an over-generous offer to the least it can pay: the surplus would
+        # be lost for nothing, and a greedy client sends more than it needs.
+        tokens = minimal_fish_spend(tokens, price)
 
         # Validate the benefit's own preconditions before spending.
         applied = self._prepare_fish_benefit(player_name, benefit, target, resource)

@@ -262,6 +262,62 @@ class CitiesKnightsRules:
         self.update_longest_road()
         return {'success': True, 'error': '', 'displaced': displaced}
 
+    def chase_robber_with_knight(self, player_name: str, knight_vertex: str,
+                                 to_hex: str) -> dict:
+        """Chase the robber with an active knight standing next to it.
+
+        A knight on an intersection adjacent to the robber's hex may move the
+        robber to any other land hex; the acting player then robs one card —
+        resource or commodity — from a player adjacent to the robber's new hex.
+        That steal is the ordinary robber steal, so the victim choice reuses
+        must_choose_victim / steal_from_victim. Like every knight action it
+        deactivates the knight (expansions.md:396, 402-403).
+        """
+        refusal = self._rule_is_off('knights')
+        if refusal is not None:
+            return refusal
+        if self.game_phase == 'setup':
+            return {'success': False, 'error': 'Cannot chase the robber during setup'}
+
+        current_name = self.players[self.current_player_index].name
+        if current_name != player_name:
+            return {'success': False, 'error': f'Only {current_name} may act'}
+        if self.must_move_robber or self.must_choose_victim:
+            return {'success': False, 'error': 'Finish the current robber move first'}
+
+        owner, knight = self.ck.knight_at(knight_vertex)
+        if knight is None or owner != player_name:
+            return {'success': False, 'error': 'You have no knight there'}
+        if not knight.can_act():
+            if knight.activated_this_turn:
+                return {'success': False, 'error': 'A knight cannot act the turn it is activated'}
+            if not knight.active:
+                return {'success': False, 'error': 'That knight is not active'}
+            return {'success': False, 'error': 'That knight has already acted this turn'}
+
+        vertex = self.vertices.get(knight_vertex)
+        if vertex is None or self.robber_hex not in vertex.neighbors.get('hexes', []):
+            return {'success': False, 'error': 'That knight is not next to the robber'}
+
+        if to_hex == self.robber_hex:
+            return {'success': False,
+                    'error': 'The robber must be moved to a different hex'}
+        hex_obj = self.hexes.get(to_hex)
+        if hex_obj is None or tiles.is_sea(hex_obj.type):
+            return {'success': False, 'error': 'Chase the robber onto a land hex'}
+        robber_refusal = self.robber_refusal(to_hex)
+        if robber_refusal is not None:
+            return {'success': False, 'error': robber_refusal[1]}
+
+        self.robber_hex = to_hex
+        knight.spend_action()
+
+        victims = [v for v in self.get_robber_victims() if v != player_name]
+        if victims:
+            self.must_choose_victim = True
+            self.robber_victims = victims
+        return {'success': True, 'error': '', 'victims': victims}
+
     def _displacement_target(self, owner: str, from_vertex: str):
         """A vacant intersection connected to `owner`'s roads, next to where the
         displaced knight stood."""

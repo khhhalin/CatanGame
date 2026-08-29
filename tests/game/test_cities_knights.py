@@ -718,3 +718,93 @@ class TestSetupPhase:
                 assert game.get_player('Alice').commodities == {}
                 return
         pytest.skip("no pasture-adjacent vertex")
+
+
+class TestChaseRobberWithKnight:
+    """expansions.md 402-403: an active knight on an intersection adjacent to
+    the robber may move the robber to any other land hex, then the acting player
+    robs one card from a player adjacent to the robber's new hex. Like every
+    knight action it deactivates the knight (396)."""
+
+    def _ready(self, game, player_name='Alice'):
+        game.game_phase = 'playing'
+        game.has_rolled_dice = True
+        game.current_player_index = [p.name for p in game.players].index(player_name)
+
+    def _setup(self):
+        game = ck_game()
+        # An active, ready knight for Alice next to the robber's hex.
+        knight_vertex = next(
+            k for k, v in game.vertices.items()
+            if not v.building and any(
+                game.hexes[h].type not in ('ocean', 'desert')
+                for h in v.neighbors.get('hexes', [])
+            )
+        )
+        robber_hex = next(
+            h for h in game.vertices[knight_vertex].neighbors['hexes']
+            if game.hexes[h].type not in ('ocean', 'desert')
+        )
+        game.robber_hex = robber_hex
+        stand_knight(game, 'Alice', knight_vertex)
+        game.ck.knight_at(knight_vertex)[1].active = True
+
+        # Bob's settlement next to a different land hex — the chase target.
+        dest_hex = bob_vertex = None
+        for vkey, v in game.vertices.items():
+            if v.building or vkey == knight_vertex:
+                continue
+            for h in v.neighbors.get('hexes', []):
+                if h != robber_hex and game.hexes[h].type not in ('ocean', 'desert'):
+                    dest_hex, bob_vertex = h, vkey
+                    break
+            if dest_hex:
+                break
+        game.vertices[bob_vertex].building = {'type': 'settlement', 'player': 'Bob'}
+        game.get_player('Bob').resources = {'wood': 3}
+        self._ready(game)
+        return game, knight_vertex, dest_hex
+
+    def test_chasing_moves_the_robber_and_deactivates_the_knight(self):
+        game, knight_vertex, dest_hex = self._setup()
+
+        result = game.chase_robber_with_knight('Alice', knight_vertex, dest_hex)
+
+        assert result['success'], result
+        assert game.robber_hex == dest_hex
+        assert result['victims'] == ['Bob']
+        knight = game.ck.knight_at(knight_vertex)[1]
+        assert knight.active is False        # deactivated by acting
+        assert not knight.can_act()
+
+    def test_the_chase_then_robs_a_card_from_the_adjacent_victim(self):
+        game, knight_vertex, dest_hex = self._setup()
+        game.chase_robber_with_knight('Alice', knight_vertex, dest_hex)
+
+        stolen = game.steal_from_victim('Alice', 'Bob')
+        assert stolen['success']
+        assert stolen['stolen'] == 'wood'
+        assert game.get_player('Alice').resources.get('wood', 0) == 1
+        assert game.get_player('Bob').resources['wood'] == 2
+
+    def test_a_knight_not_next_to_the_robber_cannot_chase(self):
+        game, knight_vertex, dest_hex = self._setup()
+        # Move the robber onto the far target hex, away from the knight.
+        game.robber_hex = dest_hex
+        result = game.chase_robber_with_knight('Alice', knight_vertex, dest_hex)
+        assert not result['success']
+        assert 'not next to the robber' in result['error']
+
+    def test_an_inactive_knight_cannot_chase(self):
+        game, knight_vertex, dest_hex = self._setup()
+        game.ck.knight_at(knight_vertex)[1].active = False
+        result = game.chase_robber_with_knight('Alice', knight_vertex, dest_hex)
+        assert not result['success']
+        assert 'not active' in result['error']
+
+    def test_the_robber_must_actually_move(self):
+        game, knight_vertex, _dest = self._setup()
+        result = game.chase_robber_with_knight(
+            'Alice', knight_vertex, game.robber_hex)
+        assert not result['success']
+        assert 'different hex' in result['error']

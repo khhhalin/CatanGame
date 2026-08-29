@@ -154,6 +154,46 @@ def test_the_boot_holder_can_pass_the_old_boot(browser, tmp_path):
         stop_server(proc)
 
 
+def test_the_lake_shows_which_numbers_pay_fish(browser, tmp_path):
+    """The lake pays on 2/3/11/12 but carries no number token; the board now
+    prints those numbers on it. Count the pill's dark-green ink at the lake
+    centre — a plain lake tile (the old behaviour) has none there."""
+    persistence.save(_fishermen_game(), os.path.join(str(tmp_path), "game.json"))
+    proc, url = start_server(tmp_path)
+    try:
+        alice = _join(browser, url)
+        lake = alice.page.evaluate(
+            "() => window.__catanDebug.getBoard().tb.lake_hex"
+        )
+        assert lake == "0,0,0", lake  # fishermen.json places the lake at origin
+        green = alice.page.evaluate(
+            """() => {
+                const canvas = document.getElementById('board-canvas');
+                const board = window.__catanDebug.getBoard();
+                const layout = window.BoardRenderer.computeLayout(board);
+                const raw = layout.hexPositions[board.tb.lake_hex];
+                // boardToClient expects the offset board coord the renderer draws at.
+                const pos = window.BoardRenderer.boardToClient(
+                    canvas, raw.x + layout.offsetX, raw.y + layout.offsetY);
+                const rect = canvas.getBoundingClientRect();
+                const cx = Math.round((pos.x - rect.left) * canvas.width / rect.width);
+                const cy = Math.round((pos.y - rect.top) * canvas.height / rect.height);
+                const box = 45;
+                const d = canvas.getContext('2d')
+                    .getImageData(cx - box, cy - box, box * 2, box * 2).data;
+                let n = 0;
+                for (let i = 0; i < d.length; i += 4) {
+                    const r = d[i], g = d[i + 1], b = d[i + 2];
+                    if (r < 60 && g > 30 && g < 100 && b < 75 && g > r && g > b) n++;
+                }
+                return n;
+            }"""
+        )
+        assert green > 30, f"lake production pill not drawn (dark-green px={green})"
+    finally:
+        stop_server(proc)
+
+
 def test_a_base_game_shows_no_fish_panel(browser, tmp_path):
     persistence.save(_base_game(), os.path.join(str(tmp_path), "game.json"))
     proc, url = start_server(tmp_path)
