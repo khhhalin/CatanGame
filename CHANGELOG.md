@@ -26,6 +26,13 @@ is what tells them what to go and re-test. The server refuses to serve a file
 that breaks any of that, with the line number, so a typo is a server error and
 never a half-drawn panel.
 
+## v3.14.0 — 2026-08-29 12:31
+
+- **New** Cities & Knights: a knight can now chase the robber. Tap one of your active knights standing next to the robber, choose "Chase robber", and tap a land hex — the robber moves there, you rob a card from someone next to it, and the knight goes inactive.
+- **Fixed** The robber (and the progress cards that steal) can now take commodities — cloth, coin and paper — not just resources, as the rules say.
+- **Fixed** Spending fish tokens no longer wastes them: paying a 3-fish cost from a 1 and a 3 in hand now spends only the 3 and keeps the 1, instead of burning both.
+- **New** Fishermen: the lake now shows which rolls pay it (2, 3, 11 and 12), so you can see its production the way the fishing-ground tiles already show theirs.
+
 ## v3.13.1 — 2026-08-29 00:55
 
 - **Fixed** In the map editor, the Preview button now works before you have saved a map — a fresh or just-loaded map previews straight away instead of quietly doing nothing.
