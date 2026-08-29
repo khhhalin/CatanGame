@@ -463,3 +463,26 @@ class TestBaseGameUnchanged:
     def test_a_base_game_leaves_the_robber_on_the_desert(self):
         game = Game(['Alice', 'Bob'], [], rng=random.Random(1))
         assert game.robber_hex is not None
+
+
+class TestHarbourAndFishingGroundTogether:
+    """expansions.md:515 — a settlement or city on an intersection touching both
+    a harbour and a fishing ground receives the benefits of both. The tester
+    thought the two should never overlap; the rules say they may, and reward it,
+    so the check is that the game actually delivers both — the harbour trade and
+    the fish — from the one building, neither suppressing the other."""
+
+    def test_one_building_collects_the_fish_and_keeps_the_harbour(self):
+        game = fishermen_game()
+        ground = a_fishing_ground(game)
+        vertex_key = ground['vertices'][0]
+        # A settlement that stands on both the fishing ground and a 3:1 harbour.
+        game.vertices[vertex_key].building = {'type': 'settlement', 'player': 'Alice'}
+        game.get_player('Alice').settlements.append(vertex_key)
+        game.vertices[vertex_key].port = {'type': 'generic'}
+        game.tb.supply = [1, 2, 3] * 20
+
+        drawn = game.distribute_fish(ground['number'])
+
+        assert drawn.get('Alice', 0) >= 1, 'the fishing ground paid no fish'
+        assert 'generic' in game.get_player_ports('Alice'), 'the harbour was lost'
