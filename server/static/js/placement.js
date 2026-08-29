@@ -43,6 +43,7 @@ const PLACEMENT_NOUNS = {
     city_wall: 'City wall',
     knight: 'Knight',
     knight_move: 'Knight move',
+    knight_chase: 'Robber chase',
     ship: 'Ship',
     ship_move: 'Ship move',
     barbarian_knight_move: 'Knight move',
@@ -55,7 +56,7 @@ const PLACEMENT_NOUNS = {
 // a kind were added to one and not the other.
 const EDGE_KINDS = ['road', 'ship', 'ship_move', 'progress_road', 'bridge',
     'barbarian_knight', 'barbarian_knight_move'];
-const HEX_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens'];
+const HEX_KINDS = ['robber', 'pirate', 'progress_hex', 'progress_tokens', 'knight_chase'];
 
 // What the announcement last said, so aiming at the same spot twice does not
 // repeat itself into the live region.
@@ -394,6 +395,12 @@ function isBlocked(kind, key) {
         return board.hexes[key]?.type === 'ocean';
     }
 
+    if (kind === 'knight_chase') {
+        // Chase the robber onto a different land hex; the hex it sits on and the
+        // sea are both closed, matching the engine's own refusals.
+        return board.hexes[key]?.type === 'ocean' || key === board.robber_hex;
+    }
+
     if (isProgressMode(kind)) {
         return progressTargetIsBlocked(board, key, me);
     }
@@ -716,6 +723,13 @@ function commit(target) {
 
     if (target.kind === 'robber') {
         emitGame('move_robber', { name, hex: target.key });
+    } else if (target.kind === 'knight_chase') {
+        // The knight was picked from the overlay; the hex is where it chases the
+        // robber to. The steal that follows reuses the ordinary victim choice.
+        emitGame('chase_robber', {
+            name, knight_vertex: viewState.chaseKnightVertex, to_hex: target.key,
+        });
+        viewState.chaseKnightVertex = null;
     } else if (target.kind === 'pirate') {
         // Sent *instead of* move_robber, and answered with the same
         // `choose_victim` the robber raises. The Explorers & Pirates pirate is a

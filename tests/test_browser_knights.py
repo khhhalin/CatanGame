@@ -39,6 +39,7 @@ import pytest
 from browser_harness import (
     Player,
     browser_session,
+    click_hex,
     click_vertex,
     first_clickable,
     next_frame,
@@ -701,3 +702,74 @@ STONE_PIXELS = """
     return matched;
 }
 """
+
+
+def a_knight_to_chase_the_robber(game):
+    """Alice's active knight next to the robber, plus Bob's settlement next to a
+    different land hex to chase it onto — so the chase reaches a victim."""
+    actor = game.current_player_name()
+    knight_vertex = next(
+        k for k, v in game.vertices.items()
+        if not v.building and any(
+            game.hexes[h].type not in ("ocean", "desert")
+            for h in v.neighbors.get("hexes", [])
+        )
+    )
+    robber_hex = next(
+        h for h in game.vertices[knight_vertex].neighbors["hexes"]
+        if game.hexes[h].type not in ("ocean", "desert")
+    )
+    game.robber_hex = robber_hex
+    knight = ck_module.Knight(knight_vertex)
+    knight.active = True
+    game.ck.knights_of(actor).append(knight)
+
+    victim = next(name for name in TABLE if name != actor)
+    dest_hex = victim_vertex = None
+    for vkey, v in game.vertices.items():
+        if v.building or vkey == knight_vertex:
+            continue
+        for h in v.neighbors.get("hexes", []):
+            if h != robber_hex and game.hexes[h].type not in ("ocean", "desert"):
+                dest_hex, victim_vertex = h, vkey
+                break
+        if dest_hex:
+            break
+    game.vertices[victim_vertex].building = {"type": "settlement", "player": victim}
+    game.get_player(victim).resources = {"wood": 3}
+    _hand(game, actor)   # the chase costs nothing; leave the actor empty-handed
+    return {"knight": knight_vertex, "dest": dest_hex, "victim": victim}
+
+
+@pytest.fixture
+def chasing_knight(browser, tmp_path):
+    with table(browser, tmp_path, a_knight_to_chase_the_robber) as live:
+        yield live
+
+
+class TestChaseRobber:
+    """The knight's chase-away-the-robber action, from the board overlay: tap
+    the knight, choose Chase robber, tap the land hex. The robber moves and the
+    victim choice is the ordinary one."""
+
+    def test_a_knight_chases_the_robber_from_the_overlay(self, chasing_knight):
+        alice, marks = chasing_knight
+
+        # Tap the knight to raise its overlay, then choose Chase robber.
+        click_vertex(alice, marks["knight"])
+        alice.page.wait_for_selector("#knight-actions:not(.hidden)", timeout=5000)
+        chase = alice.page.query_selector("#knight-action-chase")
+        assert chase is not None and not chase.is_disabled(), (
+            "the Chase robber action was not offered on an adjacent active knight"
+        )
+        chase.click()
+
+        # Aim the robber at the target land hex and confirm.
+        click_hex(alice, marks["dest"])
+        confirm(alice, "Robber chase")
+
+        # The robber has moved there, for every player.
+        alice.page.wait_for_function(
+            "(hex) => window.__catanDebug.getBoard().robber_hex === hex",
+            arg=marks["dest"], timeout=8000,
+        )

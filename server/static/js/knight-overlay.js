@@ -20,7 +20,7 @@
 //     same thing by another route.
 
 import { markDirty } from './board.js';
-import { KNIGHT_ACTION_LABELS, ckEnabled, knightActionReasons, myKnightAt, startKnightMove } from './cities-knights.js';
+import { KNIGHT_ACTION_LABELS, ckEnabled, knightActionReasons, myKnightAt, startKnightChase, startKnightMove } from './cities-knights.js';
 import { boardCanvas, gameBoard, knightActionButtons, knightActions } from './dom.js';
 import { emitGame } from './socket.js';
 import { getBoard, viewState } from './state.js';
@@ -192,6 +192,11 @@ knightActions?.addEventListener('click', (event) => {
         // Picking the knight up, which is what the first tap of a move does.
         // Nothing is sent until the second tap is confirmed.
         startKnightMove(vertex);
+        return;
+    }
+    if (action === 'chase') {
+        // Pick the knight up for the chase; the next tap names the hex.
+        startKnightChase(vertex);
         return;
     }
     emitGame(action === 'promote' ? 'promote_knight' : 'activate_knight', {

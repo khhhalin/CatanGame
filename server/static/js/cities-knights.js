@@ -208,6 +208,7 @@ export const KNIGHT_ACTION_LABELS = {
     activate: `Activate · ${formatCost(KNIGHT_ACTIVATE_COST)}`,
     promote: `Promote · ${formatCost(KNIGHT_PROMOTE_COST)}`,
     move: 'Move',
+    chase: 'Chase robber',
 };
 
 /**
@@ -366,7 +367,19 @@ export function knightActionReasons(knight) {
         move = 'It cannot act again until your next turn';
     }
 
-    return { activate, promote, move };
+    // Chasing the robber needs the same active-and-can-act knight the move
+    // does, plus this one standing next to the robber's hex.
+    let chase = move;
+    if (!chase) {
+        const board = getBoard();
+        const nearRobber = (board?.vertices?.[knight.vertex]?.neighbors?.hexes || [])
+            .includes(board?.robber_hex);
+        if (!nearRobber) {
+            chase = 'Stand it next to the robber to chase it';
+        }
+    }
+
+    return { activate, promote, move, chase };
 }
 
 /**
@@ -382,6 +395,7 @@ function toggleCkMode(mode) {
     }
     viewState.selectedBuilding = viewState.selectedBuilding === mode ? null : mode;
     viewState.knightMoveFrom = null;
+    viewState.chaseKnightVertex = null;
 
     [placeSettlementBtn, placeRoadBtn, upgradeCityBtn].forEach(button => {
         button.classList.remove('active');
@@ -408,6 +422,22 @@ export function startKnightMove(vertexKey) {
         toggleCkMode('knight_move');
     }
     viewState.knightMoveFrom = vertexKey;
+    renderCitiesKnights();
+}
+
+/**
+ * Arm the chase-the-robber action with this knight picked from the overlay.
+ *
+ * Unlike the move it has no toolbar button: it is only ever reached from the
+ * knight overlay, and the next tap is a land hex the robber is chased onto.
+ *
+ * @param {string} vertexKey - Where the active knight next to the robber stands
+ */
+export function startKnightChase(vertexKey) {
+    if (viewState.selectedBuilding !== 'knight_chase') {
+        toggleCkMode('knight_chase');   // clears chaseKnightVertex, so set after
+    }
+    viewState.chaseKnightVertex = vertexKey;
     renderCitiesKnights();
 }
 
@@ -1309,6 +1339,9 @@ function ckModeHint() {
         return viewState.knightMoveFrom
             ? 'Now tap the intersection to move it to.'
             : 'Tap the knight you want to move.';
+    }
+    if (viewState.selectedBuilding === 'knight_chase') {
+        return 'Tap the land hex to chase the robber to.';
     }
     if (isProgressMode(viewState.selectedBuilding)) {
         return progressPickHint();
